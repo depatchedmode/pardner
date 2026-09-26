@@ -225,6 +225,24 @@ for (const uuidAvailable of [true, false]) it(
       await alice
         .getByRole('button', { name: /Review the handoff evidence/ })
         .waitFor()
+      const vein = (await run(['vein', 'create', '--title', 'Evidence-first reviews', '--goal', 'Ship the first release'])).result
+      const reviewTask = (await run(['tasks'])).tasks.find(task => task.title === 'Review the handoff evidence')
+      await run(['vein', 'add', vein.veinId, reviewTask.id])
+      await run(['update', reviewTask.id, '--status', 'dead-end', '--revisions',
+        JSON.stringify({ status: (await run(['show', reviewTask.id])).revisions.status })])
+      await alice.getByRole('region', { name: 'Dead end' })
+        .getByRole('button', { name: /Review the handoff evidence/ }).waitFor()
+      await alice.getByRole('button', { name: 'Goals', exact: true }).click()
+      const goal = alice.getByRole('article', { name: 'Ship the first release' })
+      await goal.getByText('Ready for a verdict', { exact: true }).waitFor()
+      assert.match(await goal.textContent(), /Evidence-first reviews.*Open.*1 task/)
+      await alice.screenshot({ path: join(output, 'pardner-goals.png'), fullPage: true })
+      await goal.getByRole('button', { name: 'Evidence-first reviews', exact: true }).click()
+      await alice.getByRole('button', { name: /Review the handoff evidence.*Evidence-first reviews/ }).waitFor()
+      assert.equal(await alice.getByRole('button', { name: /Arrived during an HTTP refresh/ }).count(), 0,
+        'the vein filter hides tasks outside the vein')
+      await alice.getByLabel('Vein', { exact: true }).selectOption('')
+      await alice.getByRole('button', { name: /Arrived during an HTTP refresh/ }).first().waitFor()
       await alice.screenshot({
         path: join(output, 'pardner-desktop.png'),
         fullPage: true,

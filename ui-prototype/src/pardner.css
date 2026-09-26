@@ -158,7 +158,7 @@ nav button[aria-pressed='true'] {
 }
 .board {
   display: grid;
-  grid-template-columns: repeat(5, minmax(180px, 1fr));
+  grid-template-columns: repeat(7, minmax(180px, 1fr));
   gap: 1px;
   background: var(--line);
   border-block: 1px solid var(--line);
@@ -333,6 +333,54 @@ nav button[aria-pressed='true'] {
   margin: 20px auto;
   padding: 0 28px;
 }
+.goals {
+  max-width: 900px;
+  margin: 20px auto;
+  padding: 0 28px;
+}
+.goal {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+.goal h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 500;
+  margin: 0 0 8px;
+}
+.goal ul {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+}
+.goal li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 13px;
+}
+.record-status {
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 2px 8px;
+}
+.record-status[data-status='proven'],
+.record-status[data-status='achieved'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.task-card .vein-label {
+  color: var(--accent);
+}
+.verdict-label {
+  color: var(--warning);
+}
 code {
   overflow-wrap: anywhere;
 }
@@ -467,7 +515,7 @@ code {
     margin-left: 0;
   }
   .board {
-    grid-template-columns: repeat(5, minmax(230px, 75vw));
+    grid-template-columns: repeat(7, minmax(230px, 75vw));
   }
   .side-panel {
     padding: 20px;

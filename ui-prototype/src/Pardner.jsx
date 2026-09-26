@@ -6,14 +6,17 @@ import { createOperationId } from './operation-id.js'
 import { createConnection, loadConfiguration, websocketUrl } from './connection.js'
 import PhoneAccess from './PhoneAccess.jsx'
 
-const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed']
+const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const LABELS = {
   backlog: 'Backlog',
   'up-next': 'Up next',
   'in-progress': 'In progress',
   review: 'Review',
   completed: 'Completed',
+  'dead-end': 'Dead end',
+  abandoned: 'Abandoned',
 }
+const RECORD_LABELS = { open: 'Open', proven: 'Proven', 'dead-end': 'Dead end', abandoned: 'Abandoned', achieved: 'Achieved' }
 const labelActor = (actor) =>
   actor ? `${actor.displayName || actor.handle} · ${actor.kind}` : 'Unassigned'
 
@@ -113,6 +116,7 @@ function Workspace({ config, reloadConfiguration }) {
   const [view, setView] = useState(() => client.preferences().view || 'board')
   const [filter, setFilter] = useState(() => client.preferences().filter || '')
   const [statusFilter, setStatusFilter] = useState(() => client.preferences().statusFilter || '')
+  const [veinFilter, setVeinFilter] = useState(() => client.preferences().veinFilter || '')
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   const [confirmedOperation, setConfirmedOperation] = useState(null)
@@ -151,8 +155,8 @@ function Workspace({ config, reloadConfiguration }) {
   }, [pairDevice])
 
   useEffect(() => {
-    try { client.savePreferences({ actor, filter, statusFilter, view }) } catch (failure) { setError(failure) }
-  }, [client, actor, filter, statusFilter, view])
+    try { client.savePreferences({ actor, filter, statusFilter, veinFilter, view }) } catch (failure) { setError(failure) }
+  }, [client, actor, filter, statusFilter, veinFilter, view])
   const request = useCallback(async (path, body) => {
     try { return await client.request(path, body) } catch (failure) {
       if (failure.code === 'AUTH_REQUIRED' && !client.credential()) {
@@ -373,9 +377,14 @@ function Workspace({ config, reloadConfiguration }) {
     {token && <button onClick={forget}>Forget this workspace</button>}
   </main>
   const actors = doc.actors
+  const veins = doc.veins || {}
+  const goals = doc.goals || {}
+  const activeVeinFilter = veins[veinFilter] ? veinFilter : ''
   const tasks = Object.values(doc.tasks).filter(
-    (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter),
+    (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter)
+      && (!activeVeinFilter || task.veinIds?.includes(activeVeinFilter)),
   )
+  const showVein = (veinId) => { setVeinFilter(veinId); setView('board') }
   const showingMyReviews = filter === actor && statusFilter === 'review'
   const changeActor = (value) => {
     setActor(value)
@@ -436,6 +445,12 @@ function Workspace({ config, reloadConfiguration }) {
           Tasks
         </button>
         <button
+          aria-pressed={view === 'goals'}
+          onClick={() => setView('goals')}
+        >
+          Goals
+        </button>
+        <button
           aria-pressed={view === 'activity'}
           onClick={() => setView('activity')}
         >
@@ -455,6 +470,11 @@ function Workspace({ config, reloadConfiguration }) {
         <label>Status filter<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
           <option value="">All statuses</option>
           {STATUSES.map(value => <option key={value} value={value}>{LABELS[value]}</option>)}
+        </select></label>
+        <label>Vein<select aria-label="Vein" value={activeVeinFilter} onChange={event => setVeinFilter(event.target.value)}>
+          <option value="">All veins</option>
+          {Object.values(veins).sort((a, b) => a.title.localeCompare(b.title)).map(vein =>
+            <option key={vein.id} value={vein.id}>{vein.title}</option>)}
         </select></label>
       </nav>
       <main>
@@ -492,6 +512,9 @@ function Workspace({ config, reloadConfiguration }) {
                       </span>
                       <strong>{task.title}</strong>
                       <span>{labelActor(actors[task.assignee])}</span>
+                      {task.veinIds?.filter(veinId => veins[veinId]).map(veinId => (
+                        <span className="vein-label" key={veinId}>{veins[veinId].title}</span>
+                      ))}
                       {Object.keys(task.conflicts).length > 0 && (
                         <span className="conflict-label">
                           Conflicting edits
@@ -505,6 +528,8 @@ function Workspace({ config, reloadConfiguration }) {
               </section>
             ))}
           </div>
+        ) : view === 'goals' ? (
+          <Goals goals={goals} veins={veins} showVein={showVein} />
         ) : (
           <section className="activity">
             <h2>Workspace activity</h2>
@@ -558,6 +583,42 @@ function Workspace({ config, reloadConfiguration }) {
         />
       )}
     </div>
+  )
+}
+
+function Goals({ goals, veins, showVein }) {
+  const order = { open: 0, achieved: 1, abandoned: 2 }
+  const list = Object.values(goals).sort((a, b) => order[a.status] - order[b.status] || a.created_at.localeCompare(b.created_at))
+  return (
+    <section className="goals" aria-label="Goals">
+      <h2>Goals</h2>
+      {!list.length && <p className="empty">
+        No goals yet. Start a vein with <code>pardner vein create --title … --goal …</code>.
+      </p>}
+      {list.map(goal => {
+        const goalVeins = Object.values(veins).filter(vein => vein.goalId === goal.id)
+          .sort((a, b) => a.created_at.localeCompare(b.created_at))
+        return (
+          <article className="goal" key={goal.id} aria-label={goal.title}>
+            <h3>{goal.title} <span className="record-status" data-status={goal.status}>{RECORD_LABELS[goal.status]}</span></h3>
+            {goal.description && <p className="muted">{goal.description}</p>}
+            {Object.keys(goal.conflicts).length > 0 && <p className="conflict-label">Conflicting edits</p>}
+            {!goalVeins.length && <p className="muted">No veins pursue this goal yet.</p>}
+            <ul>
+              {goalVeins.map(vein => (
+                <li key={vein.id}>
+                  <button onClick={() => showVein(vein.id)}>{vein.title}</button>
+                  <span className="record-status" data-status={vein.status}>{RECORD_LABELS[vein.status]}</span>
+                  <span className="muted">{vein.taskIds.length} {vein.taskIds.length === 1 ? 'task' : 'tasks'}</span>
+                  {vein.readyForVerdict && <span className="verdict-label">Ready for a verdict</span>}
+                  {Object.keys(vein.conflicts).length > 0 && <span className="conflict-label">Conflicting edits</span>}
+                </li>
+              ))}
+            </ul>
+          </article>
+        )
+      })}
+    </section>
   )
 }
 
@@ -750,6 +811,9 @@ function TaskDetail({
         {labelActor(actors[task.assignee])} · {LABELS[task.status]} ·{' '}
         {task.priority.toUpperCase()}
       </p>
+      {context.veins?.length > 0 && (
+        <p className="muted">Veins: {context.veins.map(vein => `${vein.title} (${RECORD_LABELS[vein.status]})`).join(', ')}</p>
+      )}
       <ErrorNotice error={failure} />
       {draft ? (
         <TaskForm
