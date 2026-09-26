@@ -520,6 +520,14 @@ class AutomergeSyncServer {
       } catch (error) { operationFailure(res, error) }
     })
 
+    for (const kind of ['vein', 'goal']) {
+      this.app.get(`/automerge/${kind}/:id/context`, (req, res) => {
+        try {
+          res.json({ ...this.store.workspace[`${kind}Context`](req.params.id), status: this.store.status() })
+        } catch (error) { operationFailure(res, error) }
+      })
+    }
+
     this.app.post('/automerge/sync-ack', async (req, res) => {
       try {
         res.json(await this.store.acknowledge(req.body?.workspaceId, req.body?.heads))
