@@ -18,6 +18,7 @@ import { fileURLToPath } from 'url'
 import { resolve } from 'node:path'
 import { findGitRoot, getTraceByCommit } from './lib/agent-trace.js'
 import { parseGithubRepo } from './lib/github-remote.js'
+import { LanAccess, canManageAccess, isLoopback } from './lib/lan-access.js'
 
 const DEFAULT_HTTP_PORT = 8004
 const DEFAULT_WS_PORT = 8005
@@ -58,7 +59,7 @@ function parseAllowedOrigins(value, defaults) {
 
 function parsePort(value, name) {
   const parsed = Number(value)
-  if (!Number.isInteger(parsed) || parsed < 0) {
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
     throw new Error(`Invalid ${name}: ${value}`)
   }
   return parsed
@@ -101,6 +102,12 @@ class AutomergeSyncServer {
     this.httpServer = null
     this.wsHttpServer = null
     this.host = options.host ?? env.PARDNER_BIND_HOST ?? '127.0.0.1'
+    this.access = options.access ?? new LanAccess(this.store.directory)
+    this.lanServers = []
+    this.browserWsPath = options.browserWsPath ?? env.PARDNER_BROWSER_WS_PATH
+    if (this.browserWsPath !== undefined && !/^\/(?!\/)[^?#\\]*$/.test(this.browserWsPath)) {
+      throw new Error('PARDNER_BROWSER_WS_PATH must be an absolute path without a query or fragment')
+    }
     this.httpPort = parsePort(options.httpPort ?? env.PARDNER_HTTP_PORT ?? DEFAULT_HTTP_PORT, 'PARDNER_HTTP_PORT')
     this.wsPort = parsePort(options.wsPort ?? env.PARDNER_WS_PORT ?? DEFAULT_WS_PORT, 'PARDNER_WS_PORT')
     this.apiToken = options.apiToken ?? env.PARDNER_API_TOKEN ?? ''
@@ -143,6 +150,7 @@ class AutomergeSyncServer {
     
     // Initialize backend store
     await this.store.init()
+    const lanInterface = await this.access.load()
     this.onDocumentChange = () => this.broadcastDocumentUpdate()
     this.onRuntimeStatus = status => this.broadcastMessage({ type: 'sync-status', status })
     this.store.docHandle.on('change', this.onDocumentChange)
@@ -157,20 +165,37 @@ class AutomergeSyncServer {
     this.store.repo.networkSubsystem.addNetworkAdapter(this.automergeWsAdapter)
 
     // Start HTTP server
-    this.httpServer = await new Promise((resolve, reject) => {
-      const server = this.app.listen(this.httpPort, this.host, () => resolve(server))
-      server.once('error', reject)
-    })
+    this.httpServer = createServer(this.app)
+    await this.listen(this.httpServer, this.httpPort, this.host)
     this.httpPort = this.getBoundPort(this.httpServer, this.httpPort)
     if (!this.explicitOrigins) {
       for (const origin of defaultAllowedOrigins(this.httpPort)) this.allowedOrigins.add(origin)
     }
 
-    this.wsHttpServer = await new Promise((resolve, reject) => {
-      const server = this.wsHttpServer.listen(this.wsPort, this.host, () => resolve(this.wsHttpServer))
-      server.once('error', reject)
-    })
+    await this.listen(this.wsHttpServer, this.wsPort, this.host)
     this.wsPort = this.getBoundPort(this.wsHttpServer, this.wsPort)
+
+    if (lanInterface && (!isLoopback(this.host) || !this.apiToken)) {
+      this.access.diagnostic = 'Companion device setup requires a token-protected loopback service. Remove PARDNER_BIND_HOST overrides and restart.'
+    } else if (lanInterface) {
+      try {
+        const http = createServer(this.app)
+        this.lanServers.push(http)
+        await this.listen(http, this.httpPort, lanInterface.address)
+        const ws = createServer(this.wsRequestHandler)
+        ws.on('upgrade', this.wsUpgradeHandler)
+        this.lanServers.push(ws)
+        await this.listen(ws, this.wsPort, lanInterface.address)
+        this.access.active = lanInterface
+        for (const origin of defaultAllowedOrigins(this.httpPort)) this.allowedOrigins.add(origin)
+        this.allowedOrigins.add(`http://${lanInterface.address}:${this.httpPort}`)
+      } catch (error) {
+        await Promise.all(this.lanServers.map(server => this.closeServer(server)))
+        this.lanServers = []
+        this.access.diagnostic = `LAN listeners could not start (${error.code || 'listen failed'}). Check the interface and both ports, then restart.`
+      }
+    }
+    if (this.access.diagnostic) this.logger.warn?.(this.access.diagnostic)
 
     this.logger.log?.(`📡 HTTP API listening on ${this.host}:${this.httpPort}`)
     this.logger.log?.(`🌐 WebSocket sync on ${this.host}:${this.wsPort}`)
@@ -190,12 +215,21 @@ class AutomergeSyncServer {
     return fallbackPort
   }
 
+  async listen(server, port, host) {
+    await new Promise((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(port, host, () => { server.off('error', reject); resolve() })
+    })
+  }
+
   async stop() {
     this.stopping = true
     // Stop both listeners before draining upgraded sockets and in-flight requests.
     const listenersClosed = Promise.allSettled([
       this.closeServer(this.wsHttpServer), this.closeServer(this.httpServer),
+      ...this.lanServers.map(server => this.closeServer(server)),
     ])
+    this.access.pairing = null
     if (this.onDocumentChange) this.store.docHandle?.off('change', this.onDocumentChange)
     if (this.onRuntimeStatus) this.store.off?.('status', this.onRuntimeStatus)
     for (const client of this.connectedClients) {
@@ -221,6 +255,7 @@ class AutomergeSyncServer {
     const listenerResults = await listenersClosed
     this.wsHttpServer = null
     this.httpServer = null
+    this.lanServers = []
 
     await this.store.close()
     for (const result of listenerResults) if (result.status === 'rejected') throw result.reason
@@ -244,7 +279,7 @@ class AutomergeSyncServer {
   applyCorsHeaders(res, origin) {
     if (!origin) return
     res.setHeader('Access-Control-Allow-Origin', origin)
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Pardner-Token')
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Pardner-Token, X-Pardner-Workspace')
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS')
     res.setHeader('Access-Control-Max-Age', '600')
     res.setHeader('Vary', appendHeaderValue(res.getHeader('Vary'), 'Origin'))
@@ -266,9 +301,9 @@ class AutomergeSyncServer {
     if (!this.isAllowedOrigin(origin)) {
       this.recordSecurityEvent(
         'httpOriginRejected',
-        `Rejected HTTP ${req.method} ${req.url} from origin ${origin}`
+        `Rejected HTTP ${req.method} from a disallowed origin`
       )
-      return res.status(403).json({ error: `Origin not allowed: ${origin}` })
+      return res.status(403).json({ code: 'ORIGIN_REJECTED', error: 'Origin not allowed. Open the current address shown in Pair another device.' })
     }
 
     this.applyCorsHeaders(res, origin)
@@ -352,11 +387,15 @@ class AutomergeSyncServer {
 
   authMiddleware(req, res, next) {
     if (this.isAuthorizedRequest(req)) {
+      const workspaceId = req.headers['x-pardner-workspace']
+      if (workspaceId && workspaceId !== this.store.manifest.workspaceId) {
+        return res.status(409).json({ code: 'WORKSPACE_MISMATCH', error: 'The service workspace changed. Reload before continuing.' })
+      }
       return next()
     }
     this.recordSecurityEvent(
       'httpUnauthorized',
-      `Rejected unauthorized HTTP ${req.method} ${req.url}`
+      `Rejected unauthorized HTTP ${req.method}`
     )
     return res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' })
   }
@@ -364,13 +403,53 @@ class AutomergeSyncServer {
   setupHTTPAPI() {
     this.app.use((req, res, next) => this.originMiddleware(req, res, next))
     this.app.use(express.json())
-    this.app.get('/pardner/config', (_req, res) => res.json({
-      apiBase: '', wsPath: '/', wsPort: this.wsPort,
+    this.app.use((_error, _req, res, _next) => {
+      res.status(400).json({ code: 'INVALID_ARGUMENT', error: 'Send a valid JSON request.' })
+    })
+    this.app.get('/pardner/config', (req, res) => res.set('Cache-Control', 'no-store').json({
+      apiBase: '', wsPath: this.browserWsPath ?? '/',
+      ...(this.browserWsPath === undefined ? { wsPort: this.wsPort } : {}),
+      workspaceId: this.store.manifest.workspaceId,
+      canManageAccess: canManageAccess(req),
     }))
+    this.app.post('/pardner/pair', (req, res) => {
+      res.set('Cache-Control', 'no-store')
+      if (!req.headers.origin || !req.is('application/json')) {
+        return res.status(403).json({ code: 'ORIGIN_REQUIRED', error: 'Pair from the device page using its pairing form.' })
+      }
+      try {
+        this.access.redeem(req.body?.code)
+        res.json({ token: this.apiToken, workspaceId: this.store.manifest.workspaceId })
+      } catch (error) {
+        res.status(error.code === 'PAIRING_THROTTLED' ? 429 : 400).json({ code: error.code, error: error.message })
+      }
+    })
     this.app.use('/pardner', express.static(fileURLToPath(new URL('./ui-prototype/dist/', import.meta.url)), {
       setHeaders: res => res.setHeader('Cache-Control', 'no-cache'),
     }))
     this.app.use((req, res, next) => this.authMiddleware(req, res, next))
+    this.app.use('/pardner/access', (req, res, next) => {
+      res.set('Cache-Control', 'no-store')
+      const pairingRequest = req.method === 'GET' || (req.method === 'POST' && req.path === '/pairing')
+      if (!this.apiToken || (!pairingRequest && !canManageAccess(req))) {
+        return res.status(403).json({ code: 'LOCAL_ADMIN_REQUIRED', error: 'Open Pardner on this computer through its loopback address to manage device access.' })
+      }
+      next()
+    })
+    this.app.get('/pardner/access', (_req, res) => res.json(this.access.status(this.httpPort, this.wsPort)))
+    this.app.post('/pardner/access', async (req, res) => {
+      try {
+        await this.access.configure(req.body || {})
+        res.json(this.access.status(this.httpPort, this.wsPort))
+      } catch (error) {
+        res.status(error.code === 'CONFIG_BUSY' ? 409 : 400).json({ code: error.code || 'CONFIG_SAVE_FAILED', error: error.code ? error.message : 'Could not save device access. Check the service data directory and try again.' })
+      }
+    })
+    this.app.post('/pardner/access/pairing', (_req, res) => {
+      try { res.json(this.access.createPairing(this.httpPort, this.wsPort)) } catch (error) {
+        res.status(409).json({ code: error.code, error: error.message })
+      }
+    })
     const commands = new Set(['/automerge/operations', '/automerge/sync-ack', '/automerge/ws-ticket',
       '/automerge/deliveries/claim', '/automerge/deliveries/ack', '/automerge/deliveries/release'])
     this.app.use((req, res, next) => {
@@ -538,17 +617,17 @@ class AutomergeSyncServer {
     this.nativeWsServer = new WebSocketServer({ noServer: true })
     this.automergeWsAdapter = new WebSocketServerAdapter(this.nativeWsServer)
 
-    this.wsHttpServer = createServer((req, res) => {
+    this.wsRequestHandler = (req, res) => {
       const origin = req.headers.origin
 
       if (!this.isAllowedOrigin(origin)) {
         this.recordSecurityEvent(
           'wsOriginRejected',
-          `Rejected WS HTTP request ${req.method} ${req.url} from origin ${origin}`
+          `Rejected WS HTTP request ${req.method} from a disallowed origin`
         )
         res.statusCode = 403
         res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify({ error: `Origin not allowed: ${origin}` }))
+        res.end(JSON.stringify({ code: 'ORIGIN_REJECTED', error: 'Origin not allowed. Open the current device address.' }))
         return
       }
 
@@ -556,9 +635,9 @@ class AutomergeSyncServer {
       res.statusCode = 426
       res.setHeader('Content-Type', 'application/json')
       res.end(JSON.stringify({ error: 'Expected WebSocket upgrade' }))
-    })
+    }
 
-    this.wsHttpServer.on('upgrade', (req, socket, head) => {
+    this.wsUpgradeHandler = (req, socket, head) => {
       socket.on('error', () => {})
       if (this.stopping) {
         this.rejectWebSocketUpgrade(socket, 503, 'Service Unavailable', { error: 'The service is stopping' })
@@ -570,16 +649,16 @@ class AutomergeSyncServer {
       if (!this.isAllowedOrigin(origin)) {
         this.recordSecurityEvent(
           'wsOriginRejected',
-          `Rejected WS upgrade ${req.url} from origin ${origin}`
+          'Rejected WS upgrade from a disallowed origin'
         )
-        this.rejectWebSocketUpgrade(socket, 403, 'Forbidden', { error: `Origin not allowed: ${origin}` })
+        this.rejectWebSocketUpgrade(socket, 403, 'Forbidden', { code: 'ORIGIN_REJECTED', error: 'Origin not allowed. Open the current device address.' })
         return
       }
 
       if (!this.isAuthorizedWebSocketRequest(req)) {
         this.recordSecurityEvent(
           'wsUnauthorized',
-          `Rejected unauthorized WS upgrade ${req.url}`
+          'Rejected unauthorized WS upgrade'
         )
         this.rejectWebSocketUpgrade(socket, 401, 'Unauthorized', { error: 'Unauthorized' })
         return
@@ -590,7 +669,9 @@ class AutomergeSyncServer {
       target.handleUpgrade(req, socket, head, ws => {
         target.emit('connection', ws, req)
       })
-    })
+    }
+    this.wsHttpServer = createServer(this.wsRequestHandler)
+    this.wsHttpServer.on('upgrade', this.wsUpgradeHandler)
 
     this.wssJson.on('connection', (ws, req) => {
       this.logger.log?.('🔌 UI subscriber connected')
@@ -607,11 +688,11 @@ class AutomergeSyncServer {
         try {
           const data = JSON.parse(message.toString())
           await this.handleClientMessage(ws, data)
-        } catch (error) {
-          this.logger.error?.('❌ WebSocket message error:', error)
+        } catch {
+          this.logger.error?.('Invalid UI subscription message')
           ws.send(JSON.stringify({
             type: 'error',
-            error: error.message
+            error: 'Invalid UI subscription message'
           }))
         }
       })
@@ -644,7 +725,7 @@ class AutomergeSyncServer {
     } else if (data.type === 'ping') {
       ws.send(JSON.stringify({ type: 'pong' }))
     } else {
-      this.logger.log?.('Unknown UI message type:', data.type)
+      this.logger.log?.('Unknown UI message type')
     }
   }
   

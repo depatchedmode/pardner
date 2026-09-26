@@ -16,7 +16,7 @@
     "test:qualification": "node --test test/storage-durability.test.js test/conflict-qualification.test.js test/ticket-reconnect.test.js",
     "test:runtime": "node --test test/workspace-operations.test.js test/workspace-runtime.test.js test/delivery-ledger.test.js",
     "test:cli": "node --test test/pardner-cli-workflow.test.js test/pardner-cli-auth-fallback.test.js test/pardner-cli-mentions.test.js test/pardner-brand.test.js",
-    "test:ui": "npm run ui:build && node --test test/pardner-ui.test.js",
+    "test:ui": "npm run ui:build && node --test test/pardner-ui.test.js test/pardner-phone.test.js test/pardner-connection-ui.test.js",
     "test:acceptance": "node scripts/acceptance.js",
     "verify": "node scripts/verify.js",
     "smoke:native-peer": "node scripts/native-peer-smoke.js",

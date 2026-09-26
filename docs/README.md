@@ -1,6 +1,7 @@
 # Pardner documentation
 
 - [CLI and Actor workflows](PARDNER-CLI.md)
+- [Companion device and LAN access](PARDNER-LAN.md)
 - [Event-driven agent bridge](PARDNER-BRIDGE.md)
 - [Real-agent bridge rehearsal](PARDNER-BRIDGE-REHEARSAL.md)
 - [Acceptance criteria](PARDNER-ACCEPTANCE.md)
