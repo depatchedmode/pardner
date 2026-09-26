@@ -2,9 +2,22 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import Pardner from './Pardner'
 
-// Pardner development client.
-// Connects to the supported sync-server runtime for real-time collaboration.
-console.log('🚀 Pardner: Starting development client against sync server')
+class StartupBoundary extends React.Component {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  render() {
+    if (this.state.failed) return <main className="connection" role="alert">
+      <h1>Pardner could not open</h1>
+      <p>Allow browser site storage, then reload. If this continues, check that the service and browser build are up to date.</p>
+      <button onClick={() => location.reload()}>Reload Pardner</button>
+    </main>
+    return this.props.children
+  }
+}
 
-// Mount the app
-ReactDOM.createRoot(document.getElementById('root')).render(<Pardner />)
+function App() {
+  React.useEffect(() => { document.getElementById('startup')?.remove() }, [])
+  return <StartupBoundary><Pardner /></StartupBoundary>
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />)

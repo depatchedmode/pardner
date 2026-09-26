@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import './pardner.css'
 import { createOperationId } from './operation-id.js'
+import { createConnection, loadConfiguration, websocketUrl } from './connection.js'
+import PhoneAccess from './PhoneAccess.jsx'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed']
 const LABELS = {
@@ -12,9 +14,6 @@ const LABELS = {
   review: 'Review',
   completed: 'Completed',
 }
-const TOKEN_KEY = 'pardner-token'
-const ACTOR_KEY = 'pardner-actor'
-const PENDING_KEY = 'pardner-pending-operation'
 const labelActor = (actor) =>
   actor ? `${actor.displayName || actor.handle} · ${actor.kind}` : 'Unassigned'
 
@@ -78,63 +77,93 @@ function SaveStatus({ status, connected, busy, heads }) {
 }
 
 export default function Pardner() {
-  const [token, setToken] = useState(sessionStorage.getItem(TOKEN_KEY) || '')
-  const [credential, setCredential] = useState('')
   const [config, setConfig] = useState(null)
+  const [failure, setFailure] = useState(null)
+  const reload = useCallback(async () => {
+    const next = await loadConfiguration()
+    setConfig(current => JSON.stringify(current) === JSON.stringify(next) ? current : next)
+    setFailure(null)
+    return next
+  }, [])
+  useEffect(() => { reload().catch(setFailure) }, [reload])
+  if (!config) return <main className="connection">
+    <h1>Pardner</h1>
+    <p role="status">{failure ? failure.message : 'Opening your workspace…'}</p>
+    {failure && <><p>Check that the service is running. If the address changed, open Pair another device on the desktop.</p>
+      <button onClick={() => reload().catch(setFailure)}>Retry connection</button></>}
+  </main>
+  return <Workspace key={config.workspaceId} config={config} reloadConfiguration={reload} />
+}
+
+function Workspace({ config, reloadConfiguration }) {
+  const client = useMemo(() => createConnection(config), [config])
+  // Let a scanned link validate stored authentication before normal requests begin.
+  const [token, setToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).has('pair') ? '' : client.credential())
+  const [credential, setCredential] = useState('')
+  const [pairCode, setPairCode] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('pair') ?? '')
+  const [pairBusy, setPairBusy] = useState(false)
+  const [phoneSetup, setPhoneSetup] = useState(false)
+  const [connectionError, setConnectionError] = useState(null)
   const [doc, setDoc] = useState(null)
   const [status, setStatus] = useState(null)
   const [connected, setConnected] = useState(false)
-  const [actor, setActor] = useState(sessionStorage.getItem(ACTOR_KEY) || '')
+  const [actor, setActor] = useState(() => client.preferences().actor || '')
   const [selected, setSelected] = useState(null)
   const [creating, setCreating] = useState(false)
-  const [view, setView] = useState('board')
-  const [filter, setFilter] = useState('')
+  const [view, setView] = useState(() => client.preferences().view || 'board')
+  const [filter, setFilter] = useState(() => client.preferences().filter || '')
+  const [statusFilter, setStatusFilter] = useState(() => client.preferences().statusFilter || '')
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   const [confirmedOperation, setConfirmedOperation] = useState(null)
-  const [pending, setPending] = useState(() => {
-    try {
-      return JSON.parse(sessionStorage.getItem(PENDING_KEY))
-    } catch {
-      return null
-    }
-  })
+  const [pending, setPending] = useState(() => client.pending())
   const inflight = useRef(false)
   const docUpdates = useRef(0)
   const statusUpdates = useRef(0)
   const refreshGeneration = useRef(0)
+  const [retryGeneration, setRetryGeneration] = useState(0)
+  const pairDevice = useCallback(async code => {
+    setPairBusy(true)
+    setConnectionError(null)
+    try {
+      if (client.credential()) {
+        try { await client.request('/automerge/status') }
+        catch (failure) { if (failure.code !== 'AUTH_REQUIRED') throw failure }
+      }
+      if (!client.credential()) await client.pair(code)
+      setPairCode('')
+      setToken(client.credential())
+    }
+    catch (failure) { setConnectionError(failure) }
+    finally { setPairBusy(false) }
+  }, [client])
   useEffect(() => {
-    fetch('/pardner/config')
-      .then((response) => {
-        if (!response.ok)
-          throw new Error('Local service configuration is unavailable')
-        return response.json()
-      })
-      .then(setConfig)
-      .catch(setError)
-  }, [])
-  const request = useCallback(
-    async (path, body) => {
-      const base = import.meta.env.DEV ? '/pardner-api' : config?.apiBase || ''
-      const response = await fetch(`${base}${path}`, {
-        method: body === undefined ? 'GET' : 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        signal: AbortSignal.timeout(10000),
-      })
-      const result = await response.json()
-      if (!response.ok)
-        throw Object.assign(new Error(result.error || 'Request failed'), {
-          code: result.code,
-          details: result.details,
-        })
-      return result
-    },
-    [config, token],
-  )
+    const pairFromUrl = () => {
+      const code = new URLSearchParams(window.location.hash.slice(1)).get('pair')
+      if (code === null) return
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+      setPairCode(code)
+      void pairDevice(code)
+    }
+    window.addEventListener('hashchange', pairFromUrl)
+    pairFromUrl()
+    return () => window.removeEventListener('hashchange', pairFromUrl)
+  }, [pairDevice])
+
+  useEffect(() => {
+    try { client.savePreferences({ actor, filter, statusFilter, view }) } catch (failure) { setError(failure) }
+  }, [client, actor, filter, statusFilter, view])
+  const request = useCallback(async (path, body) => {
+    try { return await client.request(path, body) } catch (failure) {
+      if (failure.code === 'AUTH_REQUIRED' && !client.credential()) {
+        setToken('')
+        setDoc(null)
+        setConnectionError(new Error('The service credential changed. Pair again or enter the current local service token.'))
+      }
+      if (failure.code === 'WORKSPACE_MISMATCH') await reloadConfiguration()
+      throw failure
+    }
+  }, [client, reloadConfiguration])
   const refresh = useCallback(async () => {
     const generation = ++refreshGeneration.current
     const observedDoc = docUpdates.current
@@ -143,67 +172,95 @@ export default function Pardner() {
       request('/automerge/doc'),
       request('/automerge/status'),
     ])
+    if (next.workspaceId !== config.workspaceId) {
+      await reloadConfiguration()
+      throw Object.assign(new Error('The service workspace changed. Reopening the current workspace.'), { code: 'WORKSPACE_MISMATCH' })
+    }
     if (generation !== refreshGeneration.current) return
     if (observedDoc === docUpdates.current) setDoc(next)
     if (observedStatus === statusUpdates.current) setStatus(state)
-  }, [request])
+  }, [request, config.workspaceId, reloadConfiguration])
   useEffect(() => {
     if (!token || !config) return
-    let stopped = false,
-      socket,
-      timer
+    let stopped = false, socket, timer, openingTimer, attempt = 0, connecting = false
+    const schedule = () => {
+      clearTimeout(timer)
+      timer = setTimeout(connect, Math.min(1000 * 2 ** attempt++, 15000))
+    }
     const connect = async () => {
+      if (stopped || connecting || socket?.readyState === WebSocket.OPEN) return
+      connecting = true
       try {
+        const currentConfig = await reloadConfiguration()
+        if (stopped || currentConfig.workspaceId !== config.workspaceId) return
         await refresh()
         if (stopped) return
         const { ticket } = await request('/automerge/ws-ticket', {})
         if (stopped) return
-        const url = new URL(location.href)
-        url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-        url.pathname = import.meta.env.DEV ? '/pardner-ws/' : config.wsPath
-        if (!import.meta.env.DEV) url.port = config.wsPort
-        url.search = new URLSearchParams({ ticket }).toString()
-        socket = new WebSocket(url)
+        socket = new WebSocket(websocketUrl(currentConfig, location.href, ticket))
+        openingTimer = setTimeout(() => socket?.close(), 10000)
         socket.onopen = () => {
+          clearTimeout(openingTimer)
+          connecting = false
+          attempt = 0
           setConnected(true)
-          sessionStorage.setItem(TOKEN_KEY, token)
+          setConnectionError(null)
         }
         socket.onmessage = (event) => {
           if (stopped) return
-          const message = JSON.parse(event.data)
-          if (message.doc) {
-            docUpdates.current++
-            setDoc(message.doc)
-          }
-          if (message.status) {
-            statusUpdates.current++
-            setStatus(message.status)
+          try {
+            const message = JSON.parse(event.data)
+            if (message.doc && message.doc.workspaceId !== config.workspaceId) {
+              socket.close()
+              void reloadConfiguration().catch(setConnectionError)
+              return
+            }
+            if (message.doc) { docUpdates.current++; setDoc(message.doc) }
+            if (message.status) { statusUpdates.current++; setStatus(message.status) }
+          } catch {
+            setConnectionError(new Error('The service sent an unreadable update. Reconnecting…'))
+            socket.close()
           }
         }
         socket.onclose = () => {
+          clearTimeout(openingTimer)
+          connecting = false
+          if (stopped) return
           setConnected(false)
-          if (!stopped) timer = setTimeout(connect, 1000)
+          setConnectionError(new Error('Live updates disconnected. Reconnecting automatically. Check that both service ports are reachable.'))
+          schedule()
         }
         socket.onerror = () => socket.close()
       } catch (failure) {
+        connecting = false
         if (stopped) return
         setConnected(false)
-        if (failure.code === 'AUTH_REQUIRED') {
-          setToken('')
-          sessionStorage.removeItem(TOKEN_KEY)
-          setDoc(null)
-          setError(failure)
-        } else timer = setTimeout(connect, 1000)
+        setConnectionError(failure)
+        if (failure.code !== 'AUTH_REQUIRED') schedule()
       }
     }
+    const resume = () => {
+      if (document.visibilityState === 'hidden') return
+      setRetryGeneration(value => value + 1)
+    }
+    window.addEventListener('online', resume)
+    window.addEventListener('focus', resume)
+    document.addEventListener('visibilitychange', resume)
     void connect()
     return () => {
       stopped = true
       refreshGeneration.current++
       clearTimeout(timer)
+      clearTimeout(openingTimer)
       socket?.close()
+      window.removeEventListener('online', resume)
+      window.removeEventListener('focus', resume)
+      document.removeEventListener('visibilitychange', resume)
     }
-  }, [token, config, refresh, request])
+  }, [token, config, refresh, request, reloadConfiguration, retryGeneration])
+  useEffect(() => {
+    if (doc && actor && !doc.actors[actor]) setActor('')
+  }, [doc, actor])
   const submit = async (type, payload, replay = null) => {
     if (inflight.current) return null
     if (!actor && !replay) {
@@ -216,13 +273,11 @@ export default function Pardner() {
       })
       return null
     }
-    const operation = replay || {
-      operationId: createOperationId(),
-      actorId: actor,
-      type,
-      payload,
-    }
-    sessionStorage.setItem(PENDING_KEY, JSON.stringify(operation))
+    let operation
+    try {
+      operation = replay || { operationId: createOperationId(), actorId: actor, type, payload }
+      client.savePending(operation)
+    } catch (failure) { setError(failure); return null }
     setPending(operation)
     inflight.current = true
     setBusy(true)
@@ -234,7 +289,7 @@ export default function Pardner() {
         setCreating(false)
         setSelected(receipt.result.taskId)
       }
-      sessionStorage.removeItem(PENDING_KEY)
+      client.savePending(null)
       setPending(null)
       await refresh()
       return receipt
@@ -251,8 +306,7 @@ export default function Pardner() {
           'OPERATION_ID_REUSED',
         ].includes(failure.code)
       ) {
-        sessionStorage.removeItem(PENDING_KEY)
-        setPending(null)
+        try { client.savePending(null); setPending(null) } catch (storageFailure) { setError(storageFailure) }
       }
       return null
     } finally {
@@ -260,47 +314,72 @@ export default function Pardner() {
       setBusy(false)
     }
   }
-  if (!token || !doc)
-    return (
-      <main className="connection">
-        <h1>Pardner</h1>
-        <p>One workspace for human and agent Actors.</p>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            setError(null)
-            setToken(credential)
-          }}
-        >
-          <label>
-            Local service token
-            <input
-              type="password"
-              autoComplete="off"
-              required
-              value={credential}
-              onChange={(event) => setCredential(event.target.value)}
-            />
-          </label>
-          <p className="muted">
-            Use the token from your local service’s connection.json file. It
-            stays in this browser tab.
-          </p>
-          <button className="primary" disabled={!config}>
-            Connect
-          </button>
+  const forget = () => {
+    try {
+      client.forget()
+      setToken('')
+      setActor('')
+      setFilter('')
+      setStatusFilter('')
+      setView('board')
+      setPending(null)
+      setDoc(null)
+      setCredential('')
+      setPairCode('')
+      setConnectionError(null)
+      setError(null)
+    } catch (failure) { setError(failure) }
+  }
+  const connectWithToken = event => {
+    event.preventDefault()
+    setConnectionError(null)
+    try {
+      client.remember(credential)
+      setToken(client.credential())
+      setCredential('')
+    } catch (failure) { setConnectionError(failure) }
+  }
+  const retryConnection = () => {
+    if (!token) void pairDevice(pairCode)
+    else setRetryGeneration(value => value + 1)
+  }
+  if (!token || !doc) return <main className="connection">
+    <h1>Pardner</h1>
+    <p>One workspace for human and agent Actors.</p>
+    {!token && <>
+      <form onSubmit={async event => {
+        event.preventDefault()
+        await pairDevice(pairCode)
+      }}>
+        <label>Pairing code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{8}" maxLength={8} required disabled={pairBusy} value={pairCode} onChange={event => setPairCode(event.target.value)} /></label>
+        <p className="muted">Open Pair another device on the desktop to get a code. This browser will remember your workspace. Use a trusted network: HTTP traffic is unencrypted.</p>
+        <button className="primary" disabled={pairBusy}>{pairBusy ? 'Connecting…' : 'Pair this device'}</button>
+      </form>
+      <details open={config.canManageAccess}>
+        <summary>Connect with a local service token</summary>
+        <form onSubmit={connectWithToken}>
+          <label>Local service token<input type="password" autoComplete="off" required value={credential} onChange={event => setCredential(event.target.value)} /></label>
+          <p className="muted">Use the token from the service’s connection.json file. This browser remembers it until you forget the workspace or the secret changes.</p>
+          <button className="primary" disabled={pairBusy}>Connect</button>
         </form>
-        {token && <p role="status">Opening your local workspace…</p>}
-        <ErrorNotice error={error} />
-      </main>
-    )
+      </details>
+    </>}
+    {token && <p role="status">Opening your local workspace…</p>}
+    {connectionError && <div role="alert" className="error"><p>{connectionError.message}</p>
+      <p>Check that the service is running. For a changed address, reopen Pair another device on the desktop.</p>
+      <button disabled={pairBusy || (!token && !pairCode)} onClick={retryConnection}>Retry connection</button>
+    </div>}
+    <ErrorNotice error={error} />
+    {token && <button onClick={forget}>Forget this workspace</button>}
+  </main>
   const actors = doc.actors
   const tasks = Object.values(doc.tasks).filter(
-    (task) => !filter || task.assignee === filter,
+    (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter),
   )
+  const showingMyReviews = filter === actor && statusFilter === 'review'
   const changeActor = (value) => {
     setActor(value)
-    sessionStorage.setItem(ACTOR_KEY, value)
+    if (showingMyReviews) setFilter(value)
   }
   return (
     <div className="app">
@@ -323,6 +402,10 @@ export default function Pardner() {
           </button>
         </div>
       </header>
+      {phoneSetup && <PhoneAccess canManageAccess={config.canManageAccess} request={request} onClose={() => setPhoneSetup(false)} />}
+      {connectionError && <div className="notice" role="status"><p>{connectionError.message}</p>
+        <button onClick={retryConnection}>Retry connection</button>
+      </div>}
       <ErrorNotice
         error={error}
         retry={pending && !busy ? () => submit(null, null, pending) : null}
@@ -341,6 +424,10 @@ export default function Pardner() {
           <code>pardner actors register</code> to begin.
         </div>
       )}
+      <div className="workspace-actions">
+        <button onClick={() => setPhoneSetup(true)}>Pair another device</button>
+        <button disabled={busy} onClick={forget}>Forget this workspace</button>
+      </div>
       <nav aria-label="Workspace views">
         <button
           aria-pressed={view === 'board'}
@@ -354,6 +441,9 @@ export default function Pardner() {
         >
           Activity
         </button>
+        <button disabled={!actor} aria-pressed={showingMyReviews} onClick={() => {
+          setFilter(actor); setStatusFilter('review'); setView('board')
+        }}>My reviews</button>
         <SelectActor
           label="Assigned to"
           emptyLabel="All Actors"
@@ -362,11 +452,15 @@ export default function Pardner() {
           onChange={setFilter}
           optional
         />
+        <label>Status filter<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
+          <option value="">All statuses</option>
+          {STATUSES.map(value => <option key={value} value={value}>{LABELS[value]}</option>)}
+        </select></label>
       </nav>
       <main>
         {view === 'board' ? (
-          <div className="board">
-            {STATUSES.map((column) => (
+          <div className="board" data-filtered={Boolean(statusFilter)}>
+            {STATUSES.filter(column => !statusFilter || column === statusFilter).map((column) => (
               <section
                 className="column"
                 key={column}

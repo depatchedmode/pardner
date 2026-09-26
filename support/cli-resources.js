@@ -27,8 +27,9 @@ export async function cli(directory, args, options = {}) {
   return { ...output, result: JSON.parse(lines[0]) }
 }
 
-export async function startCliService(directory, args = []) {
-  const child = spawn(process.execPath, [CLI_PATH, 'serve', '--data', directory, '--http-port', '0', '--ws-port', '0', ...args], {
+export async function startCliService(directory, args = [], { reusePorts = false } = {}) {
+  const ports = reusePorts ? [] : ['--http-port', '0', '--ws-port', '0']
+  const child = spawn(process.execPath, [CLI_PATH, 'serve', '--data', directory, ...ports, ...args], {
     env: cliEnvironment(), stdio: ['ignore', 'pipe', 'pipe'],
   })
   let stdout = '', stderr = ''

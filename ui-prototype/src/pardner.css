@@ -339,7 +339,110 @@ code {
 .actions {
   flex-wrap: wrap;
 }
+.workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px 28px 0;
+}
+.board[data-filtered='true'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.board[data-filtered='true'] .column {
+  width: min(100%, 760px);
+  margin-inline: auto;
+}
+.phone-dialog {
+  width: min(440px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  background: var(--surface);
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: 0 16px 48px #0009;
+}
+.phone-dialog::backdrop {
+  background: #000a;
+}
+.phone-dialog .panel-heading {
+  position: sticky;
+  top: -24px;
+  background: var(--surface);
+  padding-block: 16px;
+  z-index: 1;
+}
+.phone-dialog .actions,
+.phone-dialog .error {
+  margin-block: 16px;
+}
+.phone-pairing {
+  margin-top: 24px;
+}
+.phone-pairing img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 16px auto 24px;
+}
+.phone-dialog details {
+  border-top: 1px solid var(--line);
+}
+.phone-dialog summary {
+  cursor: pointer;
+  padding-block: 14px;
+}
+.phone-dialog details[open] summary {
+  margin-bottom: 8px;
+}
+.pairing-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-block: 16px;
+  flex-wrap: wrap;
+}
+.pairing-footer p { margin: 0; }
+.pairing-network-note { font-size: 12px; margin: 16px 0 0; }
+.phone-pairing label {
+  margin-bottom: 12px;
+}
+.pairing-code {
+  font-size: 32px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.connection details {
+  margin-top: 24px;
+}
+.connection summary {
+  cursor: pointer;
+  padding-block: 12px;
+}
+.connection form + button {
+  margin-top: 16px;
+}
 @media (max-width: 760px) {
+  button, input, select {
+    min-height: 44px;
+  }
+  input, textarea, select {
+    font-size: 16px;
+  }
+  select {
+    appearance: none;
+    padding-right: 32px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%23b3b3b3' stroke-width='1.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+  }
+  .workspace-actions {
+    padding: 16px 16px 0;
+  }
   header {
     padding: 16px;
     align-items: start;
