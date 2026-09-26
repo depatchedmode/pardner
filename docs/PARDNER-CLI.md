@@ -81,11 +81,12 @@ Existing incompatible storage is rejected and left intact. Choose a fresh
 directory; there is no automatic migration. A second process cannot own the same
 directory, and process death releases its OS-backed lock.
 
-Version 3 stores mutable task fields and comment bodies in shared register maps.
-Retried creation requests on disconnected replicas therefore share each field's
-merge location. A shared map records superseded field revisions, so a late
-retry cannot resurrect an initial value after an edit or explicit resolution.
-Version 2 directories must be preserved and replaced with a fresh workspace; all
+Version 4 stores mutable task, vein, and goal fields and comment bodies in shared
+register maps. Retried creation requests on disconnected replicas therefore share
+each field's merge location. A shared map records superseded field revisions, so
+a late retry cannot resurrect an initial value after an edit or explicit
+resolution. Version 4 adds goals, veins, and task–vein links to version 3.
+Earlier directories must be preserved and replaced with a fresh workspace; all
 services participating in a workspace must use the same schema version.
 
 ## Read, edit, and hand off
@@ -116,6 +117,48 @@ For transport failures, retry the **same payload with the same operation ID**.
 An existing matching operation is replayed; reuse for a different payload returns
 `OPERATION_ID_REUSED`. `pardner operation --request JSON` exposes the complete
 shared-operation envelope for deterministic agent clients.
+
+## Pursue goals through veins
+
+A vein is a line of work toward a goal. Every vein pursues exactly one goal.
+`--goal` takes an existing goal ID, or the title of a new goal to create in the
+same operation. A mistyped generated goal ID is rejected rather than becoming a
+title.
+
+```sh
+pardner vein create --title 'Edge caching' --goal 'p95 under 200ms' --actor alice
+pardner vein create --title 'Rewrite the hot path' --goal GOAL --actor alice
+pardner task create --title 'Add latency instrumentation' --vein VEIN_A,VEIN_B --actor builder
+pardner vein add VEIN TASK --actor builder
+pardner tasks --vein VEIN --json
+pardner veins --goal GOAL --json
+pardner vein show VEIN --json
+```
+
+One task can contribute to several veins. Links are recorded individually, so
+links made on different machines at the same time all survive. Removing a link
+supplies the link revisions observed in `show` (task) or `vein show`; a link added
+concurrently that the removal did not observe is kept:
+
+```sh
+pardner vein remove VEIN TASK --revisions '["OBSERVED_LINK_REVISION"]' --actor builder
+```
+
+Tasks end `completed`, `dead-end`, or `abandoned`. When every task in an `open`
+vein has ended, `vein show` and `veins` report `readyForVerdict`; a person then
+records the vein's verdict. Goals are closed separately:
+
+```sh
+pardner vein update VEIN --status proven --revisions '{"status":["OBSERVED_REVISION"]}' --actor alice
+pardner goal update GOAL --status achieved --revisions '{"status":["OBSERVED_REVISION"]}' --actor alice
+```
+
+Vein statuses are `open`, `proven`, `dead-end`, and `abandoned`; goal statuses are
+`open`, `achieved`, and `abandoned`. Vein and goal edits follow the same revision
+and conflict rules as task edits. Moving a vein uses `vein update --goal GOAL`;
+concurrent moves are kept as alternatives until `vein resolve --field goalId`.
+Task branches start without veins, and merging a branch never changes the
+parent's veins.
 
 ## Agent delivery
 
