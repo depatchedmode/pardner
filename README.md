@@ -85,11 +85,11 @@ Open `http://127.0.0.1:8004/pardner/`, enter the token from
 with mode 0600. Install the package to expose `pardner` directly on PATH; `npm run
 sync` also starts the local service.
 
-For a phone on the same trusted network, choose **Pair another device** on the
-desktop, enable LAN access, restart the service, then scan the QR code to pair
+For a companion device on the same trusted network, choose **Pair another device**
+on the desktop, enable LAN access, restart the service, then scan the QR code to pair
 automatically. You can also use the address and one-time code to connect manually.
 **My reviews** filters tasks by the selected Actor and review
-status. See [phone and LAN access](docs/PARDNER-LAN.md) for setup, transport,
+status. See [companion device and LAN access](docs/PARDNER-LAN.md) for setup, transport,
 credential lifecycle, and recovery. Loopback-only defaults remain unchanged.
 
 For another machine, enroll a fresh replica with `pardner serve --role replica

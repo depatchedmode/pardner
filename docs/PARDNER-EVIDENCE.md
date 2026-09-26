@@ -5,7 +5,7 @@ the full local-first human/agent workflow, public UI/CLI acceptance, 20 seeded
 acceptance runs, and a prepared two-machine rehearsal. No acceptance gate may be
 replaced by these lower-level tests.
 
-## Phone pairing regression check — 2026-09-26
+## Companion device pairing regression check — 2026-09-26
 
 `npm run test:ui` rebuilt the production browser client and passed all 10 tests,
 with zero failures or skips. Coverage includes Chromium/WebKit LAN pairing and
@@ -16,7 +16,7 @@ with and without `crypto.randomUUID`.
 
 This automated check does not close the physical-phone qualification gaps below.
 
-## Phone and LAN access — 2026-09-09
+## Companion device and LAN access — 2026-09-09
 
 Issue #51 implementation on the `7afc80ad` baseline adds saved LAN settings,
 desktop pairing, indefinitely remembered shared credentials, My reviews filters,
@@ -60,7 +60,7 @@ operations still use tab storage, scoped to workspace identity.
   delivery/host-contention explanation, but does not establish the phone's cause.
   Device/browser identity and physical restart/reconnect confirmation remain
   outstanding. The procedure
-  is in [phone and LAN access](PARDNER-LAN.md#verification-and-physical-phone-rehearsal).
+  is in [companion device and LAN access](PARDNER-LAN.md#verification-and-physical-phone-rehearsal).
 
 ## Persistence and CRDT qualification — 2026-09-04
 

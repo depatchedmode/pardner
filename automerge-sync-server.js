@@ -176,7 +176,7 @@ class AutomergeSyncServer {
     this.wsPort = this.getBoundPort(this.wsHttpServer, this.wsPort)
 
     if (lanInterface && (!isLoopback(this.host) || !this.apiToken)) {
-      this.access.diagnostic = 'Phone setup requires a token-protected loopback service. Remove PARDNER_BIND_HOST overrides and restart.'
+      this.access.diagnostic = 'Companion device setup requires a token-protected loopback service. Remove PARDNER_BIND_HOST overrides and restart.'
     } else if (lanInterface) {
       try {
         const http = createServer(this.app)
@@ -415,7 +415,7 @@ class AutomergeSyncServer {
     this.app.post('/pardner/pair', (req, res) => {
       res.set('Cache-Control', 'no-store')
       if (!req.headers.origin || !req.is('application/json')) {
-        return res.status(403).json({ code: 'ORIGIN_REQUIRED', error: 'Pair from the phone page using its pairing form.' })
+        return res.status(403).json({ code: 'ORIGIN_REQUIRED', error: 'Pair from the device page using its pairing form.' })
       }
       try {
         this.access.redeem(req.body?.code)
@@ -432,7 +432,7 @@ class AutomergeSyncServer {
       res.set('Cache-Control', 'no-store')
       const pairingRequest = req.method === 'GET' || (req.method === 'POST' && req.path === '/pairing')
       if (!this.apiToken || (!pairingRequest && !canManageAccess(req))) {
-        return res.status(403).json({ code: 'LOCAL_ADMIN_REQUIRED', error: 'Open Pardner on this computer through its loopback address to manage phone access.' })
+        return res.status(403).json({ code: 'LOCAL_ADMIN_REQUIRED', error: 'Open Pardner on this computer through its loopback address to manage device access.' })
       }
       next()
     })
@@ -442,7 +442,7 @@ class AutomergeSyncServer {
         await this.access.configure(req.body || {})
         res.json(this.access.status(this.httpPort, this.wsPort))
       } catch (error) {
-        res.status(error.code === 'CONFIG_BUSY' ? 409 : 400).json({ code: error.code || 'CONFIG_SAVE_FAILED', error: error.code ? error.message : 'Could not save phone access. Check the service data directory and try again.' })
+        res.status(error.code === 'CONFIG_BUSY' ? 409 : 400).json({ code: error.code || 'CONFIG_SAVE_FAILED', error: error.code ? error.message : 'Could not save device access. Check the service data directory and try again.' })
       }
     })
     this.app.post('/pardner/access/pairing', (_req, res) => {
@@ -627,7 +627,7 @@ class AutomergeSyncServer {
         )
         res.statusCode = 403
         res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify({ code: 'ORIGIN_REJECTED', error: 'Origin not allowed. Open the current phone address.' }))
+        res.end(JSON.stringify({ code: 'ORIGIN_REJECTED', error: 'Origin not allowed. Open the current device address.' }))
         return
       }
 
@@ -651,7 +651,7 @@ class AutomergeSyncServer {
           'wsOriginRejected',
           'Rejected WS upgrade from a disallowed origin'
         )
-        this.rejectWebSocketUpgrade(socket, 403, 'Forbidden', { code: 'ORIGIN_REJECTED', error: 'Origin not allowed. Open the current phone address.' })
+        this.rejectWebSocketUpgrade(socket, 403, 'Forbidden', { code: 'ORIGIN_REJECTED', error: 'Origin not allowed. Open the current device address.' })
         return
       }
 

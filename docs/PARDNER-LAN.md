@@ -1,8 +1,9 @@
-# Use Pardner on your phone
+# Use Pardner on a companion device
 
-Phone access serves the existing workspace from a computer on your trusted local
-network. Keep that computer and the Pardner service running. The phone is a
-browser client; it does not hold an offline Automerge replica.
+Companion device access serves the existing workspace from a computer on your
+trusted local network. Connect from a browser on a phone, tablet, laptop, or
+another desktop. Keep the host computer and the Pardner service running. The
+companion device is a browser client; it does not hold an offline Automerge replica.
 
 ## Connect once
 
@@ -19,8 +20,8 @@ browser client; it does not hold an offline Automerge replica.
    Connect with the token in `.pardner/connection.json` and register an Actor with
    the CLI if the workspace has none.
 3. Choose **Pair another device**. Select the Wi-Fi or Ethernet interface shared
-   with the phone and choose **Enable phone access**. One eligible IPv4 interface
-   is selected automatically; multiple interfaces require an explicit choice.
+   with the companion device and choose **Enable device access**. One eligible
+   IPv4 interface is selected automatically; multiple interfaces require an explicit choice.
 4. Stop the service with Ctrl-C and restart it with the **same data directory**.
    Reopen **Pair another device** on the desktop. Scan the QR code, or open
    the displayed link on the other device. A one-time code is generated automatically.
@@ -58,11 +59,11 @@ generated `PARDNER_API_TOKEN` supplied through your normal secret-management
 mechanism. Do not print it into logs or put it in URLs. The new token is saved in
 the protected connection file. Update any explicitly configured CLI/replica
 credentials that used the old token. Existing browsers reconnect through pairing
-or by entering the current local service token. There is no per-phone revocation.
+or by entering the current local service token. There is no per-device revocation.
 
 Unused pairing codes are in memory only. Durable credentials remain in protected
-`connection.json` on the host and browser local storage on the phone; they are
-never put in QR codes or published addresses. Short-lived WebSocket tickets are
+`connection.json` on the host and browser local storage on the companion device;
+they are never put in QR codes or published addresses. Short-lived WebSocket tickets are
 obtained automatically with that secret whenever a subscription connects. Ticket
 expiry does not sign a human out. Rejection logs omit query strings and secrets.
 
@@ -74,25 +75,25 @@ write to a different workspace that later occupies the same address.
 
 ## Configuration and recovery
 
-Phone setup saves `access.json` in the service data directory with mode 0600.
-It records the enable flag and interface name, and changes apply at restart.
+Companion device setup saves `access.json` in the service data directory with
+mode 0600. It records the enable flag and interface name, and changes apply at restart.
 The standard loopback listeners remain available. LAN listeners use the same
 HTTP/WebSocket port numbers on the selected interface (normally 8004 and 8005).
 The native replica protocol continues to use the existing WebSocket port.
 
 The same explicit allowlist covers built assets, configuration, API requests,
-and WebSocket upgrades. Enabling phone access adds the selected LAN HTTP origin
+and WebSocket upgrades. Enabling device access adds the selected LAN HTTP origin
 and supported loopback origins; it does not trust arbitrary request origins.
 Explicit `PARDNER_ALLOWED_ORIGINS` entries remain supported for other known
-clients. Phone setup expects the normal loopback binding; remove an ad hoc
-`PARDNER_BIND_HOST` override before enabling the saved phone flow.
+clients. Device setup expects the normal loopback binding; remove an ad hoc
+`PARDNER_BIND_HOST` override before enabling the saved pairing flow.
 
 - **Changed network/address:** reopen the desktop dialog. If the selected
   interface's address changed, restart, then use the new displayed URL. A stale
   unreachable bookmark cannot show application-level recovery on first load.
 - **Missing or ambiguous interface:** loopback remains available. Choose an
   interface with one usable IPv4 address, save, and restart. Link-local IPv4 and
-  IPv6 phone setup are not supported in this version.
+  IPv6 device setup are not supported in this version.
 - **Could not start LAN listeners:** check the selected interface and both ports,
   then restart. A partial LAN startup closes its listeners and preserves loopback.
 - **Page loads but updates fail:** allow both displayed ports through the host
@@ -101,7 +102,7 @@ clients. Phone setup expects the normal loopback binding; remove an ad hoc
   Rebuild the browser client and reload using the current address.
 - **Connection interrupted:** the browser retries with bounded backoff and
   reconnects when brought to the foreground. Use **Retry connection** if needed.
-- **Disable access:** choose **Disable phone access** in the desktop dialog and
+- **Disable access:** choose **Disable device access** in the desktop dialog and
   restart. Until restart, existing listeners remain active. Workspace data stays
   intact; the shared secret does not change.
 

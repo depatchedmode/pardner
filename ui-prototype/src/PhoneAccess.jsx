@@ -90,9 +90,9 @@ export default function PhoneAccess({ request, onClose, canManageAccess }) {
         {!access.interfaces.length && <p>No LAN IPv4 address is available. Connect this computer to Wi-Fi or Ethernet, then try again.</p>}
         <div className="actions">
           <button disabled={busy || !interfaceName} onClick={() => configure(true)}>
-            {access.saved.enabled ? 'Save network' : 'Enable phone access'}
+            {access.saved.enabled ? 'Save network' : 'Enable device access'}
           </button>
-          {access.saved.enabled && <button disabled={busy} onClick={() => configure(false)}>Disable phone access</button>}
+          {access.saved.enabled && <button disabled={busy} onClick={() => configure(false)}>Disable device access</button>}
         </div>
       </details>}
       <p className="pairing-network-note muted">Trusted networks only. This connection is unencrypted.</p>

@@ -13,10 +13,10 @@ and select the human or agent Actor making changes. The token is remembered in
 browser local storage without application expiry; no token is compiled into the
 application. Actor selection and filters are remembered by workspace.
 
-For a phone on the same trusted network, use **Pair another device** on the desktop.
-Enable LAN access, restart with the same data directory, then scan the displayed
+For a companion device on the same trusted network, use **Pair another device**
+on the desktop. Enable LAN access, restart with the same data directory, then scan the displayed
 QR code to pair automatically, or use the address and code to connect manually.
-See [phone and LAN access](PARDNER-LAN.md)
+See [companion device and LAN access](PARDNER-LAN.md)
 for HTTP transport limitations, secret rotation, disabling access, and recovery.
 
 The board, task editor, handoff form, comments, conflict alternatives, explicit

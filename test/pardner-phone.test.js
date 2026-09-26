@@ -40,7 +40,7 @@ for (const engine of [chromium, webkit]) it(`pairs and remembers a phone over ac
     await desktop.getByRole('button', { name: 'Connect', exact: true }).click()
     await desktop.getByRole('button', { name: 'Pair another device', exact: true }).click()
     await desktop.getByLabel('Network interface').selectOption(candidate.name)
-    await desktop.getByRole('button', { name: 'Enable phone access', exact: true }).click()
+    await desktop.getByRole('button', { name: 'Enable device access', exact: true }).click()
     await desktop.getByText(/Settings saved. Restart/).waitFor()
     assert.equal(service.phoneAccess.active, null)
     await service.stop()
