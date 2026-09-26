@@ -9,18 +9,27 @@ full acceptance milestone are still in progress; see [implementation evidence](P
 Build the browser client with `npm ci --prefix ui-prototype` and `npm run ui:build`.
 Start the local service, then open its HTTP address at `/pardner/` (normally
 `http://127.0.0.1:8004/pardner/`). Enter the token from the local connection file
-and select the human or agent Actor making changes. The token is kept in that
-browser tab's session storage; no token is compiled into the application.
+and select the human or agent Actor making changes. The token is remembered in
+browser local storage without application expiry; no token is compiled into the
+application. Actor selection and filters are remembered by workspace.
+
+For a phone on the same trusted network, use **Pair another device** on the desktop.
+Enable LAN access, restart with the same data directory, then scan the displayed
+QR code to pair automatically, or use the address and code to connect manually.
+See [phone and LAN access](PARDNER-LAN.md)
+for HTTP transport limitations, secret rotation, disabling access, and recovery.
 
 The board, task editor, handoff form, comments, conflict alternatives, explicit
 read receipts, history, and commit evidence use the same operation API as the CLI.
 The browser owns no Automerge database; the local service persists and synchronizes
 its workspace. Keep that service running for local authoring.
 
-`npm run test:ui` builds the UI and runs two independent Chromium contexts against
-a real local service. Install its pinned browser with `npx playwright install
-chromium` after installing root dependencies. This test covers the integration
-slice, not the full multi-replica acceptance gate.
+`npm run test:ui` builds the UI and tests independent Chromium contexts, mobile
+Chromium/WebKit over LAN HTTP, connection failures, and a local WebSocket proxy.
+Install pinned engines with `npx playwright install chromium webkit` after
+installing root dependencies. LAN cases explicitly skip when no suitable IPv4
+interface exists. Physical phones and the full multi-replica gate are separate
+qualification steps.
 
 ## Start a workspace
 

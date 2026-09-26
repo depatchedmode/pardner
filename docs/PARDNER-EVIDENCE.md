@@ -5,6 +5,63 @@ the full local-first human/agent workflow, public UI/CLI acceptance, 20 seeded
 acceptance runs, and a prepared two-machine rehearsal. No acceptance gate may be
 replaced by these lower-level tests.
 
+## Phone pairing regression check — 2026-09-26
+
+`npm run test:ui` rebuilt the production browser client and passed all 10 tests,
+with zero failures or skips. Coverage includes Chromium/WebKit LAN pairing and
+persistent profiles, network failure and credential rotation recovery, replacement
+pairing links, late authentication failures after successful re-pairing, bootstrap
+errors, same-origin WebSocket proxy writes, and the existing task/comment workflows
+with and without `crypto.randomUUID`.
+
+This automated check does not close the physical-phone qualification gaps below.
+
+## Phone and LAN access — 2026-09-09
+
+Issue #51 implementation on the `7afc80ad` baseline adds saved LAN settings,
+desktop pairing, indefinitely remembered shared credentials, My reviews filters,
+browser recovery, and configurable WebSocket endpoints. The current credential
+storage supersedes the historical tab-only credential description below; pending
+operations still use tab storage, scoped to workspace identity.
+
+- `npm run verify`: 258 tests passed, zero skipped, followed by one complete
+  acceptance scenario. Report directory:
+  `output/acceptance/2026-09-09T19-37-40.009Z`.
+- After the connection-validation and listener-deduplication cleanup, the four
+  browser-connection tests, all six `npm run test:ui` cases, and 19 focused
+  server/LAN/CLI tests passed.
+- Mobile Chromium and WebKit ran against this host's actual LAN IPv4 HTTP
+  address with `isSecureContext === false`. They paired through the desktop UI,
+  reopened persistent browser profiles, preserved Actor/review filters, received
+  cross-client updates, retried a lost write response without duplication, and
+  recovered after service restart with attributed comments/status intact.
+- A local proxy fixture verified same-origin WebSocket-path routing and writes.
+  It does not qualify HTTPS certificates or public authentication. Public access
+  is tracked in [#56](https://github.com/depatchedmode/pardner/issues/56).
+- Desktop setup and mobile review screenshots were inspected. Pairing codes are
+  masked in saved setup images under `output/playwright/`.
+- **Physical-phone rehearsal is partially confirmed.** The user opened an isolated
+  LAN workspace from their phone and reported leaving a comment and reassigning
+  its review task. Service readback confirmed the phone comment and a change from
+  review to completed, both attributed to `ryan`, with `savedLocally: true` and no
+  storage error. After the user repeated the assignment change, readback confirmed
+  `ryan` → `builder`, authored by `ryan` at 19:59:10 UTC, with the completed status
+  retained and the write saved locally. The user also confirmed closing the phone
+  tab and reopening the same address without pairing again, with the remembered
+  Actor/filter check passing, but reported that loading felt slow. A Chromium
+  measurement from the host through the LAN address reached the workspace in
+  275 ms cold and 233 ms warm, and live sync in 313/326 ms; these are not phone
+  timings. The trace showed a 350,257-byte uncompressed initial JavaScript asset
+  and two sequential configuration fetches. The user localized the delay to before
+  the page appeared. A subsequent host-side LAN request took 1,779 ms to receive
+  the initial 1,358-byte HTML response; four immediate repeat probes took 17–30 ms
+  to first byte (loopback: 3–4 ms). The host reported a one-minute load average of
+  285.37 and active sleep-prevention assertions. This supports an intermittent
+  delivery/host-contention explanation, but does not establish the phone's cause.
+  Device/browser identity and physical restart/reconnect confirmation remain
+  outstanding. The procedure
+  is in [phone and LAN access](PARDNER-LAN.md#verification-and-physical-phone-rehearsal).
+
 ## Persistence and CRDT qualification — 2026-09-04
 
 Qualified versions: Node 24.11.1, Automerge Repo/network 2.5.1, Automerge 3.2.3.
