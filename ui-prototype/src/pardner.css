@@ -204,7 +204,7 @@ nav button[aria-pressed='true'] {
   font-size: 11px;
   letter-spacing: 0.04em;
 }
-.task-card .conflict-label {
+.conflict-label {
   color: var(--warning);
 }
 .empty {
