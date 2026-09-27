@@ -121,7 +121,7 @@ describe('goals and veins', () => {
       assert.deepEqual(left.veinContext(veinId).conflicts, {})
       assert.equal(left.veinContext(veinId).goal.title, 'Cut hosting cost')
       assert.deepEqual(left.goalContext(goalId).veins, [])
-      const moves = id => left.goalContext(id).history.filter(event => event.veinId === veinId).map(event => event.type)
+      const moves = id => left.goalContext(id).history.filter(event => event.recordIds.includes(veinId)).map(event => event.type)
       assert.deepEqual(moves(goalId), ['vein.create', 'vein.update', 'vein.update'], 'the goal a vein left records both concurrent moves')
       assert.deepEqual(moves(other), ['vein.update', 'vein.resolve'], 'the goal a vein joined records the move and resolution')
       // Which concurrent goal was displayed before resolution is Automerge's choice, so only the move itself is fixed here.

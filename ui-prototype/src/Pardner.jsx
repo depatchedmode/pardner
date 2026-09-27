@@ -15,8 +15,11 @@ const LABELS = {
   completed: 'Completed',
   'dead-end': 'Dead end',
   abandoned: 'Abandoned',
+  open: 'Open',
+  proven: 'Proven',
+  achieved: 'Achieved',
 }
-const RECORD_LABELS = { open: 'Open', proven: 'Proven', 'dead-end': 'Dead end', abandoned: 'Abandoned', achieved: 'Achieved' }
+const GOAL_STATUSES = ['open', 'achieved', 'abandoned']
 const labelActor = (actor) =>
   actor ? `${actor.displayName || actor.handle} · ${actor.kind}` : 'Unassigned'
 
@@ -479,7 +482,7 @@ function Workspace({ config, reloadConfiguration }) {
       </nav>
       <main>
         {view === 'board' ? (
-          <div className="board" data-filtered={Boolean(statusFilter)}>
+          <div className="board" data-filtered={Boolean(statusFilter)} style={{ '--columns': STATUSES.length }}>
             {STATUSES.filter(column => !statusFilter || column === statusFilter).map((column) => (
               <section
                 className="column"
@@ -587,8 +590,12 @@ function Workspace({ config, reloadConfiguration }) {
 }
 
 function Goals({ goals, veins, showVein }) {
-  const order = { open: 0, achieved: 1, abandoned: 2 }
-  const list = Object.values(goals).sort((a, b) => order[a.status] - order[b.status] || a.created_at.localeCompare(b.created_at))
+  const list = Object.values(goals).sort((a, b) =>
+    GOAL_STATUSES.indexOf(a.status) - GOAL_STATUSES.indexOf(b.status) || a.created_at.localeCompare(b.created_at))
+  const veinsByGoal = {}
+  for (const vein of Object.values(veins).sort((a, b) => a.created_at.localeCompare(b.created_at))) {
+    (veinsByGoal[vein.goalId] ??= []).push(vein)
+  }
   return (
     <section className="goals" aria-label="Goals">
       <h2>Goals</h2>
@@ -596,11 +603,10 @@ function Goals({ goals, veins, showVein }) {
         No goals yet. Start a vein with <code>pardner vein create --title … --goal …</code>.
       </p>}
       {list.map(goal => {
-        const goalVeins = Object.values(veins).filter(vein => vein.goalId === goal.id)
-          .sort((a, b) => a.created_at.localeCompare(b.created_at))
+        const goalVeins = veinsByGoal[goal.id] ?? []
         return (
           <article className="goal" key={goal.id} aria-label={goal.title}>
-            <h3>{goal.title} <span className="record-status" data-status={goal.status}>{RECORD_LABELS[goal.status]}</span></h3>
+            <h3>{goal.title} <span className="record-status" data-status={goal.status}>{LABELS[goal.status]}</span></h3>
             {goal.description && <p className="muted">{goal.description}</p>}
             {Object.keys(goal.conflicts).length > 0 && <p className="conflict-label">Conflicting edits</p>}
             {!goalVeins.length && <p className="muted">No veins pursue this goal yet.</p>}
@@ -608,7 +614,7 @@ function Goals({ goals, veins, showVein }) {
               {goalVeins.map(vein => (
                 <li key={vein.id}>
                   <button onClick={() => showVein(vein.id)}>{vein.title}</button>
-                  <span className="record-status" data-status={vein.status}>{RECORD_LABELS[vein.status]}</span>
+                  <span className="record-status" data-status={vein.status}>{LABELS[vein.status]}</span>
                   <span className="muted">{vein.taskIds.length} {vein.taskIds.length === 1 ? 'task' : 'tasks'}</span>
                   {vein.readyForVerdict && <span className="verdict-label">Ready for a verdict</span>}
                   {Object.keys(vein.conflicts).length > 0 && <span className="conflict-label">Conflicting edits</span>}
@@ -812,7 +818,7 @@ function TaskDetail({
         {task.priority.toUpperCase()}
       </p>
       {context.veins?.length > 0 && (
-        <p className="muted">Veins: {context.veins.map(vein => `${vein.title} (${RECORD_LABELS[vein.status]})`).join(', ')}</p>
+        <p className="muted">Veins: {context.veins.map(vein => `${vein.title} (${LABELS[vein.status]})`).join(', ')}</p>
       )}
       <ErrorNotice error={failure} />
       {draft ? (
