@@ -594,7 +594,7 @@ function Goals({ goals, veins, showVein }) {
     GOAL_STATUSES.indexOf(a.status) - GOAL_STATUSES.indexOf(b.status) || a.created_at.localeCompare(b.created_at))
   const veinsByGoal = {}
   for (const vein of Object.values(veins).sort((a, b) => a.created_at.localeCompare(b.created_at))) {
-    (veinsByGoal[vein.goalId] ??= []).push(vein)
+    for (const goalId of vein.goalIds) (veinsByGoal[goalId] ??= []).push(vein)
   }
   return (
     <section className="goals" aria-label="Goals">

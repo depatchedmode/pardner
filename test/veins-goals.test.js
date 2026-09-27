@@ -116,6 +116,9 @@ describe('goals and veins', () => {
       const context = left.veinContext(veinId)
       assert.deepEqual(Object.keys(context.conflicts), ['goalId'])
       assert.deepEqual(context.revisions.goalId, ['move-left', 'move-right'])
+      const listed = () => [goalId, other, third].map(id => left.goalContext(id).veins.map(vein => vein.id))
+      assert.deepEqual(listed(), [[], [veinId], [veinId]], 'a disputed vein is listed under every goal it may pursue')
+      assert.deepEqual(snapshotOf(left).veins[veinId].goalIds, [other, third])
       await assert.rejects(command(left, 'vein.update', veinUpdate(left, veinId, { goalId })), { code: 'CONFLICT_REQUIRES_RESOLUTION' })
       // Keep the displayed goal, so the resolution leaves only the concurrent goal Automerge did not display.
       const kept = context.vein.goalId, dropped = kept === other ? third : other
@@ -124,6 +127,7 @@ describe('goals and veins', () => {
       assert.equal(left.veinContext(veinId).goal.id, kept)
       assert.deepEqual(left.goalContext(goalId).veins, [])
       assert.deepEqual(left.goalContext(dropped).veins, [])
+      assert.deepEqual(snapshotOf(left).veins[veinId].goalIds, [kept])
       const moves = id => left.goalContext(id).history.filter(event => event.recordIds.includes(veinId)).map(event => event.type)
       assert.deepEqual(moves(goalId), ['vein.create', 'vein.update', 'vein.update'], 'the goal a vein left records both concurrent moves')
       assert.deepEqual(moves(kept), ['vein.update', 'vein.resolve'], 'the goal a vein stays with records the move and resolution')

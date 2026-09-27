@@ -144,8 +144,12 @@ concurrently that the removal did not observe is kept:
 pardner vein remove VEIN TASK --revisions '["OBSERVED_LINK_REVISION"]' --actor builder
 ```
 
+If a vein is moved to different goals on different machines at the same time,
+it is listed under each of those goals, with its `goalIds`, until someone
+resolves the move with `vein resolve`.
+
 Tasks end `completed`, `dead-end`, or `abandoned`. When every task in an `open`
-vein has ended, `vein show` and `veins` report `readyForVerdict`; a person then
+vein has ended under every concurrent status, `vein show` and `veins` report `readyForVerdict`; a person then
 records the vein's verdict. Goals are closed separately:
 
 ```sh
