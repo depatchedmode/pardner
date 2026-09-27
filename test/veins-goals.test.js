@@ -121,6 +121,11 @@ describe('goals and veins', () => {
       assert.deepEqual(left.veinContext(veinId).conflicts, {})
       assert.equal(left.veinContext(veinId).goal.title, 'Cut hosting cost')
       assert.deepEqual(left.goalContext(goalId).veins, [])
+      const moves = id => left.goalContext(id).history.filter(event => event.veinId === veinId).map(event => event.type)
+      assert.deepEqual(moves(goalId), ['vein.create', 'vein.update', 'vein.update'], 'the goal a vein left records both concurrent moves')
+      assert.deepEqual(moves(other), ['vein.update', 'vein.resolve'], 'the goal a vein joined records the move and resolution')
+      // Which concurrent goal was displayed before resolution is Automerge's choice, so only the move itself is fixed here.
+      assert.equal(moves(third)[0], 'vein.update', 'a concurrent move to another goal stays in that goal\'s history')
     })
   })
 
@@ -140,6 +145,10 @@ describe('goals and veins', () => {
       assert.deepEqual(workspace.veinContext(caching.veinId).tasks.map(task => task.title).sort(), ['Add latency instrumentation', 'Cache headers'])
       assert.ok(workspace.taskContext(solo).history.some(event => event.type === 'task.link-vein'), 'links appear in task history')
       assert.ok(workspace.veinContext(caching.veinId).history.some(event => event.type === 'task.link-vein'), 'links appear in vein history')
+      for (const veinId of [caching.veinId, rewrite.veinId]) {
+        assert.ok(workspace.veinContext(veinId).history.some(event => event.type === 'task.create' && event.taskId === shared),
+          'a link made at creation appears in every linked vein\'s history')
+      }
       await assert.rejects(command(workspace, 'task.create', { title: 'Bad link', veinIds: ['vein-missing'] }), { code: 'NOT_FOUND' })
     })
   })
