@@ -117,15 +117,17 @@ describe('goals and veins', () => {
       assert.deepEqual(Object.keys(context.conflicts), ['goalId'])
       assert.deepEqual(context.revisions.goalId, ['move-left', 'move-right'])
       await assert.rejects(command(left, 'vein.update', veinUpdate(left, veinId, { goalId })), { code: 'CONFLICT_REQUIRES_RESOLUTION' })
-      await command(left, 'vein.resolve', { veinId, field: 'goalId', value: other, expectedRevisions: context.revisions.goalId })
+      // Keep the displayed goal, so the resolution leaves only the concurrent goal Automerge did not display.
+      const kept = context.vein.goalId, dropped = kept === other ? third : other
+      await command(left, 'vein.resolve', { veinId, field: 'goalId', value: kept, expectedRevisions: context.revisions.goalId })
       assert.deepEqual(left.veinContext(veinId).conflicts, {})
-      assert.equal(left.veinContext(veinId).goal.title, 'Cut hosting cost')
+      assert.equal(left.veinContext(veinId).goal.id, kept)
       assert.deepEqual(left.goalContext(goalId).veins, [])
+      assert.deepEqual(left.goalContext(dropped).veins, [])
       const moves = id => left.goalContext(id).history.filter(event => event.recordIds.includes(veinId)).map(event => event.type)
       assert.deepEqual(moves(goalId), ['vein.create', 'vein.update', 'vein.update'], 'the goal a vein left records both concurrent moves')
-      assert.deepEqual(moves(other), ['vein.update', 'vein.resolve'], 'the goal a vein joined records the move and resolution')
-      // Which concurrent goal was displayed before resolution is Automerge's choice, so only the move itself is fixed here.
-      assert.equal(moves(third)[0], 'vein.update', 'a concurrent move to another goal stays in that goal\'s history')
+      assert.deepEqual(moves(kept), ['vein.update', 'vein.resolve'], 'the goal a vein stays with records the move and resolution')
+      assert.deepEqual(moves(dropped), ['vein.update', 'vein.resolve'], 'the concurrent goal a vein leaves records the move and resolution')
     })
   })
 
