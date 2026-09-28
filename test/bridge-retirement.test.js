@@ -63,6 +63,14 @@ it('an open related branch prevents cleanup even when the configured parent is c
   assert.equal(state.inbox.retirement().state, 'archived')
 }))
 
+it('retires once related tasks end as dead-end or abandoned, but not while one is in review', () => fixture(async state => {
+  state.tasks = { one: 'dead-end', two: 'review' }; await state.tick()
+  assert.equal(state.inbox.retirement(), null)
+  state.tasks.two = 'abandoned'; await state.tick()
+  assert.equal(state.inbox.retirement().state, 'archived')
+  assert.deepEqual(state.archived, ['builder', 'reviewer'])
+}))
+
 it('queued and uncertain work and outstanding claims prevent retirement', () => fixture(async state => {
   const mapping = state.bridge.config.mappings[0]
   state.inbox.claim('builder')

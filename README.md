@@ -28,6 +28,14 @@ This section describes **product intent**. The **Current implementation** sectio
 - **Actors** (humans and agents) are **not bound** to a single replica; they should be able to **act from different places**, with state **converging** across replicas.
 - Holding a **full replica** is **opt-in**: for **local-first authoring**, **backup / stewardship**, or running infrastructure—not a requirement for every participant.
 
+### Tasks, veins, and goals
+
+Plans in agent-assisted work are hypotheses, not blueprints. Pardner's vocabulary treats them that way:
+
+- A **task** is one unit of work, never larger than a branch. It can end `completed`, or as a `dead-end` or `abandoned`—both are results worth recording.
+- A **vein** is a line of work toward a goal: an approach you follow until it pays out or runs dry. A vein can be started deliberately or recognized after the fact, and one task can contribute to several veins. A person gives each vein its verdict: `proven`, `dead-end`, or `abandoned`. Pardner flags an `open` vein as ready for a verdict once all of its tasks have ended.
+- A **goal** is the state a vein pursues. Every vein has one; several veins can pursue the same goal with different approaches. A goal is `achieved` or `abandoned` deliberately—a proven vein never closes it on its own.
+
 ## Current implementation
 
 Pardner runs one local service per machine. Human and agent Actors use the same
@@ -110,6 +118,10 @@ See the [service and CLI guide](docs/PARDNER-CLI.md) for complete examples.
 | Delivery | `pardner mentions claim-next --actor builder --request-id ID` |
 | Explicit observed reads | `pardner read TASK --receipts JSON --actor alice` |
 | Commit evidence | `pardner commit --task TASK --actor builder -- -m MESSAGE` |
+| Start a vein toward a new or existing goal | `pardner vein create --title TEXT --goal 'GOAL_ID or new goal title' --actor alice` |
+| Add a task to a vein | `pardner vein add VEIN TASK --actor builder` |
+| Record a vein's verdict | `pardner vein update VEIN --status proven --revisions JSON --actor alice` |
+| Goals and their veins | `pardner goals --json`, `pardner goal show GOAL --json` |
 
 Writes require an Actor and field edits require the revisions returned by `show`.
 Use the same operation ID and identical payload to retry an uncertain write.

@@ -52,6 +52,18 @@ requires rereading and reconciling; do not silently refresh revisions and overwr
 intervening work. `OPERATION_ID_REUSED` means the ID belongs to a different request.
 Resolve visible alternatives explicitly with `pardner resolve`.
 
+Tasks can belong to veins, lines of work toward a goal. When the work you are
+doing belongs to a vein, add it; record a task that did not work out as
+`dead-end` rather than `completed`:
+
+```sh
+pardner veins --json
+pardner vein add VEIN_ID TASK_ID --actor "$PARDNER_ACTOR" --operation-id LINK_ID --json
+pardner update TASK_ID --status dead-end --revisions '{"status":["OBSERVED_REVISION"]}' --actor "$PARDNER_ACTOR" --operation-id UPDATE_ID --json
+```
+
+Leave vein and goal verdicts to the people who own them unless asked.
+
 A successful write is acknowledged only after local persistence. Check
 `savedLocally` and `syncPending`; local durability is distinct from hub sync.
 

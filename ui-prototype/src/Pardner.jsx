@@ -6,14 +6,20 @@ import { createOperationId } from './operation-id.js'
 import { createConnection, loadConfiguration, websocketUrl } from './connection.js'
 import PhoneAccess from './PhoneAccess.jsx'
 
-const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed']
+const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const LABELS = {
   backlog: 'Backlog',
   'up-next': 'Up next',
   'in-progress': 'In progress',
   review: 'Review',
   completed: 'Completed',
+  'dead-end': 'Dead end',
+  abandoned: 'Abandoned',
+  open: 'Open',
+  proven: 'Proven',
+  achieved: 'Achieved',
 }
+const GOAL_STATUSES = ['open', 'achieved', 'abandoned']
 const labelActor = (actor) =>
   actor ? `${actor.displayName || actor.handle} · ${actor.kind}` : 'Unassigned'
 
@@ -113,6 +119,7 @@ function Workspace({ config, reloadConfiguration }) {
   const [view, setView] = useState(() => client.preferences().view || 'board')
   const [filter, setFilter] = useState(() => client.preferences().filter || '')
   const [statusFilter, setStatusFilter] = useState(() => client.preferences().statusFilter || '')
+  const [veinFilter, setVeinFilter] = useState(() => client.preferences().veinFilter || '')
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   const [confirmedOperation, setConfirmedOperation] = useState(null)
@@ -151,8 +158,8 @@ function Workspace({ config, reloadConfiguration }) {
   }, [pairDevice])
 
   useEffect(() => {
-    try { client.savePreferences({ actor, filter, statusFilter, view }) } catch (failure) { setError(failure) }
-  }, [client, actor, filter, statusFilter, view])
+    try { client.savePreferences({ actor, filter, statusFilter, veinFilter, view }) } catch (failure) { setError(failure) }
+  }, [client, actor, filter, statusFilter, veinFilter, view])
   const request = useCallback(async (path, body) => {
     try { return await client.request(path, body) } catch (failure) {
       if (failure.code === 'AUTH_REQUIRED' && !client.credential()) {
@@ -319,9 +326,7 @@ function Workspace({ config, reloadConfiguration }) {
       client.forget()
       setToken('')
       setActor('')
-      setFilter('')
-      setStatusFilter('')
-      setView('board')
+      showBoard({})
       setPending(null)
       setDoc(null)
       setCredential('')
@@ -373,9 +378,18 @@ function Workspace({ config, reloadConfiguration }) {
     {token && <button onClick={forget}>Forget this workspace</button>}
   </main>
   const actors = doc.actors
+  const veins = doc.veins || {}
+  const goals = doc.goals || {}
+  const activeVeinFilter = veins[veinFilter] ? veinFilter : ''
   const tasks = Object.values(doc.tasks).filter(
-    (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter),
+    (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter)
+      && (!activeVeinFilter || task.veinIds?.includes(activeVeinFilter)),
   )
+  // Each board preset sets every filter, so a stale one never hides its tasks.
+  const showBoard = ({ assignee = '', status = '', vein = '' }) => {
+    setFilter(assignee); setStatusFilter(status); setVeinFilter(vein); setView('board')
+  }
+  const showVein = (veinId) => showBoard({ vein: veinId })
   const showingMyReviews = filter === actor && statusFilter === 'review'
   const changeActor = (value) => {
     setActor(value)
@@ -436,14 +450,20 @@ function Workspace({ config, reloadConfiguration }) {
           Tasks
         </button>
         <button
+          aria-pressed={view === 'goals'}
+          onClick={() => setView('goals')}
+        >
+          Goals
+        </button>
+        <button
           aria-pressed={view === 'activity'}
           onClick={() => setView('activity')}
         >
           Activity
         </button>
-        <button disabled={!actor} aria-pressed={showingMyReviews} onClick={() => {
-          setFilter(actor); setStatusFilter('review'); setView('board')
-        }}>My reviews</button>
+        <button disabled={!actor} aria-pressed={showingMyReviews} onClick={() => showBoard({ assignee: actor, status: 'review' })}>
+          My reviews
+        </button>
         <SelectActor
           label="Assigned to"
           emptyLabel="All Actors"
@@ -456,10 +476,15 @@ function Workspace({ config, reloadConfiguration }) {
           <option value="">All statuses</option>
           {STATUSES.map(value => <option key={value} value={value}>{LABELS[value]}</option>)}
         </select></label>
+        <label>Vein<select aria-label="Vein" value={activeVeinFilter} onChange={event => setVeinFilter(event.target.value)}>
+          <option value="">All veins</option>
+          {Object.values(veins).sort((a, b) => a.title.localeCompare(b.title)).map(vein =>
+            <option key={vein.id} value={vein.id}>{vein.title}</option>)}
+        </select></label>
       </nav>
       <main>
         {view === 'board' ? (
-          <div className="board" data-filtered={Boolean(statusFilter)}>
+          <div className="board" data-filtered={Boolean(statusFilter)} style={{ '--columns': STATUSES.length }}>
             {STATUSES.filter(column => !statusFilter || column === statusFilter).map((column) => (
               <section
                 className="column"
@@ -492,6 +517,9 @@ function Workspace({ config, reloadConfiguration }) {
                       </span>
                       <strong>{task.title}</strong>
                       <span>{labelActor(actors[task.assignee])}</span>
+                      {task.veinIds?.filter(veinId => veins[veinId]).map(veinId => (
+                        <span className="vein-label" key={veinId}>{veins[veinId].title}</span>
+                      ))}
                       {Object.keys(task.conflicts).length > 0 && (
                         <span className="conflict-label">
                           Conflicting edits
@@ -505,6 +533,8 @@ function Workspace({ config, reloadConfiguration }) {
               </section>
             ))}
           </div>
+        ) : view === 'goals' ? (
+          <Goals goals={goals} veins={veins} showVein={showVein} />
         ) : (
           <section className="activity">
             <h2>Workspace activity</h2>
@@ -558,6 +588,45 @@ function Workspace({ config, reloadConfiguration }) {
         />
       )}
     </div>
+  )
+}
+
+function Goals({ goals, veins, showVein }) {
+  const list = Object.values(goals).sort((a, b) =>
+    GOAL_STATUSES.indexOf(a.status) - GOAL_STATUSES.indexOf(b.status) || a.created_at.localeCompare(b.created_at))
+  const veinsByGoal = {}
+  for (const vein of Object.values(veins).sort((a, b) => a.created_at.localeCompare(b.created_at))) {
+    for (const goalId of vein.goalIds) (veinsByGoal[goalId] ??= []).push(vein)
+  }
+  return (
+    <section className="goals" aria-label="Goals">
+      <h2>Goals</h2>
+      {!list.length && <p className="empty">
+        No goals yet. Start a vein with <code>pardner vein create --title … --goal …</code>.
+      </p>}
+      {list.map(goal => {
+        const goalVeins = veinsByGoal[goal.id] ?? []
+        return (
+          <article className="goal" key={goal.id} aria-label={goal.title}>
+            <h3>{goal.title} <span className="record-status" data-status={goal.status}>{LABELS[goal.status]}</span></h3>
+            {goal.description && <p className="muted">{goal.description}</p>}
+            {Object.keys(goal.conflicts).length > 0 && <p className="conflict-label">Conflicting edits</p>}
+            {!goalVeins.length && <p className="muted">No veins pursue this goal yet.</p>}
+            <ul>
+              {goalVeins.map(vein => (
+                <li key={vein.id}>
+                  <button onClick={() => showVein(vein.id)}>{vein.title}</button>
+                  <span className="record-status" data-status={vein.status}>{LABELS[vein.status]}</span>
+                  <span className="muted">{vein.taskIds.length} {vein.taskIds.length === 1 ? 'task' : 'tasks'}</span>
+                  {vein.readyForVerdict && <span className="verdict-label">Ready for a verdict</span>}
+                  {Object.keys(vein.conflicts).length > 0 && <span className="conflict-label">Conflicting edits</span>}
+                </li>
+              ))}
+            </ul>
+          </article>
+        )
+      })}
+    </section>
   )
 }
 
@@ -750,6 +819,9 @@ function TaskDetail({
         {labelActor(actors[task.assignee])} · {LABELS[task.status]} ·{' '}
         {task.priority.toUpperCase()}
       </p>
+      {context.veins?.length > 0 && (
+        <p className="muted">Veins: {context.veins.map(vein => `${vein.title} (${LABELS[vein.status]})`).join(', ')}</p>
+      )}
       <ErrorNotice error={failure} />
       {draft ? (
         <TaskForm

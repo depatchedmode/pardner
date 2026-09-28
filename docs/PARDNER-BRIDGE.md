@@ -149,8 +149,8 @@ For a dedicated group of related work, add this to its bridge configuration:
 ```
 
 All mappings in that configuration form one ownership group. The bridge waits
-until every allowed or received task, and its branch-related tasks, has status
-`completed` with no field conflicts. `review`, missing tasks, pending deliveries,
+until every allowed or received task, and its branch-related tasks, has ended
+(`completed`, `dead-end`, or `abandoned`) with no field conflicts. `review`, missing tasks, pending deliveries,
 outstanding claims, uncertain dispatches, busy threads, and approval requests all
 prevent cleanup. Unmapped threads using a worktree or descended from a mapped
 thread also prevent cleanup. Explicitly include every associated task/session;
