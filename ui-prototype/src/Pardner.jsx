@@ -387,7 +387,11 @@ function Workspace({ config, reloadConfiguration }) {
     (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter)
       && (!activeVeinFilter || task.veinIds?.includes(activeVeinFilter)),
   )
-  const showVein = (veinId) => { setFilter(''); setStatusFilter(''); setVeinFilter(veinId); setView('board') }
+  // Each board preset sets every filter, so a stale one never hides its tasks.
+  const showBoard = ({ assignee = '', status = '', vein = '' }) => {
+    setFilter(assignee); setStatusFilter(status); setVeinFilter(vein); setView('board')
+  }
+  const showVein = (veinId) => showBoard({ vein: veinId })
   const showingMyReviews = filter === actor && statusFilter === 'review'
   const changeActor = (value) => {
     setActor(value)
@@ -459,9 +463,9 @@ function Workspace({ config, reloadConfiguration }) {
         >
           Activity
         </button>
-        <button disabled={!actor} aria-pressed={showingMyReviews} onClick={() => {
-          setFilter(actor); setStatusFilter('review'); setView('board')
-        }}>My reviews</button>
+        <button disabled={!actor} aria-pressed={showingMyReviews} onClick={() => showBoard({ assignee: actor, status: 'review' })}>
+          My reviews
+        </button>
         <SelectActor
           label="Assigned to"
           emptyLabel="All Actors"
