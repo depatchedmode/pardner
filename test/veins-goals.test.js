@@ -241,6 +241,24 @@ describe('goals and veins', () => {
     })
   })
 
+  it('waits for a verdict while the vein status itself is disputed', async () => {
+    await withWorkspaces(async (left, create) => {
+      const { veinId } = await createVein(left)
+      const taskId = await createTask(left, { veinIds: [veinId] })
+      await command(left, 'task.update', taskUpdate(left, taskId, { status: 'completed' }))
+      await command(left, 'vein.update', veinUpdate(left, veinId, { status: 'proven' }))
+      const right = await create(left)
+      await command(left, 'vein.update', veinUpdate(left, veinId, { status: 'open' }), 'alice')
+      await command(right, 'vein.update', veinUpdate(right, veinId, { status: 'dead-end' }), 'bob')
+      sync(left, right)
+      assert.deepEqual(Object.keys(left.veinContext(veinId).conflicts), ['status'])
+      assert.equal(snapshotOf(left).veins[veinId].readyForVerdict, false, 'a contested verdict is not waiting for one')
+      const { revisions } = left.veinContext(veinId)
+      await command(left, 'vein.resolve', { veinId, field: 'status', value: 'open', expectedRevisions: revisions.status })
+      assert.equal(snapshotOf(left).veins[veinId].readyForVerdict, true)
+    })
+  })
+
   it('starts task branches without veins and leaves the parent veins on merge', async () => {
     await withWorkspaces(async workspace => {
       const first = await createVein(workspace)
