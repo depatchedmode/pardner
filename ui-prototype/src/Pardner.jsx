@@ -387,7 +387,7 @@ function Workspace({ config, reloadConfiguration }) {
     (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter)
       && (!activeVeinFilter || task.veinIds?.includes(activeVeinFilter)),
   )
-  const showVein = (veinId) => { setVeinFilter(veinId); setView('board') }
+  const showVein = (veinId) => { setFilter(''); setStatusFilter(''); setVeinFilter(veinId); setView('board') }
   const showingMyReviews = filter === actor && statusFilter === 'review'
   const changeActor = (value) => {
     setActor(value)

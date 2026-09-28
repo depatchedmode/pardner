@@ -232,6 +232,7 @@ for (const uuidAvailable of [true, false]) it(
         JSON.stringify({ status: (await run(['show', reviewTask.id])).revisions.status })])
       await alice.getByRole('region', { name: 'Dead end' })
         .getByRole('button', { name: /Review the handoff evidence/ }).waitFor()
+      await alice.getByLabel('Status filter').selectOption('review')
       await alice.getByRole('button', { name: 'Goals', exact: true }).click()
       const goal = alice.getByRole('article', { name: 'Ship the first release' })
       await goal.getByText('Ready for a verdict', { exact: true }).waitFor()
@@ -239,6 +240,7 @@ for (const uuidAvailable of [true, false]) it(
       await alice.screenshot({ path: join(output, 'pardner-goals.png'), fullPage: true })
       await goal.getByRole('button', { name: 'Evidence-first reviews', exact: true }).click()
       await alice.getByRole('button', { name: /Review the handoff evidence.*Evidence-first reviews/ }).waitFor()
+      assert.equal(await alice.getByLabel('Status filter').inputValue(), '', 'showing a vein clears filters that could hide its tasks')
       assert.equal(await alice.getByRole('button', { name: /Arrived during an HTTP refresh/ }).count(), 0,
         'the vein filter hides tasks outside the vein')
       await alice.getByLabel('Vein', { exact: true }).selectOption('')
