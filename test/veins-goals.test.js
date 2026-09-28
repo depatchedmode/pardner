@@ -41,6 +41,8 @@ const createVein = async (workspace, fields = {}) =>
   (await command(workspace, 'vein.create', { title: 'Edge caching', goal: { title: 'p95 under 200ms' }, ...fields })).result
 const snapshotOf = workspace => workspace.snapshot()
 const sync = (a, b) => { a.handle.merge(b.handle); b.handle.merge(a.handle) }
+const readiness = (workspace, veinId, goalId) => [snapshotOf(workspace).veins[veinId].readyForVerdict,
+  workspace.veinContext(veinId).vein.readyForVerdict, workspace.goalContext(goalId).veins[0].readyForVerdict]
 
 function veinUpdate(workspace, veinId, updates) {
   const { revisions } = workspace.veinContext(veinId)
@@ -231,19 +233,17 @@ describe('goals and veins', () => {
       await command(left, 'task.update', taskUpdate(left, taskId, { status: 'completed' }), 'alice')
       await command(right, 'task.update', taskUpdate(right, taskId, { status: 'in-progress' }), 'bob')
       sync(left, right)
-      const readiness = () => [snapshotOf(left).veins[veinId].readyForVerdict, left.veinContext(veinId).vein.readyForVerdict,
-        left.goalContext(goalId).veins[0].readyForVerdict]
       assert.deepEqual(Object.keys(left.taskContext(taskId).conflicts), ['status'])
-      assert.deepEqual(readiness(), [false, false, false], 'a task that may still be in progress has not ended')
+      assert.deepEqual(readiness(left, veinId, goalId), [false, false, false], 'a task that may still be in progress has not ended')
       const { revisions } = left.taskContext(taskId)
       await command(left, 'task.resolve', { taskId, field: 'status', value: 'dead-end', expectedRevisions: revisions.status })
-      assert.deepEqual(readiness(), [true, true, true])
+      assert.deepEqual(readiness(left, veinId, goalId), [true, true, true])
     })
   })
 
   it('waits for a verdict while the vein status itself is disputed', async () => {
     await withWorkspaces(async (left, create) => {
-      const { veinId } = await createVein(left)
+      const { veinId, goalId } = await createVein(left)
       const taskId = await createTask(left, { veinIds: [veinId] })
       await command(left, 'task.update', taskUpdate(left, taskId, { status: 'completed' }))
       await command(left, 'vein.update', veinUpdate(left, veinId, { status: 'proven' }))
@@ -251,11 +251,11 @@ describe('goals and veins', () => {
       await command(left, 'vein.update', veinUpdate(left, veinId, { status: 'open' }), 'alice')
       await command(right, 'vein.update', veinUpdate(right, veinId, { status: 'dead-end' }), 'bob')
       sync(left, right)
-      assert.deepEqual(Object.keys(left.veinContext(veinId).conflicts), ['status'])
-      assert.equal(snapshotOf(left).veins[veinId].readyForVerdict, false, 'a contested verdict is not waiting for one')
-      const { revisions } = left.veinContext(veinId)
+      const { conflicts, revisions } = left.veinContext(veinId)
+      assert.deepEqual(Object.keys(conflicts), ['status'])
+      assert.deepEqual(readiness(left, veinId, goalId), [false, false, false], 'a contested verdict is not waiting for one')
       await command(left, 'vein.resolve', { veinId, field: 'status', value: 'open', expectedRevisions: revisions.status })
-      assert.equal(snapshotOf(left).veins[veinId].readyForVerdict, true)
+      assert.deepEqual(readiness(left, veinId, goalId), [true, true, true])
     })
   })
 
