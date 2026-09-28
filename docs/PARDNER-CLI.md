@@ -149,8 +149,9 @@ it is listed under each of those goals, with its `goalIds`, until someone
 resolves the move with `vein resolve`.
 
 Tasks end `completed`, `dead-end`, or `abandoned`. When every task in an `open`
-vein has ended under every concurrent status, `vein show` and `veins` report `readyForVerdict`; a person then
-records the vein's verdict. Goals are closed separately:
+vein has ended under every concurrent status, `vein show` and `veins` report
+`readyForVerdict`; a person then records the vein's verdict. Goals are closed
+separately:
 
 ```sh
 pardner vein update VEIN --status proven --revisions '{"status":["OBSERVED_REVISION"]}' --actor alice
