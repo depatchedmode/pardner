@@ -31,8 +31,8 @@ companion device is a browser client; it does not hold an offline Automerge repl
    The code works once, for ten minutes. A new code replaces the old one, and
    service restart clears unused codes. After ten redemption attempts in a minute,
    wait a minute before trying again.
-6. Choose **My reviews** to show tasks assigned to that Actor with status
-   **Review**. Change the assignee/status filters to see other work. Task details,
+6. Set **Assigned to** to that Actor and **Status filter** to **Review**.
+   Choose **All Actors** and **All statuses** to see all work. Task details,
    comments, evidence, status changes, and handoffs use the normal operation API.
 
 The browser remembers the shared credential and workspace preferences in local
@@ -141,7 +141,7 @@ so the normal workspace is unaffected. Register two test Actors, create a review
 task assigned to the phone Actor, and run the connection recipe above. Record:
 
 1. Commit/diff identity, date, phone model, OS, browser/version, and HTTP transport.
-2. Clean page load, pairing, explicit Actor selection, and the My reviews filter.
+2. Clean page load, pairing, explicit Actor selection, and assignee/status filtering.
 3. A desktop comment appearing on the phone without reload.
 4. A phone comment and status change, verified by CLI readback and Actor attribution.
 5. Browser closure/reopening and phone sleep/resume without repeated pairing.

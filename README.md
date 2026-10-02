@@ -96,8 +96,8 @@ sync` also starts the local service.
 For a companion device on the same trusted network, choose **Pair another device**
 on the desktop, enable LAN access, restart the service, then scan the QR code to pair
 automatically. You can also use the address and one-time code to connect manually.
-**My reviews** filters tasks by the selected Actor and review
-status. See [companion device and LAN access](docs/PARDNER-LAN.md) for setup, transport,
+Use the assignee and status filters to find review tasks.
+See [companion device and LAN access](docs/PARDNER-LAN.md) for setup, transport,
 credential lifecycle, and recovery. Loopback-only defaults remain unchanged.
 
 For another machine, enroll a fresh replica with `pardner serve --role replica
