@@ -390,11 +390,6 @@ function Workspace({ config, reloadConfiguration }) {
     setFilter(assignee); setStatusFilter(status); setVeinFilter(vein); setView('board')
   }
   const showVein = (veinId) => showBoard({ vein: veinId })
-  const showingMyReviews = filter === actor && statusFilter === 'review'
-  const changeActor = (value) => {
-    setActor(value)
-    if (showingMyReviews) setFilter(value)
-  }
   return (
     <div className="app">
       <header>
@@ -403,7 +398,7 @@ function Workspace({ config, reloadConfiguration }) {
           <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
         </div>
         <div className="header-controls">
-          <SelectActor actors={actors} value={actor} onChange={changeActor} />
+          <SelectActor actors={actors} value={actor} onChange={setActor} />
           <button
             className="primary"
             disabled={!actor || busy || Boolean(pending)}
@@ -460,9 +455,6 @@ function Workspace({ config, reloadConfiguration }) {
           onClick={() => setView('activity')}
         >
           Activity
-        </button>
-        <button disabled={!actor} aria-pressed={showingMyReviews} onClick={() => showBoard({ assignee: actor, status: 'review' })}>
-          My reviews
         </button>
         <SelectActor
           label="Assigned to"
