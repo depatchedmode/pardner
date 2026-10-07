@@ -14,17 +14,21 @@ const args = process.argv.slice(2)
 const option = (key, fallback) => { const index = args.indexOf(`--${key}`); return index < 0 ? fallback : args[index + 1] }
 const repeat = Number(option('repeat', 1)), firstSeed = Number(option('seed', 1))
 assert.ok(Number.isInteger(repeat) && repeat > 0 && Number.isInteger(firstSeed))
+const limits = { localAckMs: Number(option('local-ack-ms', 2000)), localVisibleMs: 2000, offlineStartMs: 5000, convergenceMs: 10000 }
+assert.ok(Number.isSafeInteger(limits.localAckMs) && limits.localAckMs > 0, '--local-ack-ms must be a positive integer in milliseconds')
 const output = resolve(option('output', `output/acceptance/${new Date().toISOString().replaceAll(':', '-')}`))
 await mkdir(output, { recursive: true })
 const candidate = await candidateFingerprint()
 await writeFile(join(output, 'candidate.json'), JSON.stringify(candidate, null, 2))
+await writeFile(join(output, 'configuration.json'), JSON.stringify({ repeat, firstSeed, limits }, null, 2))
+console.log(`Declared acceptance bounds: ${JSON.stringify(limits)}`)
 function random(seed) {
   let state = seed >>> 0
   return () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 2 ** 32 }
 }
 
 async function runSeed(seed) {
-  const rng = random(seed), expected = new ExpectedOperations(), timings = []
+  const rng = random(seed), expected = new ExpectedOperations({ localAckMs: limits.localAckMs }), timings = []
   const root = await mkdtemp(join(tmpdir(), `pardner-acceptance-${seed}-`))
   const reportDirectory = join(output, `seed-${seed}`)
   await mkdir(reportDirectory, { recursive: true })
@@ -278,13 +282,13 @@ async function runSeed(seed) {
     assert.ok(verified.every(result => result.snapshotHash === verified[0].snapshotHash))
     const report = { seed, candidateSha256: candidate.sha256, scenarioPassed: true, timings, gates: gates.map(gate => gate.events), verified, agentEvidence,
       manifest: expected.report(), heads: docs.map(doc => doc.heads), fixture: { tasks: 100, comments: 400, scriptedOperations: 200 },
-      limits: { localAckMs: 2000, localVisibleMs: 2000, offlineStartMs: 5000, convergenceMs: 10000 } }
+      limits }
     await writeFile(join(reportDirectory, 'report.json'), JSON.stringify(report, null, 2))
     await writeFile(join(reportDirectory, 'snapshot.json'), JSON.stringify(docs[0]))
     return { seed, scenarioPassed: true, report: join(reportDirectory, 'report.json'), hash: hash(report) }
   } catch (error) {
     scenarioError = error
-    await writeFile(join(reportDirectory, 'failure.json'), JSON.stringify({ seed, error: error.stack, timings, gates: gates.map(gate => gate.events), manifest: expected.report() }, null, 2))
+    await writeFile(join(reportDirectory, 'failure.json'), JSON.stringify({ seed, candidateSha256: candidate.sha256, limits, error: error.stack, timings, gates: gates.map(gate => gate.events), manifest: expected.report() }, null, 2))
     throw error
   } finally {
     const cleanupErrors = []
@@ -311,5 +315,5 @@ const reports = []
 for (let i = 0; i < repeat; i++) reports.push(await runSeed(firstSeed + i))
 const finalCandidate = await candidateFingerprint()
 assert.equal(finalCandidate.sha256, candidate.sha256, 'Source or built UI changed during acceptance; this is not a single-candidate run')
-await writeFile(join(output, 'summary.json'), JSON.stringify({ scenarioPassed: true, candidateSha256: candidate.sha256, repeat, reports }, null, 2))
+await writeFile(join(output, 'summary.json'), JSON.stringify({ scenarioPassed: true, candidateSha256: candidate.sha256, repeat, limits, reports }, null, 2))
 console.log(`Acceptance scenario reports: ${output}`)

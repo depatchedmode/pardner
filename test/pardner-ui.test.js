@@ -179,7 +179,7 @@ for (const uuidAvailable of [true, false]) it(
       await alice.getByLabel('Actor', { exact: true }).selectOption('bob')
       await alice.getByLabel('Comment', { exact: true }).fill('New request after correcting the Actor')
       await alice.getByRole('button', { name: 'Add comment', exact: true }).click()
-      await alice.getByText('New request after correcting the Actor', { exact: true }).waitFor()
+      await alice.getByRole('paragraph').filter({ hasText: /^New request after correcting the Actor$/ }).waitFor()
       assert.equal((await run(['show', taskId])).comments.find(comment => comment.content === 'New request after correcting the Actor').actorId, 'bob')
       await alice.getByLabel('Actor', { exact: true }).selectOption('alice')
 
