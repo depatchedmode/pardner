@@ -107,3 +107,25 @@ it('the independent manifest rejects missing effects even when replicas agree', 
   const broken = { tasks: {}, operations: { one: { ...request, replicaId: 'replica' } }, comments: {} }
   assert.throws(() => expected.verify(broken), /must appear exactly once/)
 })
+
+it('an explicit acknowledgment budget changes only the latency gate, preserving receipt and effect checks', () => {
+  const request = { operationId: 'budget', actorId: 'alice', type: 'comment.add', payload: { taskId: 'task', text: 'Required effect' } }
+  const receipt = { savedLocally: true, replicaId: 'replica', result: {} }
+  const strict = new ExpectedOperations()
+  assert.throws(() => strict.acknowledge(request, receipt, 2001), /budget 2000ms/)
+  assert.equal(strict.receipts.size, 0)
+  const relaxed = new ExpectedOperations({ localAckMs: 10000 })
+  relaxed.intend(request, 'replica')
+  assert.throws(() => relaxed.acknowledge(request, { ...receipt, savedLocally: false }, 4802))
+  assert.throws(() => relaxed.acknowledge(request, { ...receipt, replicaId: 'other' }, 4802), /wrong replica/)
+  relaxed.acknowledge(request, receipt, 4802)
+  assert.equal(relaxed.receipts.get('budget').elapsedMs, 4802)
+  assert.throws(() => relaxed.verify({ tasks: {}, operations: { budget: { ...request, replicaId: 'replica' } }, comments: {} }), /must appear exactly once/)
+  assert.throws(() => relaxed.acknowledge(request, receipt, 10001), /budget 10000ms/)
+})
+
+it('acknowledgment budgets must remain finite positive integer bounds', () => {
+  for (const localAckMs of [0, -1, 1.5, NaN, Infinity, '10000']) {
+    assert.throws(() => new ExpectedOperations({ localAckMs }), /positive integer/)
+  }
+})

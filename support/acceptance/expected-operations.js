@@ -11,7 +11,11 @@ export const hash = value => createHash('sha256').update(canonical(value)).diges
 
 /** Intents are recorded before execution; successful receipts never define expected effects. */
 export class ExpectedOperations {
-  constructor() { this.intents = new Map(); this.receipts = new Map(); this.sources = new Map() }
+  constructor({ localAckMs = 2000 } = {}) {
+    assert.ok(Number.isSafeInteger(localAckMs) && localAckMs > 0, 'Local acknowledgment budget must be a positive integer in milliseconds')
+    this.localAckMs = localAckMs
+    this.intents = new Map(); this.receipts = new Map(); this.sources = new Map()
+  }
   intend(request, replicaId) {
     const prior = this.intents.get(request.operationId)
     if (prior) assert.equal(canonical(prior), canonical(request), 'Reused expected operation ID')
@@ -22,7 +26,7 @@ export class ExpectedOperations {
     this.intend(request)
     assert.equal(receipt.savedLocally, true)
     if (this.sources.has(request.operationId)) assert.equal(receipt.replicaId, this.sources.get(request.operationId), 'Receipt came from the wrong replica identity')
-    assert.ok(elapsedMs <= 2000, `Local acknowledgement took ${elapsedMs}ms`)
+    assert.ok(elapsedMs <= this.localAckMs, `Local acknowledgement took ${elapsedMs}ms (budget ${this.localAckMs}ms)`)
     this.receipts.set(request.operationId, { receipt, elapsedMs })
   }
   verify(snapshot) {
