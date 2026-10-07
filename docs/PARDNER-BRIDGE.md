@@ -88,6 +88,23 @@ deliveries remain visibly queued while other authorized deliveries can proceed.
 
 ## Delivery and recovery
 
+Provider selection uses the code-defined registry in `lib/bridge-providers.js`.
+Only `codex-app-server` is implemented in this foundation. Existing private
+Codex configurations and the inspection command above keep their shape and
+behavior. Inspection may also explicitly select `--adapter codex-app-server`,
+or inspect a configured mapping with `pardner bridge inspect --config PATH
+--actor ACTOR_ID`. Inspection never starts a model turn.
+
+The bridge owns common Actor/task/sender authorization, durable intake, dispatch
+intent, and uncertain-send state. Each registered provider owns connection
+validation, session/permission validation, adapter construction, inspection,
+and the connection fields included in a saved route. Changing those fields
+blocks queued or uncertain work rather than redirecting it. Provider IDs are
+not module paths; private configuration cannot load code. Session IDs remain
+unique across all mappings. Completion cleanup requires the provider to declare
+actual session-discovery and archive support. This boundary does not grant
+Claude/Cursor functionality or make the Codex qualification runner generic.
+
 Document subscriptions provide immediate hints. A one-second local HTTP catch-up
 checks for missed notifications and expired leases, without calling a model.
 Healthy fixture handoffs dispatch within two seconds; unavailable harnesses and
