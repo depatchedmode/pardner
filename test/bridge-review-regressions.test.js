@@ -17,7 +17,7 @@ async function fixture(run) {
       const trees = await createWorktrees(root, 'review-regression')
       const config = { workspaceId: service.server.store.manifest.workspaceId, replicaId: service.server.store.manifest.replicaId,
         dataDirectory: service.directory, inboxDirectory: join(root, 'inbox'), completionCleanup: { archiveDirectory: join(root, 'archive') },
-        mappings: ['builder', 'reviewer'].map(actorId => ({ actorId, threadId: actorId, worktree: trees[actorId], enabled: true, allowedTaskIds: [] })) }
+        mappings: ['builder', 'reviewer'].map(actorId => ({ actorId, adapter: 'codex-app-server', threadId: actorId, worktree: trees[actorId], enabled: true, allowedTaskIds: [] })) }
       await writeFile(join(service.directory, 'connection.json'), JSON.stringify({ httpUrl: `http://127.0.0.1:${service.server.httpPort}`, token: 'test-token' }))
       inbox = await openBridgeInbox(config)
       source = new BridgeSource(config)
