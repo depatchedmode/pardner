@@ -54,6 +54,25 @@ owned by the current user with mode 0700; an OS-backed SQLite lease permits only
 one server. Its Unix socket and ledger are private local control surfaces. No
 network endpoint, shared token or persistent credential is created.
 
+The user signs in with `claude auth login` if needed. After approving persistent
+project MCP configuration, run this in the mapped worktree, using actual absolute
+paths and the registered Actor/configuration:
+
+```sh
+claude mcp add --transport stdio --scope project pardner -- \
+  /absolute/node-v24.11.1/bin/node /absolute/pardner/scripts/claude-channel.js CONFIG_PATH ACTOR_ID
+claude --resume NATIVE_CLAUDE_SESSION_ID --dangerously-load-development-channels server:pardner
+```
+
+The resume ID is the selected native Claude session, separate from the channel
+binding. Authorized native qualification may instead use an isolated fixture
+session; session creation within that test scope needs no additional approval.
+Sign-in, persistent MCP/security configuration and local consent remain user
+actions. Accept the interactive development warning and project MCP consent,
+confirm channel registration with `/mcp`, and leave any tool approvals local.
+If organization policy blocks channels, its Owner must enable `channelsEnabled`;
+the development flag bypasses only the preview allowlist.
+
 Use `pardner bridge inspect --config PATH --actor ACTOR_ID` to inspect the local
 channel binding, reported capabilities and client initialization. Then use the
 existing `bridge run` and `bridge status` commands. The configured binding and
@@ -87,10 +106,46 @@ human attention; neither is automatically detected or approved by this provider.
 Core `bridge reconcile --decision accepted` can record separately verified
 acceptance evidence. `--decision retry` alone cannot clear an unacknowledged
 channel-ledger row: that row still blocks availability and is not re-notified.
-This draft has no operator disposition/reset command for such a row. Recovery
-requires an actual cooperative receipt/completion from the loaded client or a
-separately reviewed operator procedure; deleting the ledger is not proof that
-the original event was unaccepted. This is an explicit current limitation.
+An operator can now explicitly abandon an outstanding delivery after stopping
+the bridge, channel server, native Claude client and any possible effects. This
+means closing that delivery with an **unverified execution outcome**. It is not
+proof of non-acceptance, successful execution or task completion. The command
+does not retry the delivery or change the Pardner task's status. Existing user
+jobs require their own authorization; fixture tests do not authorize operating
+someone else's uncertain delivery.
+
+```sh
+pardner bridge disposition --config CONFIG_PATH --actor ACTOR_ID --delivery DELIVERY_ID
+pardner bridge dispose --config CONFIG_PATH --actor ACTOR_ID --delivery DELIVERY_ID \
+  --decision abandon --expected-revision INSPECTED_REVISION \
+  --operation-id STABLE_DISPOSITION_ID --evidence 'Observed client/effect shutdown and operator decision' \
+  --confirm-client-stopped
+```
+
+Both commands require exclusive ownership of the existing inbox and channel
+storage. They never connect to or launch Claude. `--confirm-client-stopped` is
+an explicit operator attestation; the provider cannot independently verify the
+native client or external effects. Inspect returns a revision over both full
+delivery records and their bindings, a prompt digest and any genuinely observed
+cooperative receipt. A later receipt, inbox change or retargeted mapping makes
+the original decision stale and is rejected before the first mutation.
+
+Abandonment retains the full prior prompt, state, genuine receipt, original
+revision, operation ID and operator evidence in durable journals. It leaves a
+terminal tombstone in both stores. Submission and late acceptance/completion
+callbacks for that ID are rejected; core retry cannot revive it. A new authorized
+delivery has a separate ID and must independently deduplicate any possible
+effects of the abandoned work.
+
+The channel journal is committed first and keeps an unfinished-decision barrier
+until the matching inbox decision commits and is finalized. A process crash or
+lost command reply can be recovered by repeating the **identical command** with
+its original operation ID, revision and evidence. Offline inspection reports
+an unfinished decision's original request. Changed payloads or prior evidence
+remain blocked; never overwrite or delete the journals to force recovery. After
+finalization the original notification is never resent and later deliveries may
+proceed. This provides explicit operator recovery, not automatic unattended
+recovery or permission handling.
 
 ## Qualification
 
@@ -105,10 +160,12 @@ reported `loggedIn: false`. No sign-in, project MCP installation, development
 channel opt-in, permissions, credentials or native model turn were attempted.
 Native Claude wake/reply, loaded-channel behavior, approval UI, and a mixed
 three-provider run remain blocked on approved authentication/interactive setup.
-The foundation's separate native Codex no-output/systemError qualification
-blocker is unchanged. No merge or deployment is implied by these tests.
+The subsequent foundation follow-up diagnosed the old Codex CLI/runtime model
+incompatibility and verified one real automatic Codex wake/reply on exact #71.
+That result does not qualify native Claude execution or this branch's Codex
+runtime. No merge or deployment is implied by these tests.
 
-## Frozen source verification
+## Prior published-head verification
 
 On Node 24.11.1, `npm run verify -- --local-ack-ms 10000` passed the production
 build, all 312 default parallel tests and complete seed-1 acceptance on source
@@ -126,3 +183,33 @@ by the source consistency gate because a lifecycle test was added while it ran.
 That run is retained and does not count as fixed-source qualification. The
 canonical pass above used the final frozen implementation and eight Claude tests.
 No native Claude model turn, sign-in or local channel opt-in occurred.
+
+## Explicit recovery verification
+
+The abandonment implementation passed independent source review and 43 focused
+tests, including 11 new disposition tests. Review fixed recovery of a previously
+requeued prompt, required both recorded store snapshots to remain unchanged
+through an interrupted decision, and checked cross-Actor operation-ID reuse
+before any ledger mutation. Tests cover lost cooperative acknowledgements,
+stale state/receipt/binding evidence, live storage ownership, failures between
+both database commits and finalization, same-operation recovery, preserved audit
+records, rejected late MCP callbacks and one distinct notification after restart.
+
+On Node 24.11.1, `npm run verify -- --local-ack-ms 10000` passed the production
+build, all **323** default parallel tests and complete seed-1 acceptance on frozen
+source fingerprint
+`d305f1979f269ea3f7874e93e9f19a919827282a2b82e752fa360d428f1b317d`
+(119 source/build files). The report is retained at
+`output/acceptance/2026-10-07T08-59-40.776Z`.
+All 719 acknowledged operations were independently checked on each of three
+replicas with matching final snapshot hashes. Maximum local acknowledgment was
+753 ms against the explicitly declared 10,000 ms budget; other acceptance bounds
+and the strict default are unchanged. These fixtures do not establish native
+Claude execution or automatic unattended recovery.
+
+The source-level permanently blocking row now has a tested explicit operator
+disposition path. Native model wake/reply, client approval interaction and mixed
+three-provider execution remain unqualified. Read-only authentication status
+still reports Claude signed out. No actual user's uncertain delivery, sign-in,
+MCP/security setup, native permission, retained worktree or session was operated
+on by this implementation/verification.
