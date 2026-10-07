@@ -4,6 +4,8 @@
 - [Companion device and LAN access](PARDNER-LAN.md)
 - [Event-driven agent bridge](PARDNER-BRIDGE.md)
 - [Real-agent bridge rehearsal](PARDNER-BRIDGE-REHEARSAL.md)
+- [Three dedicated Codex agents](PARDNER-THREE-AGENT.md)
+- [Issue 66 local qualification](PARDNER-66-QUALIFICATION.md)
 - [Acceptance criteria](PARDNER-ACCEPTANCE.md)
 - [Milestone audit](PARDNER-GOAL-AUDIT.md)
 - [Implementation evidence](PARDNER-EVIDENCE.md)
