@@ -5,8 +5,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { setTimeout as delay } from 'node:timers/promises'
+import { DatabaseSync } from 'node:sqlite'
 import { BridgeInbox } from '../lib/bridge-inbox.js'
 import { AgentBridge } from '../lib/agent-bridge.js'
+import { canonical } from '../lib/workspace-schema.js'
 
 const mapping = { actorId: 'builder', enabled: true, adapter: 'codex-app-server', sessionOwner: 'bridge',
   endpoint: 'ws://127.0.0.1:9001/', threadId: 'thread-one', worktree: '/tmp', allowedTaskIds: ['task-one'], allowedFromActorIds: ['alice'] }
@@ -56,7 +58,7 @@ async function fixture(run) {
   const source = new Source(inbox), harness = new Harness()
   const config = { ...identity, dataDirectory: directory, mappings: [structuredClone(mapping)] }
   let bridge = new AgentBridge({ config, inbox, source, adapterFactory: () => harness })
-  const state = { source, harness, config, get inbox() { return inbox }, get bridge() { return bridge },
+  const state = { source, harness, config, path, get inbox() { return inbox }, get bridge() { return bridge },
     restart: async () => {
       await bridge.stop(); inbox.close()
       inbox = new BridgeInbox(path, identity); source.inbox = inbox
@@ -65,6 +67,51 @@ async function fixture(run) {
     } }
   try { await run(state) } finally { await bridge.stop(); inbox.close(); await rm(directory, { recursive: true, force: true }) }
 }
+
+it('durable context is observed before RPC and retains its timing across lost-reply reconciliation', () => fixture(async state => {
+  const dispatch = state.harness.dispatch.bind(state.harness)
+  state.harness.dispatch = async (mapped, prompt) => {
+    const reader = new DatabaseSync(state.path, { readOnly: true })
+    try {
+      const row = reader.prepare('SELECT * FROM inbox WHERE id = ?').get(mention.id)
+      assert.equal(row.state, 'dispatching')
+      assert.equal(row.prompt, prompt)
+      assert.ok(Number.isFinite(row.context_persisted_at))
+      assert.ok(row.received_at <= row.context_persisted_at)
+      assert.ok(row.context_persisted_at <= Date.now())
+      assert.equal(row.dispatched_at, null)
+    } finally { reader.close() }
+    return dispatch(mapped, prompt)
+  }
+  state.harness.loseResponse = true; state.source.mentions.push(mention)
+  await state.bridge.wake()
+  const prepared = state.inbox.rows()[0].context_persisted_at
+  assert.equal(state.inbox.rows()[0].state, 'uncertain')
+  await state.restart(); await state.bridge.wake()
+  const accepted = state.inbox.rows()[0]
+  assert.equal(accepted.state, 'accepted')
+  assert.equal(accepted.context_persisted_at, prepared)
+  assert.ok(accepted.dispatched_at >= prepared)
+}))
+
+it('legacy inboxes migrate without inventing context timing or losing accepted work', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-bridge-legacy-'))
+  const path = join(directory, 'inbox.sqlite'), identity = { workspaceId: 'workspace', replicaId: 'replica' }
+  const legacy = new DatabaseSync(path)
+  legacy.exec(`CREATE TABLE identity (value TEXT NOT NULL);
+    CREATE TABLE inbox (id TEXT PRIMARY KEY, actor TEXT NOT NULL, mention TEXT NOT NULL, mapping TEXT NOT NULL,
+    state TEXT NOT NULL, prompt TEXT, turn_id TEXT, reason TEXT, received_at INTEGER NOT NULL, dispatched_at INTEGER);`)
+  legacy.prepare('INSERT INTO identity VALUES (?)').run(canonical(identity))
+  legacy.prepare('INSERT INTO inbox VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(mention.id, 'builder', JSON.stringify(mention), JSON.stringify(mapping), 'accepted', 'old prompt', 'old turn', null, 1, 2)
+  legacy.close()
+  let inbox
+  try {
+    inbox = new BridgeInbox(path, identity)
+    const row = inbox.rows()[0]
+    assert.equal(row.state, 'accepted'); assert.equal(row.turn_id, 'old turn')
+    assert.equal(row.prompt, 'old prompt'); assert.equal(row.context_persisted_at, null)
+  } finally { inbox?.close(); await rm(directory, { recursive: true, force: true }) }
+})
 
 it('an idle hour performs zero harness requests; a delivery is persisted before ack and dispatched promptly', () => fixture(async state => {
   let availabilityCalls = 0
