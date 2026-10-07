@@ -2,14 +2,15 @@
 
 `pardner bridge` is an opt-in local harness bridge for issue #50. It watches a
 running local Pardner service, receives deliveries into its own SQLite inbox,
-then starts authorized work in a dedicated Codex App Server thread. Each host
+then starts authorized work in a dedicated mapped provider session. Each host
 runs its own bridge against its own replica. Checking for work makes no model
 requests.
 
-The first adapter supports existing **bridge-owned Codex App Server threads**.
-It does not attach to arbitrary Codex Desktop tasks, Claude sessions, or Cursor
-editor chats. One bridge must be the sole dispatcher for each mapped session;
-stop any other client driving that thread.
+Adapters support existing **bridge-owned Codex App Server threads** and
+**Cursor CLI ACP sessions**. See [Cursor configuration and limitations](PARDNER-CURSOR-ACP.md)
+for its mode-only policy and protocol receipts. They do not attach to arbitrary
+Codex Desktop tasks, Claude sessions, or Cursor editor chats. One bridge must be
+the sole dispatcher for each mapped session; stop other clients driving it.
 
 ## Setup
 
@@ -74,8 +75,9 @@ data, and use a separate directory for the bridge inbox.
 process supervisor. It rereads the local service's protected `connection.json`
 when reconnecting. The inbox directory is private (0700) and contains task context
 and lease credentials; do not publish it. Credentials do not appear in prompts or
-WebSocket URLs. Both service and harness endpoints must be loopback URLs. Treat
-the Codex endpoint as a trusted local control interface; do not expose it publicly.
+WebSocket URLs. Service and Codex endpoints must be loopback URLs; Cursor uses
+a local stdio process. Treat the Codex endpoint as a trusted local control
+interface; do not expose it publicly.
 
 `status` reports persisted observations, not a process-liveness guarantee; use
 your terminal or supervisor to check whether the bridge process is still running.
@@ -89,7 +91,7 @@ deliveries remain visibly queued while other authorized deliveries can proceed.
 ## Delivery and recovery
 
 Provider selection uses the code-defined registry in `lib/bridge-providers.js`.
-Only `codex-app-server` is implemented in this foundation. Existing private
+The registry implements `codex-app-server` and `cursor-acp`. Existing private
 Codex configurations and the inspection command above keep their shape and
 behavior. Inspection may also explicitly select `--adapter codex-app-server`,
 or inspect a configured mapping with `pardner bridge inspect --config PATH
@@ -102,8 +104,9 @@ and the connection fields included in a saved route. Changing those fields
 blocks queued or uncertain work rather than redirecting it. Provider IDs are
 not module paths; private configuration cannot load code. Session IDs remain
 unique across all mappings. Completion cleanup requires the provider to declare
-actual session-discovery and archive support. This boundary does not grant
-Claude/Cursor functionality or make the Codex qualification runner generic.
+actual session-discovery and archive support; Cursor configurations reject it.
+Claude is not implemented. The Codex qualification runner remains specific to
+Codex, and prior #70/#71 evidence does not qualify native Cursor execution.
 
 Document subscriptions provide immediate hints. A one-second local HTTP catch-up
 checks for missed notifications and expired leases, without calling a model.
@@ -125,16 +128,21 @@ the waiting row and its reason so later replica synchronization can release it.
 Busy sessions, approvals, and uncertain dispatch still block that Actor's dispatch.
 
 Deliveries progress through `queued → dispatching → accepted`. Busy sessions retain
-queued work. `accepted` means the harness returned a turn ID or matching history
-established acceptance, not that the task succeeded. Pending approvals and input
+queued work. `accepted` means the harness supplied an observed receipt or matching
+history established receipt, not that the task succeeded. Codex receipts are
+native turn IDs. Cursor receipts identify a completed prompt response or a
+replayed native message ID; they are not immediate native turn acceptance.
+Pending approvals and input
 requests are reported as blocked and never auto-answered. Resolve them through
 the harness's approval/input client; this adapter supplies no approval UI. The
-bridge passes no model, directory, or permission overrides when resuming or
-starting a turn, and refuses a resumed policy that differs from `expectedPolicy`.
+bridge passes no model, mode, or permission overrides. Codex validates the native
+directory and full expected policy. Cursor explicitly binds its directory using
+`session/load` cwd and validates only its observed mode, as described in its runbook.
 
 Before dispatch, the exact prompt is persisted. Lost replies and crashes during
 dispatch produce `uncertain`. Recovery checks stored history for an exact matching
-user message in one turn. Missing, compacted, truncated, or ambiguous history does
+user message in one Codex turn or one identified Cursor message. Missing,
+compacted, truncated, or ambiguous history does
 not prove non-acceptance. Further dispatch for that Actor waits for reconciliation.
 A disconnected harness may leave execution state unobserved; its durable dispatch
 receipt remains valid.
@@ -233,9 +241,9 @@ Issue #50 remains the umbrella for these implementation follow-ups:
   including approvals and ownership. This adapter does not establish compatibility.
 - **Claude Code Channels:** verify feature availability, notify an open authorized
   session, report a closed session as unavailable, and qualify receipt/retry behavior.
-- **Cursor ACP:** load an explicitly mapped ACP session, preserve permission and
-  busy states, and reconcile uncertain prompts. Do not assume control of arbitrary
-  editor chats.
+- **Cursor ACP:** the mapped-session adapter implements mode-only pins,
+  completion-response and exact replay receipts. Native reply/recovery and mixed
+  provider qualification remain blocked on CLI authentication; see its runbook.
 - **Real-agent qualification:** measure dispatch separately from inference and
   rehearse the three collaboration modes, including separate machines and restart.
   Keep #50 open until its agreed adapter and qualification scope is satisfied.
