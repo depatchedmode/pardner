@@ -5,7 +5,8 @@ import { dirname, join } from 'node:path'
 import { createServer } from 'node:net'
 import { once, EventEmitter } from 'node:events'
 import { setTimeout as delay } from 'node:timers/promises'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import assert from 'node:assert/strict'
 import WebSocket, { WebSocketServer } from 'ws'
 import { candidateFingerprint } from './acceptance/candidate.js'
 
@@ -72,7 +73,7 @@ Apply a positive integer limit; throw RangeError for zero, negative, non-integer
 Do not mutate the input array or task objects. Return the selected original task objects.
 Empty input returns []. Use no dependencies. Add meaningful Node tests in queue.test.mjs.`
 
-export async function createWorktrees(root, challenge, { shared = false } = {}) {
+export async function createWorktrees(root, challenge, { shared = false, actors = ['builder', 'reviewer'] } = {}) {
   const repository = join(root, 'fixture-repository')
   await mkdir(repository, { recursive: true })
   await writeFile(join(repository, 'queue.mjs'), `export const challenge = ${JSON.stringify(challenge)}\nexport function selectReadyTasks() { throw new Error('Not implemented') }\n`)
@@ -82,13 +83,39 @@ export async function createWorktrees(root, challenge, { shared = false } = {}) 
   await git(['add', 'queue.mjs', '.gitignore'])
   await git(['-c', 'user.name=Pardner Rehearsal', '-c', 'user.email=rehearsal@localhost', 'commit', '--quiet', '-m', 'test: seed isolated rehearsal fixture'])
   const trees = {}
-  for (const actor of ['builder', 'reviewer']) {
+  for (const actor of actors) {
     if (shared && actor === 'reviewer') { trees.reviewer = trees.builder; continue }
     const path = join(root, actor)
     await git(['worktree', 'add', '--quiet', '--detach', path, 'HEAD'])
     trees[actor] = await realpath(path)
   }
   return trees
+}
+
+export async function auditThreeAgentWorktree(actor, cwd) {
+  const allowed = actor === 'builder' ? ['queue.mjs', 'queue.test.mjs']
+    : ['queue.mjs', 'reviewer.test.mjs', 'review-result-round-1.json', 'review-result-round-2.json']
+  const { stdout } = await execute('git', ['status', '--porcelain'], { cwd })
+  const unexpected = stdout.trimEnd().split('\n').filter(Boolean).map(line => line.slice(3)).filter(path => !allowed.includes(path))
+  if (unexpected.length) throw new Error(`Unexpected ${actor} fixture files: ${unexpected.join(', ')}`)
+  return stdout
+}
+
+export function deliveryTiming(row, session, events) {
+  const accepted = events.find(event => event.type === 'accepted' && event.turnId === row.turnId)
+  assert.ok(accepted && accepted.threadId === session.threadId && accepted.deliveryId === row.id, 'Accepted receipt must match this delivery and session')
+  assert.ok(typeof accepted.submissionId === 'string' && accepted.submissionId.length, 'Accepted receipt needs an exact submission identity')
+  const submission = events.find(event => event.type === 'dispatch' && event.submissionId === accepted.submissionId)
+  assert.ok(submission && submission.deliveryId === row.id && submission.threadId === session.threadId, 'Submission must match the exact accepted request')
+  assert.ok(Number.isFinite(row.contextPersistedAt), 'Durable context timing was not measured')
+  assert.ok(row.receivedAt <= row.contextPersistedAt && row.contextPersistedAt <= submission.at
+    && submission.at <= accepted.at && accepted.at <= row.dispatchedAt, 'Delivery timing stages are out of order')
+  const completed = events.find(event => event.type === 'completed' && event.turnId === row.turnId && event.threadId === session.threadId)
+  if (completed) assert.ok(completed.at >= accepted.at, 'Completion must follow acceptance')
+  return { deliveryId: row.id, actor: row.actor, threadId: session.threadId, turnId: row.turnId,
+    submissionId: submission.submissionId, notificationDurablyReceivedAt: row.receivedAt,
+    synchronizedContextPersistedAt: row.contextPersistedAt, adapterSubmissionAt: submission.at,
+    acceptedAt: accepted.at, harnessReceiptRecordedAt: row.dispatchedAt, completedAt: completed?.at ?? null }
 }
 
 /** Relay the real protocol; inject only transport faults, never model replies. */
@@ -118,8 +145,14 @@ export class HarnessProxy extends EventEmitter {
       upstream.on('open', () => { for (const [bytes, binary] of waiting) upstream.send(bytes, { binary }) })
       client.on('message', (bytes, binary) => {
         const message = JSON.parse(bytes.toString())
-        if (message.id !== undefined) requests.set(message.id, { method: message.method, threadId: message.params?.threadId })
-        if (message.method === 'turn/start') this.record('dispatch', { threadId: message.params.threadId })
+        const request = { method: message.method, threadId: message.params?.threadId }
+        if (message.method === 'turn/start') {
+          const prompt = message.params.input?.find(item => item.type === 'text')?.text ?? ''
+          request.submissionId = randomUUID()
+          request.deliveryId = /^Pardner delivery (\S+)\. Actor: /u.exec(prompt)?.[1] ?? null
+          this.record('dispatch', { threadId: request.threadId, submissionId: request.submissionId, deliveryId: request.deliveryId })
+        }
+        if (message.id !== undefined) requests.set(message.id, request)
         if (message.method === 'thread/archive') this.record('archive-request', { threadId: message.params.threadId })
         if (upstream.readyState === WebSocket.OPEN) upstream.send(bytes, { binary })
         else waiting.push([bytes, binary])
@@ -141,7 +174,8 @@ export class HarnessProxy extends EventEmitter {
           }
         }
         if (request?.method === 'turn/start' && message.result?.turn?.id) {
-          this.record('accepted', { threadId: request.threadId, turnId: message.result.turn.id })
+          this.record('accepted', { threadId: request.threadId, turnId: message.result.turn.id,
+            submissionId: request.submissionId, deliveryId: request.deliveryId })
           if (this.dropDispatchReply) {
             this.dropDispatchReply = false
             this.record('reply-dropped', { threadId: request.threadId, turnId: message.result.turn.id })
@@ -150,6 +184,11 @@ export class HarnessProxy extends EventEmitter {
         }
         if (message.method === 'turn/completed') this.record('completed', {
           threadId: message.params.threadId, turnId: message.params.turn.id, status: message.params.turn.status, error: message.params.turn.error,
+        })
+        if (message.method === 'item/completed' && message.params.item?.type === 'commandExecution') this.record('command', {
+          threadId: message.params.threadId, turnId: message.params.turnId,
+          command: message.params.item.command, cwd: message.params.item.cwd,
+          exitCode: message.params.item.exitCode,
         })
         if (message.method && message.id !== undefined) this.record('input-required', { method: message.method, threadId: message.params?.threadId })
         if (client.readyState !== WebSocket.OPEN) return
