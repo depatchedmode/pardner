@@ -1,5 +1,8 @@
 # Real Codex bridge rehearsal
 
+For issue #66's bounded implementer and two-reviewer workflow, use the
+[three-agent rehearsal and lifecycle runbook](PARDNER-THREE-AGENT.md).
+
 This opt-in test makes real model requests through the signed-in Codex CLI account.
 It creates a dedicated App Server, two new threads, two disposable Git worktrees,
 and a fresh Pardner service. The existing workspace and live Desktop threads are

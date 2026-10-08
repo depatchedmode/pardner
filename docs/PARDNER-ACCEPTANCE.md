@@ -48,6 +48,22 @@ Required bounds are asserted, not merely printed:
 | Cold restart of an enrolled replica with the hub inaccessible | 5 seconds |
 | All replicas converge after communication is restored | 10 seconds |
 
+For a qualification that defers the strict acknowledgment performance target,
+declare a different positive millisecond budget before starting:
+
+```sh
+npm run verify -- --local-ack-ms 10000
+npm run test:acceptance -- --repeat 1 --seed 1 --local-ack-ms 10000
+```
+
+The default remains 2 seconds. The override changes only operation acknowledgment
+timing, including CLI, browser, and worker receipts. Correctness, attribution,
+durability, recovery, UI visibility, restart, and convergence checks still run.
+`configuration.json` records the chosen bounds before execution; successful and
+failed reports also include them and retain actual latency measurements. A pass
+with a 10-second budget establishes that declared qualification profile, while
+the original 2-second performance target remains unqualified for that run.
+
 Seeds vary operation ordering/replica use, the killed replica and point in the
 schedule, reconnect ordering and delay, the number of lost hub acknowledgements,
 and worker crash points. The final scenario also checks complete commit evidence
