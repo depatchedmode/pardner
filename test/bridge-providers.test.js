@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { BridgeProviders, bridgeProviders, codexBridgeProvider } from '../lib/bridge-providers.js'
 import { AgentBridge, bridgeConfig, runBridgeCommand } from '../lib/agent-bridge.js'
 import { CodexBridgeAdapter } from '../lib/codex-bridge-adapter.js'
+import { acquireStorageLease } from '../lib/storage-lease.js'
 
 it('shutdown waits for all owners even after one close fails, and repeated stops share completion', async () => {
   let finish, closed = 0
@@ -69,6 +70,17 @@ async function fixture(run) {
   try { await save(); await run({ root, path, mapping, config, save }) }
   finally { await rm(root, { recursive: true, force: true }) }
 }
+
+it('public bridge startup preserves a recovery guard error and releases ownership after clean shutdown', () => fixture(async ({ path, config }) => {
+  let closes = 0
+  const adapter = Object.assign(new EventEmitter(), { close() { closes++ } })
+  const providers = new BridgeProviders([{ ...codexBridgeProvider, create: () => adapter,
+    recoverInbox() { throw Object.assign(new Error('Original disposition binding changed'), { code: 'CHANNEL_BINDING_CHANGED' }) } }])
+  await assert.rejects(runBridgeCommand('run', { config: path }, { providers }), { code: 'CHANNEL_BINDING_CHANGED' })
+  assert.equal(closes, 1)
+  const lease = await acquireStorageLease(config.inboxDirectory)
+  lease.close()
+}))
 
 it('normalizes legacy Codex mappings identically and selects the real Codex factory', () => fixture(async ({ path, mapping }) => {
   const config = await bridgeConfig(path)
