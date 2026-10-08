@@ -213,3 +213,51 @@ three-provider execution remain unqualified. Read-only authentication status
 still reports Claude signed out. No actual user's uncertain delivery, sign-in,
 MCP/security setup, native permission, retained worktree or session was operated
 on by this implementation/verification.
+
+## October 8 interrupted-disposition repair
+
+Follow-up review reproduced a channel commit followed by an inbox commit failure,
+then bridge restart changing the original inbox evidence. The unchanged operation
+failed with `STALE_DISPOSITION`; changing the revision reused the operation ID,
+and subsequent work remained busy. This occurred for both queued and dispatching
+rows. A durable inbox intent now precedes channel mutation. Recovery, reconciliation
+and dispatch preserve its original snapshot and block later Actor work until the
+identical operation finishes both stores and releases both barriers.
+
+Independent review found that existing channel-only journals also needed this
+protection. They are now imported before generic inbox recovery, including
+historical routes after mappings are removed, disabled or switched. Import retains
+the recorded request, original evidence and timestamp. Changed evidence remains
+guarded and an explicit retry still fails stale; import never restores an older
+snapshot over intervening changes. Fully finalized legacy audits do not acquire an
+unnecessary barrier. Startup shutdown waits for recovery to settle, and clean
+cleanup preserves a rejected recovery's original error code.
+
+The final focused bridge/Claude run passed **103/103** tests. Independent source
+review and adversarial checks passed **63/63**, including **ten actual process
+exits** at the five durable-write boundaries for both queued and dispatching rows,
+SQL insertion faults, legacy migration, unchanged audit evidence, tamper guards,
+historical mappings, startup/shutdown ownership and a distinct later delivery.
+The legacy and error-reporting findings were repaired and independently rechecked;
+no findings remained.
+
+Node **24.11.1**, source at `54b3589d` and fingerprint
+`559d2576e6c99f51e720b5a480b25b4270ba85d2937539ee2884abf5022673b9`
+passed `npm run verify -- --local-ack-ms 10000`: production build, **345/345**
+default parallel tests with no skips/cancellations, and complete seed-1 acceptance.
+All **719** acknowledged operations were checked on each of three replicas with
+matching snapshot hashes. Maximum acknowledgment was **356 ms** against the
+declared 10,000 ms budget. Independent evidence review reconstructed the operation
+manifest, reverified the saved snapshot and confirmed the recorded source/build
+fingerprint. The 2,000 ms default and other acceptance bounds are unchanged;
+repeatable default-budget performance remains unqualified.
+
+Shared deadline and shutdown fixes are included through #70/#71 stack merges.
+The [browser environment recovery](PARDNER-66-QUALIFICATION.md#october-8-deadline-repair)
+also applies to this run; actual Chromium and WebKit tests passed. No native Claude
+or mixed-provider qualification ran on this repaired head. These fixtures do not
+qualify automatic native execution, interactive approval or arbitrary effects.
+The original published commits and draft branch are retained. No actual user's
+uncertain delivery, native sign-in, persistent access configuration, merge into
+main or deployment was operated on. Runtime histories and configuration remain
+private.
