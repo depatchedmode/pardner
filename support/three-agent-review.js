@@ -91,7 +91,8 @@ export async function readWithinConvergence(read, { timeoutMs, intervalMs = 500,
     } finally { clearTimeout(timer) }
     const remaining = deadline - Date.now()
     if (remaining <= 0) throw lastError
-    await delay(Math.min(intervalMs, remaining))
+    if (intervalMs >= remaining) { await delay(remaining); throw lastError }
+    await delay(intervalMs)
   }
   throw lastError ?? expired()
 }
