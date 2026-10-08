@@ -60,7 +60,12 @@ export async function eventually(check, { timeoutMs = 10000, deadline = Date.now
       if (Date.now() >= deadline) { const error = expired(); controller.abort(error); throw error }
     } finally { clearTimeout(timer) }
     if (result) return result
-    await delay(Math.min(intervalMs, Math.max(0, deadline - Date.now())))
+    const retryBudget = deadline - Date.now()
+    if (intervalMs >= retryBudget) {
+      await delay(Math.max(0, retryBudget))
+      throw expired()
+    }
+    await delay(intervalMs)
   }
 }
 
