@@ -397,3 +397,48 @@ some of these failure states; they do not substitute for real execution.
 Full runtime directories, inboxes, credentials, session histories, account
 information, and local infrastructure details remain private. Publish only this
 curated report after review, not raw runtime data.
+
+## October 8 deadline repair
+
+Follow-up review reproduced a successful 101 ms observation being accepted by
+`eventually` despite a 30 ms budget. The helper now rejects observations at
+expiry, races stalled checks against the deadline, signals cancellation, and
+never starts an expired attempt. Both the automatic workflow and final session
+inspection use the same absolute 20-minute deadline established at kickoff.
+The retry helpers also stop when the configured interval consumes the remaining
+budget, avoiding an extra attempt when a timer wakes slightly early.
+
+The three new fault regressions and existing review tests passed **21/21**.
+Independent review exercised late success, blocked event-loop success, a stalled
+observation, already expired checks, and a shared deadline across phases. Both
+retry helpers made exactly one attempt in **100/100** short-budget trials each.
+The reviewer reported no remaining actionable finding in these changes.
+
+On Node **24.11.1**, repaired source `0f182036` and fingerprint
+`356c04f83768581f4f593575fbeb67bfa137dd89222936888d6b15c44f35533e`
+passed `npm run verify -- --local-ack-ms 10000`: production build, **301/301**
+default parallel tests with no skips/cancellations, and complete seed-1 acceptance.
+All **719** acknowledged operations were checked on each of three replicas with
+matching snapshot hashes. Maximum acknowledgment was **288 ms** under the
+explicit 10,000 ms budget. The default remains **2,000 ms**; this run does not
+qualify repeatable performance at that default.
+
+Browser verification required environment recovery. Matching Playwright Chromium
+and WebKit binaries were installed using the
+[official browser installer](https://playwright.dev/docs/browsers).
+The system dependency installer required an unavailable root password, and the
+configured Debian snapshot mirror returned HTTP 403. Missing libraries were
+downloaded through signed Debian package metadata from the official Debian
+mirror, extracted into the workspace, and linked into WebKit's private library
+directories. Playwright's global `ldconfig` cache check cannot discover those
+local libraries, so `PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1` was set for
+these runs. Actual browser launch, rendering, both LAN pairing tests and all
+browser regressions passed; no browser test or assertion was skipped. The
+environment's two local interface addresses were added to the proxy bypass.
+No repository browser test, system package or persistent access setting changed.
+
+The earlier native three-agent evidence remains historical evidence on its
+original source. No fresh native or mixed-provider qualification was run for
+this repair, and the previously recorded limitations remain open. Publication
+updates the existing draft stack; human acceptance, merge and deployment remain
+separate.
