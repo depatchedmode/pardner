@@ -11,8 +11,28 @@ import { fileURLToPath } from 'node:url'
 import { CursorBridgeAdapter } from '../lib/cursor-bridge-adapter.js'
 import { AgentBridge, bridgeConfig, openBridgeInbox, runBridgeCommand } from '../lib/agent-bridge.js'
 import { bridgeProviders } from '../lib/bridge-providers.js'
+import { acquireStorageLease } from '../lib/storage-lease.js'
 const execute = promisify(execFile)
 const checkScript = fileURLToPath(new URL('../scripts/bridge-cursor-check.js', import.meta.url))
+
+const processRunning = pid => {
+  try { process.kill(pid, 0); return true }
+  catch (error) { if (error.code === 'ESRCH') return false; throw error }
+}
+async function eventually(check) {
+  const deadline = Date.now() + 5000
+  while (!await check()) {
+    assert.ok(Date.now() < deadline, 'Cursor fixture did not reach the expected process state')
+    await delay(10)
+  }
+}
+async function processLog(root, name) {
+  const text = await readFile(join(root, `${name}.jsonl`), 'utf8').catch(error => {
+    if (error.code === 'ENOENT') return ''
+    throw error
+  })
+  return text.trim() ? text.trim().split('\n').map(line => JSON.parse(line)) : []
+}
 
 async function fixture(settings, run) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'pardner-cursor-acp-')))
@@ -165,6 +185,63 @@ it('waits for the timed-out process to exit before spawning its replacement', ()
   assert.equal(starts.length, 2)
   assert.ok(starts[1].priorExitedPids.includes(starts[0].pid), 'Prior ACP process must be closed before the replacement starts')
 }))
+
+it('retains the bridge storage lease through delayed Cursor shutdown before allowing a replacement owner', () => fixture({ termDelayMs: 800 }, async ({ root, mapping, config, create }) => {
+  const adapter = create()
+  await adapter.availability(mapping)
+  const pid = adapter.child.pid
+  const inbox = await openBridgeInbox(config)
+  const source = Object.assign(new EventEmitter(), { close() {} })
+  const bridge = new AgentBridge({ config, inbox, source, adapterFactory: () => adapter })
+  const lease = await acquireStorageLease(config.inboxDirectory)
+  let released = false, replacementLease
+  const stopping = bridge.stop().finally(() => { lease.close(); released = true })
+  try {
+    await eventually(async () => (await processLog(root, 'terminations')).some(entry => entry.pid === pid))
+    assert.equal(processRunning(pid), true, 'The delayed Cursor process is still alive')
+    assert.equal(released, false, 'Bridge shutdown must retain its lease until Cursor exits')
+    await assert.rejects(acquireStorageLease(config.inboxDirectory), { code: 'STORAGE_IN_USE' })
+    await stopping
+    assert.equal(processRunning(pid), false, 'Shutdown resolves only after the Cursor process exits')
+    replacementLease = await acquireStorageLease(config.inboxDirectory)
+    await writeFile(join(root, 'fixture.json'), JSON.stringify({}))
+    await create().availability(mapping)
+    const starts = await processLog(root, 'starts')
+    assert.equal(starts.length, 2)
+    assert.ok(starts[1].priorExitedPids.includes(pid), 'The replacement session owner starts after the prior process exits')
+  } finally {
+    await stopping
+    await adapter.close()
+    replacementLease?.close()
+    inbox.close()
+  }
+}))
+
+for (const configured of [false, true]) {
+  for (const failed of [false, true]) {
+    it(`${configured ? 'configured' : 'direct'} Cursor inspection waits for delayed process exit on ${failed ? 'failure' : 'success'}`, () => fixture({ termDelayMs: 800, ...(failed ? { modeMissing: true } : {}) }, async ({ root, mapping, path }) => {
+      let settled = false, pid
+      const flags = configured ? { config: path, actor: 'builder' }
+        : { adapter: 'cursor-acp', command: mapping.command, worktree: mapping.worktree, session: mapping.threadId }
+      const inspecting = runBridgeCommand('inspect', flags).then(value => ({ value }), error => ({ error }))
+        .then(outcome => { settled = true; return outcome })
+      try {
+        await eventually(async () => (await processLog(root, 'terminations')).length === 1)
+        pid = (await processLog(root, 'starts'))[0].pid
+        assert.equal(processRunning(pid), true, 'The delayed inspection process is still alive')
+        assert.equal(settled, false, 'Inspection must await process shutdown before returning its outcome')
+        const outcome = await inspecting
+        if (failed) assert.equal(outcome.error?.code, 'CURSOR_MODE_UNOBSERVED')
+        else assert.equal(outcome.value?.threadId, mapping.threadId)
+        assert.equal(processRunning(pid), false, 'Inspection leaves no live Cursor session owner')
+      } finally {
+        await inspecting
+        pid ??= (await processLog(root, 'starts'))[0]?.pid
+        if (pid) await eventually(() => !processRunning(pid))
+      }
+    }))
+  }
+}
 
 for (const [settings, code] of [[{ initialize: 'malformed' }, 'CURSOR_PROTOCOL_ERROR'], [{ initialize: 'wrong-id' }, 'CURSOR_PROTOCOL_ERROR'], [{ protocolVersion: 99 }, 'CURSOR_PROTOCOL_ERROR'], [{ initialize: 'exit' }, 'CURSOR_DISCONNECTED'], [{ initialize: 'hang' }, 'CURSOR_RPC_TIMEOUT']]) {
   it(`bounds invalid, unexpected, closing, or missing initialization (${JSON.stringify(settings)})`, () => fixture(settings, async ({ create }) => {
