@@ -44,13 +44,23 @@ export function startProcess(command, args, options = {}) {
     } }
 }
 
-export async function eventually(check, { timeoutMs = 10000, intervalMs = 100, label = 'condition' } = {}) {
-  const deadline = Date.now() + timeoutMs
+export async function eventually(check, { timeoutMs = 10000, deadline = Date.now() + timeoutMs, intervalMs = 100, label = 'condition' } = {}) {
+  const expired = () => new Error(`Timed out waiting for ${label}`)
   while (true) {
-    const result = await check()
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) throw expired()
+    const controller = new AbortController()
+    let timer
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => { const error = expired(); reject(error); controller.abort(error) }, remaining)
+    })
+    let result
+    try {
+      result = await Promise.race([Promise.resolve().then(() => check(controller.signal)), timeout])
+      if (Date.now() >= deadline) { const error = expired(); controller.abort(error); throw error }
+    } finally { clearTimeout(timer) }
     if (result) return result
-    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${label}`)
-    await delay(intervalMs)
+    await delay(Math.min(intervalMs, Math.max(0, deadline - Date.now())))
   }
 }
 
