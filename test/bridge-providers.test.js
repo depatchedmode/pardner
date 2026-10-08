@@ -8,6 +8,25 @@ import { BridgeProviders, bridgeProviders, codexBridgeProvider } from '../lib/br
 import { AgentBridge, bridgeConfig, runBridgeCommand } from '../lib/agent-bridge.js'
 import { CodexBridgeAdapter } from '../lib/codex-bridge-adapter.js'
 
+it('shutdown waits for all owners even after one close fails, and repeated stops share completion', async () => {
+  let finish, closed = 0
+  const pending = new Promise(resolve => { finish = resolve })
+  const source = Object.assign(new EventEmitter(), { close: () => pending })
+  const adapter = Object.assign(new EventEmitter(), { close() { closed++; throw new Error('close failed') } })
+  const states = []
+  const bridge = new AgentBridge({ config: { mappings: [{ actorId: 'builder' }] },
+    inbox: { status: (...value) => states.push(value) }, source, adapterFactory: () => adapter })
+  const stopping = bridge.stop()
+  assert.equal(bridge.stop(), stopping)
+  let settled = false
+  const result = assert.rejects(stopping, error => error instanceof AggregateError && error.errors[0].message === 'close failed')
+    .then(() => { settled = true })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(closed, 1); assert.equal(settled, false); assert.deepEqual(states, [])
+  finish(); await result
+  assert.deepEqual(states, [['bridge', 'stopped']])
+})
+
 const policy = { approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: { type: 'readOnly' } }
 async function fixture(run) {
   const root = await mkdtemp(join(tmpdir(), 'pardner-provider-'))
