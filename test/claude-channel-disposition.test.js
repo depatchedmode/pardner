@@ -11,6 +11,7 @@ import { ChannelLedger, startClaudeChannel } from '../lib/claude-channel-server.
 import { channelIdentity, ClaudeChannelAdapter } from '../lib/claude-channel-adapter.js'
 import { AgentBridge, runBridgeCommand, openBridgeInbox } from '../lib/agent-bridge.js'
 import { acquireStorageLease } from '../lib/storage-lease.js'
+import { bridgeProviders } from '../lib/bridge-providers.js'
 import { cli } from '../support/cli-resources.js'
 import { eventually } from '../support/bridge-rehearsal.js'
 
@@ -97,6 +98,13 @@ async function restartedBridge(s, mentions, run) {
       await client.close(); await server.close()
     }
   }
+}
+
+function originalRequest(s, flags) {
+  return { operationId: flags['operation-id'], deliveryId: flags.delivery, decision: 'abandon',
+    expectedRevision: flags['expected-revision'], evidence: flags.evidence, clientStopped: true,
+    binding: { ...channelIdentity(s.mapping), workspaceId: s.config.workspaceId, replicaId: s.config.replicaId,
+      dataDirectory: s.config.dataDirectory, inboxDirectory: s.config.inboxDirectory, route: bridgeProviders.route(s.mapping) } }
 }
 
 it('public offline abandonment retains both original records, survives restart and never resurrects receipt or execution', () => fixture(async s => {
@@ -291,6 +299,96 @@ it('a crash while releasing the inbox intent blocks bridge dispatch even after t
     assert.deepEqual(online.events.map(event => event.meta.delivery_id), [later.id])
   })
 }))
+
+for (const state of ['queued', 'dispatching']) {
+  for (const committed of ['channel-only', 'inbox-applied', 'channel-finalized']) {
+    it(`imports a legacy ${committed} journal before recovering ${state} evidence and preserves its exact operation`, () => fixture(async s => {
+      s.seed('delivery', state === 'dispatching' ? state : 'uncertain')
+      if (state === 'queued') await runBridgeCommand('reconcile', { config: s.path, delivery: 'delivery', decision: 'retry', evidence: 'Original legacy retry' })
+      const before = s.inbox.rows()[0], flags = s.options((await s.inspect()).revision)
+      const request = originalRequest(s, flags)
+      const decision = s.ledger.abandon('delivery', request, before)
+      if (committed !== 'channel-only') s.inbox.abandon('delivery', request, decision.prior.inbox)
+      if (committed === 'channel-finalized') s.ledger.finalizeDisposition(request.operationId)
+      const savedRow = s.inbox.rows()[0], savedAudit = s.inbox.disposition(request.operationId)
+      // Genuine old inbox schema: the journal predates the intent table entirely.
+      s.inbox.database.exec('DROP TABLE delivery_disposition_intents')
+      const later = { id: 'separate-delivery', taskId: 'task', commentId: 'separate-comment', toActorId: 'builder', fromActorId: 'alice' }
+      await restartedBridge(s, [later], async online => {
+        assert.deepEqual(online.inbox.rows().find(row => row.id === 'delivery'), savedRow)
+        const imported = online.inbox.dispositionIntentFor('delivery')
+        assert.deepEqual(imported.request, decision.request)
+        assert.deepEqual(imported.prior, decision.prior)
+        assert.equal(imported.recorded_at, decision.recorded_at)
+        if (committed === 'channel-finalized') {
+          assert.equal(imported.finalized, 1)
+          assert.equal(online.inbox.rows().find(row => row.id === later.id).state, 'accepted')
+          assert.deepEqual(online.events.map(event => event.meta.delivery_id), [later.id])
+        } else {
+          assert.equal(imported.finalized, 0)
+          assert.deepEqual(online.calls, [])
+          assert.equal(online.inbox.rows().find(row => row.id === later.id).state, 'queued')
+          assert.equal(online.bridge.states.builder, 'blocked: finalize abandonment with its original operation')
+        }
+      })
+      if (savedAudit) assert.deepEqual(s.inbox.disposition(request.operationId), savedAudit)
+      await runBridgeCommand('dispose', flags)
+      assert.deepEqual(s.inbox.disposition(request.operationId).prior, before)
+      assert.equal(s.inbox.pendingDispositions('builder').length, 0)
+      if (committed !== 'channel-finalized') await restartedBridge(s, [], async online => {
+        assert.equal(online.inbox.rows().find(row => row.id === later.id).state, 'accepted')
+        assert.deepEqual(online.events.map(event => event.meta.delivery_id), [later.id])
+      })
+    }))
+  }
+}
+
+for (const evidence of ['inbox', 'channel']) {
+  it(`imports the original legacy guard but preserves altered ${evidence} evidence and rejects stale retry`, () => fixture(async s => {
+    s.seed('delivery', 'dispatching')
+    const flags = s.options((await s.inspect()).revision), before = s.inbox.rows()[0]
+    const decision = s.ledger.abandon('delivery', originalRequest(s, flags), before)
+    if (evidence === 'inbox') s.inbox.database.prepare('UPDATE inbox SET reason = ? WHERE id = ?').run('Concurrent evidence retained', 'delivery')
+    else s.ledger.database.prepare('UPDATE deliveries SET receipt = ? WHERE id = ?').run('Concurrent receipt retained', 'delivery')
+    const changed = s.inbox.rows()[0], changedChannel = s.ledger.get('delivery')
+    s.inbox.database.exec('DROP TABLE delivery_disposition_intents')
+    await restartedBridge(s, [], async online => {
+      assert.deepEqual(online.inbox.rows()[0], changed)
+      assert.deepEqual({ ...online.server.ledger.get('delivery') }, { ...changedChannel })
+      assert.deepEqual(online.inbox.dispositionIntentFor('delivery').prior, decision.prior)
+      assert.deepEqual(online.calls, [])
+      assert.equal(online.bridge.states.builder, 'blocked: finalize abandonment with its original operation')
+    })
+    await assert.rejects(runBridgeCommand('dispose', flags), { code: 'STALE_DISPOSITION' })
+    assert.deepEqual(s.inbox.rows()[0], changed)
+    assert.deepEqual(s.ledger.get('delivery'), changedChannel)
+    assert.equal(s.inbox.pendingDispositions('builder').length, 1)
+  }))
+}
+
+for (const configuration of ['removed', 'switched-provider', 'disabled']) {
+  it(`imports a historical Claude journal when its current mapping is ${configuration} before generic recovery touches its evidence`, () => fixture(async s => {
+    s.seed('delivery', 'dispatching')
+    const before = s.inbox.rows()[0], flags = s.options((await s.inspect()).revision)
+    const decision = s.ledger.abandon('delivery', originalRequest(s, flags), before)
+    s.inbox.database.exec('DROP TABLE delivery_disposition_intents')
+    const originalMappings = s.config.mappings
+    if (configuration === 'removed') s.config.mappings = [{ ...s.mapping, actorId: 'reviewer', enabled: false }]
+    else if (configuration === 'switched-provider') s.config.mappings = [{ ...s.mapping, adapter: 'codex-app-server', enabled: false }]
+    else s.config.mappings = [{ ...s.mapping, enabled: false }]
+    try {
+      await restartedBridge(s, [], async online => {
+        assert.deepEqual(online.inbox.rows()[0], before)
+        assert.deepEqual(online.inbox.dispositionIntentFor('delivery').prior, decision.prior)
+        assert.equal(online.inbox.pendingDispositions('builder').length, 1)
+        assert.deepEqual(online.calls, [])
+        assert.deepEqual(online.events, [])
+      })
+    } finally { s.config.mappings = originalMappings }
+    await runBridgeCommand('dispose', flags)
+    assert.deepEqual(s.inbox.disposition('operator-decision').prior, before)
+  }))
+}
 
 it('rejects a reused operator ID across different Actors before writing the second channel decision', () => fixture(async s => {
   s.seed('delivery')
