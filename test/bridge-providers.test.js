@@ -27,6 +27,36 @@ it('shutdown waits for all owners even after one close fails, and repeated stops
   assert.deepEqual(states, [['bridge', 'stopped']])
 })
 
+it('stop waits for inbox recovery and never revives listeners, timers, or writes after storage closes', async () => {
+  let finish, enter, closed = false, recovered = 0, closes = 0
+  const gate = new Promise(resolve => { finish = resolve })
+  const entered = new Promise(resolve => { enter = resolve })
+  const states = []
+  const source = Object.assign(new EventEmitter(), { close() { closes++ }, verify() { throw new Error('Stopped source revived') } })
+  const adapter = Object.assign(new EventEmitter(), { close() { closes++ } })
+  const inbox = { rows: () => [], recover() { assert.equal(closed, false); recovered++ },
+    status(...state) { assert.equal(closed, false); states.push(state) } }
+  const providers = { async recoverInbox() { enter(); await gate; assert.equal(closed, false) } }
+  const bridge = new AgentBridge({ config: { mappings: [{ actorId: 'builder', adapter: 'fixture' }] },
+    inbox, source, providers, adapterFactory: () => adapter })
+  const starting = bridge.start()
+  await entered
+  assert.throws(() => bridge.start(), { code: 'INVALID_BRIDGE_STATE' })
+  let settled = false
+  const stopping = bridge.stop().then(() => { settled = true; closed = true })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(settled, false)
+  assert.equal(closes, 2)
+  finish(); await Promise.all([starting, stopping])
+  assert.equal(recovered, 0)
+  assert.deepEqual(states, [['bridge', 'stopped']])
+  assert.equal(source.listenerCount('change'), 0)
+  assert.equal(adapter.listenerCount('change'), 0)
+  assert.equal(bridge.timer, undefined)
+  await bridge.wake()
+  assert.deepEqual(states, [['bridge', 'stopped']])
+})
+
 const policy = { approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: { type: 'readOnly' } }
 async function fixture(run) {
   const root = await mkdtemp(join(tmpdir(), 'pardner-provider-'))
