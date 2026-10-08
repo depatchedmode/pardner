@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { BridgeProviders, bridgeProviders, codexBridgeProvider } from '../lib/bridge-providers.js'
 import { AgentBridge, bridgeConfig, runBridgeCommand } from '../lib/agent-bridge.js'
 import { CodexBridgeAdapter } from '../lib/codex-bridge-adapter.js'
+import { acquireStorageLease } from '../lib/storage-lease.js'
 
 it('shutdown waits for all owners even after one close fails, and repeated stops share completion', async () => {
   let finish, closed = 0
@@ -27,6 +28,36 @@ it('shutdown waits for all owners even after one close fails, and repeated stops
   assert.deepEqual(states, [['bridge', 'stopped']])
 })
 
+it('stop waits for inbox recovery and never revives listeners, timers, or writes after storage closes', async () => {
+  let finish, enter, closed = false, recovered = 0, closes = 0
+  const gate = new Promise(resolve => { finish = resolve })
+  const entered = new Promise(resolve => { enter = resolve })
+  const states = []
+  const source = Object.assign(new EventEmitter(), { close() { closes++ }, verify() { throw new Error('Stopped source revived') } })
+  const adapter = Object.assign(new EventEmitter(), { close() { closes++ } })
+  const inbox = { rows: () => [], recover() { assert.equal(closed, false); recovered++ },
+    status(...state) { assert.equal(closed, false); states.push(state) } }
+  const providers = { async recoverInbox() { enter(); await gate; assert.equal(closed, false) } }
+  const bridge = new AgentBridge({ config: { mappings: [{ actorId: 'builder', adapter: 'fixture' }] },
+    inbox, source, providers, adapterFactory: () => adapter })
+  const starting = bridge.start()
+  await entered
+  assert.throws(() => bridge.start(), { code: 'INVALID_BRIDGE_STATE' })
+  let settled = false
+  const stopping = bridge.stop().then(() => { settled = true; closed = true })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(settled, false)
+  assert.equal(closes, 2)
+  finish(); await Promise.all([starting, stopping])
+  assert.equal(recovered, 0)
+  assert.deepEqual(states, [['bridge', 'stopped']])
+  assert.equal(source.listenerCount('change'), 0)
+  assert.equal(adapter.listenerCount('change'), 0)
+  assert.equal(bridge.timer, undefined)
+  await bridge.wake()
+  assert.deepEqual(states, [['bridge', 'stopped']])
+})
+
 const policy = { approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: { type: 'readOnly' } }
 async function fixture(run) {
   const root = await mkdtemp(join(tmpdir(), 'pardner-provider-'))
@@ -39,6 +70,17 @@ async function fixture(run) {
   try { await save(); await run({ root, path, mapping, config, save }) }
   finally { await rm(root, { recursive: true, force: true }) }
 }
+
+it('public bridge startup preserves a recovery guard error and releases ownership after clean shutdown', () => fixture(async ({ path, config }) => {
+  let closes = 0
+  const adapter = Object.assign(new EventEmitter(), { close() { closes++ } })
+  const providers = new BridgeProviders([{ ...codexBridgeProvider, create: () => adapter,
+    recoverInbox() { throw Object.assign(new Error('Original disposition binding changed'), { code: 'CHANNEL_BINDING_CHANGED' }) } }])
+  await assert.rejects(runBridgeCommand('run', { config: path }, { providers }), { code: 'CHANNEL_BINDING_CHANGED' })
+  assert.equal(closes, 1)
+  const lease = await acquireStorageLease(config.inboxDirectory)
+  lease.close()
+}))
 
 it('normalizes legacy Codex mappings identically and selects the real Codex factory', () => fixture(async ({ path, mapping }) => {
   const config = await bridgeConfig(path)

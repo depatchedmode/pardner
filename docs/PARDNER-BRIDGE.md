@@ -6,10 +6,10 @@ then starts authorized work in a dedicated Codex App Server thread. Each host
 runs its own bridge against its own replica. Checking for work makes no model
 requests.
 
-The first adapter supports existing **bridge-owned Codex App Server threads**.
-It does not attach to arbitrary Codex Desktop tasks, Claude sessions, or Cursor
-editor chats. One bridge must be the sole dispatcher for each mapped session;
-stop any other client driving that thread.
+The original adapter supports existing **bridge-owned Codex App Server threads**.
+This branch also registers an explicit [Claude Code channel](PARDNER-CLAUDE-CHANNEL.md).
+Each provider has different inspection and receipt guarantees. One bridge must
+be the sole dispatcher for each mapped session; stop any other client driving it.
 
 ## Setup
 
@@ -89,7 +89,7 @@ deliveries remain visibly queued while other authorized deliveries can proceed.
 ## Delivery and recovery
 
 Provider selection uses the code-defined registry in `lib/bridge-providers.js`.
-Only `codex-app-server` is implemented in this foundation. Existing private
+This branch implements `codex-app-server` and `claude-code-channel`. Existing private
 Codex configurations and the inspection command above keep their shape and
 behavior. Inspection may also explicitly select `--adapter codex-app-server`,
 or inspect a configured mapping with `pardner bridge inspect --config PATH
@@ -103,7 +103,7 @@ blocks queued or uncertain work rather than redirecting it. Provider IDs are
 not module paths; private configuration cannot load code. Session IDs remain
 unique across all mappings. Completion cleanup requires the provider to declare
 actual session-discovery and archive support. This boundary does not grant
-Claude/Cursor functionality or make the Codex qualification runner generic.
+provider equivalence or make the Codex qualification runner generic.
 
 Document subscriptions provide immediate hints. A one-second local HTTP catch-up
 checks for missed notifications and expired leases, without calling a model.
@@ -125,17 +125,21 @@ the waiting row and its reason so later replica synchronization can release it.
 Busy sessions, approvals, and uncertain dispatch still block that Actor's dispatch.
 
 Deliveries progress through `queued → dispatching → accepted`. Busy sessions retain
-queued work. `accepted` means the harness returned a turn ID or matching history
-established acceptance, not that the task succeeded. Pending approvals and input
-requests are reported as blocked and never auto-answered. Resolve them through
-the harness's approval/input client; this adapter supplies no approval UI. The
-bridge passes no model, directory, or permission overrides when resuming or
-starting a turn, and refuses a resumed policy that differs from `expectedPolicy`.
+queued work. `accepted` means the selected provider returned an observed receipt,
+not that the task succeeded. Codex supplies a native turn ID or matching native
+history. Claude supplies a persisted cooperative channel-tool receipt; it does
+not independently attest native session policy, busy state or acceptance.
+Permissions and input are never auto-answered. Codex reports observed pending
+requests as blocked; Claude retains local provider dialogs without a relay or
+approval UI. No model or permission overrides are sent. Codex validates the
+native directory and full expected policy; Claude's narrower local binding and
+explicit unavailable-policy contract are described in its runbook.
 
 Before dispatch, the exact prompt is persisted. Lost replies and crashes during
-dispatch produce `uncertain`. Recovery checks stored history for an exact matching
-user message in one turn. Missing, compacted, truncated, or ambiguous history does
-not prove non-acceptance. Further dispatch for that Actor waits for reconciliation.
+dispatch produce `uncertain`. Codex recovery checks stored history for an exact
+matching user message in one turn. Claude checks its durable full-prompt ledger
+for an explicit agent receipt. Missing or ambiguous evidence does not prove
+non-acceptance. Further dispatch for that Actor waits for reconciliation.
 A disconnected harness may leave execution state unobserved; its durable dispatch
 receipt remains valid.
 
@@ -231,8 +235,9 @@ Issue #50 remains the umbrella for these implementation follow-ups:
 
 - **Codex Desktop:** qualify a supported connection to Desktop-owned tasks,
   including approvals and ownership. This adapter does not establish compatibility.
-- **Claude Code Channels:** verify feature availability, notify an open authorized
-  session, report a closed session as unavailable, and qualify receipt/retry behavior.
+- **Claude Code Channels:** the local channel implements a private binding and
+  cooperative receipt recovery. Native wake/reply and interactive channel opt-in
+  remain unqualified; see its runbook before approved setup.
 - **Cursor ACP:** load an explicitly mapped ACP session, preserve permission and
   busy states, and reconcile uncertain prompts. Do not assume control of arbitrary
   editor chats.
