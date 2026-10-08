@@ -4,8 +4,35 @@ import { once } from 'node:events'
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import WebSocket, { WebSocketServer } from 'ws'
 import { HarnessProxy, createWorktrees, auditThreeAgentWorktree, deliveryTiming, startProcess, eventually, execute } from '../support/bridge-rehearsal.js'
+
+it('rejects and aborts a successful observation arriving after its deadline', async () => {
+  let signal
+  await assert.rejects(eventually(async received => {
+    signal = received
+    await delay(101)
+    return 'late success'
+  }, { timeoutMs: 30, label: 'late observation' }), /Timed out waiting for late observation/)
+  assert.equal(signal.aborted, true)
+})
+
+it('does not start an expired observation or retry after its interval consumes the budget', async () => {
+  let calls = 0
+  const check = () => { calls++; return false }
+  await assert.rejects(eventually(check, { timeoutMs: 0 }), /Timed out/)
+  assert.equal(calls, 0)
+  await assert.rejects(eventually(check, { timeoutMs: 30, intervalMs: 100 }), /Timed out/)
+  assert.equal(calls, 1)
+})
+
+it('bounds a never-settling observation and preserves one deadline across workflow phases', async () => {
+  await assert.rejects(eventually(() => new Promise(() => {}), { timeoutMs: 30 }), /Timed out/)
+  const deadline = Date.now() + 150
+  assert.equal(await eventually(async () => { await delay(60); return 'first phase' }, { deadline }), 'first phase')
+  await assert.rejects(eventually(async () => { await delay(150); return 'final inspection' }, { deadline }), /Timed out/)
+})
 
 it('creates separate real Git worktrees whose files are independent', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pardner-rehearsal-trees-'))

@@ -8,7 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { CodexBridgeAdapter } from '../lib/codex-bridge-adapter.js'
 import { candidateFingerprint } from '../support/acceptance/candidate.js'
 import { availablePort, startProcess, eventually, execute, freezeCandidate, createWorktrees, auditThreeAgentWorktree, deliveryTiming, requirements, HarnessProxy, sha256 } from '../support/bridge-rehearsal.js'
-import { reviewRound, collectReviews, nextReviewAction, submitOnce, reviewerActors, remainingModelTime, readWithinConvergence } from '../support/three-agent-review.js'
+import { reviewRound, collectReviews, nextReviewAction, submitOnce, reviewerActors, readWithinConvergence } from '../support/three-agent-review.js'
 
 const args = process.argv.slice(2)
 const usage = 'node scripts/bridge-three-agent-rehearsal.js --check|--run [--codex /path/to/codex] [--drop-dispatch-reply]'
@@ -318,7 +318,7 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
       if (!finalContext) return false
       const reviewA = await cli(['show', report.reviewTaskIds['reviewer-a'], '--actor', 'coordinator'])
       return messages(reviewA).some(message => message.kind === 'busy-result' && message.recordedActor === 'reviewer-a')
-    }, { timeoutMs: bounds.modelWorkflowMs, intervalMs: 1000, label: 'automatic three-agent workflow' })
+    }, { deadline: modelDeadline, intervalMs: 1000, label: 'automatic three-agent workflow' })
     await recovery
     assert.equal(finalContext.parent.task.status, 'review'); assert.equal(finalContext.parent.task.assignee, 'human')
     assert.equal(rounds.length, 2); assert.notEqual(rounds[0].commitSha, rounds[1].commitSha)
@@ -336,7 +336,7 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
       const failed = threads.flatMap(thread => thread.turns).find(turn => ['failed', 'interrupted'].includes(turn.status))
       assert.ok(!failed, 'A real model acknowledgment failed or was interrupted')
       return threads.every(thread => thread.status.type === 'idle')
-    }, { timeoutMs: remainingModelTime(modelDeadline), intervalMs: 1000, label: 'all model acknowledgments completed within the declared workflow budget' })
+    }, { deadline: modelDeadline, intervalMs: 1000, label: 'all model acknowledgments completed within the declared workflow budget' })
     // Independently rerun every agent's own tests and stronger external assertions.
     const external = `import assert from 'node:assert/strict'; const {selectReadyTasks,challenge}=await import(process.argv[2]);
 assert.equal(challenge,${JSON.stringify(challenge)}); const tasks=[
