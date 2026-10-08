@@ -47,3 +47,37 @@ archived, or worktrees moved/deleted. The probe's processes were stopped while
 the session and private evidence were retained. Human approval UI, three-agent
 execution on this foundation, other providers, and separate-machine behavior
 remain unqualified. Raw histories, inboxes and runtime configuration are private.
+
+## October 8 shutdown repair
+
+Follow-up review found that provider inspection and `AgentBridge.stop()` discarded
+an asynchronous adapter `close()` result. The shared callers now wait for process
+ownership to end before returning. Shutdown starts every close, waits for all
+owners and pending work even if one close fails, and shares one completion
+promise across repeated stops. Failed startup also completes bridge cleanup
+before releasing the inbox lease.
+
+The repair propagates the deadline changes from #70 through the existing stack
+using merges, preserving the original published commits. The root focused bridge
+run passed **26/26** tests. Independent review passed **29/29** focused checks and
+verified pending-job shutdown, close failures, repeat stops, and failed-startup
+lease retention. Real Cursor fixture probes on the dependent branch confirmed
+ownership through an 800 ms delayed exit and the one-second forced-stop fallback;
+replacement could begin only after the old process exited. No findings remained.
+
+Node **24.11.1**, source at `fdc5282d` and fingerprint
+`59d310fc706946024ce570cd2df46c220958e417d0c4a957e561434648663227`
+passed `npm run verify -- --local-ack-ms 10000`: production build, **308/308**
+default parallel tests with no skips/cancellations, and complete seed-1 acceptance.
+All **719** acknowledged operations were independently checked on each of three
+replicas with matching snapshot hashes. Maximum acknowledgment was **329 ms**
+against the declared 10,000 ms budget. Independent acceptance-component checks
+also passed **5/5**, preserving the distinct 2,000 ms default and explicit override.
+Repeatable performance at the default remains unqualified.
+
+The [deadline repair addendum](PARDNER-66-QUALIFICATION.md#october-8-deadline-repair)
+records the local browser dependency recovery used for this run. No browser
+assertion was skipped or weakened. The prior #71 one-session native wake/reply
+follow-up is historical evidence; no native or mixed-provider run qualifies this
+updated head. This work performs no sign-in, persistent access change, merge into
+main, or deployment. Existing drafts remain drafts.
