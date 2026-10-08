@@ -7,10 +7,13 @@ const update = (sessionId, value) => send({ jsonrpc: '2.0', method: 'session/upd
 const respond = (id, result) => send({ jsonrpc: '2.0', id, result })
 const exitedPids = () => existsSync('exits.jsonl') ? readFileSync('exits.jsonl', 'utf8').trim().split('\n').map(line => JSON.parse(line).pid) : []
 appendFileSync('starts.jsonl', JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2), pid: process.pid, priorExitedPids: exitedPids() }) + '\n')
-if (config.termDelayMs) process.on('SIGTERM', () => setTimeout(() => {
-  appendFileSync('exits.jsonl', JSON.stringify({ pid: process.pid }) + '\n')
-  process.exit(0)
-}, config.termDelayMs))
+if (config.termDelayMs) process.on('SIGTERM', () => {
+  appendFileSync('terminations.jsonl', JSON.stringify({ pid: process.pid }) + '\n')
+  setTimeout(() => {
+    appendFileSync('exits.jsonl', JSON.stringify({ pid: process.pid }) + '\n')
+    process.exit(0)
+  }, config.termDelayMs)
+})
 createInterface({ input: process.stdin }).on('line', line => {
   const message = JSON.parse(line)
   appendFileSync('calls.jsonl', line + '\n')
