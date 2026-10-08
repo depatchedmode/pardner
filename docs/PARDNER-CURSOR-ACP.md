@@ -169,3 +169,35 @@ by the complete canonical pass above without source or deadline changes.
 The earlier failure is retained; its cause and repeatability remain unresolved.
 Neither fixture verification nor the observed initialize-only handshake qualifies
 native session loading, model reply or automatic three-provider execution.
+
+## October 8 ownership repair
+
+Follow-up review reproduced an 800 ms delayed ACP exit allowing bridge shutdown
+or inspection to return while the old process still owned the session. The
+Cursor adapter already returned a process-exit promise; its shared callers now
+await it through the #71 repair. No Cursor adapter production change was needed.
+
+Five new real-process fault regressions failed on the original source and passed
+after the fix. They cover bridge lease handoff and direct/configured inspection,
+on success and inspection failure. The fixture records receipt of SIGTERM, proves
+the child is still alive and replacement is blocked, then confirms the old process
+has exited before a new owner can start. The focused bridge run passed **79/79**,
+including **39/39** Cursor tests. Independent review reran the Cursor suite and
+tested the actual command shutdown wrapper with both delayed exit and forced-stop
+fallback. No findings remained.
+
+Node **24.11.1**, source at `0be48880` and fingerprint
+`ea807f2859851b7b7fc20a03f48cc2b9e87d3ad0140240e23c89d9a2d85f2189`
+passed `npm run verify -- --local-ack-ms 10000`: production build, **347/347**
+default parallel tests with no skips/cancellations, and complete seed-1 acceptance.
+All **719** acknowledged operations were checked on each of three replicas with
+matching snapshot hashes. Maximum acknowledgment was **394 ms** against the
+declared 10,000 ms budget. The default remains 2,000 ms, and repeatable performance
+at that default is unqualified. Shared deadline fixes from #70 are also included.
+
+The [browser recovery record](PARDNER-66-QUALIFICATION.md#october-8-deadline-repair)
+applies to this run; actual Chromium and WebKit regressions passed. Native Cursor
+load/model/replay and mixed-provider execution were not run on the repaired head.
+Earlier native evidence remains historical. The original published commit and
+draft branch are preserved, with no native sign-in, persistent access change,
+merge into main or deployment.
