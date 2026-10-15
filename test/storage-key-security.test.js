@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Repo } from '@automerge/automerge-repo'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
 
 const invalidComponents = [
@@ -85,6 +86,37 @@ describe('storage key containment', () => {
       assert.deepEqual(await adapter.load(neighbor), new Uint8Array([2]))
       await adapter.remove(neighbor)
       assert.equal(await new NodeFSStorageAdapter(directory).load(neighbor), undefined)
+    })
+  })
+
+  it('loads documents whose chunk directories hold foreign files', async () => {
+    await withStorage(async directory => {
+      // Repo saves its storage ID in the background; settle it before the directory is removed.
+      const writer = new Repo({ storage: new NodeFSStorageAdapter(directory), network: [] })
+      await writer.storageId()
+      const handle = writer.create({ count: 1 })
+      handle.change(doc => { doc.count = 2 })
+      await writer.flush()
+      await writer.shutdown()
+      const documentDirectory = join(directory, handle.documentId.slice(0, 2), handle.documentId.slice(2))
+      for (const kind of await fs.readdir(documentDirectory)) {
+        // Thumbs.db sorts before hex chunk names, so Automerge would parse it first.
+        for (const name of ['.DS_Store', 'Thumbs.db', '4913', 'chunk~', 'notes.txt.swp']) {
+          await fs.writeFile(join(documentDirectory, kind, name), 'not an Automerge chunk')
+        }
+      }
+      const adapter = new NodeFSStorageAdapter(directory)
+      const chunks = await adapter.loadRange([handle.documentId])
+      assert.ok(chunks.length > 0)
+      assert.ok(chunks.every(({ key }) => /^[0-9a-f]{64}$/.test(key[2])))
+      const reader = new Repo({ storage: adapter, network: [] })
+      await reader.storageId()
+      try {
+        assert.deepEqual((await reader.find(handle.documentId)).doc(), { count: 2 })
+      } finally {
+        await reader.flush()
+        await reader.shutdown()
+      }
     })
   })
 
