@@ -99,3 +99,27 @@ it('valid peers still synchronize and persist decodable sync state in the existi
     }
   })
 })
+
+it('replicas refuse unsafe storage metadata from the hub without a storage error', { timeout: 15000 }, async () => {
+  await withWorkspaceServer(async ({ server, create, directory }) => {
+    const replicaDirectory = join(directory, 'replica')
+    const peer = new WorkspaceRuntime({ directory: replicaDirectory, role: 'replica',
+      hubUrl: `http://127.0.0.1:${server.httpPort}`, hubWsUrl: `ws://127.0.0.1:${server.wsPort}/automerge`,
+      token: 'test-token', retryMs: 100 })
+    try {
+      await peer.init()
+      await waitFor(() => peer.status().hubConnected)
+      server.automergeWsAdapter.peerMetadata = { storageId: '../../../../escaped', isEphemeral: false }
+      for (const socket of server.nativeWsServer.clients) socket.terminate()
+      await waitFor(() => peer.status().syncError === 'Hub sent invalid peer storage metadata')
+      const taskId = await create({ title: 'Hostile hub' })
+      await new Promise(resolve => setTimeout(resolve, 500))
+      assert.equal(peer.workspace.handle.doc().tasks[taskId], undefined)
+      assert.equal(peer.status().hubConnected, false)
+      assert.equal(peer.status().storageError, null)
+      await assert.rejects(fs.stat(join(replicaDirectory, 'escaped')), { code: 'ENOENT' })
+    } finally {
+      await peer.close()
+    }
+  })
+})
