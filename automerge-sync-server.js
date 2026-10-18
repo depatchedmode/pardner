@@ -8,7 +8,7 @@
  */
 
 import { WebSocketServer } from 'ws'
-import { WebSocketServerAdapter } from '@automerge/automerge-repo-network-websocket'
+import { ValidatedWebSocketServerAdapter } from './lib/validated-websocket-server-adapter.js'
 import { WorkspaceRuntime } from './lib/workspace-runtime.js'
 import express from 'express'
 import crypto from 'crypto'
@@ -623,7 +623,7 @@ class AutomergeSyncServer {
   setupWebSocketServer() {
     this.wssJson = new WebSocketServer({ noServer: true })
     this.nativeWsServer = new WebSocketServer({ noServer: true })
-    this.automergeWsAdapter = new WebSocketServerAdapter(this.nativeWsServer)
+    this.automergeWsAdapter = new ValidatedWebSocketServerAdapter(this.nativeWsServer)
 
     this.wsRequestHandler = (req, res) => {
       const origin = req.headers.origin
