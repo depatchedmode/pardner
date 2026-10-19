@@ -1,3 +1,4 @@
+import { replicaOptions, replicaCredentials } from '../support/replica-credentials.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -23,8 +24,8 @@ async function eventually(check) {
 }
 function service(directory, options = {}) {
   const { hubUrl, hubWsUrl, ...serverOptions } = options
-  return new AutomergeSyncServer({
-    store: new WorkspaceRuntime({ directory, role: hubUrl ? 'replica' : 'hub', hubUrl, hubWsUrl, token, actors, retryMs: 100 }),
+  return new AutomergeSyncServer({ replicaCredentials,
+    store: new WorkspaceRuntime({ ...replicaOptions, directory, role: hubUrl ? 'replica' : 'hub', hubUrl, hubWsUrl, token, actors, retryMs: 100 }),
     env: {}, apiToken: token, httpPort: 0, wsPort: 0, logger: {}, ...serverOptions,
   })
 }
@@ -80,8 +81,8 @@ it('persists public operations, opens offline, and reconnects the same workspace
 
 it('rejects a second directory owner and releases ownership on close', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-owner-'))
-  const first = new WorkspaceRuntime({ directory, actors })
-  const second = new WorkspaceRuntime({ directory, actors })
+  const first = new WorkspaceRuntime({ ...replicaOptions, directory, actors })
+  const second = new WorkspaceRuntime({ ...replicaOptions, directory, actors })
   try {
     await first.init()
     await assert.rejects(second.init(), { code: 'STORAGE_IN_USE' })
@@ -160,7 +161,7 @@ it('does not let a delayed hub acknowledgement clear newer local work', async ()
   let release
   try {
     await hub.start()
-    replica = new WorkspaceRuntime({ directory: join(root, 'replica'), role: 'replica', token,
+    replica = new WorkspaceRuntime({ ...replicaOptions, directory: join(root, 'replica'), role: 'replica', token,
       hubUrl: `http://127.0.0.1:${hub.httpPort}`, hubWsUrl: `ws://127.0.0.1:${hub.wsPort}/automerge` })
     await replica.init()
     assert.equal((await replica.claimDelivery({ actorId: 'builder', requestId: randomUUID() })).claimed, false)
@@ -202,7 +203,7 @@ it('broadcasts native replica changes to every UI subscriber and rejects JSON mu
   })
   try {
     await hub.start()
-    replica = new WorkspaceRuntime({ directory: join(root, 'replica'), role: 'replica', token, retryMs: 100,
+    replica = new WorkspaceRuntime({ ...replicaOptions, directory: join(root, 'replica'), role: 'replica', token, retryMs: 100,
       hubUrl: `http://127.0.0.1:${hub.httpPort}`, hubWsUrl: `ws://127.0.0.1:${hub.wsPort}/automerge` })
     await replica.init()
     await eventually(() => !replica.status().syncPending)

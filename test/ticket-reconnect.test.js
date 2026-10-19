@@ -10,7 +10,7 @@ import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
 import { TicketNetworkAdapter } from '../lib/ticket-network-adapter.js'
 import {
   withStartedServer, createTask, createTempDir, cleanupTempDir,
-  mintWsTicket, nativeAutomergeWsUrl, waitFor,
+  mintReplicaTicket, nativeAutomergeWsUrl, waitFor,
 } from '../support/resources.js'
 
 it('renews its ticket after a stalled handshake and connects without restarting', { timeout: 5000 }, async () => {
@@ -81,7 +81,7 @@ it('native transport mints fresh tickets after repeated disconnects without recr
     const taskId = await createTask(server)
     const tickets = []
     const adapter = new TicketNetworkAdapter({ retryMs: 30, getUrl: async () => {
-      const ticket = await mintWsTicket(server)
+      const ticket = await mintReplicaTicket(server)
       tickets.push(ticket)
       return nativeAutomergeWsUrl(server, { ticket })
     } })
