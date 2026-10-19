@@ -106,6 +106,16 @@ its role, addresses, and credentials are then remembered locally. The hub defaul
 to loopback and must explicitly bind the intended interface for remote machines.
 See the [service and CLI guide](docs/PARDNER-CLI.md) for complete examples.
 
+## UI development
+
+Run `npm run dev --prefix ui-prototype` and open
+`http://127.0.0.1:5174/pardner/`. The development server is loopback-only and
+serves files only from `ui-prototype`; workspace state in `.pardner` is denied.
+Keep runtime data outside `ui-prototype`, including its `public` directory.
+Do not expose this development server with `--host`: its API and WebSocket
+proxies reach the local service. For companion devices, use the built UI and
+the service's explicit LAN access flow described above.
+
 ## Coordination commands
 
 | Task | Command |
