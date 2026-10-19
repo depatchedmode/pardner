@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { fork } from 'node:child_process'
 import { once } from 'node:events'
+import { connect } from 'node:net'
 import { WebSocket } from 'ws'
 import { setTimeout as delay } from 'node:timers/promises'
 import AutomergeSyncServer from '../automerge-sync-server.js'
@@ -153,7 +154,7 @@ it('recovers acknowledged public operations after SIGKILL and releases the proce
   }
 })
 
-it('does not let a delayed hub acknowledgement clear newer local work', async () => {
+it('does not let a delayed hub acknowledgement clear newer local work', { timeout: 15000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'pardner-ack-'))
   const hub = service(join(root, 'hub'))
   let replica
@@ -164,7 +165,8 @@ it('does not let a delayed hub acknowledgement clear newer local work', async ()
       hubUrl: `http://127.0.0.1:${hub.httpPort}`, hubWsUrl: `ws://127.0.0.1:${hub.wsPort}/automerge` })
     await replica.init()
     assert.equal((await replica.claimDelivery({ actorId: 'builder', requestId: randomUUID() })).claimed, false)
-    await eventually(() => !replica.status().syncPending)
+    // Install the interceptor only after the background acknowledgement has finished.
+    await eventually(() => !replica.status().syncPending && !replica.syncing)
     const requestHub = replica.requestHub.bind(replica)
     let received
     const pending = new Promise(resolve => { received = resolve })
@@ -285,6 +287,51 @@ it('preserves human and agent alternatives across an offline partition and conve
   } finally {
     for (const replica of replicas) await replica.stop()
     await hub?.stop()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+it('drains accepted HTTP work and rejects pipelined requests during shutdown', { timeout: 15000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-drain-'))
+  const hub = service(join(root, 'hub'))
+  let socket
+  let stopping
+  let release
+  try {
+    await hub.start()
+    let entered
+    const accepted = new Promise(resolve => { entered = resolve })
+    const gate = new Promise(resolve => { release = resolve })
+    hub.app.get('/test-drain', async (_req, res) => {
+      entered()
+      await gate
+      res.json({ accepted: true })
+    })
+    socket = connect(hub.httpPort, '127.0.0.1')
+    let response = ''
+    socket.on('data', bytes => { response += bytes.toString() })
+    const closed = once(socket, 'close')
+    await once(socket, 'connect')
+    const request = path => `GET ${path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer ${token}\r\nConnection: keep-alive\r\n\r\n`
+    socket.write(request('/test-drain'))
+    await accepted
+    stopping = hub.stop()
+    const nextRequest = once(hub.httpServer, 'request')
+    socket.write(request('/automerge/url'))
+    await nextRequest
+    release()
+    await eventually(() => (response.match(/HTTP\/1\.1/g) ?? []).length === 2)
+    assert.match(response, /HTTP\/1\.1 200 OK/)
+    assert.match(response, /"accepted":true/)
+    assert.match(response, /HTTP\/1\.1 503 Service Unavailable/)
+    assert.match(response, /Connection: close/i)
+    assert.match(response, /SERVICE_STOPPING/)
+    await closed
+    await stopping
+  } finally {
+    release?.()
+    socket?.destroy()
+    await (stopping ?? hub.stop())
     await rm(root, { recursive: true, force: true })
   }
 })

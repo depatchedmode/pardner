@@ -9,7 +9,7 @@ import { cli, startCliService } from '../support/cli-resources.js'
 for (const uuidAvailable of [true, false]) it(
   `uses shared browser operations with crypto.randomUUID ${uuidAvailable ? 'available' : 'unavailable'}`,
   { timeout: 60000 },
-  async () => {
+  async t => {
     const directory = await mkdtemp(join(tmpdir(), 'pardner-ui-'))
     const service = await startCliService(directory)
     let browser
@@ -19,6 +19,11 @@ for (const uuidAvailable of [true, false]) it(
       assert.equal(output.code, 0, output.stdout + output.stderr)
       return output.result
     }
+    t.after(async () => {
+      await browser?.close()
+      await service.stop()
+      await rm(directory, { recursive: true, force: true })
+    }, { timeout: 60000 })
     try {
       for (const [id, kind] of [
         ['alice', 'human'],
@@ -179,7 +184,7 @@ for (const uuidAvailable of [true, false]) it(
       await alice.getByLabel('Actor', { exact: true }).selectOption('bob')
       await alice.getByLabel('Comment', { exact: true }).fill('New request after correcting the Actor')
       await alice.getByRole('button', { name: 'Add comment', exact: true }).click()
-      await alice.getByText('New request after correcting the Actor', { exact: true }).waitFor()
+      await alice.locator('article.comment').getByText('New request after correcting the Actor', { exact: true }).waitFor()
       assert.equal((await run(['show', taskId])).comments.find(comment => comment.content === 'New request after correcting the Actor').actorId, 'bob')
       await alice.getByLabel('Actor', { exact: true }).selectOption('alice')
 
@@ -268,10 +273,6 @@ for (const uuidAvailable of [true, false]) it(
       }
       console.error(errors)
       throw error
-    } finally {
-      await browser?.close()
-      await service.stop()
-      await rm(directory, { recursive: true, force: true })
     }
   },
 )
