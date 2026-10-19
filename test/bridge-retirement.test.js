@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { BridgeInbox } from '../lib/bridge-inbox.js'
-import { retireCompletedBridge, planWorktreeArchive, moveArchivedWorktree } from '../lib/bridge-retirement.js'
+import { approveBridgeCleanup, retireCompletedBridge, planWorktreeArchive, moveArchivedWorktree } from '../lib/bridge-retirement.js'
 import { createWorktrees } from '../support/bridge-rehearsal.js'
 
 async function fixture(run) {
@@ -35,7 +35,12 @@ async function fixture(run) {
       await state.afterMove?.(plan)
     },
   }
-  state.tick = () => retireCompletedBridge(bridge, dependencies)
+  state.retire = () => retireCompletedBridge(bridge, dependencies)
+  state.approve = () => approveBridgeCleanup(bridge)
+  state.tick = async () => {
+    await state.approve().catch(error => { if (error.code !== 'CLEANUP_NOT_ELIGIBLE') throw error })
+    return state.retire()
+  }
   state.inbox = inbox
   state.bridge = bridge
   try { await run(state) } finally { inbox.close(); await rm(root, { recursive: true, force: true }) }
@@ -228,3 +233,59 @@ it('a restored mapped thread blocks a partial retirement without resuming or rea
   assert.deepEqual(state.moved, [])
   assert.equal(state.inbox.retirement().state, 'archiving')
 }))
+
+
+it('closed shared tasks alone cannot authorize cleanup, including legacy retirement records', () => fixture(async state => {
+  await state.retire()
+  assert.deepEqual(state.archived, [])
+  assert.deepEqual(state.plans, [])
+  assert.equal(state.inbox.retirement(), null)
+  await state.approve()
+  state.failMove = true
+  await assert.rejects(state.retire(), /disk unavailable/)
+  state.inbox.revokeCleanupApproval()
+  state.failMove = false
+  await state.retire()
+  assert.deepEqual(state.moved, [])
+  assert.equal(state.inbox.retirement().state, 'archiving')
+}))
+
+for (const boundary of ['builder', 'reviewer', 'move']) {
+  it(`rechecks local approval after ${boundary} and permits an explicitly approved retry`, () => fixture(async state => {
+    state.bridge.config.mappings[1].worktree = '/reviewer-fixture'
+    await state.approve()
+    state.afterArchive = mapping => {
+      if (mapping.actorId === boundary) state.inbox.revokeCleanupApproval()
+    }
+    state.afterMove = () => { if (boundary === 'move') state.inbox.revokeCleanupApproval() }
+    await state.retire()
+    assert.equal(state.archived.length, boundary === 'builder' ? 1 : 2)
+    assert.equal(state.moved.length, boundary === 'move' ? 1 : 0)
+    state.afterArchive = null; state.afterMove = null
+    await state.approve()
+    await state.retire()
+    assert.equal(state.inbox.retirement().state, 'archived')
+  }))
+}
+
+for (const change of ['owner', 'workspace', 'replica', 'mapping', 'destination', 'task revision', 'new branch']) {
+  it(`rejects approval after a change to ${change}`, () => fixture(async state => {
+    const source = state.bridge.source
+    source.context = async ({ taskId }) => ({ task: { status: state.tasks[taskId] }, revisions: { status: [state.revision ?? 'first'] } })
+    await state.approve()
+    if (change === 'owner') state.inbox.saveCleanupApproval({ ...state.inbox.cleanupApproval(), ownerUid: process.getuid() + 1 })
+    if (change === 'workspace') state.bridge.config.workspaceId = 'other'
+    if (change === 'replica') state.bridge.config.replicaId = 'other'
+    if (change === 'mapping') state.bridge.config.mappings[0].threadId = 'other'
+    if (change === 'destination') state.bridge.config.completionCleanup.archiveDirectory += '-other'
+    if (change === 'task revision') state.revision = 'reclosed-by-shared-writer'
+    if (change === 'new branch') {
+      state.branches = { child: { id: 'child', branch_of: 'one' } }
+      state.tasks.child = 'completed'
+    }
+    await state.retire()
+    assert.deepEqual(state.archived, [])
+    assert.deepEqual(state.moved, [])
+    assert.equal(state.inbox.retirement(), null)
+  }))
+}

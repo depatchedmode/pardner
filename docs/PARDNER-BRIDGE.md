@@ -148,6 +148,34 @@ For a dedicated group of related work, add this to its bridge configuration:
 "completionCleanup": { "archiveDirectory": "/absolute/path/to/archived-worktrees" }
 ```
 
+Task closure alone never authorizes archival or worktree movement. After reviewing
+completed work, stop the bridge and approve cleanup locally as the OS user who
+runs the bridge:
+
+```bash
+pardner bridge approve-cleanup --config /absolute/path/bridge.json
+pardner bridge run --config /absolute/path/bridge.json
+```
+
+Approval requires closed, conflict-free tasks and drained deliveries/claims. It
+is stored durably in the private local bridge inbox, outside the synchronized
+workspace, bound to the OS user, workspace, replica, mappings, archive destination,
+and task contents and field revisions. A shared workspace token or Actor identity
+cannot grant this approval. Local processes with access to the bridge owner's
+files remain trusted. Keep the inbox outside mapped worktrees and outside agent
+writable paths. Copying an inbox is not a way to authorize a new machine; revoke
+its approval before restoring it for a different operator or environment.
+
+`bridge status` shows the approval and whether cleanup is awaiting local approval.
+Stop the bridge and run `bridge revoke-cleanup --config PATH` to withdraw approval.
+Both approval commands require exclusive inbox ownership, like reconciliation.
+Existing configurations and interrupted retirement records without approval pause
+until the operator approves them. Task edits (including reopening and reclosing),
+new related tasks, or configuration changes require a fresh approval. Pending
+work and ownership checks still block cleanup even with approval. Approval uses
+the local service and needs no new remote authority; unavailable task state blocks
+approval and cleanup. The approval is a durable local decision, not a sync receipt.
+
 All mappings in that configuration form one ownership group. The bridge waits
 until every allowed or received task, and its branch-related tasks, has ended
 (`completed`, `dead-end`, or `abandoned`) with no field conflicts. `review`, missing tasks, pending deliveries,
@@ -171,7 +199,8 @@ preserved. The main checkout is never moved. No commits, branches, or files are
 deleted. `bridge status` includes the retirement record and source/destination
 paths; failed archive operations retry from that record after restart.
 
-Before each remaining thread archive or worktree move, cleanup rereads task and
+Before each remaining thread archive or worktree move, cleanup rechecks local
+approval against the current task snapshot and configuration, including task and
 branch status and pending deliveries. Reopened work pauses the remaining steps,
 including during a single cleanup attempt. The durable record preserves progress
 for retry once the group is eligible again. A request already in flight may
