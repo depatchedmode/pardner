@@ -6,7 +6,7 @@ import { WebSocket } from 'ws'
 import { LanAccess, lanInterfaces } from '../lib/lan-access.js'
 import { createServer, createTempDir, cleanupTempDir } from '../support/resources.js'
 
-it('serves assets, authenticated APIs, and subscriptions over persisted LAN listeners', { timeout: 20000 }, async t => {
+it('serves assets, authenticated APIs, and subscriptions over persisted LAN listeners', { timeout: 60000 }, async t => {
   const candidate = lanInterfaces()[0]
   if (!candidate) return t.skip('LAN listeners require a real non-loopback IPv4 interface.')
   const directory = createTempDir('pardner-lan-server-')
@@ -43,6 +43,19 @@ it('serves assets, authenticated APIs, and subscriptions over persisted LAN list
     assert.equal((await fetch(`${origin}/pardner/access`, { method: 'POST', headers: lanHeaders, body: '{}' })).status, 403)
     assert.equal((await fetch(`${origin}/pardner/access/pairing`, { method: 'POST', headers: { Origin: origin }, body: '{}' })).status, 401)
     const pairing = await (await fetch(`${origin}/pardner/access/pairing`, { method: 'POST', headers: lanHeaders, body: '{}' })).json()
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const rejected = await fetch(local('/pardner/pair'), {
+        method: 'POST',
+        headers: {
+          Origin: attempt % 2 ? origin : `http://localhost:${server.httpPort}`,
+          'Content-Type': 'application/json',
+          'X-Forwarded-For': `192.0.2.${attempt + 1}`,
+        },
+        body: JSON.stringify({ code: 'wrong' }),
+      })
+      assert.equal(rejected.status, attempt < 10 ? 400 : 429)
+      assert.equal((await rejected.json()).code, attempt < 10 ? 'PAIRING_INVALID' : 'PAIRING_THROTTLED')
+    }
     const paired = await fetch(`${origin}/pardner/pair`, { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ code: pairing.code }) })
     assert.equal(paired.status, 200)
     assert.equal(paired.headers.get('cache-control'), 'no-store')
