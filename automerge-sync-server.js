@@ -401,6 +401,14 @@ class AutomergeSyncServer {
   }
   
   setupHTTPAPI() {
+    this.app.use((_req, res, next) => {
+      if (this.stopping) {
+        return res.set('Connection', 'close').status(503).json({
+          code: 'SERVICE_STOPPING', error: 'The service is stopping',
+        })
+      }
+      next()
+    })
     this.app.use((req, res, next) => this.originMiddleware(req, res, next))
     this.app.use(express.json())
     this.app.use((_error, _req, res, _next) => {
@@ -626,6 +634,11 @@ class AutomergeSyncServer {
     this.automergeWsAdapter = new ValidatedWebSocketServerAdapter(this.nativeWsServer)
 
     this.wsRequestHandler = (req, res) => {
+      if (this.stopping) {
+        res.writeHead(503, { Connection: 'close', 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ code: 'SERVICE_STOPPING', error: 'The service is stopping' }))
+        return
+      }
       const origin = req.headers.origin
 
       if (!this.isAllowedOrigin(origin)) {
