@@ -401,6 +401,20 @@ class AutomergeSyncServer {
   }
   
   setupHTTPAPI() {
+    this.app.use((_req, res, next) => {
+      const setHeader = res.setHeader
+      res.setHeader = function (name, value) {
+        if (name.toLowerCase() === 'content-security-policy') {
+          const directives = String(value).split(';').map(value => value.trim())
+            .filter(value => value && !/^frame-ancestors(?:\s|$)/i.test(value))
+          value = [...directives, "frame-ancestors 'none'"].join('; ')
+        }
+        return setHeader.call(this, name, value)
+      }
+      res.setHeader('Content-Security-Policy', "frame-ancestors 'none'")
+      res.setHeader('X-Frame-Options', 'DENY')
+      next()
+    })
     this.app.use((req, res, next) => this.originMiddleware(req, res, next))
     this.app.use(express.json())
     this.app.use((_error, _req, res, _next) => {
