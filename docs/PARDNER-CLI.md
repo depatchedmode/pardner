@@ -54,7 +54,23 @@ human or agent identity. `--agent` is an Actor-selection alias.
 ## Enroll another machine
 
 Each machine runs one service owning its own directory. Configure a reachable hub
-HTTP and native WebSocket address plus its token at initial enrollment:
+HTTP and native WebSocket address, its API token, and a separately enrolled replica
+credential at initial enrollment. On the hub, configure `PARDNER_REPLICA_CREDENTIALS`
+as a JSON object mapping administrator-chosen replica IDs to unique random secrets:
+
+```sh
+export PARDNER_REPLICA_CREDENTIALS='{"laptop":"REPLACE_WITH_RANDOM_REPLICA_SECRET"}'
+pardner serve --data .pardner-hub
+```
+
+Generate each secret with `openssl rand -hex 32`. Never reuse the API token or
+another replica's secret. The default empty registry disables native replication.
+Distribute the matching ID and secret privately to that trusted machine, then run:
+
+```sh
+export PARDNER_REPLICA_ID=laptop
+export PARDNER_REPLICA_TOKEN=REPLACE_WITH_RANDOM_REPLICA_SECRET
+```
 
 ```sh
 pardner serve --data .pardner --role replica \
@@ -67,6 +83,27 @@ set `PARDNER_BIND_HOST` to the intended interface and expose its HTTP/WebSocket
 ports. Enrollment requires the hub; reopening an enrolled directory does not.
 `pardner serve --data .pardner` remembers the role, addresses, ports, and local
 credentials. CLI and UI should connect to the local service on each machine.
+
+Replica credentials grant **full document-write authority**. Native Automerge changes
+are merged and persisted without the operation API's schema, attribution, revision,
+or command validation. Enroll only machines trusted to uphold those invariants;
+ordinary Actor/API credentials cannot mint native tickets or open native sessions.
+The enrollment ID identifies the credential holder, not a signed Actor or CRDT
+mutation. API credentials remain necessary for discovery and API requests.
+
+Native clients request `POST /automerge/ws-ticket` with the ordinary API bearer
+token, an `x-pardner-replica-token` header, and JSON
+`{"purpose":"replica","replicaId":"laptop"}`. The returned ticket opens only
+`/automerge`; an ordinary ticket opens only UI subscriptions. Direct bearer,
+header, or legacy query API tokens never authorize `/automerge`.
+
+Tickets are short-lived, single-use, and scoped to either UI subscriptions or native
+replication. Insecure local mode does not bypass replica enrollment. Remove or rotate
+a credential in the hub configuration and restart the hub to disconnect existing
+sessions and invalidate outstanding tickets. CLI replicas save their enrollment
+credentials in the private `connection.json`; environment values override them.
+Existing replicas must be provisioned with these separate credentials before they
+can reconnect. Cached workspaces still open offline.
 
 Existing incompatible storage is rejected and left intact. Choose a fresh
 directory; there is no automatic migration. A second process cannot own the same

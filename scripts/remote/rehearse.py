@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import secrets
 import select
 import shlex
 import subprocess
@@ -42,6 +43,7 @@ class Rehearsal:
         self.output.mkdir(parents=True)
         self.home = guest(VMS[0], 'printf %s "$HOME"').strip()
         self.remote = f'{self.home}/pardner-runs/{self.id}'
+        self.replica_credentials = {vm: secrets.token_hex(32) for vm in VMS}
         self.hub = None
         self.tunnels = {}
         self.services = {}
@@ -95,6 +97,7 @@ class Rehearsal:
         error = open(self.output / 'hub.log', 'a')
         self.logs.append(error)
         env = {k: v for k, v in os.environ.items() if not k.startswith('PARDNER_')}
+        env['PARDNER_REPLICA_CREDENTIALS'] = json.dumps(self.replica_credentials)
         self.hub = subprocess.Popen([NODE, str(ROOT / 'bin/pardner.js'), 'serve', '--role', 'hub',
             '--data', str(self.output / 'hub'), '--http-port', '0', '--ws-port', '0'],
             stdout=subprocess.PIPE, stderr=error, text=True, env=env)
@@ -129,8 +132,11 @@ class Rehearsal:
     def start_replica(self, vm):
         # Token travels through encrypted stdin into a private guest file, not argv or logs.
         guest(vm, f'umask 077; cat > {self.remote}/hub-token', input=self.connection['token'])
+        guest(vm, f'umask 077; cat > {self.remote}/replica-token', input=self.replica_credentials[vm])
         command = (f'cd {self.remote}/repo; echo $$ > {self.remote}/service.pid; '
                    f'export PARDNER_HUB_TOKEN="$(cat {self.remote}/hub-token)"; '
+                   f'export PARDNER_REPLICA_ID={shlex.quote(vm)}; '
+                   f'export PARDNER_REPLICA_TOKEN="$(cat {self.remote}/replica-token)"; '
                    f'exec "$HOME/.local/node/bin/node" bin/pardner.js serve --role replica '
                    f'--data {self.remote}/data --hub http://127.0.0.1:18004 '
                    '--hub-ws ws://127.0.0.1:18005/automerge --http-port 8004 --ws-port 8005')

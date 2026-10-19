@@ -1,3 +1,4 @@
+import { replicaCredentials } from './replica-credentials.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -13,7 +14,7 @@ export const ACTORS = [
 
 export async function withWorkspaceServer(run) {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-public-test-'))
-  const server = new AutomergeSyncServer({ directory, actors: ACTORS, env: {}, apiToken: 'test-token', httpPort: 0, wsPort: 0, logger: {} })
+  const server = new AutomergeSyncServer({ replicaCredentials, directory, actors: ACTORS, env: {}, apiToken: 'test-token', httpPort: 0, wsPort: 0, logger: {} })
   try {
     await server.start()
     const api = async (path, body, { token = 'test-token', method = body === undefined ? 'GET' : 'POST' } = {}) => {

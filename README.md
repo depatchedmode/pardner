@@ -38,6 +38,11 @@ identity, so the same Actor can work from more than one machine.
 
 Local operations are acknowledged only after a disk persistence barrier. Enrolled
 replicas reopen without the hub and reconnect using fresh WebSocket tickets.
+Native replicas are trusted full document writers: their synchronized changes bypass
+operation validation. They require separately enrolled replica credentials; ordinary
+API/Actor credentials authorize only the API and UI subscriptions. See
+[replica enrollment](docs/PARDNER-CLI.md#enroll-another-machine) for provisioning and
+rotation.
 Different-field edits merge; same-field alternatives retain their authors and
 require explicit resolution. A synced indicator requires an explicit hub
 persistence acknowledgement covering the displayed document heads.

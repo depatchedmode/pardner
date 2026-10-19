@@ -91,6 +91,8 @@ class AutomergeSyncServer {
       directory: options.directory ?? options.storagePath ?? resolve(env.PARDNER_DATA_DIR ?? '.pardner'),
       role: options.role ?? env.PARDNER_ROLE ?? 'hub', actors: options.actors ?? [],
       hubUrl: options.hubUrl ?? env.PARDNER_HUB_URL, hubWsUrl: options.hubWsUrl ?? env.PARDNER_HUB_WS_URL,
+      replicaCredentialId: options.replicaCredentialId ?? env.PARDNER_REPLICA_ID,
+      replicaToken: options.replicaToken ?? env.PARDNER_REPLICA_TOKEN,
       token: options.hubToken ?? env.PARDNER_HUB_TOKEN ?? options.apiToken ?? env.PARDNER_API_TOKEN,
     })
     this.connectedClients = new Set()
@@ -104,6 +106,18 @@ class AutomergeSyncServer {
     this.httpPort = parsePort(options.httpPort ?? env.PARDNER_HTTP_PORT ?? DEFAULT_HTTP_PORT, 'PARDNER_HTTP_PORT')
     this.wsPort = parsePort(options.wsPort ?? env.PARDNER_WS_PORT ?? DEFAULT_WS_PORT, 'PARDNER_WS_PORT')
     this.apiToken = options.apiToken ?? env.PARDNER_API_TOKEN ?? ''
+    const replicaCredentials = options.replicaCredentials ?? JSON.parse(env.PARDNER_REPLICA_CREDENTIALS ?? '{}')
+    if (!replicaCredentials || Array.isArray(replicaCredentials) || typeof replicaCredentials !== 'object') {
+      throw new Error('PARDNER_REPLICA_CREDENTIALS must map enrolled replica IDs to distinct secrets')
+    }
+    this.replicaCredentials = new Map(Object.entries(replicaCredentials))
+    const secrets = new Set()
+    for (const [id, secret] of this.replicaCredentials) {
+      if (!isNonEmptyString(id) || !isNonEmptyString(secret) || secret === this.apiToken || secrets.has(secret)) {
+        throw new Error('Replica credentials must have nonempty IDs and unique secrets distinct from the API token')
+      }
+      secrets.add(secret)
+    }
     this.allowInsecureLocal = options.allowInsecureLocal ?? env.PARDNER_ALLOW_INSECURE_LOCAL === '1'
     this.allowLegacyWsQueryToken = options.allowLegacyWsQueryToken ?? env.PARDNER_ALLOW_LEGACY_WS_QUERY_TOKEN === '1'
     this.wsTicketTtlMs = Number(
@@ -313,23 +327,25 @@ class AutomergeSyncServer {
     return null
   }
 
-  mintWsTicket() {
+  mintWsTicket(replicaId = null) {
     const ticket = crypto.randomBytes(32).toString('hex')
-    this.wsTickets.set(ticket, Date.now() + this.wsTicketTtlMs)
+    this.wsTickets.set(ticket, { expiresAt: Date.now() + this.wsTicketTtlMs, replicaId })
     return ticket
   }
 
-  consumeWsTicket(ticket) {
+  consumeWsTicket(ticket, native = false) {
     if (!ticket) return false
-    const expiresAt = this.wsTickets.get(ticket)
-    if (!expiresAt) return false
+    const grant = this.wsTickets.get(ticket)
+    if (!grant) return false
     this.wsTickets.delete(ticket)
-    return expiresAt > Date.now()
+    return grant.expiresAt > Date.now() && (native
+      ? grant.replicaId !== null && this.replicaCredentials.has(grant.replicaId)
+      : grant.replicaId === null)
   }
 
   cleanupExpiredWsTickets() {
     const now = Date.now()
-    for (const [ticket, expiresAt] of this.wsTickets) {
+    for (const [ticket, { expiresAt }] of this.wsTickets) {
       if (expiresAt <= now) this.wsTickets.delete(ticket)
     }
   }
@@ -341,6 +357,9 @@ class AutomergeSyncServer {
   }
 
   isAuthorizedWebSocketRequest(req) {
+    if (wsUpgradePathname(req) === NATIVE_AUTOMERGE_WS_PATH) {
+      return this.consumeWsTicket(this.wsTicketFromRequest(req), true)
+    }
     if (!this.apiToken) return true
 
     const token = this.tokenFromRequest(req, { allowLegacyWsQueryToken: true })
@@ -450,7 +469,22 @@ class AutomergeSyncServer {
     this.app.post('/automerge/ws-ticket', async (req, res) => {
       try {
         this.cleanupExpiredWsTickets()
-        const ticket = this.mintWsTicket()
+        const purpose = req.body?.purpose ?? 'ui'
+        if (!['ui', 'replica'].includes(purpose)) {
+          return res.status(400).json({ code: 'INVALID_TICKET_PURPOSE', error: 'Unknown ticket purpose' })
+        }
+        let replicaId = null
+        if (purpose === 'replica') {
+          replicaId = req.body?.replicaId
+          const expected = this.replicaCredentials.get(replicaId)
+          const supplied = req.headers['x-pardner-replica-token']
+          if (!expected || typeof supplied !== 'string' ||
+              !crypto.timingSafeEqual(crypto.createHash('sha256').update(expected).digest(),
+                crypto.createHash('sha256').update(supplied).digest())) {
+            return res.status(403).json({ code: 'REPLICA_REQUIRED', error: 'An enrolled replica credential is required' })
+          }
+        }
+        const ticket = this.mintWsTicket(replicaId)
         res.json({ success: true, ticket, expiresInMs: this.wsTicketTtlMs })
       } catch (error) {
         res.status(500).json({ error: error.message })
