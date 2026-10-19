@@ -6,7 +6,23 @@
   <title>Pardner — Human and agent coordination</title>
 </head>
 <body>
+  <div id="startup" role="status" style="max-width:480px;margin:12vh auto;padding:25px;font:16px/1.5 system-ui">
+    <h1>Pardner</h1>
+    <p id="startup-message">Opening your workspace…</p>
+    <p>If this page does not open, check that the service is running and use the current address from Pair another device on the desktop.</p>
+    <button onclick="location.reload()">Reload Pardner</button>
+    <noscript><p>Enable JavaScript to open Pardner.</p></noscript>
+  </div>
   <div id="root"></div>
+  <script>
+    function showStartupFailure() {
+      var message = document.getElementById('startup-message');
+      if (message) message.textContent = 'Pardner could not finish loading. Reload the page; if this continues, rebuild the browser client and restart the service.';
+    }
+    window.addEventListener('error', showStartupFailure, true);
+    window.addEventListener('unhandledrejection', showStartupFailure);
+    setTimeout(showStartupFailure, 12000);
+  </script>
   <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>

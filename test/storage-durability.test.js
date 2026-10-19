@@ -8,7 +8,8 @@ import { once } from 'node:events'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
 import { DurableRepo } from '../lib/durable-repo.js'
 
-const key = ['abcdef', 'snapshot', 'one']
+// Automerge names snapshot chunks by a SHA-256 hex hash.
+const key = ['abcdef', 'snapshot', 'a1'.repeat(32)]
 
 async function withStorage(run) {
   const directory = await fs.mkdtemp(join(tmpdir(), 'pardner-storage-'))
