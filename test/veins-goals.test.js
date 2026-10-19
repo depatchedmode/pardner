@@ -70,7 +70,7 @@ describe('goals and veins', () => {
       assert.equal(context.goal.title, 'p95 under 200ms')
       assert.equal(context.goal.description, 'Measured at the edge')
       assert.equal(context.goal.status, 'open')
-      assert.equal(context.history.filter(event => event.operationId === 'shared-vein').length, 1)
+      assert.equal(context.history.filter(event => event.requestId === 'shared-vein').length, 1)
       assert.deepEqual(left.goalContext(a.result.goalId).veins.map(vein => vein.id), [a.result.veinId])
     })
   })
@@ -112,15 +112,15 @@ describe('goals and veins', () => {
       const other = (await command(left, 'goal.create', { title: 'Cut hosting cost' })).result.goalId
       const third = (await command(left, 'goal.create', { title: 'Simplify deploys' })).result.goalId
       const right = await create(left)
-      await command(left, 'vein.update', veinUpdate(left, veinId, { goalId: other }), 'alice', 'move-left')
-      await command(right, 'vein.update', veinUpdate(right, veinId, { goalId: third }), 'bob', 'move-right')
+      const movedLeft = await command(left, 'vein.update', veinUpdate(left, veinId, { goalId: other }), 'alice', 'move-left')
+      const movedRight = await command(right, 'vein.update', veinUpdate(right, veinId, { goalId: third }), 'bob', 'move-right')
       sync(left, right)
       const context = left.veinContext(veinId)
       assert.deepEqual(Object.keys(context.conflicts), ['goalId'])
-      assert.deepEqual(context.revisions.goalId, ['move-left', 'move-right'])
+      assert.deepEqual(context.revisions.goalId, [movedLeft.operationId, movedRight.operationId].sort())
       const listed = () => [goalId, other, third].map(id => left.goalContext(id).veins.map(vein => vein.id))
       assert.deepEqual(listed(), [[], [veinId], [veinId]], 'a disputed vein is listed under every goal it may pursue')
-      assert.deepEqual(snapshotOf(left).veins[veinId].goalIds, [other, third])
+      assert.deepEqual(snapshotOf(left).veins[veinId].goalIds.sort(), [other, third].sort())
       await assert.rejects(command(left, 'vein.update', veinUpdate(left, veinId, { goalId })), { code: 'CONFLICT_REQUIRES_RESOLUTION' })
       // Keep the displayed goal, so the resolution leaves only the concurrent goal Automerge did not display.
       const kept = context.vein.goalId, dropped = kept === other ? third : other

@@ -71,7 +71,7 @@ it('retains acknowledged edits when a creation request is replayed on disconnect
       assert.equal(result.task.description, 'Acknowledged description')
       assert.equal(result.task.priority, 'p0')
       assert.deepEqual(result.conflicts, {})
-      assert.equal(result.history.filter(event => event.operationId === request.operationId).length, 1)
+      assert.equal(result.history.filter(event => event.requestId === request.operationId).length, 1)
       for (const receipt of edits) assert.ok(result.history.some(event => event.operationId === receipt.operationId))
     }
   })

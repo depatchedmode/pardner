@@ -1,7 +1,8 @@
 #!/usr/bin/env node
+import { operationEvents, requireValue } from '../lib/workspace-schema.js'
 import { randomUUID } from 'node:crypto'
 import { requestJson } from '../lib/sync-client.js'
-import { closeNativePeer, connectNativePeer, createTaskHttp, resolveHttpBase, resolveWsBase, updatePeerTask } from '../lib/native-peer-client.js'
+import { closeNativePeer, connectNativePeer, operationHttp, resolveHttpBase, resolveWsBase, updatePeerTask } from '../lib/native-peer-client.js'
 
 const httpBase = resolveHttpBase(), wsBase = resolveWsBase(httpBase)
 const token = process.env.PARDNER_API_TOKEN || null
@@ -49,7 +50,9 @@ async function main() {
     const raw = parts.join(' '), value = field === 'assignee' && raw === 'null' ? null : raw
     return withPeer(peer => {
       const { revisions } = peer.workspace.taskContext(taskId)
-      const original = peer.handle.doc().operations[operationId]
+      const originals = operationEvents(peer.handle.doc(), operationId)
+      requireValue(originals.length <= 1, 'This retry ID has conflicting requests', 'OPERATION_ID_REUSED')
+      const original = originals[0]
       const expectedRevisions = original?.payload.expectedRevisions ?? { [field]: revisions[field] }
       return updatePeerTask(peer, taskId, { [field]: value }, actorId, expectedRevisions, operationId)
     })
@@ -58,7 +61,8 @@ async function main() {
     requireActor()
     const fields = { title: args.join(' ').trim() || 'Smoke task' }
     if (storagePath) return withPeer(peer => peer.runtime.execute({ operationId, actorId, type: 'task.create', payload: fields }))
-    return { taskId: await createTaskHttp(httpBase, token, fields, actorId, operationId), operationId, savedLocally: true }
+    const receipt = await operationHttp(httpBase, token, 'task.create', fields, actorId, operationId)
+    return { ...receipt, taskId: receipt.result.taskId }
   }
   throw new Error('Usage: native-peer-smoke.js watch | show-task <id> | set-task <id> <field> <value> | create-task [title]. Use PARDNER_ACTOR for writes and PARDNER_PEER_STORAGE_PATH for persisted peer commands.')
 }

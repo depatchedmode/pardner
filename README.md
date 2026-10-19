@@ -124,7 +124,9 @@ See the [service and CLI guide](docs/PARDNER-CLI.md) for complete examples.
 | Goals and their veins | `pardner goals --json`, `pardner goal show GOAL --json` |
 
 Writes require an Actor and field edits require the revisions returned by `show`.
-Use the same operation ID and identical payload to retry an uncertain write.
+Use the same request operation ID and identical payload to retry an uncertain write.
+Receipts expose this retry key as `requestId` and a derived `operationId` for history
+and revision tokens; see the [operation identity contract](docs/PARDNER-CLI.md).
 Coordination commands emit one JSON result on stdout; errors include stable codes
 and details, with diagnostics on stderr. Reads do not implicitly mark comments seen.
 

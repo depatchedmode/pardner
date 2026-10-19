@@ -118,6 +118,19 @@ An existing matching operation is replayed; reuse for a different payload return
 `OPERATION_ID_REUSED`. `pardner operation --request JSON` exposes the complete
 shared-operation envelope for deterministic agent clients.
 
+The request's `operationId` is a caller-selected retry key. Receipts and history
+return it as `requestId`; their `operationId` is a service-derived SHA-256 identity
+binding that key to the operation type, resolved Actor ID, and canonical payload.
+Use returned operation IDs as revision tokens; retry with the original request
+key and payload. Identical requests on disconnected replicas remain one logical
+operation. Different requests sharing a key receive distinct stored identities,
+so both effects and history survive convergence; subsequent reuse of that
+ambiguous key is rejected. Same-field collisions require explicit resolution.
+
+This identity format requires schema 5 on every service. Older workspace data is
+preserved and rejected as incompatible; do not overwrite or automatically migrate
+it. Enroll a new workspace using compatible services.
+
 ## Pursue goals through veins
 
 A vein is a line of work toward a goal. Every vein pursues exactly one goal.
