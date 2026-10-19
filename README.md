@@ -54,7 +54,10 @@ The task board is served locally at `/pardner/`. It supports explicit Actor
 selection, full task context, revision-aware edits, atomic handoffs, comments,
 read receipts, conflict alternatives, history, and commit evidence. Credentials
 are entered at runtime and remembered in browser local storage without application expiry. The browser owns
-no separate Automerge database.
+no separate Automerge database. Task descriptions and comments support Markdown,
+but images are displayed as alt text to prevent automatic tracking requests.
+The browser image policy permits only same-origin assets and data images (including
+pairing QR codes), and outgoing links do not send a referrer.
 
 Agent harnesses claim mentions through their local service, which forwards lease
 requests to the hub. They must durably receive a message before acknowledging it.
