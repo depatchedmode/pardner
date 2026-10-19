@@ -116,3 +116,29 @@ it('JSON ping receives a pong without a document mutation', async () => {
     assert.equal((await clients[0].next('pong')).type, 'pong')
   })
 })
+
+it('headless operations skip UI projection and a later subscriber receives their complete state', async () => {
+  await withWorkspaceServer(async ({ server, api, operation }) => {
+    const getDoc = server.store.getDoc.bind(server.store)
+    let projections = 0
+    server.store.getDoc = () => { projections++; return getDoc() }
+    const created = await operation('task.create', { title: 'Before subscribing' })
+    const comment = await operation('comment.add', { taskId: created.result.taskId, text: 'Saved without a UI' })
+    assert.equal(created.savedLocally, true)
+    assert.equal(comment.savedLocally, true)
+    assert.equal(projections, 0)
+    const { ticket } = await api('/automerge/ws-ticket', {})
+    const ws = new WebSocket(`ws://127.0.0.1:${server.wsPort}/?ticket=${ticket}`)
+    try {
+      const [bytes] = await once(ws, 'message')
+      const { doc } = JSON.parse(bytes.toString())
+      assert.equal(doc.tasks[created.result.taskId].title, 'Before subscribing')
+      assert.equal(doc.comments[comment.result.commentId].content, 'Saved without a UI')
+      assert.equal(projections, 1)
+    } finally {
+      const closed = once(ws, 'close')
+      ws.close()
+      await closed
+    }
+  })
+})

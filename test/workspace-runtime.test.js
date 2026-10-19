@@ -164,7 +164,9 @@ it('does not let a delayed hub acknowledgement clear newer local work', async ()
       hubUrl: `http://127.0.0.1:${hub.httpPort}`, hubWsUrl: `ws://127.0.0.1:${hub.wsPort}/automerge` })
     await replica.init()
     assert.equal((await replica.claimDelivery({ actorId: 'builder', requestId: randomUUID() })).claimed, false)
-    await eventually(() => !replica.status().syncPending)
+    // A scheduled acknowledgement can still be in flight after the heads match.
+    // Intercept a new request only after that earlier call has completed.
+    await eventually(() => !replica.status().syncPending && !replica.syncing)
     const requestHub = replica.requestHub.bind(replica)
     let received
     const pending = new Promise(resolve => { received = resolve })
