@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { withWorkspaceServer } from '../support/workspace-test.js'
 import { AgentBridge, BridgeSource, openBridgeInbox } from '../lib/agent-bridge.js'
-import { retireCompletedBridge, moveArchivedWorktree } from '../lib/bridge-retirement.js'
+import { approveBridgeCleanup, retireCompletedBridge, moveArchivedWorktree } from '../lib/bridge-retirement.js'
 import { createWorktrees } from '../support/bridge-rehearsal.js'
 
 async function fixture(run) {
@@ -28,7 +28,10 @@ async function fixture(run) {
         archive: async mapping => { assert.ok(!state.archived.includes(mapping.threadId)); state.archived.push(mapping.threadId); await state.afterArchive?.(mapping) },
       }
       const bridge = { config, inbox, source, adapters: new Map(config.mappings.map(m => [m.actorId, adapter])) }
-      const tick = () => retireCompletedBridge(bridge, { move: async plan => { state.moved.push(plan.source) } })
+      const tick = async () => {
+        await approveBridgeCleanup(bridge).catch(error => { if (error.code !== 'CLEANUP_NOT_ELIGIBLE') throw error })
+        return retireCompletedBridge(bridge, { move: async plan => { state.moved.push(plan.source) } })
+      }
       const branch = async parent => {
         const result = await service.operation('task.branch', { taskId: parent, name: `child-${Date.now()}` })
         assert.equal(result.success, true)
@@ -151,6 +154,7 @@ it('a deleted originating comment does not starve a later valid delivery through
 it('partial retirement restarts after a real worktree move with historical paths missing', () => fixture(async f => {
   const task = await f.create(); await f.complete(task); f.map(task)
   let moves = 0
+  await approveBridgeCleanup(f.bridge)
   await assert.rejects(retireCompletedBridge(f.bridge, { move: async plan => {
     await moveArchivedWorktree(plan)
     if (++moves === 1) throw new Error('stopped after moving checkout')
@@ -161,4 +165,20 @@ it('partial retirement restarts after a real worktree move with historical paths
   assert.equal(f.inbox.retirement().state, 'archived')
   for (const plan of f.inbox.retirement().worktrees) await access(plan.destination)
   assert.deepEqual(f.state.archived, ['builder', 'reviewer'])
+}))
+
+it('shared-token task closure and reclosing cannot authorize host cleanup', () => fixture(async f => {
+  const task = await f.create()
+  f.map(task)
+  await f.complete(task)
+  await retireCompletedBridge(f.bridge)
+  assert.equal(f.inbox.retirement(), null)
+  assert.deepEqual(f.state.archived, [])
+  await approveBridgeCleanup(f.bridge)
+  assert.equal((await f.update(task, { status: 'in-progress' })).success, true)
+  await f.complete(task)
+  await retireCompletedBridge(f.bridge)
+  assert.equal(f.inbox.retirement(), null)
+  assert.deepEqual(f.state.archived, [])
+  assert.deepEqual(f.state.moved, [])
 }))
