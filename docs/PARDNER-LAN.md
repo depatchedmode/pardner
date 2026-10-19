@@ -88,6 +88,12 @@ Explicit `PARDNER_ALLOWED_ORIGINS` entries remain supported for other known
 clients. Device setup expects the normal loopback binding; remove an ad hoc
 `PARDNER_BIND_HOST` override before enabling the saved pairing flow.
 
+For local-only testing, `PARDNER_ALLOW_INSECURE_LOCAL=1` permits an empty API
+token only with a numeric loopback bind such as `127.0.0.1` or `::1`. Hostnames
+(including `localhost`), wildcard addresses, and non-loopback addresses are
+rejected before listening. Use a numeric address to avoid DNS resolution changing
+the listener's exposure. Saved LAN access stays inactive until a token is configured.
+
 - **Changed network/address:** reopen the desktop dialog. If the selected
   interface's address changed, restart, then use the new displayed URL. A stale
   unreachable bookmark cannot show application-level recovery on first load.
