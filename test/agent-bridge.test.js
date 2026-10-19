@@ -6,11 +6,12 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { setTimeout as delay } from 'node:timers/promises'
 import { BridgeInbox } from '../lib/bridge-inbox.js'
+import { digest } from '../lib/workspace-schema.js'
 import { AgentBridge } from '../lib/agent-bridge.js'
 
 const mapping = { actorId: 'builder', enabled: true, adapter: 'codex-app-server', sessionOwner: 'bridge',
   endpoint: 'ws://127.0.0.1:9001/', threadId: 'thread-one', worktree: '/tmp', allowedTaskIds: ['task-one'], allowedFromActorIds: ['alice'] }
-const mention = { id: 'mention-one', taskId: 'task-one', commentId: 'comment-one', fromActorId: 'alice', toActorId: 'builder', idempotency_key: 'effect-one' }
+const mention = { id: 'mention-one', taskId: 'task-one', commentId: 'comment-one', fromActorId: 'alice', toActorId: 'builder', idempotency_key: 'effect-one', operationId: 'revision-one', commentDigest: digest('Authorized request') }
 
 class Harness extends EventEmitter {
   constructor() { super(); this.calls = []; this.state = 'ready'; this.accepted = new Map() }
@@ -44,7 +45,7 @@ class Source extends EventEmitter {
     this.mentions = this.mentions.filter(item => item.id !== receipt.mention.id)
   }
   async actors() { return { actors: { builder: { id: 'builder', handle: 'builder', kind: 'agent' }, alice: { id: 'alice', handle: 'alice', kind: 'human' } } } }
-  async context(received) { return { task: { title: 'Bounded work' }, mentions: this.contextMissing ? [] : [received], comments: [{ id: received.commentId }] } }
+  async context(received) { return { task: { title: 'Bounded work' }, mentions: this.contextMissing ? [] : [received], comments: [{ id: received.commentId, content: 'Authorized request', revisionId: received.operationId, editedBy: received.fromActorId, conflicts: [] }] } }
   close() {}
 }
 
@@ -276,5 +277,34 @@ for (const code of ['LOCAL_SERVICE_UNAVAILABLE', 'AUTH_REQUIRED']) {
     assert.ok(state.inbox.statuses().some(status => status.actor === 'builder' && status.state === code))
     assert.equal(state.harness.calls.length, 0)
     assert.deepEqual(state.inbox.rows(), queued)
+  }))
+}
+
+for (const change of [
+  (comment, mention) => { comment.content = 'Replacement request' },
+  (comment, mention) => { comment.revisionId = 'edited-revision' },
+  (comment, mention) => { comment.editedBy = 'bob' },
+  (comment, mention) => { comment.conflicts = [{ value: 'Competing request' }] },
+  (comment, mention) => { delete mention.commentDigest },
+]) {
+  it('blocks changed, conflicted, or legacy comment bindings after queue recovery', () => fixture(async state => {
+    state.harness.state = 'busy'
+    const received = structuredClone(mention)
+    const context = state.source.context.bind(state.source)
+    state.source.context = async value => {
+      const current = await context(value)
+      change(current.comments[0], current.mentions[0])
+      return current
+    }
+    // Apply legacy metadata before durable intake as well.
+    change({}, received)
+    state.source.mentions.push(received)
+    await state.bridge.wake()
+    await state.restart()
+    state.harness.state = 'ready'
+    await state.bridge.wake()
+    assert.equal(state.harness.calls.length, 0)
+    assert.equal(state.inbox.rows()[0].state, 'queued')
+    assert.match(state.inbox.rows()[0].reason, /content binding/)
   }))
 }

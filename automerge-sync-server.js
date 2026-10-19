@@ -738,6 +738,7 @@ class AutomergeSyncServer {
   }
   
   broadcastDocumentUpdate() {
+    if (this.connectedClients.size === 0) return
     this.broadcastMessage({
       type: 'document-update', doc: this.store.getDoc(),
       status: this.store.status(), timestamp: new Date().toISOString(),

@@ -93,7 +93,7 @@ describe('shared workspace operations', () => {
       left.handle.merge(right.handle)
       assert.equal(left.taskContext(taskId).comments[0].content, '@bob left edit')
       assert.deepEqual(left.taskContext(taskId).mentions.map(mention => mention.toActorId), ['bob'])
-      await command(right, 'comment.edit', { commentId, text: '@reviewer right edit', expectedRevisions: ['shared-comment'] }, 'bob', 'edit_a')
+      await command(right, 'comment.edit', { commentId, text: '@reviewer right edit', expectedRevisions: ['shared-comment'] }, 'alice', 'edit_a')
       left.handle.merge(right.handle)
       const revisions = left.taskContext(taskId).comments[0].revisionIds
       assert.deepEqual(revisions, ['edit-a', 'edit_a'])
@@ -261,7 +261,7 @@ describe('shared workspace operations', () => {
       const commentId = original.result.commentId
       const peer = await create(workspace)
       const first = await command(workspace, 'comment.edit', { commentId, text: 'Human revision', expectedRevisions: [original.operationId] })
-      const second = await command(peer, 'comment.edit', { commentId, text: 'Agent revision', expectedRevisions: [original.operationId] }, 'builder')
+      const second = await command(peer, 'comment.edit', { commentId, text: 'Peer revision', expectedRevisions: [original.operationId] }, 'alice')
       workspace.handle.merge(peer.handle)
       await command(workspace, 'read.mark', { taskId, comments: [{ commentId, revisionId: first.operationId }] })
       assert.equal(workspace.taskContext(taskId, 'alice').unreadCount, 1)
