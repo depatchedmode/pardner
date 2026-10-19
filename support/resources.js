@@ -1,3 +1,4 @@
+import { replicaOptions, replicaCredentials } from './replica-credentials.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
 import { tmpdir } from 'node:os'
@@ -34,7 +35,7 @@ export const SYNC_WAIT_TIMEOUT_MS = 5000
 export const POLL_INTERVAL_MS = 25
 
 export function createServer(storagePath, overrides = {}) {
-  return new AutomergeSyncServer({
+  return new AutomergeSyncServer({ replicaCredentials,
     actors: [{ id: 'alice', handle: 'alice', kind: 'human' }, { id: 'builder', handle: 'builder', kind: 'agent' }],
     env: {},
     apiToken: TEST_TOKEN,
@@ -215,8 +216,17 @@ export function nativeAutomergeWsUrl(server, query = {}) {
   return wsUrl(server, `${NATIVE_AUTOMERGE_WS_PATH}${suffix}`)
 }
 
+export async function mintReplicaTicket(server) {
+  const response = await authedFetch(server, '/automerge/ws-ticket', {
+    method: 'POST', headers: { 'x-pardner-replica-token': replicaOptions.replicaToken },
+    body: JSON.stringify({ purpose: 'replica', replicaId: replicaOptions.replicaCredentialId }),
+  })
+  if (!response.ok) throw new Error(await response.text())
+  return (await response.json()).ticket
+}
+
 export async function openNativePeer(server, storagePath = createTempDir('pardner-peer-')) {
-  const ticket = await mintWsTicket(server)
+  const ticket = await mintReplicaTicket(server)
   const { url: documentUrl } = await authedGet(server, '/automerge/url')
   const adapter = new WebSocketClientAdapter(
     nativeAutomergeWsUrl(server, { ticket }),

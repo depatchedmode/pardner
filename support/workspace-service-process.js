@@ -1,9 +1,10 @@
+import { replicaOptions, replicaCredentials } from './replica-credentials.js'
 import AutomergeSyncServer from '../automerge-sync-server.js'
 import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
 
 const options = JSON.parse(process.argv[2])
-const server = new AutomergeSyncServer({
-  store: new WorkspaceRuntime(options), env: {}, apiToken: options.token,
+const server = new AutomergeSyncServer({ replicaCredentials,
+  store: new WorkspaceRuntime({ ...replicaOptions, ...options }), env: {}, apiToken: options.token,
   httpPort: options.httpPort ?? 0, wsPort: options.wsPort ?? 0, logger: {},
 })
 try {
