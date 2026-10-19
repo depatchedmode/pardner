@@ -418,7 +418,7 @@ class AutomergeSyncServer {
         return res.status(403).json({ code: 'ORIGIN_REQUIRED', error: 'Pair from the device page using its pairing form.' })
       }
       try {
-        this.access.redeem(req.body?.code)
+        this.access.redeem(req.body?.code, req.socket.remoteAddress)
         res.json({ token: this.apiToken, workspaceId: this.store.manifest.workspaceId })
       } catch (error) {
         res.status(error.code === 'PAIRING_THROTTLED' ? 429 : 400).json({ code: error.code, error: error.message })
