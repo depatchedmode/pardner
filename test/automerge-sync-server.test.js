@@ -3,7 +3,8 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
-import { request } from 'node:http'
+import { request, createServer as createHttpServer } from 'node:http'
+import { LanAccess } from '../lib/lan-access.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import { WebSocket } from 'ws'
 
@@ -133,6 +134,85 @@ it('requires an API token unless insecure local mode is enabled', () => {
   )
 
   assert.doesNotThrow(() => withTempServer({ apiToken: '', allowInsecureLocal: true }, () => {}))
+})
+
+for (const host of ['', '0.0.0.0', '::', '192.168.1.5', '2001:db8::1', 'localhost', 'local.example', '127.1', '127.0.0.1.example', '::ffff:192.168.1.5']) {
+  it(`rejects unauthenticated bind configuration for ${JSON.stringify(host)}`, () => {
+    for (const overrides of [
+      { host, apiToken: '', allowInsecureLocal: true },
+      { apiToken: undefined, env: { PARDNER_API_TOKEN: '', PARDNER_ALLOW_INSECURE_LOCAL: '1', PARDNER_BIND_HOST: host } },
+    ]) {
+      assert.throws(() => withTempServer(overrides, () => {}), /numeric loopback/)
+    }
+  })
+}
+
+for (const host of ['127.0.0.1', '::1']) {
+  it(`serves unauthenticated HTTP and both WebSockets only on loopback ${host}`, async () => {
+    await withStartedServer({ host, apiToken: '', allowInsecureLocal: true }, async server => {
+      assert.equal(server.httpServer.address().address, host)
+      assert.equal(server.wsHttpServer.address().address, host)
+      const authority = host.includes(':') ? `[${host}]` : host
+      assert.equal((await fetch(`http://${authority}:${server.httpPort}/automerge/doc`)).status, 200)
+      for (const path of ['/', '/automerge']) {
+        const socket = await expectWebSocketOpen(`ws://${authority}:${server.wsPort}${path}`)
+        socket.terminate()
+      }
+    })
+  })
+}
+
+it('rechecks changed configuration before startup and at each listener', async () => {
+  const directory = createTempDir('pardner-bind-')
+  const server = createServer(directory, { apiToken: '', allowInsecureLocal: true })
+  const listener = createHttpServer()
+  try {
+    server.host = '0.0.0.0'
+    await assert.rejects(server.start(), /numeric loopback/)
+    assert.equal(server.httpServer, null)
+    await assert.rejects(server.listen(listener, 0, '0.0.0.0'), /numeric loopback/)
+    assert.equal(listener.listening, false)
+  } finally {
+    await server.stop()
+    cleanupTempDir(directory)
+  }
+})
+
+it('keeps persisted LAN access disabled when the loopback service has no token', async () => {
+  const directory = createTempDir('pardner-insecure-lan-')
+  const options = { interfaces: () => [{ name: 'wifi', address: '192.168.1.5' }] }
+  const initial = createServer(directory)
+  await initial.store.init()
+  await initial.stop()
+  const saved = new LanAccess(directory, options)
+  await saved.load()
+  await saved.configure({ enabled: true, interfaceName: 'wifi' })
+  const access = new LanAccess(directory, options)
+  const server = createServer(directory, { access, apiToken: '', allowInsecureLocal: true })
+  try {
+    await server.start()
+    assert.equal(access.saved.enabled, true)
+    assert.equal(access.active, null)
+    assert.equal(server.lanServers.length, 0)
+    assert.match(access.diagnostic, /token-protected loopback/)
+    assert.equal((await fetch(httpUrl(server, '/automerge/doc'))).status, 200)
+  } finally {
+    await server.stop()
+    cleanupTempDir(directory)
+  }
+})
+
+it('preserves token enforcement on an explicit wildcard bind', async () => {
+  await withStartedServer({ host: '0.0.0.0' }, async server => {
+    assert.equal(server.httpServer.address().address, '0.0.0.0')
+    assert.equal((await fetch(`http://127.0.0.1:${server.httpPort}/automerge/doc`)).status, 401)
+    assert.equal((await fetch(`http://127.0.0.1:${server.httpPort}/automerge/doc`, {
+      headers: { Authorization: `Bearer ${TEST_TOKEN}` },
+    })).status, 200)
+    for (const path of ['/', '/automerge']) {
+      assert.equal((await requestWebSocketUpgrade(`http://127.0.0.1:${server.wsPort}${path}`)).statusCode, 401)
+    }
+  })
 })
 
 it('binds to loopback by default', () => {

@@ -13,6 +13,7 @@ import { WorkspaceRuntime } from './lib/workspace-runtime.js'
 import express from 'express'
 import crypto from 'crypto'
 import { createServer } from 'node:http'
+import { isIP } from 'node:net'
 import { execSync } from 'node:child_process'
 import { fileURLToPath } from 'url'
 import { resolve } from 'node:path'
@@ -134,6 +135,7 @@ class AutomergeSyncServer {
         'PARDNER_API_TOKEN is required. To bypass for local-only testing, set PARDNER_ALLOW_INSECURE_LOCAL=1.'
       )
     }
+    this.validateListenerHost(this.host)
     if (this.allowedOrigins.has('*')) {
       throw new Error(
         'PARDNER_ALLOWED_ORIGINS must be an explicit comma-separated allowlist. Wildcard "*" is not supported.'
@@ -145,6 +147,7 @@ class AutomergeSyncServer {
   }
   
   async start() {
+    this.validateListenerHost(this.host)
     this.stopping = false
     this.logger.log?.('🚀 Starting Automerge Sync Server...')
     
@@ -215,7 +218,14 @@ class AutomergeSyncServer {
     return fallbackPort
   }
 
+  validateListenerHost(host) {
+    if (!this.apiToken && (!this.allowInsecureLocal || !isIP(host) || !isLoopback(host))) {
+      throw new Error('An empty PARDNER_API_TOKEN requires PARDNER_ALLOW_INSECURE_LOCAL=1 and a numeric loopback PARDNER_BIND_HOST (127.0.0.1 or ::1).')
+    }
+  }
+
   async listen(server, port, host) {
+    this.validateListenerHost(host)
     await new Promise((resolve, reject) => {
       server.once('error', reject)
       server.listen(port, host, () => { server.off('error', reject); resolve() })
