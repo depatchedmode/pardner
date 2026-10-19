@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import ActorMarkdown from './ActorMarkdown.jsx'
 import './pardner.css'
 import { createOperationId } from './operation-id.js'
 import { createConnection, loadConfiguration, websocketUrl } from './connection.js'
@@ -846,9 +845,9 @@ function TaskDetail({
       ) : (
         <>
           <div className="markdown">
-            <Markdown remarkPlugins={[remarkGfm]}>
+            <ActorMarkdown>
               {task.description || 'No description yet.'}
-            </Markdown>
+            </ActorMarkdown>
           </div>
           <button
             disabled={!canWrite}
@@ -993,7 +992,7 @@ function TaskDetail({
             <strong>{labelActor(actors[comment.actorId])}</strong>
             <time>{new Date(comment.timestamp).toLocaleString()}</time>
             <div className="markdown">
-              <Markdown remarkPlugins={[remarkGfm]}>{comment.content}</Markdown>
+              <ActorMarkdown>{comment.content}</ActorMarkdown>
             </div>
             {comment.conflicts.map((choice) => (
               <div className="conflict" key={choice.operationId}>
