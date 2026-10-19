@@ -188,7 +188,7 @@ async function runSeed(seed) {
       const agent = new AgentProcess({ directory: join(root, actorId), serviceDirectory: directories[index + 1], actorId }, message => {
         if (message.intent) { expected.intend(message.intent, replicaIds[index + 1]); intentStarted = performance.now() }
         if (message.checkpoint === 'effect-saved') {
-          const intent = expected.intents.get(message.receipt.operationId)
+          const intent = expected.intents.get(message.receipt.requestId)
           const elapsed = performance.now() - intentStarted
           expected.acknowledge(intent, message.receipt, elapsed)
           timings.push({ kind: 'agent-effect-ack', operationId: intent.operationId, elapsed })

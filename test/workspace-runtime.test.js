@@ -135,7 +135,7 @@ it('recovers acknowledged public operations after SIGKILL and releases the proce
     assert.equal(reopened.manifest.replicaId, original.manifest.replicaId)
     const context = await api(reopened, `/automerge/task/${receipt.result.taskId}/context?actor=builder`)
     assert.equal(context.task.title, request.payload.title)
-    assert.equal(context.history.filter(event => event.operationId === request.operationId).length, 1)
+    assert.equal(context.history.filter(event => event.requestId === request.operationId).length, 1)
     const replay = await api(reopened, '/automerge/operations', request)
     assert.equal(replay.replayed, true)
     assert.equal(replay.result.taskId, receipt.result.taskId)
@@ -263,9 +263,11 @@ it('preserves human and agent alternatives across an offline partition and conve
     await eventually(() => replicas.every(replica => !replica.store.status().hubConnected))
     const operations = ['alice', 'builder'].map((actorId, i) => ({ operationId: randomUUID(), actorId, type: 'task.update',
       payload: { taskId, updates: { status: i ? 'review' : 'in-progress' }, expectedRevisions: { status: before.revisions.status } } }))
+    const receipts = []
     for (let i = 0; i < 2; i++) {
       const receipt = await api(replicas[i], '/automerge/operations', operations[i])
       assert.equal(receipt.savedLocally, true)
+      receipts.push(receipt)
       assert.equal(receipt.syncPending, true)
     }
     hub = service(join(root, 'hub'), ports)
@@ -273,14 +275,14 @@ it('preserves human and agent alternatives across an offline partition and conve
     await eventually(() => replicas.every(replica => !replica.store.status().syncPending && replica.store.workspace.taskContext(taskId).conflicts.status?.length === 2))
     const conflicted = await api(replicas[1], `/automerge/task/${taskId}/context`)
     assert.deepEqual(conflicted.conflicts.status.map(choice => choice.actorId).sort(), ['alice', 'builder'])
-    assert.deepEqual(conflicted.conflicts.status.map(choice => choice.operationId).sort(), operations.map(operation => operation.operationId).sort())
+    assert.deepEqual(conflicted.conflicts.status.map(choice => choice.operationId).sort(), receipts.map(receipt => receipt.operationId).sort())
     await api(replicas[1], '/automerge/operations', { operationId: randomUUID(), actorId: 'builder', type: 'task.resolve',
       payload: { taskId, field: 'status', value: 'review', expectedRevisions: conflicted.revisions.status } })
     await eventually(() => replicas.every(replica => !replica.store.status().syncPending && !replica.store.workspace.taskContext(taskId).conflicts.status))
     for (const replica of replicas) {
       const context = await api(replica, `/automerge/task/${taskId}/context`)
       assert.equal(context.task.status, 'review')
-      for (const operation of operations) assert.equal(context.history.filter(event => event.operationId === operation.operationId).length, 1)
+      for (const operation of operations) assert.equal(context.history.filter(event => event.requestId === operation.operationId).length, 1)
     }
   } finally {
     for (const replica of replicas) await replica.stop()

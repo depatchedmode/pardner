@@ -49,6 +49,60 @@ function updatePayload(workspace, taskId, updates) {
 }
 
 describe('shared workspace operations', () => {
+  it('keeps colliding offline requests visible through resolution, late delivery and reopen', async () => {
+    await withWorkspaces(async (left, create) => {
+      const taskId = await createTask(left)
+      const right = await create(left)
+      const late = await create(left)
+      const requests = [left, right, late].map((workspace, index) => ({
+        operationId: 'deliberate-collision', actorId: 'alice', type: 'task.update',
+        payload: updatePayload(workspace, taskId, { title: `Alternative ${index}` }),
+      }))
+      const receipts = await Promise.all([left, right, late].map((workspace, index) => workspace.execute(requests[index])))
+      assert.ok(receipts.every(receipt => receipt.savedLocally))
+      assert.equal(new Set(receipts.map(receipt => receipt.operationId)).size, 3)
+      left.handle.merge(right.handle)
+      const context = left.taskContext(taskId)
+      assert.deepEqual(context.conflicts.title.map(choice => choice.value).sort(), ['Alternative 0', 'Alternative 1'])
+      assert.deepEqual(context.revisions.title, receipts.slice(0, 2).map(receipt => receipt.operationId).sort())
+      assert.equal(context.history.filter(event => event.requestId === 'deliberate-collision').length, 2)
+      for (const request of requests) await assert.rejects(left.execute(request), { code: 'OPERATION_ID_REUSED' })
+      await assert.rejects(command(left, 'task.update', updatePayload(left, taskId, { title: 'Implicit overwrite' })), { code: 'CONFLICT_REQUIRES_RESOLUTION' })
+      await command(left, 'task.resolve', { taskId, field: 'title', value: 'Resolved', expectedRevisions: context.revisions.title })
+      left.handle.merge(late.handle)
+      const reopened = await create(left)
+      const final = reopened.taskContext(taskId)
+      assert.deepEqual(final.conflicts.title.map(choice => choice.value).sort(), ['Alternative 2', 'Resolved'])
+      assert.equal(final.history.filter(event => event.requestId === 'deliberate-collision').length, 3)
+      assert.equal(Object.values(reopened.snapshot().operations).filter(event => event.requestId === 'deliberate-collision').length, 3)
+    })
+  })
+
+  it('separates same-ID creations and comment edits while retaining identical cross-replica retries', async () => {
+    await withWorkspaces(async (left, create) => {
+      const right = await create(left)
+      const first = await command(left, 'task.create', { title: 'First' }, 'alice', 'collision')
+      const second = await command(right, 'task.create', { title: 'Second' }, 'alice', 'collision')
+      assert.notEqual(first.result.taskId, second.result.taskId)
+      left.handle.merge(right.handle)
+      assert.equal(Object.keys(left.snapshot().tasks).length, 2)
+      assert.equal(left.taskContext(first.result.taskId).task.title, 'First')
+      assert.equal(left.taskContext(second.result.taskId).task.title, 'Second')
+      const taskId = first.result.taskId
+      const added = await command(left, 'comment.add', { taskId, text: 'Original' })
+      const peer = await create(left)
+      const payload = { commentId: added.result.commentId, expectedRevisions: [added.operationId] }
+      await command(left, 'comment.edit', { ...payload, text: '@builder left' }, 'alice', 'comment-collision')
+      await command(peer, 'comment.edit', { ...payload, text: '@reviewer right' }, 'alice', 'comment-collision')
+      left.handle.merge(peer.handle)
+      const comment = left.taskContext(taskId).comments[0]
+      assert.equal(comment.conflicts.length, 2)
+      assert.equal(new Set(comment.revisionIds).size, 2)
+      await command(left, 'comment.resolve', { ...payload, text: 'Resolved', expectedRevisions: comment.revisionIds })
+      assert.deepEqual(left.taskContext(taskId).comments[0].conflicts, [])
+    })
+  })
+
   it('preserves edits and resolves conflicts across concurrent creation retries and late copies', async () => {
     await withWorkspaces(async (left, create) => {
       const right = await create(left)
@@ -57,27 +111,27 @@ describe('shared workspace operations', () => {
         command(workspace, 'task.create', { title: 'One logical task' }, 'alice', 'shared-create')))
       const taskId = receipts[0].result.taskId
       assert.ok(receipts.every(receipt => receipt.savedLocally && receipt.result.taskId === taskId))
-      await command(left, 'task.update', updatePayload(left, taskId, { description: 'Left description', status: 'review' }), 'alice', 'edit-a')
-      await command(right, 'task.update', updatePayload(right, taskId, { priority: 'p0', status: 'completed' }), 'bob', 'edit_a')
+      const leftEdit = await command(left, 'task.update', updatePayload(left, taskId, { description: 'Left description', status: 'review' }), 'alice', 'edit-a')
+      const rightEdit = await command(right, 'task.update', updatePayload(right, taskId, { priority: 'p0', status: 'completed' }), 'bob', 'edit_a')
       left.handle.merge(right.handle)
       right.handle.merge(left.handle)
       const context = left.taskContext(taskId)
       assert.equal(context.task.description, 'Left description')
       assert.equal(context.task.priority, 'p0')
       assert.deepEqual(Object.keys(context.conflicts), ['status'])
-      assert.deepEqual(context.revisions.status, ['edit-a', 'edit_a'])
+      assert.deepEqual(context.revisions.status, [leftEdit.operationId, rightEdit.operationId].sort())
       await command(left, 'task.resolve', { taskId, field: 'status', value: 'review', expectedRevisions: context.revisions.status }, 'alice', 'resolved')
-      await command(left, 'task.update', updatePayload(left, taskId, { status: 'in-progress' }), 'alice', 'after-resolution')
+      const after = await command(left, 'task.update', updatePayload(left, taskId, { status: 'in-progress' }), 'alice', 'after-resolution')
       right.handle.merge(left.handle)
       const reopened = await create(right)
       assert.deepEqual(reopened.taskContext(taskId).conflicts, {})
       assert.equal(reopened.taskContext(taskId).task.status, 'in-progress')
       reopened.handle.merge(late.handle)
       assert.deepEqual(reopened.taskContext(taskId).conflicts, {}, 'a late creation retry cannot resurrect initial values')
-      await command(late, 'task.update', updatePayload(late, taskId, { status: 'up-next' }), 'builder', 'late-edit')
+      const lateEdit = await command(late, 'task.update', updatePayload(late, taskId, { status: 'up-next' }), 'builder', 'late-edit')
       reopened.handle.merge(late.handle)
-      assert.deepEqual(reopened.taskContext(taskId).revisions.status, ['after-resolution', 'late-edit'])
-      assert.equal(reopened.taskContext(taskId).history.filter(event => event.operationId === 'shared-create').length, 1)
+      assert.deepEqual(reopened.taskContext(taskId).revisions.status, [after.operationId, lateEdit.operationId].sort())
+      assert.equal(reopened.taskContext(taskId).history.filter(event => event.requestId === 'shared-create').length, 1)
       assert.equal((await command(reopened, 'task.create', { title: 'One logical task' }, 'alice', 'shared-create')).replayed, true)
     })
   })
@@ -89,19 +143,19 @@ describe('shared workspace operations', () => {
       const [receipt] = await Promise.all([left, right].map(workspace =>
         command(workspace, 'comment.add', { taskId, text: '@builder original' }, 'alice', 'shared-comment')))
       const commentId = receipt.result.commentId
-      await command(left, 'comment.edit', { commentId, text: '@bob left edit', expectedRevisions: ['shared-comment'] }, 'alice', 'edit-a')
+      const leftEdit = await command(left, 'comment.edit', { commentId, text: '@bob left edit', expectedRevisions: [receipt.operationId] }, 'alice', 'edit-a')
       left.handle.merge(right.handle)
       assert.equal(left.taskContext(taskId).comments[0].content, '@bob left edit')
       assert.deepEqual(left.taskContext(taskId).mentions.map(mention => mention.toActorId), ['bob'])
-      await command(right, 'comment.edit', { commentId, text: '@reviewer right edit', expectedRevisions: ['shared-comment'] }, 'bob', 'edit_a')
+      const rightEdit = await command(right, 'comment.edit', { commentId, text: '@reviewer right edit', expectedRevisions: [receipt.operationId] }, 'bob', 'edit_a')
       left.handle.merge(right.handle)
       const revisions = left.taskContext(taskId).comments[0].revisionIds
-      assert.deepEqual(revisions, ['edit-a', 'edit_a'])
-      await command(left, 'comment.resolve', { commentId, text: 'Agreed', expectedRevisions: [...revisions].reverse() }, 'alice', 'comment-resolution')
+      assert.deepEqual(revisions, [leftEdit.operationId, rightEdit.operationId].sort())
+      const resolved = await command(left, 'comment.resolve', { commentId, text: 'Agreed', expectedRevisions: [...revisions].reverse() }, 'alice', 'comment-resolution')
       right.handle.merge(left.handle)
       assert.deepEqual(right.taskContext(taskId).comments[0].conflicts, [])
       assert.equal(right.taskContext(taskId).comments[0].content, 'Agreed')
-      await command(right, 'comment.delete', { commentId, expectedRevisions: ['comment-resolution'] })
+      await command(right, 'comment.delete', { commentId, expectedRevisions: [resolved.operationId] })
       left.handle.merge(right.handle)
       assert.equal(left.taskContext(taskId).comments.length, 0)
       assert.equal(left.taskContext(taskId).mentions.length, 0)
@@ -215,7 +269,7 @@ describe('shared workspace operations', () => {
       ]
       for (const request of requests) await left.execute(request)
       await command(left, 'task.update', updatePayload(left, taskId, { description: 'Latest' }))
-      await command(left, 'comment.edit', { commentId, text: 'Latest', expectedRevisions: ['retried-comment-edit'] })
+      await command(left, 'comment.edit', { commentId, text: 'Latest', expectedRevisions: left.taskContext(taskId).comments[0].revisionIds })
       for (const request of requests) assert.equal((await right.execute(request)).replayed, false)
       left.handle.merge(right.handle)
       const reopened = await create(left)
@@ -326,7 +380,7 @@ describe('shared workspace operations', () => {
       assert.equal(context.comments.length, 1)
       assert.equal(context.mentions.length, 1)
       assert.equal(context.mentions[0].toActorId, 'builder')
-      assert.equal(context.history.filter(event => event.operationId === operationId).length, 1)
+      assert.equal(context.history.filter(event => event.requestId === operationId).length, 1)
       assert.equal(Object.keys(workspace.handle.doc().operations).length, 2)
       await assert.rejects(command(workspace, 'task.handoff', { ...payload, message: 'different' }, 'alice', operationId), { code: 'OPERATION_ID_REUSED' })
     })
@@ -380,13 +434,13 @@ describe('shared workspace operations', () => {
     await withWorkspaces(async (left, create) => {
       const taskId = await createTask(left)
       const right = await create(left)
-      await command(left, 'task.update', updatePayload(left, taskId, { status: 'review' }), 'builder', 'left-edit')
-      await command(right, 'task.update', updatePayload(right, taskId, { status: 'completed' }), 'reviewer', 'right-edit')
+      const leftEdit = await command(left, 'task.update', updatePayload(left, taskId, { status: 'review' }), 'builder', 'left-edit')
+      const rightEdit = await command(right, 'task.update', updatePayload(right, taskId, { status: 'completed' }), 'reviewer', 'right-edit')
       left.handle.merge(right.handle)
       right.handle.merge(left.handle)
       const context = left.taskContext(taskId)
       assert.deepEqual(context.conflicts.status.map(value => value.actorId).sort(), ['builder', 'reviewer'])
-      assert.deepEqual(context.revisions.status, ['left-edit', 'right-edit'])
+      assert.deepEqual(context.revisions.status, [leftEdit.operationId, rightEdit.operationId].sort())
       await assert.rejects(command(left, 'task.update', updatePayload(left, taskId, { status: 'completed' })), { code: 'CONFLICT_REQUIRES_RESOLUTION' })
       await command(left, 'task.resolve', {
         taskId, field: 'status', value: 'review', expectedRevisions: context.revisions.status,
