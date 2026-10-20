@@ -6,7 +6,8 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { WebSocketServer } from 'ws'
 import { retireCompletedBridge } from '../lib/bridge-retirement.js'
-import { CodexBridgeAdapter, localEndpoint } from '../lib/codex-bridge-adapter.js'
+import { CodexBridgeAdapter } from '../lib/codex-bridge-adapter.js'
+import { localEndpoint } from '../lib/bridge-endpoints.js'
 
 async function fixture(run) {
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
