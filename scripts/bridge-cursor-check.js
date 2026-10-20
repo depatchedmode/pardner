@@ -45,11 +45,11 @@ try {
         assert.ok(Buffer.byteLength(assistantText) <= 1024 * 1024, 'Bound qualification response output')
       }
     })
-    const receipt = await adapter.dispatch(mapping, prompt)
+    const receipt = await adapter.dispatch(mapping, { prompt })
     checks.observedCompletionResponse = receipt.startsWith('cursor-acp:prompt-response:')
     checks.observedAssistantNonce = assistantText.trim() === nonce
     assert.equal(checks.observedAssistantNonce, true, 'A completion response alone does not prove the model replied')
-    const replayReceipt = await adapter.reconcile(mapping, prompt)
+    const replayReceipt = await adapter.reconcile(mapping, { prompt })
     checks.exactReplayMessageReceipt = Boolean(replayReceipt)
     assert.equal(checks.exactReplayMessageReceipt, true, 'Complete replay with a unique native message ID is required for recovery qualification')
   }

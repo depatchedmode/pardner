@@ -57,7 +57,7 @@ async function fixture(settings, run) {
 it('uses fixed stdio argv, loads only the mapped session, and never overrides mode/model/permissions', () => fixture({}, async ({ mapping, root, create, calls }) => {
   const adapter = create()
   assert.equal(await adapter.availability(mapping), 'ready')
-  const receipt = await adapter.dispatch(mapping, 'persisted delivery')
+  const receipt = await adapter.dispatch(mapping, { prompt: 'persisted delivery' })
   assert.match(receipt, /^cursor-acp:prompt-response:/)
   const observed = JSON.parse(Buffer.from(receipt.split(':').at(-1), 'base64url'))
   assert.equal(observed.sessionId, mapping.threadId); assert.equal(observed.stopReason, 'end_turn')
@@ -97,35 +97,45 @@ it('reports busy while prompt completion is pending and returns no early accepta
   const adapter = create()
   await adapter.availability(mapping)
   let completed = false
-  const dispatch = adapter.dispatch(mapping, 'slow prompt').then(value => { completed = true; return value })
+  const dispatch = adapter.dispatch(mapping, { prompt: 'slow prompt' }).then(value => { completed = true; return value })
   await delay(10)
   assert.equal(completed, false); assert.equal(await adapter.availability(mapping), 'busy')
   assert.match(await dispatch, /^cursor-acp:prompt-response:/)
   assert.equal(adapter.activity(), 'idle')
 }))
 
+async function withBridge({ config, mapping, create }, run) {
+  const inbox = await openBridgeInbox(config)
+  const mention = { id: 'mention', taskId: 'task', commentId: 'comment', toActorId: 'builder', fromActorId: 'alice' }
+  inbox.receive('builder', { mention }, mapping)
+  const source = Object.assign(new EventEmitter(), { close() {}, actors: async () => ({ actors: {
+    builder: { id: 'builder', handle: 'builder', kind: 'agent' }, alice: { id: 'alice', handle: 'alice', kind: 'human' },
+  } }), context: async () => ({ mentions: [mention], comments: [{ id: 'comment' }] }) })
+  const adapter = create(), bridge = new AgentBridge({ config, inbox, source, adapterFactory: () => adapter })
+  try { await run({ inbox, adapter, bridge }) }
+  finally { await bridge.stop(); inbox.close() }
+}
+
+it('bridge dispatch submits exactly the stored delivery prompt', () => fixture({}, async context => withBridge(context, async ({ inbox, bridge }) => {
+  await bridge.dispatch(context.mapping)
+  const [row] = inbox.rows(), prompts = (await context.calls()).filter(value => value.method === 'session/prompt')
+  assert.equal(row.state, 'accepted'); assert.match(row.turn_id, /^cursor-acp:prompt-response:/)
+  assert.deepEqual(prompts.map(value => value.params.prompt), [[{ type: 'text', text: row.prompt }]])
+})))
+
 for (const method of ['session/request_permission', 'cursor/ask_question', 'cursor/create_plan', 'unknown/client_request']) {
-  it(`never answers ${method}, reports blocked, and leaves the delivery queued`, () => fixture({ blockOnLoad: method }, async ({ mapping, config, create, calls }) => {
-    const inbox = await openBridgeInbox(config)
-    const mention = { id: 'mention', taskId: 'task', commentId: 'comment', toActorId: 'builder', fromActorId: 'alice' }
-    inbox.receive('builder', { mention }, mapping)
-    const source = Object.assign(new EventEmitter(), { close() {}, actors: async () => ({ actors: {
-      builder: { id: 'builder', handle: 'builder', kind: 'agent' }, alice: { id: 'alice', handle: 'alice', kind: 'human' },
-    } }), context: async () => ({ mentions: [mention], comments: [{ id: 'comment' }] }) })
-    const adapter = create(), bridge = new AgentBridge({ config, inbox, source, adapterFactory: () => adapter })
-    try {
-      await bridge.dispatch(mapping)
-      assert.equal(inbox.rows()[0].state, 'queued'); assert.match(inbox.rows()[0].reason, /blocked/)
-      const messages = await calls()
-      assert.equal(messages.some(value => value.id === 'server-request' || value.method === 'session/prompt'), false)
-    } finally { await bridge.stop(); inbox.close() }
-  }))
+  it(`never answers ${method}, reports blocked, and leaves the delivery queued`, () => fixture({ blockOnLoad: method }, async context => withBridge(context, async ({ inbox, bridge }) => {
+    await bridge.dispatch(context.mapping)
+    assert.equal(inbox.rows()[0].state, 'queued'); assert.match(inbox.rows()[0].reason, /blocked/)
+    const messages = await context.calls()
+    assert.equal(messages.some(value => value.id === 'server-request' || value.method === 'session/prompt'), false)
+  })))
 }
 
 it('blocked permission during a submitted prompt becomes uncertain on close and is never auto-answered', () => fixture({ promptBlock: 'session/request_permission' }, async ({ mapping, create, calls }) => {
   const adapter = create(); await adapter.availability(mapping)
   const changed = once(adapter, 'change')
-  const dispatch = adapter.dispatch(mapping, 'permission prompt')
+  const dispatch = adapter.dispatch(mapping, { prompt: 'permission prompt' })
   const rejected = assert.rejects(dispatch, { code: 'CURSOR_CLOSED' })
   await changed
   while (!adapter.requests.size) await delay(5)
@@ -139,11 +149,12 @@ it('reopens the durable inbox and reconciles a lost reply from exactly one nativ
   const mention = { id: 'mention', taskId: 'task', commentId: 'comment', toActorId: 'builder', fromActorId: 'alice' }
   inbox.receive('builder', { mention }, mapping); inbox.begin('mention', 'exact persisted prompt')
   const first = create(); await first.availability(mapping)
-  await assert.rejects(first.dispatch(mapping, 'exact persisted prompt'), { code: 'CURSOR_DISCONNECTED' })
+  await assert.rejects(first.dispatch(mapping, { prompt: 'exact persisted prompt' }), { code: 'CURSOR_DISCONNECTED' })
   inbox.close(); inbox = await openBridgeInbox(config); inbox.recover()
   assert.equal(inbox.rows()[0].state, 'uncertain')
   const second = create()
-  const receipt = await second.reconcile(mapping, inbox.rows()[0].prompt)
+  const row = inbox.rows()[0]
+  const receipt = await second.reconcile(mapping, { id: row.id, mention: row.mention, prompt: row.prompt })
   assert.match(receipt, /^cursor-acp:replayed-message:/)
   const evidence = JSON.parse(Buffer.from(receipt.split(':').at(-1), 'base64url'))
   assert.deepEqual(evidence, { sessionId: mapping.threadId, messageId: 'native-message-1' })
@@ -160,19 +171,19 @@ for (const [name, replay] of [
   ['noncontiguous reused ID', [chunk('one', 'full '), chunk('two', 'other'), chunk('one', 'prompt')]],
 ]) {
   it(`keeps ${name} uncertain without a blind retry`, () => fixture({ replay }, async ({ mapping, create, calls }) => {
-    assert.equal(await create().reconcile(mapping, 'full prompt'), null)
+    assert.equal(await create().reconcile(mapping, { prompt: 'full prompt' }), null)
     assert.equal((await calls()).some(value => value.method === 'session/prompt'), false)
   }))
 }
 
 it('joins contiguous chunks sharing the supplied native message ID', () => fixture({ replay: [chunk('one', 'full '), chunk('one', 'prompt')] }, async ({ mapping, create }) => {
-  assert.match(await create().reconcile(mapping, 'full prompt'), /^cursor-acp:replayed-message:/)
+  assert.match(await create().reconcile(mapping, { prompt: 'full prompt' }), /^cursor-acp:replayed-message:/)
 }))
 
 it('requires a complete load response before trusting replay', () => fixture({ replay: [chunk('one', 'full prompt')], load: 'hang' }, async ({ mapping, create }) => {
   const adapter = create(); adapter.requestTimeoutMs = 150
   await adapter.connect()
-  await assert.rejects(adapter.reconcile(mapping, 'full prompt'), { code: 'CURSOR_RPC_TIMEOUT' })
+  await assert.rejects(adapter.reconcile(mapping, { prompt: 'full prompt' }), { code: 'CURSOR_RPC_TIMEOUT' })
   assert.equal(adapter.history, null)
 }))
 
@@ -255,12 +266,12 @@ it('bounds oversized protocol frames and rejects updates for a different session
     const adapter = new CursorBridgeAdapter(mapping, { maxLineBytes: 1024 })
     try { await assert.rejects(adapter.connect(), { code: 'CURSOR_PROTOCOL_ERROR' }) } finally { await adapter.close() }
   })
-  await fixture({ updateWrongSession: true }, async ({ mapping, create }) => { const adapter = create(); await assert.rejects(adapter.dispatch(mapping, 'prompt'), { code: 'CURSOR_PROTOCOL_ERROR' }) })
+  await fixture({ updateWrongSession: true }, async ({ mapping, create }) => { const adapter = create(); await assert.rejects(adapter.dispatch(mapping, { prompt: 'prompt' }), { code: 'CURSOR_PROTOCOL_ERROR' }) })
 })
 
 it('detects mode changes during a prompt and rejects invalid stop reasons', async () => {
-  await fixture({ changeMode: 'agent' }, async ({ mapping, create }) => { await assert.rejects(create().dispatch(mapping, 'prompt'), { code: 'PERMISSION_POLICY_CHANGED' }) })
-  await fixture({ stopReason: 'invented' }, async ({ mapping, create }) => { await assert.rejects(create().dispatch(mapping, 'prompt'), { code: 'CURSOR_PROTOCOL_ERROR' }) })
+  await fixture({ changeMode: 'agent' }, async ({ mapping, create }) => { await assert.rejects(create().dispatch(mapping, { prompt: 'prompt' }), { code: 'PERMISSION_POLICY_CHANGED' }) })
+  await fixture({ stopReason: 'invented' }, async ({ mapping, create }) => { await assert.rejects(create().dispatch(mapping, { prompt: 'prompt' }), { code: 'CURSOR_PROTOCOL_ERROR' }) })
 })
 
 it('selects Cursor through production configuration and both inspection paths with explicit limits', () => fixture({}, async ({ mapping, path }) => {
