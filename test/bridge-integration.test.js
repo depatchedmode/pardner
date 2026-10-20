@@ -46,7 +46,7 @@ for (const mode of ['co-worktree', 'co-host', 'replica']) {
       const harness = new EventEmitter()
       const calls = []
       harness.availability = async () => 'ready'
-      harness.dispatch = async (mapping, prompt) => { calls.push({ mapping, prompt }); return `turn-${calls.length}` }
+      harness.dispatch = async (mapping, { prompt }) => { calls.push({ mapping, prompt }); return `turn-${calls.length}` }
       harness.reconcile = async () => null
       harness.close = () => {}
       const source = new BridgeSource(config)
@@ -134,7 +134,7 @@ it('a task missing from the local replica does not starve later context and disp
     inbox = await openBridgeInbox(config)
     const source = new BridgeSource(config), harness = new EventEmitter(), calls = []
     Object.assign(harness, { availability: async () => 'ready', reconcile: async () => null, close() {},
-      dispatch: async (_mapping, prompt) => { calls.push(JSON.parse(prompt.split('\n\n').at(-1)).mention.id); return `turn-${calls.length}` } })
+      dispatch: async (_mapping, { mention }) => { calls.push(mention.id); return `turn-${calls.length}` } })
     bridge = new AgentBridge({ config, inbox, source, adapterFactory: () => harness })
     // The hub can deliver a receipt before its task reaches the local replica.
     inbox.receive('builder', { mention: firstMention }, mapping)

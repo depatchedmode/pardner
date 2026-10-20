@@ -132,8 +132,13 @@ the harness's approval/input client; this adapter supplies no approval UI. The
 bridge passes no model, directory, or permission overrides when resuming or
 starting a turn, and refuses a resumed policy that differs from `expectedPolicy`.
 
-Before dispatch, the exact prompt is persisted. Lost replies and crashes during
-dispatch produce `uncertain`. Recovery checks stored history for an exact matching
+Before dispatch, the exact prompt is persisted. Adapters receive the delivery ID,
+the mention and that prompt, so they never parse routing data out of prompt text.
+An adapter that can prove the harness received nothing reports
+`DELIVERY_NOT_SUBMITTED`; the delivery returns to `queued` with the reason shown
+and rebuilds its prompt from current authorized context on retry. The delivery
+ID stays the same. Any other failure, lost reply or crash
+during dispatch produces `uncertain`. Recovery checks stored history for an exact matching
 user message in one turn. Missing, compacted, truncated, or ambiguous history does
 not prove non-acceptance. Further dispatch for that Actor waits for reconciliation.
 A disconnected harness may leave execution state unobserved; its durable dispatch

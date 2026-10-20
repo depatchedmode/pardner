@@ -17,14 +17,14 @@ const mention = { id: 'mention-one', taskId: 'task-one', commentId: 'comment-one
 class Harness extends EventEmitter {
   constructor() { super(); this.calls = []; this.state = 'ready'; this.accepted = new Map() }
   async availability() { return this.state }
-  async dispatch(_mapping, prompt) {
+  async dispatch(_mapping, { prompt }) {
     this.calls.push(prompt)
     this.accepted.set(prompt, `turn-${this.calls.length}`)
     if (this.loseResponse) throw new Error('Lost response after acceptance')
     this.state = 'busy'
     return this.accepted.get(prompt)
   }
-  async reconcile(_mapping, prompt) { return this.accepted.get(prompt) ?? null }
+  async reconcile(_mapping, { prompt }) { return this.accepted.get(prompt) ?? null }
   close() {}
 }
 
@@ -70,18 +70,18 @@ async function fixture(run) {
 
 it('durable context is observed before RPC and retains its timing across lost-reply reconciliation', () => fixture(async state => {
   const dispatch = state.harness.dispatch.bind(state.harness)
-  state.harness.dispatch = async (mapped, prompt) => {
+  state.harness.dispatch = async (mapped, delivery) => {
     const reader = new DatabaseSync(state.path, { readOnly: true })
     try {
       const row = reader.prepare('SELECT * FROM inbox WHERE id = ?').get(mention.id)
       assert.equal(row.state, 'dispatching')
-      assert.equal(row.prompt, prompt)
+      assert.equal(row.prompt, delivery.prompt)
       assert.ok(Number.isFinite(row.context_persisted_at))
       assert.ok(row.received_at <= row.context_persisted_at)
       assert.ok(row.context_persisted_at <= Date.now())
       assert.equal(row.dispatched_at, null)
     } finally { reader.close() }
-    return dispatch(mapped, prompt)
+    return dispatch(mapped, delivery)
   }
   state.harness.loseResponse = true; state.source.mentions.push(mention)
   await state.bridge.wake()
@@ -151,6 +151,33 @@ for (const restart of [false, true]) it(`a failed context-timing commit retries 
   assert.ok(Number.isFinite(state.inbox.rows()[0].context_persisted_at))
   await state.bridge.wake()
   assert.equal(state.harness.calls.length, 1)
+}))
+
+it('a provably unsubmitted delivery stays queued and retries its identity with fresh context', () => fixture(async state => {
+  const dispatch = state.harness.dispatch.bind(state.harness)
+  let refuse = true
+  state.harness.dispatch = async (mapped, delivery) => {
+    assert.deepEqual(delivery.mention, mention); assert.equal(delivery.id, mention.id)
+    if (refuse) throw Object.assign(new Error('channel scope is stale'), { code: 'DELIVERY_NOT_SUBMITTED' })
+    return dispatch(mapped, delivery)
+  }
+  state.source.mentions.push(mention)
+  await state.bridge.wake()
+  const [released] = state.inbox.rows()
+  assert.equal(released.state, 'queued'); assert.equal(released.reason, 'blocked: channel scope is stale')
+  assert.equal(state.bridge.states.builder, 'blocked: channel scope is stale')
+  const context = state.source.context.bind(state.source)
+  const correction = { id: 'later-comment', text: 'Context changed while the unsubmitted delivery was blocked' }
+  state.source.context = async received => ({ ...await context(received), comments: [{ id: received.commentId }, correction] })
+  refuse = false
+  await state.bridge.wake()
+  const [accepted] = state.inbox.rows()
+  assert.equal(accepted.state, 'accepted'); assert.equal(accepted.id, released.id)
+  assert.notEqual(accepted.prompt, released.prompt)
+  assert.deepEqual(state.harness.calls, [accepted.prompt])
+  const delivered = JSON.parse(accepted.prompt.split('\n\n').at(-1))
+  assert.deepEqual(delivered.context.comments, [{ id: mention.commentId }, correction])
+  assert.deepEqual(delivered.mention, mention)
 }))
 
 it('legacy inboxes migrate without inventing context timing or losing accepted work', async () => {

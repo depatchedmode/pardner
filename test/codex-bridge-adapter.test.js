@@ -50,7 +50,7 @@ async function fixture(run) {
 
 it('initializes, resumes the mapped thread, and starts a turn without overriding session permissions or model', () => fixture(async ({ adapter, state, mapping }) => {
   assert.equal(await adapter.availability(mapping), 'ready')
-  assert.equal(await adapter.dispatch(mapping, 'bounded prompt'), 'turn-one')
+  assert.equal(await adapter.dispatch(mapping, { prompt: 'bounded prompt' }), 'turn-one')
   assert.deepEqual(state.calls.map(call => call.method), ['initialize', 'initialized', 'thread/read', 'thread/resume', 'thread/read', 'turn/start'])
   assert.deepEqual(state.calls.find(call => call.method === 'thread/resume').params, { threadId: mapping.threadId })
   assert.deepEqual(state.calls.at(-1).params, { threadId: mapping.threadId, input: [{ type: 'text', text: 'bounded prompt', text_elements: [] }] })
@@ -76,18 +76,18 @@ it('rejects worktree mismatch before resuming or starting a turn', () => fixture
 it('reconnects and finds an accepted prompt after the dispatch response was lost', () => fixture(async ({ adapter, state, mapping }) => {
   await adapter.availability(mapping)
   state.dropDispatch = true
-  await assert.rejects(adapter.dispatch(mapping, 'stable prompt'), /closed/)
-  assert.equal(await adapter.reconcile(mapping, 'stable prompt'), 'turn-one')
-  assert.equal(await adapter.reconcile(mapping, 'different prompt'), null)
+  await assert.rejects(adapter.dispatch(mapping, { prompt: 'stable prompt' }), /closed/)
+  assert.equal(await adapter.reconcile(mapping, { prompt: 'stable prompt' }), 'turn-one')
+  assert.equal(await adapter.reconcile(mapping, { prompt: 'different prompt' }), null)
   assert.equal(state.calls.filter(call => call.method === 'turn/start').length, 1)
 }))
 
 it('does not infer non-acceptance from missing history or accept ambiguous matching turns', () => fixture(async ({ adapter, state, mapping }) => {
   const turn = { id: 'turn-one', items: [{ type: 'userMessage', content: [{ type: 'text', text: 'prompt' }] }] }
   state.turns = [turn, { ...turn, id: 'turn-two' }]
-  assert.equal(await adapter.reconcile(mapping, 'prompt'), null)
+  assert.equal(await adapter.reconcile(mapping, { prompt: 'prompt' }), null)
   state.turns = []
-  assert.equal(await adapter.reconcile(mapping, 'prompt'), null)
+  assert.equal(await adapter.reconcile(mapping, { prompt: 'prompt' }), null)
 }))
 
 it('rejects non-local or credential-bearing harness endpoints', () => {

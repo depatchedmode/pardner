@@ -128,7 +128,7 @@ it('a deleted originating comment does not starve a later valid delivery through
   const calls = []
   let busy = true
   Object.assign(harness, { availability: async () => busy ? 'busy' : 'ready',
-    dispatch: async (_mapping, prompt) => { calls.push(JSON.parse(prompt.split('\n\n').at(-1))); return `turn-${calls.length}` },
+    dispatch: async (_mapping, { prompt }) => { calls.push(JSON.parse(prompt.split('\n\n').at(-1))); return `turn-${calls.length}` },
     reconcile: async () => null, close: () => {} })
   const bridge = new AgentBridge({ config, inbox: f.inbox, source: f.source, adapterFactory: () => harness })
   try {
