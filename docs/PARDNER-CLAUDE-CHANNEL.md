@@ -99,6 +99,13 @@ context and make attributed, idempotent writes. It calls
 `pardner_complete_delivery` after finishing; this cooperative report permits the
 next notification and does not update a task's status.
 
+When the channel rejects a submission before saving or notifying it, because of
+a stale task/sender scope, another outstanding delivery, an uninitialized client
+or a changed binding, it says so explicitly and the adapter reports
+`DELIVERY_NOT_SUBMITTED`. The delivery returns to the queue with that reason and
+retries the same stored prompt later. Transport errors, timeouts and any failure
+after the ledger insert stay uncertain.
+
 A receipt timeout leaves the core bridge delivery uncertain. Reconciliation
 requires the ledger row for that delivery ID, with the identical full prompt and
 an accepted durable receipt.

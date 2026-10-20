@@ -1,5 +1,6 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 import { mkdtemp, realpath, rm, chmod, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -29,9 +30,9 @@ async function fixture(run) {
   const path = join(root, 'config.json')
   let channel, client
   const events = [], adapter = new ClaudeChannelAdapter(mapping)
-  const start = async (initialize = true) => {
+  const start = async (initialize = true, served = mapping) => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-    channel = await startClaudeChannel({ mapping, config, transport: serverTransport, cwd: root })
+    channel = await startClaudeChannel({ mapping: served, config, transport: serverTransport, cwd: root })
     client = new Client({ name: 'protocol-test-fixture', version: '1' }, { capabilities: {} })
     client.setNotificationHandler(eventSchema, message => { events.push(message.params) })
     if (initialize) await client.connect(clientTransport)
@@ -106,7 +107,7 @@ it('notification write without a model receipt stays uncertain and never resends
 it('rejects Actor, task, sender, worktree and binding changes before any channel notification', () => fixture(async ({ root, mapping, adapter, start, events, delivery }) => {
   await start()
   for (const change of [{ toActorId: 'reviewer' }, { taskId: 'other' }, { fromActorId: 'bob' }]) {
-    await assert.rejects(adapter.dispatch(mapping, delivery('delivery', change)), { code: 'CHANNEL_SCOPE_DENIED' })
+    await assert.rejects(adapter.dispatch(mapping, delivery('delivery', change)), { code: 'DELIVERY_NOT_SUBMITTED', details: { channelCode: 'CHANNEL_SCOPE_DENIED' } })
   }
   await assert.rejects(adapter.dispatch(mapping, { ...delivery(), id: 'other' }), { code: 'INVALID_ARGUMENT' })
   await assert.rejects(adapter.describe({ ...mapping, threadId: 'other' }), { code: 'CHANNEL_BINDING_CHANGED' })
@@ -114,6 +115,48 @@ it('rejects Actor, task, sender, worktree and binding changes before any channel
   const elsewhere = join(root, 'elsewhere'); await mkdir(elsewhere)
   await assert.rejects(startClaudeChannel({ mapping, config: {}, transport: server, cwd: elsewhere }), { code: 'WORKTREE_MISMATCH' })
   await client.close(); assert.equal(events.length, 0)
+}))
+
+it('reports only typed pre-notification rejections as not submitted; later or transport failures stay uncertain', () => fixture(async ({ mapping, adapter, events, start, stop, delivery }) => {
+  const channel = await start()
+  await assert.rejects(adapter.dispatch(mapping, delivery()), { code: 'CHANNEL_RECEIPT_UNCERTAIN' })
+  await assert.rejects(adapter.dispatch(mapping, delivery('next')), { code: 'DELIVERY_NOT_SUBMITTED', details: { channelCode: 'CHANNEL_BUSY' } })
+  await assert.rejects(adapter.dispatch(mapping, { ...delivery(), prompt: 'changed' }), { code: 'OPERATION_ID_REUSED' })
+  channel.ledger.database.prepare("UPDATE deliveries SET state = 'completed'").run()
+  channel.mcp.notification = async () => { throw new Error('Injected notification write failure') }
+  await assert.rejects(adapter.dispatch(mapping, delivery('after-insert')), { code: 'CHANNEL_REQUEST_FAILED' })
+  assert.equal(channel.ledger.get('after-insert').state, 'notified')
+  assert.equal(events.length, 1)
+  await stop()
+  await assert.rejects(adapter.dispatch(mapping, delivery('later')), { code: 'ENOENT' })
+}))
+
+it('a stale channel scope leaves the bridge delivery queued with a visible reason and retries the same stored prompt', () => fixture(async ({ root, mapping, config, start, stop, events, tool }) => {
+  const mention = { id: 'delivery', taskId: 'task', commentId: 'comment', toActorId: 'builder', fromActorId: 'alice' }
+  const source = Object.assign(new EventEmitter(), { mentions: [mention], verify: async () => {}, watch: async () => {},
+    pending: async () => ({ mentions: source.mentions }), claim: async () => ({ claimed: true, mention: source.mentions[0], claimToken: 'fixture' }),
+    ack: async () => { source.mentions = [] }, context: async value => ({ mentions: [value], comments: [{ id: value.commentId }] }),
+    actors: async () => ({ actors: { builder: { id: 'builder', handle: 'builder', kind: 'agent' }, alice: { id: 'alice', handle: 'alice', kind: 'human' } } }),
+    close() {} })
+  await mkdir(config.inboxDirectory, { recursive: true })
+  const inbox = await openBridgeInbox(config)
+  let bridge = new AgentBridge({ config, inbox, source })
+  try {
+    await start(true, { ...mapping, allowedTaskIds: ['stale-task'] })
+    await bridge.start()
+    const queued = inbox.rows()[0]
+    assert.equal(queued.state, 'queued'); assert.match(queued.reason, /^blocked: .*scope/)
+    assert.match(bridge.states.builder, /^blocked: .*scope/)
+    assert.equal(events.length, 0)
+    await bridge.stop(); await stop()
+    await start()
+    bridge = new AgentBridge({ config, inbox, source })
+    const accepting = (async () => { while (!events.length) await new Promise(resolve => setTimeout(resolve, 5)); return tool('pardner_accept_delivery', 'delivery') })()
+    await bridge.start()
+    const { receipt } = await accepting
+    assert.equal(events.length, 1); assert.equal(events[0].content, queued.prompt)
+    assert.equal(inbox.rows()[0].state, 'accepted'); assert.equal(inbox.rows()[0].turn_id, receipt)
+  } finally { await bridge.stop(); inbox.close() }
 }))
 
 it('owns one private socket server and rejects unsafe directory permissions', () => fixture(async ({ mapping, config, root, start, adapter }) => {
@@ -128,7 +171,7 @@ it('owns one private socket server and rejects unsafe directory permissions', ()
 it('blocks an uninitialized channel client and closes pending receipt polling promptly', () => fixture(async ({ mapping, adapter, start, stop, delivery }) => {
   await start(false)
   assert.match(await adapter.availability(mapping), /not initialized/)
-  await assert.rejects(adapter.dispatch(mapping, delivery()), { code: 'CHANNEL_UNAVAILABLE' })
+  await assert.rejects(adapter.dispatch(mapping, delivery()), { code: 'DELIVERY_NOT_SUBMITTED', details: { channelCode: 'CHANNEL_UNAVAILABLE' } })
   await stop(); await start()
   const pending = adapter.dispatch(mapping, delivery())
   const rejected = assert.rejects(pending, { code: 'CHANNEL_CLOSED' })
