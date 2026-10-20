@@ -289,6 +289,18 @@ it('later receipts, inbox changes, retargeted mappings and narrowed scope reject
   assert.equal(s.ledger.get('delivery').state, 'accepted'); assert.equal(s.inbox.dispositionFor('delivery'), null)
 }))
 
+it('core reconcile refuses retry for channel rows and points to abandonment, while other providers may retry', () => fixture(async s => {
+  const before = s.seed('delivery')
+  await assert.rejects(runBridgeCommand('reconcile', { config: s.path, delivery: 'delivery', decision: 'retry', evidence: 'No blind retry' }),
+    { code: 'UNSUPPORTED_BRIDGE_RETRY', message: /bridge dispose --decision abandon/ })
+  assert.deepEqual(s.inbox.rows()[0], before.inbox); assert.equal(s.ledger.get('delivery').state, 'notified')
+  assert.equal(bridgeProviders.allowsReconcileRetry({ adapter: 'codex-app-server' }), true)
+  assert.equal(bridgeProviders.allowsReconcileRetry({ adapter: 'retired-provider' }), true)
+  const receipt = s.ledger.accept('delivery').receipt
+  await runBridgeCommand('reconcile', { config: s.path, delivery: 'delivery', decision: 'accepted', evidence: 'Cooperative receipt observed', 'turn-id': receipt })
+  assert.equal(s.inbox.rows()[0].state, 'accepted')
+}))
+
 it('requires exclusive ownership of both inbox and channel even for offline disposition inspection', () => fixture(async s => {
   s.seed('delivery')
   for (const directory of [s.config.inboxDirectory, s.mapping.channelDirectory]) {

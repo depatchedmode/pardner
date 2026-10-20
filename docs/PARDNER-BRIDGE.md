@@ -162,11 +162,14 @@ pardner bridge reconcile --config /absolute/path/to/bridge.json \
   --evidence 'Inspected the stopped harness and confirmed no accepted turn'
 ```
 
-Reconciliation requires exclusive inbox ownership. An explicitly authorized retry
-keeps the delivery ID and rebuilds the prompt from current task context. Uncertain
-dispatch reconciliation uses the exact stored prompt. This is not universal
-exactly-once execution: external effects still need idempotency, and delivery
-leases do not lock shared worktrees.
+Reconciliation requires exclusive inbox ownership. Where the provider permits
+an explicitly authorized retry, it keeps the delivery ID and rebuilds the prompt
+from current task context. Uncertain dispatch reconciliation uses the exact
+stored prompt. The Claude channel retains its own outstanding ledger row, so
+requeueing only the inbox would block that Actor forever. Retry is refused for
+its rows; use the channel runbook's `bridge dispose --decision abandon` instead.
+This is not universal exactly-once execution: external effects still need
+idempotency, and delivery leases do not lock shared worktrees.
 
 ## Completion cleanup
 

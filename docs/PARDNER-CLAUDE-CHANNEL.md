@@ -114,8 +114,9 @@ it is not blindly resent. The ledger keeps one outstanding delivery as a barrier
 Native permission dialogs or a silently dropped channel event may require local
 human attention; neither is automatically detected or approved by this provider.
 Core `bridge reconcile --decision accepted` can record separately verified
-acceptance evidence. `--decision retry` alone cannot clear an unacknowledged
-channel-ledger row: that row still blocks availability and is not re-notified.
+acceptance evidence. `--decision retry` is refused for channel deliveries: it
+would requeue only the inbox row while the outstanding ledger row kept the
+channel busy forever, and the notification is never resent.
 An operator can now explicitly abandon an outstanding delivery after stopping
 the bridge, channel server, native Claude client and any possible effects. This
 means closing that delivery with an **unverified execution outcome**. It is not
