@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { reviewRound, collectReviews, nextReviewAction, submitOnce, reviewerActors, remainingModelTime, readWithinConvergence } from '../support/three-agent-review.js'
+import { reviewRound, collectReviews, nextReviewAction, submitOnce, reviewerActors, readWithinConvergence } from '../support/three-agent-review.js'
 
 const taskIds = { 'reviewer-a': 'task-a', 'reviewer-b': 'task-b' }
 const round = reviewRound({ runId: 'fixture', round: 1, commitSha: 'a'.repeat(40), sourceSha256: 'b'.repeat(64), taskIds })
@@ -47,12 +47,6 @@ it('duplicate results cannot impersonate a second reviewer or resolve contradict
   const conflict = collectReviews(round, contexts({ 'reviewer-a': [a, result('reviewer-a', { verdict: 'changes-requested', findings: ['A failing case'] })], 'reviewer-b': [result('reviewer-b')] }))
   assert.deepEqual(conflict.ambiguous, ['reviewer-a'])
   assert.equal(conflict.complete, false)
-})
-
-it('uses the remaining overall model budget for pending acknowledgments without extending it', () => {
-  assert.equal(remainingModelTime(1200000, 410000), 790000)
-  assert.throws(() => remainingModelTime(1200000, 1200000), /deadline expired/)
-  assert.throws(() => remainingModelTime(1200000, 1200001), /deadline expired/)
 })
 
 it('retains a failed read observation and recovers synchronized context within a bounded interval', async () => {

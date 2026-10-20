@@ -66,11 +66,6 @@ export function nextReviewAction(round, assessment) {
   return assessment.approved ? 'human-review' : 'blocked'
 }
 
-export function remainingModelTime(deadline, now = Date.now()) {
-  assert.ok(deadline > now, 'The declared model-workflow deadline expired')
-  return deadline - now
-}
-
 export async function readWithinConvergence(read, { timeoutMs, intervalMs = 500, onError = () => {} }) {
   const deadline = Date.now() + timeoutMs
   const expired = () => new Error('Read convergence deadline expired')
