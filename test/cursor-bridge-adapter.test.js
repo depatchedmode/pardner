@@ -88,6 +88,11 @@ for (const [settings, code] of [[{ modeMissing: true }, 'CURSOR_MODE_UNOBSERVED'
   }))
 }
 
+it('configured inspection of a placeholder pin reports the observed mode for setup', () => fixture({ mode: 'agent' }, async ({ path }) => {
+  await assert.rejects(runBridgeCommand('inspect', { config: path, actor: 'builder' }),
+    { code: 'PERMISSION_POLICY_CHANGED', details: { observedModeId: 'agent' } })
+}))
+
 it('pins mode reported by updates and detects conflicting response mode', async () => {
   await fixture({ modeMissing: true, modeViaUpdate: 'ask' }, async ({ mapping, create }) => { assert.equal(await create().availability(mapping), 'ready') })
   await fixture({ modeViaUpdate: 'agent', mode: 'ask' }, async ({ mapping, create }) => { await assert.rejects(create().availability(mapping), { code: 'PERMISSION_POLICY_CHANGED' }) })
