@@ -81,6 +81,18 @@ it('default, explicit, and config-based inspection use the registry and close on
   assert.equal(calls, 4)
 }))
 
+it('a shutdown failure after a failed start keeps the startup error', () => fixture(async ({ path }) => {
+  const adapter = Object.assign(new EventEmitter(), {
+    on() { throw Object.assign(new Error('start failed'), { code: 'START_FAILED' }) },
+    close() { throw new Error('close failed') },
+  })
+  const providers = new BridgeProviders([{ ...codexBridgeProvider, create: () => adapter }])
+  const signals = process.listenerCount('SIGTERM')
+  await assert.rejects(runBridgeCommand('run', { config: path }, { providers }),
+    error => error.code === 'START_FAILED' && error.details.shutdownErrors.includes('close failed'))
+  assert.equal(process.listenerCount('SIGTERM'), signals)
+}))
+
 it('cleanup is available only when the selected implementation declares support', () => fixture(async ({ path, mapping, config, save }) => {
   config.completionCleanup = { archiveDirectory: join(mapping.worktree, 'archive') }; await save()
   const providers = new BridgeProviders([{ ...codexBridgeProvider, capabilities: { completionCleanup: false } }])
