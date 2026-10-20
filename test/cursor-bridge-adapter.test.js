@@ -301,6 +301,8 @@ it('Cursor inspection never starts a second session owner beside a running bridg
   const lease = await acquireStorageLease(config.inboxDirectory)
   try {
     await assert.rejects(runBridgeCommand('inspect', { config: path, actor: 'builder' }), { code: 'STORAGE_IN_USE' })
+    const { stdout } = await execute(process.execPath, [checkScript, '--run', '--config', path, '--actor', 'builder']).catch(error => error)
+    assert.equal(JSON.parse(stdout).errorCode, 'STORAGE_IN_USE')
     assert.deepEqual(await processLog(root, 'starts'), [])
   } finally { lease.close() }
 }))

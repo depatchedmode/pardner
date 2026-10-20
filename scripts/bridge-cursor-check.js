@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { CursorBridgeAdapter } from '../lib/cursor-bridge-adapter.js'
 import { bridgeConfig } from '../lib/agent-bridge.js'
+import { acquireStorageLease } from '../lib/storage-lease.js'
 
 // Default: initialize only, no authentication, session load/create, or inference.
+// Without a loaded session it owns nothing, so only --run takes the bridge storage lease.
 const args = process.argv.slice(2), flags = {}
 const usage = 'node scripts/bridge-cursor-check.js --command /absolute/path/to/agent --worktree PATH | --run --config PATH --actor ACTOR_ID'
 for (let i = 0; i < args.length; i++) {
@@ -14,10 +16,11 @@ for (let i = 0; i < args.length; i++) {
   else { assert.ok(args[i + 1] && !args[i + 1].startsWith('--'), usage); flags[key] = args[++i] }
 }
 assert.equal(process.version, 'v24.11.1', 'Use the repository Node 24.11.1 pin')
-let mapping
+let mapping, config, lease
 if (flags.run) {
   assert.ok(flags.config && flags.actor && !flags.command && !flags.worktree, usage)
-  mapping = (await bridgeConfig(flags.config)).mappings.find(value => value.actorId === flags.actor)
+  config = await bridgeConfig(flags.config)
+  mapping = config.mappings.find(value => value.actorId === flags.actor)
   assert.equal(mapping?.adapter, 'cursor-acp', 'Select an explicitly configured Cursor Actor')
   assert.equal(mapping.enabled, true, 'The selected mapping must be explicitly enabled')
 } else {
@@ -28,6 +31,7 @@ const adapter = new CursorBridgeAdapter(mapping)
 const checks = {}, report = { passed: false, scope: flags.run ? 'native-adapter-only' : 'initialize-only', checks,
   unqualified: ['Automatic Pardner attributed reply', 'Three-agent mixed-provider workflow', 'Approval UI', 'Independent native cwd/sandbox attestation', 'Discovery/archive'] }
 try {
+  if (flags.run) lease = await acquireStorageLease(config.inboxDirectory)
   await adapter.connect()
   checks.initialize = true
   report.protocolVersion = adapter.initialization.protocolVersion
@@ -59,6 +63,6 @@ try {
   report.errorCode = error.code ?? 'CURSOR_QUALIFICATION_FAILED'
   process.exitCode = 1
 } finally {
-  await adapter.close()
+  try { await adapter.close() } finally { lease?.close() }
   console.log(JSON.stringify(report))
 }

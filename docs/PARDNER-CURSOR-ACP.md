@@ -138,7 +138,10 @@ node scripts/bridge-cursor-check.js --command /absolute/path/to/agent --worktree
 ```
 
 The check script defaults to **initialize only**: no session creation/load,
-authentication request, or model turn. With installed CLI
+authentication request, or model turn. Without a loaded session it owns
+nothing, so it takes no lease. `--run` loads the configured bridge-owned
+session and holds that configuration's inbox storage lease, reporting
+`STORAGE_IN_USE` while the bridge runs. With installed CLI
 `2026.01.28-fd13201`, this implementation observed protocol v1, `loadSession:
 true`, and auth method `cursor_login`. The sandbox attempt disconnected; the
 authorized read-only check outside the file sandbox passed. Existing CLI status
