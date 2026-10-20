@@ -271,31 +271,39 @@ it('retains the bridge storage lease through delayed Cursor shutdown before allo
   }
 }))
 
-for (const configured of [false, true]) {
-  for (const failed of [false, true]) {
-    it(`${configured ? 'configured' : 'direct'} Cursor inspection waits for delayed process exit on ${failed ? 'failure' : 'success'}`, () => fixture({ termDelayMs: 800, ...(failed ? { modeMissing: true } : {}) }, async ({ root, mapping, path }) => {
-      let settled = false, pid
-      const flags = configured ? { config: path, actor: 'builder' }
-        : { adapter: 'cursor-acp', command: mapping.command, worktree: mapping.worktree, session: mapping.threadId }
-      const inspecting = runBridgeCommand('inspect', flags).then(value => ({ value }), error => ({ error }))
-        .then(outcome => { settled = true; return outcome })
-      try {
-        await eventually(async () => (await processLog(root, 'terminations')).length === 1)
-        pid = (await processLog(root, 'starts'))[0].pid
-        assert.equal(processRunning(pid), true, 'The delayed inspection process is still alive')
-        assert.equal(settled, false, 'Inspection must await process shutdown before returning its outcome')
-        const outcome = await inspecting
-        if (failed) assert.equal(outcome.error?.code, 'CURSOR_MODE_UNOBSERVED')
-        else assert.equal(outcome.value?.threadId, mapping.threadId)
-        assert.equal(processRunning(pid), false, 'Inspection leaves no live Cursor session owner')
-      } finally {
-        await inspecting
-        pid ??= (await processLog(root, 'starts'))[0]?.pid
-        if (pid) await eventually(() => !processRunning(pid))
-      }
-    }))
-  }
+for (const failed of [false, true]) {
+  it(`configured Cursor inspection holds the bridge lease until delayed process exit on ${failed ? 'failure' : 'success'}`, () => fixture({ termDelayMs: 800, ...(failed ? { modeMissing: true } : {}) }, async ({ root, mapping, path, config }) => {
+    let settled = false, pid
+    const inspecting = runBridgeCommand('inspect', { config: path, actor: 'builder' }).then(value => ({ value }), error => ({ error }))
+      .then(outcome => { settled = true; return outcome })
+    try {
+      await eventually(async () => (await processLog(root, 'terminations')).length === 1)
+      pid = (await processLog(root, 'starts'))[0].pid
+      assert.equal(processRunning(pid), true, 'The delayed inspection process is still alive')
+      assert.equal(settled, false, 'Inspection must await process shutdown before returning its outcome')
+      await assert.rejects(acquireStorageLease(config.inboxDirectory), { code: 'STORAGE_IN_USE' })
+      const outcome = await inspecting
+      if (failed) assert.equal(outcome.error?.code, 'CURSOR_MODE_UNOBSERVED')
+      else assert.equal(outcome.value?.threadId, mapping.threadId)
+      assert.equal(processRunning(pid), false, 'Inspection leaves no live Cursor session owner')
+      ;(await acquireStorageLease(config.inboxDirectory)).close()
+    } finally {
+      await inspecting
+      pid ??= (await processLog(root, 'starts'))[0]?.pid
+      if (pid) await eventually(() => !processRunning(pid))
+    }
+  }))
 }
+
+it('Cursor inspection never starts a second session owner beside a running bridge', () => fixture({}, async ({ root, mapping, path, config }) => {
+  await assert.rejects(runBridgeCommand('inspect', { adapter: 'cursor-acp', command: mapping.command, worktree: mapping.worktree, session: mapping.threadId }),
+    { code: 'INSPECTION_REQUIRES_CONFIG' })
+  const lease = await acquireStorageLease(config.inboxDirectory)
+  try {
+    await assert.rejects(runBridgeCommand('inspect', { config: path, actor: 'builder' }), { code: 'STORAGE_IN_USE' })
+    assert.deepEqual(await processLog(root, 'starts'), [])
+  } finally { lease.close() }
+}))
 
 for (const [settings, code] of [[{ initialize: 'malformed' }, 'CURSOR_PROTOCOL_ERROR'], [{ initialize: 'wrong-id' }, 'CURSOR_PROTOCOL_ERROR'], [{ protocolVersion: 99 }, 'CURSOR_PROTOCOL_ERROR'], [{ initialize: 'exit' }, 'CURSOR_DISCONNECTED'], [{ initialize: 'hang' }, 'CURSOR_RPC_TIMEOUT']]) {
   it(`bounds invalid, unexpected, closing, or missing initialization (${JSON.stringify(settings)})`, () => fixture(settings, async ({ create }) => {
@@ -317,14 +325,12 @@ it('detects mode changes during a prompt and rejects invalid stop reasons', asyn
   await fixture({ stopReason: 'invented' }, async ({ mapping, create }) => { await assert.rejects(create().dispatch(mapping, { prompt: 'prompt' }), { code: 'CURSOR_PROTOCOL_ERROR' }) })
 })
 
-it('selects Cursor through production configuration and both inspection paths with explicit limits', () => fixture({}, async ({ mapping, path }) => {
+it('selects Cursor through production configuration and configured inspection with explicit limits', () => fixture({}, async ({ mapping, path }) => {
   const normalized = await bridgeConfig(path)
   assert.ok(bridgeProviders.create(normalized.mappings[0]) instanceof CursorBridgeAdapter)
-  const direct = await runBridgeCommand('inspect', { adapter: 'cursor-acp', command: mapping.command, worktree: mapping.worktree, session: mapping.threadId })
   const configured = await runBridgeCommand('inspect', { config: path, actor: 'builder' })
-  assert.deepEqual(direct, configured)
-  assert.equal(direct.worktreeBinding, 'load-cwd'); assert.deepEqual(direct.expectedPolicy, mapping.expectedPolicy)
-  assert.match(direct.limitations.join(' '), /not independently attested/)
+  assert.equal(configured.worktreeBinding, 'load-cwd'); assert.deepEqual(configured.expectedPolicy, mapping.expectedPolicy)
+  assert.match(configured.limitations.join(' '), /not independently attested/)
 }))
 
 it('rejects unsafe launch/configuration and unsupported cleanup before spawning', () => fixture({}, async ({ mapping, config, save, path }) => {

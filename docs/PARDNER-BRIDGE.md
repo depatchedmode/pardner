@@ -95,7 +95,11 @@ The registry implements `codex-app-server` and `cursor-acp`. Existing private
 Codex configurations and the inspection command above keep their shape and
 behavior. Inspection may also explicitly select `--adapter codex-app-server`,
 or inspect a configured mapping with `pardner bridge inspect --config PATH
---actor ACTOR_ID`. Inspection never starts a model turn.
+--actor ACTOR_ID`. Inspection never starts a model turn. A provider whose
+inspection loads the session as its owner declares `inspectionOwnsSession`.
+Its inspection requires `--config` and holds the configured inbox storage lease
+until the inspecting process exits, so it fails with `STORAGE_IN_USE` while that
+bridge runs. Cursor ACP declares it; Codex inspection only reads the thread.
 
 The bridge owns common Actor/task/sender authorization, durable intake, dispatch
 intent, and uncertain-send state. Each registered provider owns connection

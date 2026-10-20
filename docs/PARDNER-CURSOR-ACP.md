@@ -13,24 +13,8 @@ The protocol sources are [Cursor CLI ACP](https://cursor.com/docs/cli/acp),
 
 ## Configure and inspect
 
-Use Node 24.11.1 and an existing persisted ACP session ID. Inspect that session
-without requesting a model turn:
-
-```sh
-pardner bridge inspect --adapter cursor-acp \
-  --command /Users/you/.local/bin/agent --session EXISTING_SESSION_ID \
-  --worktree /absolute/path/to/worktree
-```
-
-Inspection spawns the executable with exactly `acp`, initializes protocol v1,
-checks advertised `loadSession`, and calls `session/load`. It passes the mapped
-absolute directory as `cwd` and an empty `mcpServers` list. It registers no new
-MCP servers. Existing Cursor project/user configuration still applies and must
-already be reviewed by the user. A mode must be observed in the load response
-or a native `current_mode_update`; missing information blocks dispatch. No
-mode-setting request is sent.
-
-Review the returned mode and limitations, then create a private configuration:
+Use Node 24.11.1 and an existing persisted ACP session ID. Create a private
+configuration with the mapping disabled and a placeholder mode:
 
 ```json
 {
@@ -40,7 +24,7 @@ Review the returned mode and limitations, then create a private configuration:
   "inboxDirectory": "/absolute/path/to/cursor-bridge-inbox",
   "mappings": [{
     "actorId": "cursor-reviewer",
-    "enabled": true,
+    "enabled": false,
     "adapter": "cursor-acp",
     "sessionOwner": "bridge",
     "command": "/Users/you/.local/bin/agent",
@@ -48,12 +32,35 @@ Review the returned mode and limitations, then create a private configuration:
     "threadId": "EXISTING_SESSION_ID",
     "worktree": "/absolute/path/to/worktree",
     "worktreeBinding": "load-cwd",
-    "expectedPolicy": { "verification": "mode-only", "modeId": "OBSERVED_MODE_ID" },
+    "expectedPolicy": { "verification": "mode-only", "modeId": "PLACEHOLDER" },
     "allowedTaskIds": ["TASK_ID"],
     "allowedFromActorIds": ["human-actor", "builder"]
   }]
 }
 ```
+
+Inspect the mapped session without requesting a model turn:
+
+```sh
+pardner bridge inspect --config /absolute/path/to/bridge.json --actor cursor-reviewer
+```
+
+Inspection spawns the executable with exactly `acp`, initializes protocol v1,
+checks advertised `loadSession`, and calls `session/load`. It passes the mapped
+absolute directory as `cwd` and an empty `mcpServers` list. It registers no new
+MCP servers. Existing Cursor project/user configuration still applies and must
+already be reviewed by the user. A mode must be observed in the load response
+or a native `current_mode_update`; missing information blocks dispatch. No
+mode-setting request is sent. A mode that differs from the pin fails with
+`PERMISSION_POLICY_CHANGED` and reports it as `details.observedModeId`. Review
+that mode and the returned limitations, pin it as `modeId`, set `enabled: true`,
+and inspect again.
+
+That process loads the session as its owner, so Cursor inspection requires
+`--config` and `--actor` and holds the inbox storage lease until the process
+exits. It fails with `STORAGE_IN_USE` while that bridge runs, and the bridge
+cannot start during inspection. Direct `--adapter cursor-acp` inspection names
+no inbox to lease and fails with `INSPECTION_REQUIRES_CONFIG`.
 
 The command must be an absolute executable file named `agent` or `cursor-agent`,
 including after resolving symlinks. No configured arguments, shell, environment
