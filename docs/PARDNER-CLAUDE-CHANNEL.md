@@ -135,27 +135,42 @@ pardner bridge dispose --config CONFIG_PATH --actor ACTOR_ID --delivery DELIVERY
 Both commands require exclusive ownership of the existing inbox and channel
 storage. They never connect to or launch Claude. `--confirm-client-stopped` is
 an explicit operator attestation; the provider cannot independently verify the
-native client or external effects. Inspect returns a revision over both full
-delivery records and their bindings, a prompt digest and any genuinely observed
-cooperative receipt. A later receipt, inbox change or retargeted mapping makes
-the original decision stale and is rejected before the first mutation.
+native client or external effects. Inspect reports the inbox state, channel
+state, any genuinely observed cooperative receipt, a prompt digest, any recorded
+disposition with its state, and a revision. The revision covers the binding and
+an explicit projection of both delivery records (state, reason, receipt, task and
+prompt digest), so adding storage columns does not change it. A later receipt,
+inbox change or retargeted mapping makes a new decision stale and is rejected
+before the first mutation.
 
-Abandonment retains the full prior prompt, state, genuine receipt, original
-revision, operation ID and operator evidence in durable journals. It leaves a
-terminal tombstone in both stores. Submission and late acceptance/completion
-callbacks for that ID are rejected; core retry cannot revive it. A new authorized
-delivery has a separate ID and must independently deduplicate any possible
-effects of the abandoned work.
+A decision is one inbox disposition record keyed by its operation ID, with the
+request, the decision-time evidence and a state of `pending`, `finalized` or
+`withdrawn`. The command commits in this order:
 
-The channel journal is committed first and keeps an unfinished-decision barrier
-until the matching inbox decision commits and is finalized. A process crash or
-lost command reply can be recovered by repeating the **identical command** with
-its original operation ID, revision and evidence. Offline inspection reports
-an unfinished decision's original request. Changed payloads or prior evidence
-remain blocked; never overwrite or delete the journals to force recovery. After
-finalization the original notification is never resent and later deliveries may
-proceed. This provides explicit operator recovery, not automatic unattended
-recovery or permission handling.
+1. Record the disposition as `pending`. This is the durable barrier: inbox
+   mutations for that delivery are refused, and `bridge run` reports only that
+   Actor as blocked, naming the operation ID to rerun. Other Actors continue.
+2. Mark the channel ledger row abandoned, only if it is still `notified` or
+   `accepted`. Repeating this step is harmless.
+3. In one inbox transaction, tombstone the inbox row with the operator evidence
+   and mark the disposition `finalized`.
+
+After a crash or lost reply, repeat the **identical command** with the same
+operation ID, revision and evidence; it resumes at the missing step. The
+revision is checked only when the decision is first recorded, so a cooperative
+receipt that arrives before step 2 does not stale the retry. If Claude reported
+completion before step 2, nothing is abandoned: the disposition becomes
+`withdrawn`, the inbox row is untouched and nothing stays blocked. A different
+payload under an existing operation ID, or a second decision for the same
+delivery, is rejected. Never edit or delete the stores to force recovery.
+
+Abandonment retains the full prompt in both stores and the decision-time
+evidence, request and operator evidence in the disposition. Submission and late
+acceptance/completion callbacks for that ID are rejected and the original
+notification is never resent. A new authorized delivery has a separate ID and
+must independently deduplicate any possible effects of the abandoned work. This
+provides explicit operator recovery, not automatic unattended recovery or
+permission handling.
 
 ## Qualification
 
@@ -235,8 +250,9 @@ and dispatch preserve its original snapshot and block later Actor work until the
 identical operation finishes both stores and releases both barriers.
 
 Independent review found that existing channel-only journals also needed this
-protection. They are now imported before generic inbox recovery, including
-historical routes after mappings are removed, disabled or switched. Import retains
+protection. They were then imported before generic inbox recovery, including
+historical routes after mappings are removed, disabled or switched. That import
+and the separate intent journal were later removed; see the October 19 section. Import retains
 the recorded request, original evidence and timestamp. Changed evidence remains
 guarded and an explicit retry still fails stale; import never restores an older
 snapshot over intervening changes. Fully finalized legacy audits do not acquire an
@@ -271,3 +287,15 @@ The original published commits and draft branch are retained. No actual user's
 uncertain delivery, native sign-in, persistent access configuration, merge into
 main or deployment was operated on. Runtime histories and configuration remain
 private.
+
+## October 19 disposition simplification
+
+The three disposition journals (inbox intents, inbox dispositions and a channel
+ledger journal) were replaced by the single inbox disposition record described
+above, with a guarded idempotent ledger abandon. This removed three defects:
+startup recovery ran over every historical row and failed `bridge run` for all
+Actors when a row's adapter was unregistered or its binding had changed; a crash
+between the inbox intent and the ledger commit, followed by a legitimate Claude
+receipt, left no accepted retry; and whole-row evidence comparisons broke when a
+column was added. The legacy channel-only journal import was deleted because
+that format never shipped. Bridge startup no longer runs provider recovery.
