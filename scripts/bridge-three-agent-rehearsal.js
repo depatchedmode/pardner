@@ -36,7 +36,7 @@ const report = { runId, startedAt: new Date().toISOString(), passed: false, topo
 const actors = ['builder', ...reviewerActors], processes = [], controls = []
 const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('PARDNER_')))
 let bridge, proxy, control, token = '', recovery = Promise.resolve(), config
-let stopRequested
+let stopRequested, cleaningUp = false
 const requestStop = signal => { stopRequested = new Error(`Operator requested ${signal}; stopping qualification-owned processes`) }
 const onInterrupt = () => requestStop('SIGINT'), onTerminate = () => requestStop('SIGTERM')
 process.on('SIGINT', onInterrupt); process.on('SIGTERM', onTerminate)
@@ -54,6 +54,8 @@ const progress = message => {
   console.log(`[${runId.slice(0, 8)}] ${message}`)
 }
 const launch = (command, argv) => {
+  // A check or recovery still running past its deadline must not start a process cleanup will miss.
+  if (cleaningUp) throw new Error(`Refusing to launch ${command} during cleanup`)
   const child = startProcess(command, argv, { env: environment }); processes.push(child)
   child.qualificationCommand = command; child.qualificationArgs = argv
   writeFileSync(join(root, 'processes.json'), JSON.stringify({ driverPid: process.pid,
@@ -223,7 +225,7 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
     await handoff('kickoff', report.parentTaskId, 'builder', { kind: 'kickoff', runId, challenge, recipient: '@builder', instruction: 'Begin phase one of the bounded fixture.' }, 'in-progress')
     progress('Initial kickoff delivered through Pardner; all subsequent workflow messages are automatic')
     const rounds = []; let busySent = false, busyVerified = false, lastProgress = Date.now(), finalContext
-    await eventually(async () => {
+    await eventually(async signal => {
       assertRunning(); await recovery; bridge.check(); service.check(); codex.check()
       const input = proxy.events.find(event => event.type === 'input-required')
       if (input) throw new Error(`Harness input required (${input.method}); no request was answered`)
@@ -270,7 +272,7 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
         const queued = inbox.deliveries.find(row => row.actor === 'reviewer-a' && row.state === 'queued' && row.reason === 'busy')
         if (queued) {
           await save('busy-before-restart.json', inbox)
-          await bridge.stop('SIGKILL'); await launchBridge()
+          await bridge.stop('SIGKILL'); signal.throwIfAborted(); await launchBridge()
           const after = await inboxStatus()
           assert.ok(after.deliveries.some(row => row.id === queued.id), 'Durably received busy work must survive restart')
           report.checks.busyReceivedWorkRestart = true; busyVerified = true
@@ -393,6 +395,7 @@ console.log('Independent final fixture assertions passed');`
 } catch (error) {
   report.error = safe(error.stack ?? String(error)); process.exitCode = 1; progress(`FAIL: ${safe(error.message)}`)
 } finally {
+  cleaningUp = true
   report.cleanupErrors = []
   if (proxy) await save('protocol-events.json', proxy.events)
   if (bridge) {
