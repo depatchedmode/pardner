@@ -125,7 +125,7 @@ it('public offline abandonment retains both original records, survives restart a
   assert.equal(reopened.get('delivery').prompt, before.prompt)
   assert.equal(reopened.get('delivery').receipt, before.channel.receipt)
   assert.equal(reopened.receipt('delivery').receipt, null)
-  assert.equal(reopened.reconcile(before.prompt).receipt, null)
+  assert.equal(reopened.reconcile('delivery', before.prompt).receipt, null)
   assert.deepEqual({ ...reopened.disposition('operator-decision').prior.channel }, { ...before.channel })
   assert.deepEqual(reopened.disposition('operator-decision').prior.inbox, before.inbox)
   assert.deepEqual(s.inbox.disposition('operator-decision').prior, before.inbox)
@@ -446,11 +446,11 @@ it('a restarted MCP channel rejects late callbacks and sends only a separately a
     for (const name of ['pardner_accept_delivery', 'pardner_complete_delivery']) {
       await assert.rejects(client.callTool({ name, arguments: { delivery_id: 'delivery' } }), /abandoned/)
     }
-    assert.equal(server.ledger.reconcile(before.prompt).receipt, null)
+    assert.equal(server.ledger.reconcile('delivery', before.prompt).receipt, null)
     assert.equal(server.ledger.pending().length, 0)
-    const prompt = ['Separate authorized fixture delivery', JSON.stringify({ mention: {
-      id: 'new-delivery', taskId: 'task', toActorId: 'builder', fromActorId: 'alice' }, context: {} })].join('\n\n')
-    const pending = adapter.dispatch(s.mapping, prompt)
+    const mention = { id: 'new-delivery', taskId: 'task', toActorId: 'builder', fromActorId: 'alice' }
+    const prompt = ['Separate authorized fixture delivery', JSON.stringify({ mention, context: {} })].join('\n\n')
+    const pending = adapter.dispatch(s.mapping, { id: mention.id, mention, prompt })
     await eventually(() => events.length === 1)
     const result = await client.callTool({ name: 'pardner_accept_delivery', arguments: { delivery_id: 'new-delivery' } })
     const accepted = JSON.parse(result.content[0].text)

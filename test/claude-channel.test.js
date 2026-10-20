@@ -38,10 +38,11 @@ async function fixture(run) {
     return channel
   }
   const tool = async (name, id) => JSON.parse((await client.callTool({ name, arguments: { delivery_id: id } })).content[0].text)
-  const prompt = (id = 'delivery', change = {}) => ['Full Unicode context: café 🐎.', JSON.stringify({
-    mention: { id, toActorId: 'builder', fromActorId: 'alice', taskId: 'task', ...change }, context: { description: 'complete' },
-  })].join('\n\n')
-  try { await writeFile(path, JSON.stringify(config)); await run({ root, mapping, config, path, adapter, events, start, tool, prompt,
+  const delivery = (id = 'delivery', change = {}) => {
+    const mention = { id, toActorId: 'builder', fromActorId: 'alice', taskId: 'task', ...change }
+    return { id, mention, prompt: ['Full Unicode context: café 🐎.', JSON.stringify({ mention, context: { description: 'complete' } })].join('\n\n') }
+  }
+  try { await writeFile(path, JSON.stringify(config)); await run({ root, mapping, config, path, adapter, events, start, tool, delivery,
     stop: async () => { await channel?.close(); await client?.close() } }) }
   finally { adapter.close(); await channel?.close(); await client?.close(); await rm(root, { recursive: true, force: true }) }
 }
@@ -61,51 +62,53 @@ it('validates explicit Claude channel authority and rejects native policy or cle
   mapping.channelDirectory = 'relative'; await assert.rejects(claudeChannelProvider.validateMapping(mapping), /absolute/)
 }))
 
-it('persists a cooperative receipt, preserves it after reopen, and rejects content or identity reuse', () => fixture(async ({ root, mapping, prompt }) => {
-  const path = join(root, 'ledger.sqlite'), identity = channelIdentity(mapping)
+it('persists a cooperative receipt, preserves it after reopen, and rejects content or identity reuse', () => fixture(async ({ root, mapping, delivery }) => {
+  const path = join(root, 'ledger.sqlite'), identity = channelIdentity(mapping), { prompt } = delivery()
   let ledger = new ChannelLedger(path, identity)
-  const row = ledger.submit('delivery', prompt(), 'task').row
-  assert.equal(ledger.reconcile(prompt()).receipt, null)
+  const row = ledger.submit('delivery', prompt, 'task').row
+  assert.equal(ledger.reconcile('delivery', prompt).receipt, null)
   assert.throws(() => ledger.complete('delivery'), /Accept/)
   const receipt = ledger.accept('delivery').receipt
   assert.equal(receipt, row.receipt); ledger.close()
   ledger = new ChannelLedger(path, identity)
   try {
-    assert.equal(ledger.reconcile(prompt()).receipt, receipt)
-    assert.equal(ledger.submit('delivery', prompt(), 'task').fresh, false)
+    assert.equal(ledger.reconcile('delivery', prompt).receipt, receipt)
+    assert.equal(ledger.reconcile('delivery', 'changed').receipt, null)
+    assert.equal(ledger.submit('delivery', prompt, 'task').fresh, false)
     assert.throws(() => ledger.submit('delivery', 'changed', 'task'), { code: 'OPERATION_ID_REUSED' })
-    assert.throws(() => ledger.submit('another', prompt('another'), 'task'), { code: 'CHANNEL_BUSY' })
+    assert.throws(() => ledger.submit('another', delivery('another').prompt, 'task'), { code: 'CHANNEL_BUSY' })
     ledger.complete('delivery'); assert.equal(ledger.pending().length, 0)
-    ledger.submit('another', prompt('another'), 'task')
+    ledger.submit('another', delivery('another').prompt, 'task')
   } finally { ledger.close() }
   assert.throws(() => new ChannelLedger(path, { ...identity, threadId: 'other' }), { code: 'CHANNEL_BINDING_CHANGED' })
 }))
 
-it('notification write without a model receipt stays uncertain and never resends across channel restart', () => fixture(async ({ mapping, adapter, events, start, stop, tool, prompt }) => {
+it('notification write without a model receipt stays uncertain and never resends across channel restart', () => fixture(async ({ mapping, adapter, events, start, stop, tool, delivery }) => {
   await start()
   const description = await adapter.describe(mapping)
   assert.equal(description.nativePolicyVerification, 'unavailable')
   assert.equal(description.capabilities.nativeTurnReceipt, false)
   assert.equal(await adapter.availability(mapping), 'ready')
-  await assert.rejects(adapter.dispatch(mapping, prompt()), { code: 'CHANNEL_RECEIPT_UNCERTAIN' })
-  assert.equal(events.length, 1); assert.equal(events[0].content, prompt())
-  assert.equal(await adapter.reconcile(mapping, prompt()), null)
+  await assert.rejects(adapter.dispatch(mapping, delivery()), { code: 'CHANNEL_RECEIPT_UNCERTAIN' })
+  assert.equal(events.length, 1); assert.equal(events[0].content, delivery().prompt)
+  assert.equal(await adapter.reconcile(mapping, delivery()), null)
   assert.match(await adapter.availability(mapping), /outstanding/)
   await stop(); await start()
-  assert.equal(events.length, 1); assert.equal(await adapter.reconcile(mapping, prompt()), null)
+  assert.equal(events.length, 1); assert.equal(await adapter.reconcile(mapping, delivery()), null)
   const accepted = await tool('pardner_accept_delivery', 'delivery')
-  assert.equal(await adapter.reconcile(mapping, prompt()), accepted.receipt)
+  assert.equal(await adapter.reconcile(mapping, delivery()), accepted.receipt)
   await tool('pardner_complete_delivery', 'delivery')
   assert.equal(await adapter.availability(mapping), 'ready')
-  assert.equal(await adapter.dispatch(mapping, prompt()), accepted.receipt)
+  assert.equal(await adapter.dispatch(mapping, delivery()), accepted.receipt)
   assert.equal(events.length, 1)
 }))
 
-it('rejects Actor, task, sender, worktree and binding changes before any channel notification', () => fixture(async ({ root, mapping, adapter, start, events, prompt }) => {
+it('rejects Actor, task, sender, worktree and binding changes before any channel notification', () => fixture(async ({ root, mapping, adapter, start, events, delivery }) => {
   await start()
   for (const change of [{ toActorId: 'reviewer' }, { taskId: 'other' }, { fromActorId: 'bob' }]) {
-    await assert.rejects(adapter.dispatch(mapping, prompt('delivery', change)), { code: 'CHANNEL_SCOPE_DENIED' })
+    await assert.rejects(adapter.dispatch(mapping, delivery('delivery', change)), { code: 'CHANNEL_SCOPE_DENIED' })
   }
+  await assert.rejects(adapter.dispatch(mapping, { ...delivery(), id: 'other' }), { code: 'INVALID_ARGUMENT' })
   await assert.rejects(adapter.describe({ ...mapping, threadId: 'other' }), { code: 'CHANNEL_BINDING_CHANGED' })
   const [client, server] = InMemoryTransport.createLinkedPair()
   const elsewhere = join(root, 'elsewhere'); await mkdir(elsewhere)
@@ -122,12 +125,12 @@ it('owns one private socket server and rejects unsafe directory permissions', ()
   await chmod(mapping.channelDirectory, 0o700)
 }))
 
-it('blocks an uninitialized channel client and closes pending receipt polling promptly', () => fixture(async ({ mapping, adapter, start, stop, prompt }) => {
+it('blocks an uninitialized channel client and closes pending receipt polling promptly', () => fixture(async ({ mapping, adapter, start, stop, delivery }) => {
   await start(false)
   assert.match(await adapter.availability(mapping), /not initialized/)
-  await assert.rejects(adapter.dispatch(mapping, prompt()), { code: 'CHANNEL_UNAVAILABLE' })
+  await assert.rejects(adapter.dispatch(mapping, delivery()), { code: 'CHANNEL_UNAVAILABLE' })
   await stop(); await start()
-  const pending = adapter.dispatch(mapping, prompt())
+  const pending = adapter.dispatch(mapping, delivery())
   const rejected = assert.rejects(pending, { code: 'CHANNEL_CLOSED' })
   await new Promise(resolve => setTimeout(resolve, 20))
   adapter.close(); await rejected

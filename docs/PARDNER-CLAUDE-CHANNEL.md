@@ -85,8 +85,10 @@ Claude channels do not acknowledge notification delivery. A successful transport
 write, MCP initialization, or local socket response does not prove that Claude
 loaded the channel or received the prompt. The channel therefore saves the full
 prompt to a FULL-synchronous SQLite ledger before sending exactly one notification
-for that delivery ID. A repeated submit with identical content is deduplicated;
-changed content under the same ID is rejected.
+for that delivery ID. The bridge sends the delivery ID, mention and prompt as
+separate fields; the channel checks Actor, task and sender scope from the mention
+and never parses routing data out of prompt text. A repeated submit with identical
+content is deduplicated; changed content under the same ID is rejected.
 
 The instructions tell Claude to call `pardner_accept_delivery` with `delivery_id`
 before effects. Only that persisted cooperative receipt is returned to the bridge.
@@ -98,7 +100,8 @@ context and make attributed, idempotent writes. It calls
 next notification and does not update a task's status.
 
 A receipt timeout leaves the core bridge delivery uncertain. Reconciliation
-requires exactly one matching full prompt with an accepted durable receipt.
+requires the ledger row for that delivery ID, with the identical full prompt and
+an accepted durable receipt.
 An unacknowledged notification remains uncertain, including after server restart;
 it is not blindly resent. The ledger keeps one outstanding delivery as a barrier.
 Native permission dialogs or a silently dropped channel event may require local
