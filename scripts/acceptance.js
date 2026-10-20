@@ -67,7 +67,7 @@ async function runSeed(seed) {
       const docs = await Promise.all([0, 1, 2].map(snapshot))
       const statuses = await Promise.all([1, 2].map(side => cli(directories[side], ['status'])))
       const elapsed = performance.now() - started
-      assert.ok(elapsed <= 10000, 'Replicas did not converge within ten seconds')
+      assert.ok(elapsed <= limits.convergenceMs, `Replicas did not converge within ${limits.convergenceMs}ms`)
       if (docs.every(doc => JSON.stringify(doc.heads) === JSON.stringify(docs[0].heads)) && statuses.every(status => status.result.syncPending === false)) {
         timings.push({ kind: 'convergence', elapsed })
         return docs
@@ -131,7 +131,7 @@ async function runSeed(seed) {
       await pages[side - 1].getByRole('button', { name: 'Add comment', exact: true }).click()
       await pages[side - 1].getByText(text, { exact: true }).waitFor()
       const elapsed = performance.now() - started
-      assert.ok(elapsed <= 2000, `Local UI visibility took ${elapsed}ms`)
+      assert.ok(elapsed <= limits.localVisibleMs, `Local UI visibility took ${elapsed}ms`)
       timings.push({ kind: 'local-ui-visible', elapsed })
     }
     await responseQueue
@@ -149,7 +149,7 @@ async function runSeed(seed) {
         const started = performance.now()
         services[killedSide] = await startCliService(directories[killedSide])
         const elapsed = performance.now() - started
-        assert.ok(elapsed <= 5000, `Offline restart took ${elapsed}ms`)
+        assert.ok(elapsed <= limits.offlineStartMs, `Offline restart took ${elapsed}ms`)
         timings.push({ kind: 'offline-start', elapsed })
       }
     }
