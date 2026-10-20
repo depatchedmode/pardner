@@ -108,7 +108,11 @@ uncertain work needs explicit operator reconciliation with evidence.
 
 Permission requests, `cursor/ask_question`, `cursor/create_plan`, and unsupported
 client requests remain unanswered and block dispatch. Unsubmitted work stays
-queued; submitted work may become uncertain on disconnect/timeout. This adapter
+queued; submitted work may become uncertain on disconnect/timeout. A request,
+mode change, load failure or frame bound found after the bridge's availability
+check but before `session/prompt` is written raises `DELIVERY_NOT_SUBMITTED`.
+The delivery returns to the queue with that reason and later retries the same
+stored prompt. Failures after the prompt is written never use that code. This adapter
 supplies no approval UI. Inspect blocked work through an authorized provider
 client and avoid blind retries. Session discovery and archive are unimplemented;
 configurations combining Cursor with `completionCleanup` are rejected.

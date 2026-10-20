@@ -132,6 +132,44 @@ for (const method of ['session/request_permission', 'cursor/ask_question', 'curs
   })))
 }
 
+it('a request arriving after the bridge availability check requeues the unsent delivery for the same prompt', () => fixture({}, async context => withBridge(context, async ({ inbox, adapter, bridge }) => {
+  const begin = inbox.begin.bind(inbox)
+  inbox.begin = (...args) => {
+    begin(...args)
+    adapter.message({ jsonrpc: '2.0', id: 'late-request', method: 'session/request_permission', params: { sessionId: context.mapping.threadId } })
+  }
+  await bridge.dispatch(context.mapping)
+  const [row] = inbox.rows()
+  assert.equal(row.state, 'queued'); assert.equal(row.reason, 'blocked: Cursor input or approval required; no response supplied')
+  assert.equal((await context.calls()).some(value => value.method === 'session/prompt'), false)
+  inbox.begin = begin; adapter.requests.clear()
+  await bridge.dispatch(context.mapping)
+  const prompts = (await context.calls()).filter(value => value.method === 'session/prompt')
+  assert.equal(inbox.rows()[0].state, 'accepted'); assert.deepEqual(prompts.map(value => value.params.prompt[0].text), [row.prompt])
+})))
+
+it('reports only provably unsent dispatch failures as not submitted', async () => {
+  await fixture({ mode: 'agent' }, async ({ mapping, create, calls }) => {
+    await assert.rejects(create().dispatch(mapping, { prompt: 'prompt' }),
+      { code: 'DELIVERY_NOT_SUBMITTED', message: 'Cursor mode differs from the explicitly pinned mode', details: { code: 'PERMISSION_POLICY_CHANGED' } })
+    assert.equal((await calls()).some(value => value.method === 'session/prompt'), false)
+  })
+  await fixture({}, async ({ mapping, calls }) => {
+    const adapter = new CursorBridgeAdapter(mapping, { maxLineBytes: 1024 })
+    try {
+      await assert.rejects(adapter.dispatch(mapping, { prompt: 'x'.repeat(2048) }), { code: 'DELIVERY_NOT_SUBMITTED', details: { code: 'CURSOR_PROTOCOL_ERROR' } })
+      assert.equal(adapter.busy, false)
+      assert.equal((await calls()).some(value => value.method === 'session/prompt'), false)
+    } finally { await adapter.close() }
+  })
+  // The fixture records the prompt, then exits before replying.
+  await fixture({ loseReply: true }, async context => withBridge(context, async ({ inbox, bridge }) => {
+    await bridge.dispatch(context.mapping)
+    assert.equal(inbox.rows()[0].state, 'uncertain')
+    assert.equal((await context.calls()).filter(value => value.method === 'session/prompt').length, 1)
+  }))
+})
+
 it('blocked permission during a submitted prompt becomes uncertain on close and is never auto-answered', () => fixture({ promptBlock: 'session/request_permission' }, async ({ mapping, create, calls }) => {
   const adapter = create(); await adapter.availability(mapping)
   const changed = once(adapter, 'change')
