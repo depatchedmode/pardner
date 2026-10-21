@@ -49,6 +49,24 @@ it('duplicate results cannot impersonate a second reviewer or resolve contradict
   assert.equal(conflict.complete, false)
 })
 
+it('recognizes the injected duplicate alongside existing duplicates while preserving the two-review barrier', () => {
+  const a = result('reviewer-a')
+  const source = contexts({ 'reviewer-a': [a, a, a] })
+  source['reviewer-a'].comments.push({ id: 'injected-duplicate', actorId: 'reviewer-a', content: JSON.stringify(a) })
+  const oneReviewer = collectReviews(round, source)
+  assert.ok(oneReviewer.duplicates.includes('injected-duplicate'))
+  assert.equal(oneReviewer.duplicates.length, 3)
+  assert.equal(oneReviewer.complete, false)
+  assert.equal(nextReviewAction(round, oneReviewer), 'wait')
+
+  source['reviewer-b'] = contexts({ 'reviewer-b': [result('reviewer-b')] })['reviewer-b']
+  const bothReviewers = collectReviews(round, source)
+  assert.ok(bothReviewers.duplicates.includes('injected-duplicate'))
+  assert.equal(Object.keys(bothReviewers.accepted).length, 2)
+  assert.equal(bothReviewers.approved, true)
+  assert.equal(nextReviewAction(round, bothReviewers), 'correct')
+})
+
 it('retains a failed read observation and recovers synchronized context within a bounded interval', async () => {
   let calls = 0
   const observations = []

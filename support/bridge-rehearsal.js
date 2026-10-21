@@ -44,28 +44,32 @@ export function startProcess(command, args, options = {}) {
     } }
 }
 
-export async function eventually(check, { timeoutMs = 10000, deadline = Date.now() + timeoutMs, intervalMs = 100, label = 'condition' } = {}) {
+export async function eventually(check, { timeoutMs = 10000, deadline = Date.now() + timeoutMs, intervalMs = 100, label = 'condition', signal } = {}) {
   const expired = () => new Error(`Timed out waiting for ${label}`)
   while (true) {
+    signal?.throwIfAborted()
     const remaining = deadline - Date.now()
     if (remaining <= 0) throw expired()
     const controller = new AbortController()
-    let timer
+    let timer, aborted
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => { const error = expired(); reject(error); controller.abort(error) }, remaining)
+      aborted = () => { reject(signal.reason); controller.abort(signal.reason) }
+      signal?.addEventListener('abort', aborted, { once: true })
     })
     let result
     try {
       result = await Promise.race([Promise.resolve().then(() => check(controller.signal)), timeout])
+      signal?.throwIfAborted()
       if (Date.now() >= deadline) { const error = expired(); controller.abort(error); throw error }
-    } finally { clearTimeout(timer) }
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', aborted) }
     if (result) return result
     const retryBudget = deadline - Date.now()
     if (intervalMs >= retryBudget) {
-      await delay(Math.max(0, retryBudget))
+      await delay(Math.max(0, retryBudget), undefined, { signal })
       throw expired()
     }
-    await delay(intervalMs)
+    await delay(intervalMs, undefined, { signal })
   }
 }
 

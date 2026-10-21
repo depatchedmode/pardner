@@ -66,28 +66,33 @@ export function nextReviewAction(round, assessment) {
   return assessment.approved ? 'human-review' : 'blocked'
 }
 
-export async function readWithinConvergence(read, { timeoutMs, intervalMs = 500, onError = () => {} }) {
+export async function readWithinConvergence(read, { timeoutMs, intervalMs = 500, onError = () => {}, signal }) {
   const deadline = Date.now() + timeoutMs
   const expired = () => new Error('Read convergence deadline expired')
   let lastError
   while (Date.now() < deadline) {
+    signal?.throwIfAborted()
     const controller = new AbortController()
-    let timer
+    let timer, aborted
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => { const error = expired(); reject(error); controller.abort(error) }, deadline - Date.now())
+      aborted = () => { reject(signal.reason); controller.abort(signal.reason) }
+      signal?.addEventListener('abort', aborted, { once: true })
     })
     try {
       const value = await Promise.race([read(controller.signal), timeout])
+      signal?.throwIfAborted()
       if (Date.now() >= deadline) throw expired()
       return value
     } catch (error) {
+      signal?.throwIfAborted()
       lastError = error
       await onError(error)
-    } finally { clearTimeout(timer) }
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', aborted) }
     const remaining = deadline - Date.now()
     if (remaining <= 0) throw lastError
-    if (intervalMs >= remaining) { await delay(remaining); throw lastError }
-    await delay(intervalMs)
+    if (intervalMs >= remaining) { await delay(remaining, undefined, { signal }); throw lastError }
+    await delay(intervalMs, undefined, { signal })
   }
   throw lastError ?? expired()
 }
@@ -95,17 +100,21 @@ export async function readWithinConvergence(read, { timeoutMs, intervalMs = 500,
 // Persist exact CLI arguments before submission, including revisions. Replaying
 // a deterministic operation ID with freshly read revisions changes its payload.
 // One coordinator owns this directory; this is a bounded rehearsal outbox.
-export async function submitOnce(directory, key, makeArgs, submit) {
+export async function submitOnce(directory, key, makeArgs, submit, { signal } = {}) {
+  signal?.throwIfAborted()
   assert.match(key, /^[a-z0-9-]+$/)
   const path = join(directory, `${key}.json`)
   let entry
   try { entry = JSON.parse(await readFile(path, 'utf8')) } catch (error) {
     if (error.code !== 'ENOENT') throw error
     entry = { args: await makeArgs() }
+    signal?.throwIfAborted()
     await atomicWrite(path, JSON.stringify(entry))
   }
+  signal?.throwIfAborted()
   if (!Object.hasOwn(entry, 'result')) {
     entry.result = await submit(entry.args)
+    signal?.throwIfAborted()
     await atomicWrite(path, JSON.stringify(entry))
   }
   return entry.result

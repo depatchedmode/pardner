@@ -7,8 +7,9 @@ import { fileURLToPath } from 'node:url'
 import { setTimeout as delay } from 'node:timers/promises'
 import { CodexBridgeAdapter } from '../lib/codex-bridge-adapter.js'
 import { candidateFingerprint } from '../support/acceptance/candidate.js'
-import { availablePort, startProcess, eventually, execute, freezeCandidate, createWorktrees, auditThreeAgentWorktree, deliveryTiming, requirements, HarnessProxy, sha256 } from '../support/bridge-rehearsal.js'
-import { reviewRound, collectReviews, nextReviewAction, submitOnce, reviewerActors, readWithinConvergence } from '../support/three-agent-review.js'
+import { availablePort, startProcess, eventually, freezeCandidate, createWorktrees, auditThreeAgentWorktree, deliveryTiming, requirements, HarnessProxy, sha256 } from '../support/bridge-rehearsal.js'
+import { reviewRound, collectReviews, nextReviewAction, reviewerActors } from '../support/three-agent-review.js'
+import { RehearsalScope, coordinatorCommands } from '../support/three-agent-coordinator.js'
 
 const args = process.argv.slice(2)
 const usage = 'node scripts/bridge-three-agent-rehearsal.js --check|--run [--codex /path/to/codex] [--drop-dispatch-reply]'
@@ -35,12 +36,16 @@ const report = { runId, startedAt: new Date().toISOString(), passed: false, topo
   ] }
 const actors = ['builder', ...reviewerActors], processes = [], controls = []
 const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('PARDNER_')))
+const work = new RehearsalScope()
 let bridge, proxy, control, token = '', recovery = Promise.resolve(), config
-let stopRequested, cleaningUp = false
-const requestStop = signal => { stopRequested = new Error(`Operator requested ${signal}; stopping qualification-owned processes`) }
+let cleaningUp = false
+const requestStop = signal => work.cancel(new Error(`Operator requested ${signal}; stopping qualification-owned processes`))
 const onInterrupt = () => requestStop('SIGINT'), onTerminate = () => requestStop('SIGTERM')
 process.on('SIGINT', onInterrupt); process.on('SIGTERM', onTerminate)
-const assertRunning = () => { if (stopRequested) throw stopRequested }
+const assertRunning = () => work.check()
+work.signal.addEventListener('abort', () => {
+  try { bridge?.kill('SIGTERM') } catch (error) { report.stopError = error.message }
+}, { once: true })
 const safe = text => token ? text.replaceAll(token, '[REDACTED]') : text
 const save = (name, value) => writeFile(join(root, name), safe(JSON.stringify(value, null, 2)), { mode: 0o600 })
 report.transportEvents = []
@@ -56,6 +61,7 @@ const progress = message => {
 const launch = (command, argv) => {
   // A check or recovery still running past its deadline must not start a process cleanup will miss.
   if (cleaningUp) throw new Error(`Refusing to launch ${command} during cleanup`)
+  work.check()
   const child = startProcess(command, argv, { env: environment }); processes.push(child)
   child.qualificationCommand = command; child.qualificationArgs = argv
   writeFileSync(join(root, 'processes.json'), JSON.stringify({ driverPid: process.pid,
@@ -63,45 +69,15 @@ const launch = (command, argv) => {
   return child
 }
 const cliPath = join(candidate, 'bin/pardner.js')
-async function cli(argv) {
-  const submit = async signal => {
-    try {
-      const output = await execute(process.execPath, [cliPath, '--data', data, '--json', ...argv], { env: environment, timeout: 10000, maxBuffer: 4 * 1024 * 1024, signal })
-      const result = JSON.parse(output.stdout)
-      assert.equal(result.success, true, safe(JSON.stringify(result)))
-      return result
-    } catch (error) {
-      let body
-      try { body = JSON.parse(error.stdout) } catch { /* A transport timeout may have no JSON body. */ }
-      const failure = new Error(`CLI ${argv[0]} failed (${body?.error?.code ?? error.code ?? 'unknown'}): ${body?.error?.message ?? error.message}`, { cause: error })
-      failure.cliDiagnostic = { argv, code: error.code, signal: error.signal, killed: error.killed,
-        stdout: error.stdout, stderr: error.stderr }
-      await save('cli-last-error.json', failure.cliDiagnostic)
-      throw failure
-    }
-  }
-  const readOnly = ['show', 'status'].includes(argv[0]) || (argv[0] === 'bridge' && argv[1] === 'status')
-  if (!readOnly) return submit()
-  return readWithinConvergence(submit, { timeoutMs: bounds.convergenceMs, onError: async error => {
-    assertRunning()
+const commandOptions = { root, runId, cliPath, data, environment, convergenceMs: bounds.convergenceMs, save,
+  onReadError: async (argv, error) => {
     report.readRetries ??= []
     report.readRetries.push({ command: argv[0], at: new Date().toISOString(), message: safe(error.message) })
     await save('read-retries.json', report.readRetries)
-  } })
-}
-const outbox = join(root, 'outbox')
-async function handoff(key, taskId, to, message, status = 'review') {
-  return submitOnce(outbox, key, async () => {
-    const { revisions } = await cli(['show', taskId, '--actor', 'coordinator'])
-    return ['handoff', taskId, '--to', to, '--status', status, '--message', JSON.stringify(message),
-      '--actor', 'coordinator', '--operation-id', `${runId}-${key}`,
-      '--revisions', JSON.stringify({ assignee: revisions.assignee, status: revisions.status })]
-  }, cli)
-}
-async function comment(key, taskId, message) {
-  return submitOnce(outbox, key, () => ['comment', taskId, JSON.stringify(message), '--actor', 'coordinator',
-    '--operation-id', `${runId}-${key}`], cli)
-}
+  } }
+const { execute, cli, handoff, comment } = coordinatorCommands({ ...commandOptions, scope: work })
+const harnessCall = (...args) => work.run(() => control.call(...args))
+const inspectThread = (...args) => work.run(() => control.inspect(...args))
 const quote = value => `'${value.replaceAll("'", "'\\''")}'`
 const nodeCommand = [process.execPath, cliPath, '--data', data].map(quote).join(' ')
 const messages = context => context.comments.flatMap(comment => {
@@ -113,31 +89,32 @@ try {
   report.codexVersion = (await execute(codexBinary, ['--version'])).stdout.trim()
   const codex = launch(codexBinary, ['app-server', '--disable', 'plugins', '--disable', 'apps', '--listen', endpoint])
   control = new CodexBridgeAdapter({ endpoint, requestTimeoutMs: 30000 }); controls.push(control)
-  await eventually(async () => { assertRunning(); codex.check(); try { await control.connect(); return true } catch { return false } },
-    { timeoutMs: bounds.startupMs, label: 'dedicated App Server' })
-  const account = await control.call('account/read', { refreshToken: false })
+  await eventually(async () => { assertRunning(); codex.check(); try { await work.run(() => control.connect()); return true } catch { return false } },
+    { timeoutMs: bounds.startupMs, label: 'dedicated App Server', signal: work.signal })
+  const account = await harnessCall('account/read', { refreshToken: false })
   assert.ok(account.account || !account.requiresOpenaiAuth, 'Existing Codex authentication is required; no credentials are created or copied')
   const catalog = []
   let cursor
-  do { const page = await control.call('model/list', { includeHidden: true, limit: 100, cursor }); catalog.push(...page.data); cursor = page.nextCursor } while (cursor)
+  do { const page = await harnessCall('model/list', { includeHidden: true, limit: 100, cursor }); catalog.push(...page.data); cursor = page.nextCursor } while (cursor)
   const readinessCwd = join(root, 'readiness'); await mkdir(readinessCwd)
-  const readiness = await control.call('thread/start', { cwd: readinessCwd, sandbox: 'read-only', approvalPolicy: 'on-request', approvalsReviewer: 'user' })
+  const readiness = await harnessCall('thread/start', { cwd: readinessCwd, sandbox: 'read-only', approvalPolicy: 'on-request', approvalsReviewer: 'user' })
   assert.ok(catalog.some(model => model.model === readiness.model), 'Configured model is absent from the current server catalog')
   report.readiness = { authenticated: true, configuredModel: readiness.model, reasoningEffort: readiness.reasoningEffort,
     modelListed: true, modelAccess: 'not-proven-until-real-turn', modelRequests: 0 }
-  await control.call('thread/inject_items', { threadId: readiness.thread.id, items: [{ type: 'message', role: 'user',
+  await harnessCall('thread/inject_items', { threadId: readiness.thread.id, items: [{ type: 'message', role: 'user',
     content: [{ type: 'input_text', text: 'Readiness fixture only. No model action requested.' }] }] })
-  await control.archive({ threadId: readiness.thread.id, worktree: readinessCwd,
-    expectedPolicy: { approvalPolicy: readiness.approvalPolicy, approvalsReviewer: readiness.approvalsReviewer, sandbox: readiness.sandbox } })
+  await work.run(() => control.archive({ threadId: readiness.thread.id, worktree: readinessCwd,
+    expectedPolicy: { approvalPolicy: readiness.approvalPolicy, approvalsReviewer: readiness.approvalsReviewer, sandbox: readiness.sandbox } }))
   progress(`Readiness: ${report.codexVersion}, configured model ${readiness.model}; no inference yet`)
   assertRunning()
   if (checkOnly) { report.passed = true; report.checks.readiness = true }
   else {
-    report.candidate = await freezeCandidate(source, candidate)
-    report.worktrees = await createWorktrees(root, challenge, { actors })
+    report.candidate = await work.run(() => freezeCandidate(source, candidate))
+    report.worktrees = await work.run(() => createWorktrees(root, challenge, { actors }))
     const repository = join(root, 'fixture-repository')
     const service = launch(process.execPath, [cliPath, 'serve', '--data', data, '--http-port', '0', '--ws-port', '0'])
-    await eventually(() => { service.check(); return service.output().stdout.includes('\n') }, { label: 'isolated Pardner service' })
+    await eventually(() => { service.check(); return service.output().stdout.includes('\n') },
+      { label: 'isolated Pardner service', timeoutMs: bounds.startupMs, signal: work.signal })
     token = JSON.parse(await readFile(join(data, 'connection.json'), 'utf8')).token
     report.service = await cli(['status'])
     for (const actor of ['human', 'coordinator', ...actors]) await cli(['actors', 'register', actor, '--handle', actor,
@@ -171,25 +148,26 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
     const bridgeEndpoint = await proxy.start()
     report.sessions = {}; const mappings = []
     for (const actor of actors) {
-      const result = await control.call('thread/start', { cwd: report.worktrees[actor], sandbox: 'workspace-write',
+      const result = await harnessCall('thread/start', { cwd: report.worktrees[actor], sandbox: 'workspace-write',
         approvalPolicy: 'on-request', approvalsReviewer: 'user', config: { sandbox_workspace_write: { network_access: true } } })
       assert.equal(result.sandbox.type, 'workspaceWrite'); assert.equal(result.approvalPolicy, 'on-request')
       const expectedPolicy = { approvalPolicy: result.approvalPolicy, approvalsReviewer: result.approvalsReviewer, sandbox: result.sandbox }
       report.sessions[actor] = { threadId: result.thread.id, cwd: report.worktrees[actor], model: result.model, reasoningEffort: result.reasoningEffort, expectedPolicy,
         actorId: actor, replicaId: report.service.replicaId }
-      await control.call('thread/inject_items', { threadId: result.thread.id, items: [{ type: 'message', role: 'user', content: [{ type: 'input_text',
+      await harnessCall('thread/inject_items', { threadId: result.thread.id, items: [{ type: 'message', role: 'user', content: [{ type: 'input_text',
         text: `You are ${actor} in the authorized three-agent Pardner fixture ${runId}. Follow the bounded task contract delivered by the bridge. Wait for it; do not independently check queues.` }] }] })
-      await control.call('thread/name/set', { threadId: result.thread.id, name: `Pardner #66 ${actor} ${runId.slice(0, 8)}` })
+      await harnessCall('thread/name/set', { threadId: result.thread.id, name: `Pardner #66 ${actor} ${runId.slice(0, 8)}` })
       mappings.push({ actorId: actor, enabled: true, adapter: 'codex-app-server', sessionOwner: 'bridge', endpoint: bridgeEndpoint,
         threadId: result.thread.id, worktree: report.worktrees[actor], expectedPolicy,
         allowedTaskIds: actor === 'builder' ? [report.parentTaskId, ...Object.values(report.reviewTaskIds)] : [report.reviewTaskIds[actor]],
         allowedFromActorIds: actor === 'builder' ? ['coordinator', ...reviewerActors] : ['coordinator'] })
     }
     config = { workspaceId: report.service.workspaceId, replicaId: report.service.replicaId, dataDirectory: data, inboxDirectory: join(root, 'inbox'), mappings }
-    const launchBridge = async () => {
+    const launchBridge = () => work.run(async () => {
       bridge = launch(process.execPath, [cliPath, 'bridge', 'run', '--config', configPath])
-      await eventually(() => { bridge.check(); return bridge.output().stdout.includes('\n') }, { label: 'bridge startup', timeoutMs: bounds.startupMs })
-    }
+      await eventually(() => { bridge.check(); return bridge.output().stdout.includes('\n') },
+        { label: 'bridge startup', timeoutMs: bounds.startupMs, signal: work.signal })
+    })
     const inboxStatus = () => cli(['bridge', 'status', '--config', configPath])
     // Mismatch probe retains its received route; restoring the inspected policy
     // cannot silently redirect that old row. Later correctly mapped work proceeds.
@@ -203,29 +181,30 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
       const status = await inboxStatus()
       return status.deliveries.some(row => row.reason?.includes('not authorized'))
         && status.states.some(state => state.state === 'PERMISSION_POLICY_CHANGED')
-    }, { label: 'unauthorized and permission-policy blocking', timeoutMs: bounds.convergenceMs })
+    }, { label: 'unauthorized and permission-policy blocking', timeoutMs: bounds.convergenceMs, signal: work.signal })
     assert.equal(proxy.events.filter(event => event.type === 'dispatch').length, 0)
     report.checks.unauthorizedAndPolicyMismatch = true
     await save('policy-probe.json', await inboxStatus())
     await bridge.stop(); mappings[2].expectedPolicy = originalPolicy; await save('bridge.json', config); await launchBridge()
     proxy.on('event', event => {
       if (event.type !== 'reply-dropped') return
-      recovery = (async () => {
+      recovery = work.run(async () => {
         await eventually(async () => (await inboxStatus()).deliveries.some(row => row.state === 'uncertain'),
-          { label: 'visible uncertain dispatch', timeoutMs: bounds.convergenceMs })
+          { label: 'visible uncertain dispatch', timeoutMs: bounds.convergenceMs, signal: work.signal })
         await save('uncertain-dispatch.json', await inboxStatus())
         await bridge.stop('SIGKILL'); await launchBridge()
         report.checks.acceptedReplyLossRestart = true
         progress('Observed uncertain dispatch after real acceptance; restarted the bridge for history reconciliation')
-      })()
+      })
       recovery.catch(() => {})
     })
     const kickoffAt = Date.now()
     const modelDeadline = kickoffAt + bounds.modelWorkflowMs
+    work.setDeadline(modelDeadline, 'automatic three-agent workflow')
     await handoff('kickoff', report.parentTaskId, 'builder', { kind: 'kickoff', runId, challenge, recipient: '@builder', instruction: 'Begin phase one of the bounded fixture.' }, 'in-progress')
     progress('Initial kickoff delivered through Pardner; all subsequent workflow messages are automatic')
     const rounds = []; let busySent = false, busyVerified = false, lastProgress = Date.now(), finalContext
-    await eventually(async signal => {
+    await eventually(() => work.run(async signal => {
       assertRunning(); await recovery; bridge.check(); service.check(); codex.check()
       const input = proxy.events.find(event => event.type === 'input-required')
       if (input) throw new Error(`Harness input required (${input.method}); no request was answered`)
@@ -242,7 +221,7 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
         if (artifact.round === 2) assert.equal(rounds[0]?.correctionRequested, true, 'Both initial assessments must precede revision')
         else assert.equal(rounds.length, 0)
         assert.equal(await readFile(join(report.worktrees.builder, 'queue.mjs'), 'utf8'), artifact.source)
-        await writeFile(join(repository, 'queue.mjs'), artifact.source)
+        await work.run(signal => writeFile(join(repository, 'queue.mjs'), artifact.source, { signal }))
         await execute('git', ['add', 'queue.mjs'], { cwd: repository })
         await execute('git', ['-c', 'user.name=Pardner Rehearsal', '-c', 'user.email=rehearsal@localhost', 'commit', '--quiet', '-m', `test: freeze real builder round ${artifact.round}`], { cwd: repository })
         const commitSha = (await execute('git', ['rev-parse', 'HEAD'], { cwd: repository })).stdout.trim()
@@ -295,10 +274,11 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
           // Repeat an actual published result with the same logical operation.
           // This intentionally adds a duplicate assessment, never a second vote.
           const first = assessment.accepted['reviewer-a'].result
-          await cli(['comment', report.reviewTaskIds['reviewer-a'], JSON.stringify(first), '--actor', 'reviewer-a', '--operation-id', `${runId}-duplicate-result`])
-          await cli(['comment', report.reviewTaskIds['reviewer-a'], JSON.stringify(first), '--actor', 'reviewer-a', '--operation-id', `${runId}-duplicate-result`])
+          const duplicate = await cli(['comment', report.reviewTaskIds['reviewer-a'], JSON.stringify(first), '--actor', 'reviewer-a', '--operation-id', `${runId}-duplicate-result`])
+          const replay = await cli(['comment', report.reviewTaskIds['reviewer-a'], JSON.stringify(first), '--actor', 'reviewer-a', '--operation-id', `${runId}-duplicate-result`])
+          assert.equal(replay.result.commentId, duplicate.result.commentId, 'Replaying the operation must retain its comment identity')
           const duplicateContext = { ...contexts, 'reviewer-a': await cli(['show', report.reviewTaskIds['reviewer-a'], '--actor', 'coordinator']) }
-          assert.equal(collectReviews(round, duplicateContext).duplicates.length, 1)
+          assert.ok(collectReviews(round, duplicateContext).duplicates.includes(duplicate.result.commentId), 'The injected duplicate must not count as another vote')
           report.checks.duplicateResult = true
           await handoff('correction', report.parentTaskId, 'builder', { kind: 'correction-request', runId, challenge, round: 2, recipient: '@builder',
             previousCommitSha: round.commitSha, reviewTaskIds: report.reviewTaskIds,
@@ -320,7 +300,7 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
       if (!finalContext) return false
       const reviewA = await cli(['show', report.reviewTaskIds['reviewer-a'], '--actor', 'coordinator'])
       return messages(reviewA).some(message => message.kind === 'busy-result' && message.recordedActor === 'reviewer-a')
-    }, { deadline: modelDeadline, intervalMs: 1000, label: 'automatic three-agent workflow' })
+    }), { deadline: modelDeadline, intervalMs: 1000, label: 'automatic three-agent workflow', signal: work.signal })
     await recovery
     assert.equal(finalContext.parent.task.status, 'review'); assert.equal(finalContext.parent.task.assignee, 'human')
     assert.equal(rounds.length, 2); assert.notEqual(rounds[0].commitSha, rounds[1].commitSha)
@@ -332,13 +312,14 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
     report.rounds = rounds
     report.finalCommitSha = rounds[1].commitSha
     await save('task-context.json', { ...finalContext, contexts: currentContexts })
-    await eventually(async () => {
+    await eventually(() => work.run(async () => {
       assertRunning(); bridge.check(); service.check(); codex.check()
-      const threads = await Promise.all(actors.map(actor => control.inspect({ threadId: report.sessions[actor].threadId, worktree: report.worktrees[actor] }, true)))
+      const threads = await Promise.all(actors.map(actor => inspectThread({ threadId: report.sessions[actor].threadId, worktree: report.worktrees[actor] }, true)))
       const failed = threads.flatMap(thread => thread.turns).find(turn => ['failed', 'interrupted'].includes(turn.status))
       assert.ok(!failed, 'A real model acknowledgment failed or was interrupted')
       return threads.every(thread => thread.status.type === 'idle')
-    }, { deadline: modelDeadline, intervalMs: 1000, label: 'all model acknowledgments completed within the declared workflow budget' })
+    }), { deadline: modelDeadline, intervalMs: 1000, label: 'all model acknowledgments completed within the declared workflow budget', signal: work.signal })
+    work.clearDeadline()
     // Independently rerun every agent's own tests and stronger external assertions.
     const external = `import assert from 'node:assert/strict'; const {selectReadyTasks,challenge}=await import(process.argv[2]);
 assert.equal(challenge,${JSON.stringify(challenge)}); const tasks=[
@@ -352,7 +333,7 @@ assert.deepEqual(selectReadyTasks(tasks,'builder',20).map(t=>t.id),['a','b','unk
 assert.equal(selectReadyTasks(tasks,'builder',1)[0],tasks[2]); assert.equal(JSON.stringify(tasks),before);
 for(const n of [0,-1,1.5,NaN,Infinity,'2'])assert.throws(()=>selectReadyTasks(tasks,'builder',n),RangeError);
 console.log('Independent final fixture assertions passed');`
-    await writeFile(join(root, 'external-check.mjs'), external)
+    await work.run(signal => writeFile(join(root, 'external-check.mjs'), external, { signal }))
     for (const actor of actors) {
       const cwd = report.worktrees[actor]
       assert.equal(sha256(await readFile(join(cwd, 'queue.mjs'))), rounds[1].sourceSha256)
@@ -384,7 +365,7 @@ console.log('Independent final fixture assertions passed');`
       deliveries: inbox.deliveries.filter(row => row.state === 'accepted').map(row => deliveryTiming(row, report.sessions[row.actor], proxy.events)) }
     assert.ok(report.timing.initialDispatchMs <= bounds.dispatchMs, `Healthy initial dispatch exceeded ${bounds.dispatchMs}ms`)
     const beforeIdle = proxy.events.filter(event => event.type === 'dispatch').length
-    await delay(bounds.idleSeconds * 1000)
+    await delay(bounds.idleSeconds * 1000, undefined, { signal: work.signal })
     assert.equal(proxy.events.filter(event => event.type === 'dispatch').length, beforeIdle)
     report.checks.shortIdle = { seconds: bounds.idleSeconds, modelRequests: 0 }
     report.readiness.modelAccess = 'observed-real-turns'
@@ -397,10 +378,18 @@ console.log('Independent final fixture assertions passed');`
 } finally {
   cleaningUp = true
   report.cleanupErrors = []
+  work.cancel()
+  if (bridge) {
+    try { await bridge.stop() } catch (error) { report.cleanupErrors.push(error.message) }
+  }
+  await work.close()
   if (proxy) await save('protocol-events.json', proxy.events)
   if (bridge) {
-    try { await save('inbox-status.json', await cli(['bridge', 'status', '--config', configPath])) } catch { /* Setup may be incomplete. */ }
-    try { await bridge.stop() } catch (error) { report.cleanupErrors.push(error.message) }
+    const cleanup = new RehearsalScope()
+    try {
+      const { cli: inspectInbox } = coordinatorCommands({ ...commandOptions, scope: cleanup })
+      await save('inbox-status.json', await inspectInbox(['bridge', 'status', '--config', configPath]))
+    } catch { /* Setup may be incomplete. */ } finally { await cleanup.close() }
   }
   for (const [actor, session] of Object.entries(report.sessions ?? {})) {
     try {
