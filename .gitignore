@@ -11,6 +11,7 @@ ui-prototype/dist/
 .pardner-url
 output/playwright/
 output/acceptance/
+output/verification/
 .DS_Store
 .playwright-cli/
 __pycache__/

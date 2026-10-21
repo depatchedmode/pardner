@@ -16,6 +16,8 @@
 
 ## Local-first
 
+Use the [project verification skill](.agents/skills/verify/SKILL.md) before reporting implementation complete or recommending a merge. Routine verification owns behavior coverage and repairs for the current change; required qualification is invoked deliberately, tracked on the PR, and blocks a merge recommendation until satisfied.
+
 Use the [local-first design skill](.agents/skills/local-first-design/SKILL.md) and [references](.agents/references/local-first.md) for storage, sync, recovery and service-dependency work. [README.md](README.md#current-implementation) describes current behavior; preserve the [acceptance contract](docs/PARDNER-ACCEPTANCE.md) and distinguish product direction from implemented guarantees. Pardner currently uses Node/Automerge; Rust conventions do not apply unless Rust implementation is separately introduced.
 
 - The local service owns the persisted replica; the browser owns no separate Automerge database. [Companion LAN browsers](docs/PARDNER-LAN.md) depend on the host service and are not offline replicas. Acknowledge local operations only after the disk persistence barrier. Preserve offline reopen of enrolled replicas and distinguish locally saved heads from explicit hub persistence acknowledgement. Do not claim power-loss durability from process-crash tests.
