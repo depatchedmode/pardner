@@ -136,9 +136,11 @@ pardner bridge reconcile --config /absolute/path/to/bridge.json \
   --evidence 'Inspected the stopped harness and confirmed no accepted turn'
 ```
 
-Reconciliation requires exclusive inbox ownership. Retry preserves the original
-prompt. This is not universal exactly-once execution: external effects still need
-idempotency, and delivery leases do not lock shared worktrees.
+Reconciliation requires exclusive inbox ownership. An explicitly authorized retry
+keeps the delivery ID and rebuilds the prompt from current task context. Uncertain
+dispatch reconciliation uses the exact stored prompt. This is not universal
+exactly-once execution: external effects still need idempotency, and delivery
+leases do not lock shared worktrees.
 
 ## Completion cleanup
 

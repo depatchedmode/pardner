@@ -43,9 +43,17 @@ evidence is retained under `.pardner/three-agent-rehearsals/RUN_ID/`. Inspect
 `report.json` for the outcome and cleanup errors. Never upload this directory:
 it includes service credentials, inbox data, thread history, and local paths.
 Only a curated report belongs in public documentation.
-SIGINT/SIGTERM requests a bounded cancellation and cleanup of these owned
-processes; it does not approve requests or start another turn. A new `--run`
-creates a fresh rehearsal rather than reusing old votes.
+SIGINT/SIGTERM requests cancellation: bridge dispatch stops, new coordinator
+operations are prevented, and pending work settles before final cleanup and
+evidence collection. Workflow commands own POSIX process groups; Windows
+termination targets the direct child. Command cancellation sends SIGTERM and,
+if needed after three seconds, SIGKILL while closing retained stdout/stderr pipes.
+It then allows one further second for command drain. `EPERM` keeps a group
+classified as present; incomplete drain is recorded and fails the report.
+These timers apply to individual commands; service and session cleanup are
+separate. Descendants that escape into another group or session are not claimed
+terminated. Cancellation does not approve requests or start another turn.
+A new `--run` creates a fresh rehearsal rather than reusing old votes.
 `progress.json`, `processes.json`, and the appended `protocol-events.jsonl`
 retain observations before final teardown. Closed stdout/stderr pipes are
 recorded rather than terminating the driver. After an abrupt executor loss,
@@ -121,18 +129,25 @@ Bounds are fixed before execution: 2 seconds for healthy initial dispatch,
 Final model acknowledgments use the remaining overall model budget, rather than
 the shorter queue/context convergence timeout.
 The inbox records context persistence after the durable prompt commit and before
-submission, separately from the later acceptance/reconciliation receipt. Legacy
-inboxes retain an unknown context timestamp. Requests and accepted replies are
-correlated by exact submission, delivery, and thread identity; the timing audit
-requires receipt, context, submission, acceptance, and inbox receipt recording in
-that order. Completion times come from the live protocol journal and remain
-unknown when a restart loses an event; retained native history verifies completed
-turns separately. A five-second idle check
+submission, separately from the later acceptance/reconciliation receipt. Work
+stays queued until both the prompt and the subsequent timestamp/dispatch intent
+are persisted, so a preparation failure can retry without an uncertain RPC.
+Queued retries rebuild the prompt from current authorized task context. Uncertain
+dispatch reconciliation retains the exact stored prompt to identify the original
+submission. Legacy inboxes retain an unknown context timestamp. Requests and
+accepted replies are correlated by exact submission, delivery, and thread identity;
+the timing audit requires receipt, context, submission, acceptance, and inbox
+receipt recording in that order. Completion times come from the live protocol
+journal and remain unknown when a restart loses an event; retained native history
+verifies completed turns separately. A five-second idle check
 makes zero model requests; it does not qualify the hour-long idle gate.
 Coordinator reads may retry within the declared convergence interval; each attempt
 receives the remaining budget and cancellation, late success is rejected, and
-no attempt starts after expiry. Failed read observations and the latest structured
-CLI error are retained. Writes are not retried
+no attempt starts after expiry. The workflow deadline also cancels nested reads,
+Git commands, writes, and recovery; cleanup waits for their completion. Workflow
+CLI/Git commands and independent final tests use the environment with inherited
+`PARDNER_*` settings removed. Failed read observations and the
+latest structured CLI error are retained. Writes are not retried
 by this read helper, and absent context never satisfies a review barrier.
 
 Evidence includes `round-1.json`, `round-2.json`, `task-context.json`, real protocol
@@ -142,9 +157,15 @@ application fingerprint must remain unchanged. Repeated protocol notifications
 and logical result replays must not create duplicate accepted turns. Workspace
 Actor IDs provide attribution, not cryptographic identity or exactly-once effects.
 
-Run `node --test test/three-agent-review.test.js test/bridge-rehearsal-support.test.js`
+Run `node --test test/three-agent-coordinator.test.js test/three-agent-review.test.js test/bridge-rehearsal-support.test.js`
 and `npm run verify` for regressions. Observe pending approval/input blocking in
-the separate `bridge-approval-rehearsal.js` probe; it never answers a request and
-does not qualify a human approval UI. Record failures, manual interventions, and
+the separate probe:
+
+```sh
+node scripts/bridge-approval-rehearsal.js --run \
+  --codex /absolute/path/to/codex
+```
+
+It never answers a request and does not qualify a human approval UI. Record failures, manual interventions, and
 unrun probes explicitly. Neither protocol mocks nor these regression tests count
 as three real agents participating.

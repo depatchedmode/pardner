@@ -1,12 +1,219 @@
 # Issue 66 local qualification
 
 This report accompanies the [three-agent runbook](PARDNER-THREE-AGENT.md) for
-[issue #66](https://github.com/depatchedmode/pardner/issues/66). Implementation
-is based on main `d1d1b91fe97388438716bc95541b7e7135b29bdd`. The reviewed changes
-are being submitted as a draft PR. The dependent issue #67, merge, and deployment
-remain outside this change.
+[issue #66](https://github.com/depatchedmode/pardner/issues/66). PR #70 remains a
+draft. Human acceptance, merge, deployment, and PRs #71–73 remain separate.
 
-**Status:** the corrected current candidate passed an observed automatic
+## Current October 20 repair qualification
+
+The tested source is `febaf78ad073350fb888427a5eec64e6b483501c`, based on prior
+PR head `44fd705434de867d18b1e364d858025ea4c882bf`. Its source, tests, dependency
+locks, and built UI have fingerprint
+`b2d0a60b0b925795acaca96c9c15da319e355d9d854d3bb7567307f79abbf630`.
+Documentation-only updates do not change this fingerprint. All fresh runs use
+Node **24.11.1**, locked dependencies and pinned browsers on macOS, with default
+bounds and no browser workaround. Native and acceptance runs are sequential.
+
+The scoped repairs keep work queued until prompt persistence and the subsequent
+post-commit timestamp/dispatch-intent write succeed. Queued retries load fresh
+authorized context; uncertain dispatches reconcile the exact saved prompt. Real
+SQLite capacity regressions cover same-process and restart retries with no RPC
+while storage remains constrained. They do not simulate power loss or physical
+disk exhaustion.
+
+The workflow deadline now cancels nested reads, writes, Git commands and recovery.
+Cleanup stops bridge dispatch and drains tracked work. The command runner handles
+macOS `EPERM` without losing escalation or diagnostics, closes retained pipes at
+SIGKILL, and reports an incomplete owned-group drain as failure. Escaped sessions
+are outside its ownership. Windows direct-child behavior is not equivalent to
+this macOS process-group qualification. Independent final tests use sanitized
+coordinator settings, duplicate probes check operation identity, and service
+startup uses its declared 45-second bound.
+
+| Check | Observed result |
+| --- | --- |
+| Affected runtime / storage qualification / CLI suites | 27 / 12 / 11 passed |
+| Focused bridge / coordinator and review tests | 20 / 24 passed; real capacity and subprocess failure regressions |
+| `npm run verify` | Build, 331 default parallel tests with no skips/cancellations, and seed-1 acceptance passed |
+| Native three-agent run `e70e59d9-06c3-486e-9526-a08f62143d78` | Passed all workflow, recovery, independent-test, duplicate/stale-result and idle gates; zero cleanup errors |
+| Native approval probe `014709f8-a696-4dfb-aa69-8432273fe66a` | All five gates and independent native-history audit passed; zero cleanup errors |
+| `npm run test:acceptance -- --repeat 20 --seed 1` | Passed once, uninterrupted, seeds 1–20; independent evidence audit passed |
+| Targeted cross-model closure review | Claude Opus 5.5 and Grok 4.7 closed all correctness findings; one nonblocking diagnostic nit noted |
+
+Canonical acceptance evidence is
+`output/acceptance/2026-10-21T05-00-25.404Z/`. The independent audit reconstructed
+all **719** acknowledged operations, verified the saved snapshot, and matched all
+three recorded live replica verification results. Maximum acknowledgment was
+**206.163 ms** (2,000 ms bound), UI visibility **60.021 ms** (2,000 ms), offline
+restart **1,789.151 ms** (5,000 ms), and convergence **2,335.195 ms** (10,000 ms).
+Only the first replica snapshot is retained for offline replay; the other two
+replicas have recorded live verification results. This seed alone does not
+establish repeatability.
+
+The extended run `output/acceptance/2026-10-21T05-19-48.769Z/` then passed in
+**40 minutes 25 seconds**, using one uninterrupted invocation with seeds **1–20**,
+no skipped seeds, no retries and no bound changes. Every seed retained **719**
+acknowledged operations: **14,380** total, with all **60** recorded replica
+verifications matching their seed's expected manifest. Independent offline audit
+reconstructed each manifest against its saved snapshot, checked report hashes,
+confirmed the source/build fingerprint remained unchanged, and found no failure
+or cleanup-error artifacts.
+
+| Extended-run observation | Maximum | Default bound |
+| --- | ---: | ---: |
+| Local operation acknowledgment | 450.520 ms | 2,000 ms |
+| Offline UI visibility | 86.355 ms | 2,000 ms |
+| Offline replica restart | 1,982.108 ms | 5,000 ms |
+| Replica convergence | 3,080.432 ms | 10,000 ms |
+| Agent effect acknowledgment | 143.663 ms | 2,000 ms |
+
+Both targeted closure reviewers, Claude Opus 5.5 and Grok 4.7, confirmed the
+correctness findings closed without a reachable regression. Their independent
+failure probes corroborated macOS group cleanup, escaped-pipe drain bounds and
+fresh queued context. One nonblocking suggestion remains: include the originating
+command/group identity in drain-timeout report messages. The report already fails
+on incomplete cleanup; it is not claimed to identify every surviving process.
+Evidence attribution was checked separately against the retained candidate,
+regression logs and native/acceptance audits.
+
+The fresh native rehearsal used Codex **0.163.0**, configured **gpt-6-astra / medium**,
+and completed **13** real deliveries: builder 8, reviewer A 3, reviewer B 2. Its
+initial dispatch took **228 ms** and workflow **217.652 seconds**, within the
+2-second and 20-minute bounds. Both initial reviews preceded correction; both
+final-SHA approvals preceded the human-review handoff. Independent final reruns
+passed **8 / 9 / 8** tests plus external assertions. All final source hashes matched
+the immutable reviewed revision.
+
+The audit correlated all deliveries with completed native turns, all four review
+receipts with tests in the same turns, accepted-reply-loss reconciliation, busy
+queue restart, 64 duplicated protocol notifications, duplicate operation identity
+and old-SHA rejection. Eleven live completion events were retained; two completion
+timestamps remain unknown across restarts, with completion verified from native
+histories. Initial dispatch duration is the driver's observation, since its start
+timestamp is not separately saved. Every per-delivery timing row was independently
+recomputed. All seven recorded owned process IDs were absent after cleanup. The
+five-second idle interval made zero model requests.
+
+The separate approval probe used its declared **gpt-5.6-luna / low** fixture.
+A real native request blocked the second delivery for over five seconds without
+preparing its prompt or starting another turn. Policy remained read-only /
+on-request / user; the pending command was aborted, the session interrupted and
+archived, and the marker remained absent. This run had no preceding tool calls.
+The audit checked the archived native record, but the probe retains neither a
+complete approval-answer protocol stream nor a process manifest; cleanup is
+supported by its completed report and zero reported errors.
+
+Human acceptance and an approval-and-resume UI remain unqualified, as do separate
+machines, other providers, hub-loss behavior for this topology and one-hour
+idleness. Automated acceptance workers are separate evidence from the real native
+rehearsal; synchronization tests do not prove power-loss durability.
+
+## Superseded October 20 repair candidate
+
+The first repair candidate was `639ac8efdeed5607d4a675c5ef62b09ebceeaf2d`, based on the
+previous PR head `44fd705434de867d18b1e364d858025ea4c882bf`. The repair preserves
+the original issue scope:
+
+- Pre-RPC inbox preparation stays queued until the durable prompt and subsequent
+  timestamp/dispatch-intent write both succeed. A real SQLite page-capacity
+  regression verifies retry across restart without duplicate dispatch. This is
+  a SQLite capacity test, not physical disk exhaustion or power-loss evidence.
+- Coordinator cancellation reaches nested reads, writes, Git commands, and
+  recovery. Cleanup stops bridge dispatch, drains pending operations, and waits
+  for owned command process groups to exit. Closure review found the drain defects
+  described below. Windows retains
+  direct-child termination; descendant-group qualification here is macOS-only.
+- Independent final tests receive the same sanitized environment as other
+  coordinator commands. The duplicate probe verifies the injected operation's
+  identity and idempotent replay while accepting prior identical duplicates.
+  Service startup uses the already-declared 45-second bound.
+
+The following superseded-candidate runs used Node **24.11.1** and source/build fingerprint
+`0e9e3d47a5e4ecfcff8c7d30f3b328f9ad9ccdff3b059432b75fe780c3416d2f`.
+The dependency locks and pinned Chromium/WebKit browsers were prepared on macOS;
+no browser workaround or deadline override was used. Native and acceptance runs
+were sequential.
+
+| Check | Observed result |
+| --- | --- |
+| Affected runtime / storage qualification / CLI suites | 27 / 12 / 11 passed |
+| Focused coordinator and review suite | 22 passed, including real child/descendant termination and timeout diagnostics |
+| `npm run verify` | Production build, 328 default parallel regressions with no skips/cancellations, and complete seed-1 acceptance passed |
+| Native three-agent run `cab3bfe7-ade2-4c94-a510-498e4e9cc2ac` | Passed all workflow, independent-test, recovery, duplicate/stale-result and five-second idle gates; zero cleanup errors |
+| Native approval probe `38a1aedc-d9ff-4001-bd63-d590db3e2e78` | Passed all five gates; no approval answered, no marker write, zero cleanup errors |
+| `npm run test:acceptance -- --repeat 20 --seed 1` | Operator-stopped after seeds 1–7; seed 8 interrupted when closure review required additional source repairs |
+
+Canonical acceptance retained all **719** acknowledged operations and matching
+verification results on three replicas. An independent offline audit reconstructed
+the original intent/receipt manifest and checked the saved replica snapshot against
+all three recorded verification results; only that one snapshot is retained for
+offline replay. The report hash, candidate, selected bounds, and cleanup evidence
+agree. Its maximum acknowledgment was **208.027 ms** against the default **2,000 ms**
+bound. Offline UI visibility was **55.912 ms** (2,000 ms), offline restart
+**1,891.806 ms** (5,000 ms), and convergence **2,669.131 ms** (10,000 ms).
+Private canonical evidence is `output/acceptance/2026-10-21T04-33-53.332Z/`.
+This single seed does not establish the repeatability gate. The extended run
+`output/acceptance/2026-10-21T04-40-00.087Z/` was deliberately stopped during seed 8
+by terminating its verified, owned hub after seeds 1–7 passed. The resulting
+connection failure and operator intervention are retained; driver, hub, replica,
+and browser cleanup was verified. This was a superseded-candidate interruption,
+not a successful twenty-seed run or an unexplained performance failure.
+
+Closure review then found three further defects: macOS process-group probes could
+throw `EPERM` and cancel escalation; escaped sessions could hold output pipes open
+past cancellation; and queued retries could reuse context saved before a failed
+prepare. These were repaired in `a63b387` and `febaf78`. The passing native and
+canonical observations below belong only to `639ac8ef`; they do not qualify the
+corrected candidate.
+
+The fresh native rehearsal used Codex **0.163.0** with the existing configured
+**gpt-6-astra / medium** setting. It observed **13** real accepted deliveries,
+healthy initial dispatch in **223 ms**, and a **184.106-second** workflow against
+the declared two-second dispatch and twenty-minute workflow bounds. Both initial
+assessments preceded correction; both final-SHA approvals preceded the human-review
+handoff. The separate approval probe used its declared **gpt-5.6-luna / low**
+fixture and interrupted/archived its own session without answering the request.
+The approval trace included two preparatory read-only discovery commands before
+the pending request; it was not a marker-only tool trace. The archived native
+record corroborates interruption with the original policy intact. These results
+do not establish human acceptance or an approval-and-resume UI.
+
+Independent evidence review correlated all thirteen accepted deliveries with
+completed native turns (builder 8, reviewers 3 and 2), both immutable source
+revisions, four attributed reviewer approvals and successful tests in those turns.
+Final independent test reruns passed 8/8/10 tests, plus external assertions.
+The audit recomputed all per-delivery timing rows and corroborated the recovery
+probes, 64 duplicated protocol notifications, duplicate-result identity, and
+old-SHA rejection. Eleven live completion events were retained; two completion
+timestamps remain unknown after restart, with completion established separately
+from native histories. Initial dispatch duration is the driver's observation;
+its start timestamp is not separately persisted for offline recomputation.
+All seven recorded owned process IDs were absent after cleanup.
+
+The following sections retain earlier evidence with its original source,
+configuration, failures, and limitations; they do not qualify this repair.
+
+## Historical October 18 rebase evidence
+
+The previous PR description recorded a rebase onto main `0736f8e8` after #74,
+with six unchanged patches and head
+`de425a041e0ef75aff83ec4486c6c8ff22069fa4`. It reported two passing
+`npm run verify -- --local-ack-ms 10000` invocations with **317/317** default
+parallel tests and seed-1 acceptance, plus **10/10** UI tests including Chromium
+and WebKit on macOS. Independent reviews and native runs were not repeated after
+that rebase. Those are historical reported results, not new runs of this repair.
+The branch subsequently reached `44fd705434de867d18b1e364d858025ea4c882bf` with
+nine commits while the PR body still named the earlier six-commit head.
+The repair history above replaces that stale current-status description without
+reattributing the earlier evidence.
+
+## Historical qualification status before October 20
+
+The original implementation was based on main
+`d1d1b91fe97388438716bc95541b7e7135b29bdd`. References below to the then-current
+candidate describe that historical checkpoint, not the October 20 repaired head.
+
+**Historical status:** the corrected candidate passed an observed automatic
 three-Codex qualification and a separate non-answering approval probe. The same
 source passed the canonical verification command: production build, all **298
 default parallel regressions**, and **719 independently verified seed-1
@@ -20,9 +227,9 @@ and its failure is preserved. Neither the budget nor passing samples establish
 the original repeatable 2-second performance target. Every correctness and
 recovery check is retained. Human acceptance is separate and remains pending.
 
-## Observed runs and corrections
+### Observed runs and corrections
 
-All three-agent runs used Node 24.11.1 and Codex CLI 0.160.1, with the configured
+The historical three-agent runs in this section used Node 24.11.1 and Codex CLI 0.160.1, with the configured
 `gpt-6.1-sol` model and `xhigh` reasoning. Each created one isolated Pardner
 replica, one dedicated App Server, three distinct agent Actors/sessions, and
 three independent fixture worktrees on one host. Existing services, checkouts,
@@ -53,7 +260,7 @@ These records help diagnose interruption; they do not manufacture a pass.
 The failed read prompted structured CLI diagnostics and read-only retries within
 the existing convergence interval. Mutations do not use that retry helper.
 
-## Earlier three-agent baseline
+### Earlier three-agent baseline
 
 The passing run used the frozen application fingerprint
 `fc1a9c00bb18cede69bb5adad7f86d205f55dc103b0d9e677eca858187f61440`.
@@ -94,7 +301,7 @@ the same thread. Ten of 13 collected submission times followed acceptance and
 three were absent. Those per-delivery timing claims are withdrawn; retained
 native history still supports the functional workflow observations above.
 
-## Independent source review and corrections
+### Independent source review and corrections
 
 An independent Codex source reviewer inspected the entire original 15-file patch
 (`84e856dc55861d6daa6c69eec70ad115fbf57d6e1d6b754bdc0abfe5d72f86a6`),
@@ -144,7 +351,7 @@ This inspection requested no inference and changed no inbox state. It validates
 those observed timing rows; it does not complete the failed workflow or qualify
 its missing final barrier.
 
-## Other checks and interventions
+### Other checks and interventions
 
 - No-inference readiness confirmed the current binary, existing sign-in,
   configured model catalog, and isolated session creation/resumption.
@@ -193,7 +400,7 @@ its missing final barrier.
   At that checkpoint the required repository gate remained open. Those failed
   attempts are retained, and no unrelated host process was altered.
 
-## User-approved acknowledgment budget
+### User-approved acknowledgment budget
 
 The follow-up adds `--local-ack-ms`, forwarded by `verify` to acceptance. The
 default remains 2,000 ms; this qualification explicitly uses 10,000 ms. The
@@ -240,7 +447,7 @@ Private evidence is retained at
 The original 2-second acknowledgment performance target remains unqualified on
 this host; optimization is deferred as authorized.
 
-## Current-candidate native qualification
+### Current-candidate native qualification
 
 Run `16bf233e-ed84-422a-b84a-ed493342fad6` passed on fingerprint
 `999dd55d83f1f8ab4f15f027a161347cbd9efbc6bf22a5362c220f12ac1eae82`.
@@ -276,7 +483,7 @@ written, and its own thread was interrupted and archived. All five gates passed
 with zero cleanup errors. No request was answered or permission changed; human
 approval and resumption remain unqualified.
 
-## Current-candidate verification history
+### Current-candidate verification history
 
 The clarified candidate fingerprint is
 `999dd55d83f1f8ab4f15f027a161347cbd9efbc6bf22a5362c220f12ac1eae82`.
@@ -316,7 +523,7 @@ The earlier strict failures are preserved; this serial invocation establishes no
 repeatable two-second performance qualification. The subsequent default parallel
 verification is recorded separately below.
 
-## Parallel teardown diagnosis and canonical verification
+### Parallel teardown diagnosis and canonical verification
 
 The exact earlier failure was `test/workspace-runtime.test.js:194`,
 "broadcasts native replica changes to every UI subscriber and rejects JSON
@@ -380,7 +587,7 @@ script operations. They are not counted as real agent participation. The model
 requests, command execution, independent test creation, attributed results, and
 accepted turns are retained separately as private evidence.
 
-## Boundaries
+### Boundaries
 
 Human acceptance remains pending; the automated endpoint is a parent task in
 `review` assigned to the human with both named final-SHA approvals. These fixture
@@ -398,7 +605,7 @@ Full runtime directories, inboxes, credentials, session histories, account
 information, and local infrastructure details remain private. Publish only this
 curated report after review, not raw runtime data.
 
-## October 8 deadline repair
+### October 8 deadline repair
 
 Follow-up review reproduced a successful 101 ms observation being accepted by
 `eventually` despite a 30 ms budget. The helper now rejects observations at
