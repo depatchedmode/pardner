@@ -94,6 +94,50 @@ it('durable context is observed before RPC and retains its timing across lost-re
   assert.ok(accepted.dispatched_at >= prepared)
 }))
 
+it('a failed context-timing commit keeps acknowledged work queued and retryable across restart', () => fixture(async state => {
+  state.harness.state = 'busy'; state.source.mentions.push(mention)
+  await state.bridge.wake()
+  assert.deepEqual(state.source.acks, [mention.id])
+  const database = state.inbox.database
+  const pageSize = database.prepare('PRAGMA page_size').get().page_size
+  const pages = database.prepare('PRAGMA page_count').get().page_count
+  const maximumPages = database.prepare('PRAGMA max_page_count').get().max_page_count
+  database.exec(`PRAGMA max_page_count = ${pages}`)
+  let persistedPrompt
+  // Find the row-size boundary where the prompt fits but its timing observation
+  // requires another SQLite page. This exercises SQLITE_FULL, not disk exhaustion.
+  for (let bytes = pageSize / 2; bytes < pageSize; bytes++) {
+    database.prepare("UPDATE inbox SET state = 'queued', prompt = NULL, context_persisted_at = NULL WHERE id = ?").run(mention.id)
+    const prompt = 'x'.repeat(bytes)
+    try { state.inbox.begin(mention.id, prompt) } catch (error) {
+      assert.equal(error.errcode, 13, 'The isolated page limit must cause SQLITE_FULL')
+      const row = state.inbox.rows()[0]
+      if (row.prompt !== prompt) continue
+      assert.equal(row.state, 'queued', 'Pre-RPC persistence failure must not strand work in dispatching')
+      assert.equal(row.context_persisted_at, null)
+      persistedPrompt = prompt
+      break
+    }
+  }
+  assert.ok(persistedPrompt, 'The context-timing write must fail after the prompt commit succeeds')
+  state.harness.state = 'ready'
+  await state.bridge.wake()
+  assert.equal(state.harness.calls.length, 0)
+  assert.equal(state.inbox.rows()[0].state, 'queued')
+  assert.equal(state.inbox.statuses().find(row => row.actor === 'builder').state, 'ERR_SQLITE_ERROR')
+
+  database.exec(`PRAGMA max_page_count = ${maximumPages}`)
+  await state.restart()
+  assert.equal(state.inbox.rows()[0].state, 'queued')
+  assert.equal(state.inbox.rows()[0].prompt, persistedPrompt)
+  await state.bridge.wake()
+  assert.deepEqual(state.harness.calls, [persistedPrompt])
+  assert.equal(state.inbox.rows()[0].state, 'accepted')
+  assert.ok(Number.isFinite(state.inbox.rows()[0].context_persisted_at))
+  await state.bridge.wake()
+  assert.equal(state.harness.calls.length, 1)
+}))
+
 it('legacy inboxes migrate without inventing context timing or losing accepted work', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-bridge-legacy-'))
   const path = join(directory, 'inbox.sqlite'), identity = { workspaceId: 'workspace', replicaId: 'replica' }
