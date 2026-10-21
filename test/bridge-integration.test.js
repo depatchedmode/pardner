@@ -46,7 +46,7 @@ for (const mode of ['co-worktree', 'co-host', 'replica']) {
       const harness = new EventEmitter()
       const calls = []
       harness.availability = async () => 'ready'
-      harness.dispatch = async (mapping, prompt) => { calls.push({ mapping, prompt }); return `turn-${calls.length}` }
+      harness.dispatch = async (mapping, { prompt }) => { calls.push({ mapping, prompt }); return `turn-${calls.length}` }
       harness.reconcile = async () => null
       harness.close = () => {}
       const source = new BridgeSource(config)
@@ -127,14 +127,14 @@ it('a task missing from the local replica does not starve later context and disp
     const first = await create()
     await operation('comment.add', { taskId: first, text: '@builder context still on the hub' })
     const firstMention = (await context(first)).mentions[0]
-    const mapping = { actorId: 'builder', enabled: true, worktree: root, threadId: 'thread',
+    const mapping = { actorId: 'builder', enabled: true, adapter: 'codex-app-server', worktree: root, threadId: 'thread',
       allowedTaskIds: [first, second], allowedFromActorIds: ['alice'] }
     const config = { workspaceId: replica.store.manifest.workspaceId, replicaId: replica.store.manifest.replicaId,
       dataDirectory, inboxDirectory: join(root, 'inbox'), mappings: [mapping] }
     inbox = await openBridgeInbox(config)
     const source = new BridgeSource(config), harness = new EventEmitter(), calls = []
     Object.assign(harness, { availability: async () => 'ready', reconcile: async () => null, close() {},
-      dispatch: async (_mapping, prompt) => { calls.push(JSON.parse(prompt.split('\n\n').at(-1)).mention.id); return `turn-${calls.length}` } })
+      dispatch: async (_mapping, { mention }) => { calls.push(mention.id); return `turn-${calls.length}` } })
     bridge = new AgentBridge({ config, inbox, source, adapterFactory: () => harness })
     // The hub can deliver a receipt before its task reaches the local replica.
     inbox.receive('builder', { mention: firstMention }, mapping)
