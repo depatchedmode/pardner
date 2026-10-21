@@ -6,6 +6,7 @@ import { readWithinConvergence, submitOnce } from './three-agent-review.js'
 export class RehearsalScope {
   controller = new AbortController()
   pending = new Set()
+  cleanupErrors = new Set()
 
   get signal() { return this.controller.signal }
 
@@ -36,7 +37,10 @@ export class RehearsalScope {
     }).then(result => { this.check(); return result })
     this.pending.add(pending)
     const settled = () => this.pending.delete(pending)
-    pending.then(settled, settled)
+    pending.then(settled, error => {
+      if (error.cleanupError) this.cleanupErrors.add(error.cleanupError)
+      settled()
+    })
     return pending
   }
 
@@ -48,6 +52,7 @@ export class RehearsalScope {
   async close() {
     this.cancel()
     await Promise.allSettled([...this.pending])
+    return [...this.cleanupErrors]
   }
 }
 

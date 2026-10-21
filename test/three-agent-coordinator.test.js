@@ -171,15 +171,94 @@ it('cancellation drains independent-stdio descendants even after their parent ex
       try { pids = JSON.parse(await readFile(marker, 'utf8')); return true }
       catch (error) { if (error.code !== 'ENOENT') throw error; return false }
     }, { timeoutMs: 5000, intervalMs: 10, label: 'fixture descendant readiness' })
+    const kill = process.kill.bind(process)
+    let epermProbes = 0
+    t.mock.method(process, 'kill', (pid, signal) => {
+      if (pid === -pids.parent && signal === 0 && epermProbes < 3) {
+        epermProbes++
+        throw Object.assign(new Error('Fixture transient group transition'), { code: 'EPERM' })
+      }
+      return kill(pid, signal)
+    })
     watchdog = setTimeout(() => { forcedCleanup = true; stopFixtures() }, 5000)
     await coordinator.scope.close()
     await rejected
     assert.equal(forcedCleanup, false)
+    assert.equal(epermProbes, 3)
     assert.throws(() => process.kill(pids.pid, 0), { code: 'ESRCH' }, 'The descendant must exit before cleanup completes')
     assert.throws(() => process.kill(-pids.parent, 0), { code: 'ESRCH' }, 'The command process group must be gone')
   } finally {
     clearTimeout(watchdog)
     stopFixtures()
+    await coordinator.scope.close()
+    await rejected
+  }
+})
+
+it('cleanup failures survive cancellation and reach the scope with command diagnostics', { skip: process.platform === 'win32' }, async t => {
+  const coordinator = await fixture(t)
+  const marker = join(coordinator.root, 'group-ready')
+  const script = 'const fs = require("node:fs"); fs.writeSync(1, "fixture output\\n"); fs.writeSync(2, "fixture diagnostic\\n"); fs.writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000)'
+  let pid, failure
+  const operation = coordinator.execute(process.execPath, ['-e', script, marker])
+  const rejected = assert.rejects(operation, error => {
+    failure = error
+    assert.equal(error.code, 'ABORT_ERR')
+    assert.equal(error.stdout, 'fixture output\n')
+    assert.equal(error.stderr, 'fixture diagnostic\n')
+    assert.equal(error.cleanupError.code, 'ERR_COMMAND_DRAIN_TIMEOUT')
+    return true
+  })
+  try {
+    await eventually(async () => {
+      try { pid = Number(await readFile(marker, 'utf8')); return pid > 0 }
+      catch (error) { if (error.code !== 'ENOENT') throw error; return false }
+    }, { timeoutMs: 5000, intervalMs: 10, label: 'fixture group readiness' })
+    const kill = process.kill.bind(process)
+    t.mock.method(process, 'kill', (target, signal) => {
+      if (target === -pid && signal === 0) throw Object.assign(new Error('Fixture group remains inaccessible'), { code: 'EPERM' })
+      return kill(target, signal)
+    })
+    const cleanupErrors = await coordinator.scope.close()
+    await rejected
+    assert.deepEqual(cleanupErrors, [failure.cleanupError])
+    assert.deepEqual(await coordinator.scope.close(), cleanupErrors)
+    assert.throws(() => kill(pid, 0), { code: 'ESRCH' })
+  } finally {
+    if (pid) { try { process.kill(pid, 'SIGKILL') } catch (error) { if (error.code !== 'ESRCH') throw error } }
+    await coordinator.scope.close()
+    await rejected
+  }
+})
+
+it('cancellation bounds inherited-pipe draining without claiming an escaped session was terminated', { skip: process.platform === 'win32' }, async t => {
+  const coordinator = await fixture(t)
+  const marker = join(coordinator.root, 'escaped-ready')
+  const escaped = 'require("node:fs").writeFileSync(process.argv[1], String(process.pid)); console.log("escaped fixture output"); setTimeout(() => {}, 15000)'
+  const script = `const child = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(escaped)}, process.argv[1]], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] }); child.unref()`
+  let pid, watchdog, forcedCleanup = false
+  const operation = coordinator.execute(process.execPath, ['-e', script, marker])
+  const rejected = assert.rejects(operation, error => {
+    assert.equal(error.code, 'ABORT_ERR')
+    assert.match(error.stdout, /escaped fixture output/)
+    return true
+  })
+  try {
+    await eventually(async () => {
+      try { pid = Number(await readFile(marker, 'utf8')); return pid > 0 }
+      catch (error) { if (error.code !== 'ENOENT') throw error; return false }
+    }, { timeoutMs: 5000, intervalMs: 10, label: 'escaped fixture readiness' })
+    watchdog = setTimeout(() => {
+      forcedCleanup = true
+      try { process.kill(pid, 'SIGKILL') } catch (error) { if (error.code !== 'ESRCH') throw error }
+    }, 7000)
+    assert.deepEqual(await coordinator.scope.close(), [])
+    await rejected
+    assert.equal(forcedCleanup, false, 'Cleanup must finish without waiting for the escaped session')
+    assert.doesNotThrow(() => process.kill(pid, 0), 'The escaped session is outside runner ownership')
+  } finally {
+    clearTimeout(watchdog)
+    if (pid) { try { process.kill(pid, 'SIGKILL') } catch (error) { if (error.code !== 'ESRCH') throw error } }
     await coordinator.scope.close()
     await rejected
   }

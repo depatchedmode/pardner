@@ -382,14 +382,16 @@ console.log('Independent final fixture assertions passed');`
   if (bridge) {
     try { await bridge.stop() } catch (error) { report.cleanupErrors.push(error.message) }
   }
-  await work.close()
+  report.cleanupErrors.push(...(await work.close()).map(error => error.message))
   if (proxy) await save('protocol-events.json', proxy.events)
   if (bridge) {
     const cleanup = new RehearsalScope()
     try {
       const { cli: inspectInbox } = coordinatorCommands({ ...commandOptions, scope: cleanup })
       await save('inbox-status.json', await inspectInbox(['bridge', 'status', '--config', configPath]))
-    } catch { /* Setup may be incomplete. */ } finally { await cleanup.close() }
+    } catch { /* Setup may be incomplete. */ } finally {
+      report.cleanupErrors.push(...(await cleanup.close()).map(error => error.message))
+    }
   }
   for (const [actor, session] of Object.entries(report.sessions ?? {})) {
     try {
