@@ -85,16 +85,22 @@ it('durable context is observed before RPC and retains its timing across lost-re
   }
   state.harness.loseResponse = true; state.source.mentions.push(mention)
   await state.bridge.wake()
-  const prepared = state.inbox.rows()[0].context_persisted_at
+  const { context_persisted_at: prepared, prompt: submitted } = state.inbox.rows()[0]
   assert.equal(state.inbox.rows()[0].state, 'uncertain')
+  const context = state.source.context.bind(state.source)
+  state.source.context = async received => ({ ...await context(received), comments: [
+    { id: received.commentId }, { id: 'later-comment', text: 'Context changed after the uncertain dispatch' },
+  ] })
   await state.restart(); await state.bridge.wake()
   const accepted = state.inbox.rows()[0]
   assert.equal(accepted.state, 'accepted')
+  assert.equal(accepted.prompt, submitted)
+  assert.deepEqual(state.harness.calls, [submitted])
   assert.equal(accepted.context_persisted_at, prepared)
   assert.ok(accepted.dispatched_at >= prepared)
 }))
 
-it('a failed context-timing commit keeps acknowledged work queued and retryable across restart', () => fixture(async state => {
+for (const restart of [false, true]) it(`a failed context-timing commit retries acknowledged work with fresh context ${restart ? 'after restart' : 'in the same process'}`, () => fixture(async state => {
   state.harness.state = 'busy'; state.source.mentions.push(mention)
   await state.bridge.wake()
   assert.deepEqual(state.source.acks, [mention.id])
@@ -120,18 +126,27 @@ it('a failed context-timing commit keeps acknowledged work queued and retryable 
     }
   }
   assert.ok(persistedPrompt, 'The context-timing write must fail after the prompt commit succeeds')
+  const context = state.source.context.bind(state.source)
+  const correction = { id: 'later-comment', text: `Corrected after the failed prepare. ${'x'.repeat(pageSize * 2)}` }
+  state.source.context = async received => ({ ...await context(received), comments: [{ id: received.commentId }, correction] })
   state.harness.state = 'ready'
   await state.bridge.wake()
   assert.equal(state.harness.calls.length, 0)
   assert.equal(state.inbox.rows()[0].state, 'queued')
+  assert.equal(state.inbox.rows()[0].prompt, persistedPrompt)
   assert.equal(state.inbox.statuses().find(row => row.actor === 'builder').state, 'ERR_SQLITE_ERROR')
 
   database.exec(`PRAGMA max_page_count = ${maximumPages}`)
-  await state.restart()
+  if (restart) await state.restart()
   assert.equal(state.inbox.rows()[0].state, 'queued')
   assert.equal(state.inbox.rows()[0].prompt, persistedPrompt)
   await state.bridge.wake()
-  assert.deepEqual(state.harness.calls, [persistedPrompt])
+  assert.equal(state.harness.calls.length, 1)
+  assert.notEqual(state.harness.calls[0], persistedPrompt, 'Queued retry must rebuild its prompt from current context')
+  const delivered = JSON.parse(state.harness.calls[0].split('\n\n').at(-1))
+  assert.deepEqual(delivered.context.comments, [{ id: mention.commentId }, correction])
+  assert.deepEqual(delivered.mention, mention)
+  assert.equal(state.inbox.rows()[0].prompt, state.harness.calls[0])
   assert.equal(state.inbox.rows()[0].state, 'accepted')
   assert.ok(Number.isFinite(state.inbox.rows()[0].context_persisted_at))
   await state.bridge.wake()
@@ -228,7 +243,10 @@ it('restart during dispatch requires explicit reconciliation when the harness ha
   assert.throws(() => state.inbox.resolve(mention.id, 'retry', ''), /evidence/)
   state.inbox.resolve(mention.id, 'retry', 'Operator inspected the stopped harness and verified no turn was accepted')
   await state.bridge.wake()
-  assert.deepEqual(state.harness.calls, ['original prompt'])
+  assert.equal(state.harness.calls.length, 1)
+  const delivered = JSON.parse(state.harness.calls[0].split('\n\n').at(-1))
+  assert.deepEqual(delivered.context, await state.source.context(mention))
+  assert.equal(state.inbox.rows()[0].prompt, state.harness.calls[0])
 }))
 
 it('accepted inbox work can dispatch with the hub offline; a wrong local replica prevents dispatch', () => fixture(async state => {
