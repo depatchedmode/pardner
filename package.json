@@ -19,6 +19,9 @@
     "test:ui": "npm run ui:build && node --test test/pardner-ui.test.js test/pardner-phone.test.js test/pardner-connection-ui.test.js",
     "test:acceptance": "node scripts/acceptance.js",
     "verify": "node scripts/verify.js",
+    "verify:plan": "node scripts/verify-plan.js",
+    "verify:smoke": "node scripts/verify-smoke.js",
+    "test:verification": "node --test test/verify-plan.test.js",
     "smoke:native-peer": "node scripts/native-peer-smoke.js",
     "stress:native-peer": "node scripts/stress-native-peer.js",
     "ui:build": "npm run build --prefix ui-prototype"
