@@ -5,8 +5,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { setTimeout as delay } from 'node:timers/promises'
+import { DatabaseSync } from 'node:sqlite'
 import { BridgeInbox } from '../lib/bridge-inbox.js'
 import { AgentBridge } from '../lib/agent-bridge.js'
+import { canonical } from '../lib/workspace-schema.js'
 
 const mapping = { actorId: 'builder', enabled: true, adapter: 'codex-app-server', sessionOwner: 'bridge',
   endpoint: 'ws://127.0.0.1:9001/', threadId: 'thread-one', worktree: '/tmp', allowedTaskIds: ['task-one'], allowedFromActorIds: ['alice'] }
@@ -56,7 +58,7 @@ async function fixture(run) {
   const source = new Source(inbox), harness = new Harness()
   const config = { ...identity, dataDirectory: directory, mappings: [structuredClone(mapping)] }
   let bridge = new AgentBridge({ config, inbox, source, adapterFactory: () => harness })
-  const state = { source, harness, config, get inbox() { return inbox }, get bridge() { return bridge },
+  const state = { source, harness, config, path, get inbox() { return inbox }, get bridge() { return bridge },
     restart: async () => {
       await bridge.stop(); inbox.close()
       inbox = new BridgeInbox(path, identity); source.inbox = inbox
@@ -65,6 +67,110 @@ async function fixture(run) {
     } }
   try { await run(state) } finally { await bridge.stop(); inbox.close(); await rm(directory, { recursive: true, force: true }) }
 }
+
+it('durable context is observed before RPC and retains its timing across lost-reply reconciliation', () => fixture(async state => {
+  const dispatch = state.harness.dispatch.bind(state.harness)
+  state.harness.dispatch = async (mapped, prompt) => {
+    const reader = new DatabaseSync(state.path, { readOnly: true })
+    try {
+      const row = reader.prepare('SELECT * FROM inbox WHERE id = ?').get(mention.id)
+      assert.equal(row.state, 'dispatching')
+      assert.equal(row.prompt, prompt)
+      assert.ok(Number.isFinite(row.context_persisted_at))
+      assert.ok(row.received_at <= row.context_persisted_at)
+      assert.ok(row.context_persisted_at <= Date.now())
+      assert.equal(row.dispatched_at, null)
+    } finally { reader.close() }
+    return dispatch(mapped, prompt)
+  }
+  state.harness.loseResponse = true; state.source.mentions.push(mention)
+  await state.bridge.wake()
+  const { context_persisted_at: prepared, prompt: submitted } = state.inbox.rows()[0]
+  assert.equal(state.inbox.rows()[0].state, 'uncertain')
+  const context = state.source.context.bind(state.source)
+  state.source.context = async received => ({ ...await context(received), comments: [
+    { id: received.commentId }, { id: 'later-comment', text: 'Context changed after the uncertain dispatch' },
+  ] })
+  await state.restart(); await state.bridge.wake()
+  const accepted = state.inbox.rows()[0]
+  assert.equal(accepted.state, 'accepted')
+  assert.equal(accepted.prompt, submitted)
+  assert.deepEqual(state.harness.calls, [submitted])
+  assert.equal(accepted.context_persisted_at, prepared)
+  assert.ok(accepted.dispatched_at >= prepared)
+}))
+
+for (const restart of [false, true]) it(`a failed context-timing commit retries acknowledged work with fresh context ${restart ? 'after restart' : 'in the same process'}`, () => fixture(async state => {
+  state.harness.state = 'busy'; state.source.mentions.push(mention)
+  await state.bridge.wake()
+  assert.deepEqual(state.source.acks, [mention.id])
+  const database = state.inbox.database
+  const pageSize = database.prepare('PRAGMA page_size').get().page_size
+  const pages = database.prepare('PRAGMA page_count').get().page_count
+  const maximumPages = database.prepare('PRAGMA max_page_count').get().max_page_count
+  database.exec(`PRAGMA max_page_count = ${pages}`)
+  let persistedPrompt
+  // Find the row-size boundary where the prompt fits but its timing observation
+  // requires another SQLite page. This exercises SQLITE_FULL, not disk exhaustion.
+  for (let bytes = pageSize / 2; bytes < pageSize; bytes++) {
+    database.prepare("UPDATE inbox SET state = 'queued', prompt = NULL, context_persisted_at = NULL WHERE id = ?").run(mention.id)
+    const prompt = 'x'.repeat(bytes)
+    try { state.inbox.begin(mention.id, prompt) } catch (error) {
+      assert.equal(error.errcode, 13, 'The isolated page limit must cause SQLITE_FULL')
+      const row = state.inbox.rows()[0]
+      if (row.prompt !== prompt) continue
+      assert.equal(row.state, 'queued', 'Pre-RPC persistence failure must not strand work in dispatching')
+      assert.equal(row.context_persisted_at, null)
+      persistedPrompt = prompt
+      break
+    }
+  }
+  assert.ok(persistedPrompt, 'The context-timing write must fail after the prompt commit succeeds')
+  const context = state.source.context.bind(state.source)
+  const correction = { id: 'later-comment', text: `Corrected after the failed prepare. ${'x'.repeat(pageSize * 2)}` }
+  state.source.context = async received => ({ ...await context(received), comments: [{ id: received.commentId }, correction] })
+  state.harness.state = 'ready'
+  await state.bridge.wake()
+  assert.equal(state.harness.calls.length, 0)
+  assert.equal(state.inbox.rows()[0].state, 'queued')
+  assert.equal(state.inbox.rows()[0].prompt, persistedPrompt)
+  assert.equal(state.inbox.statuses().find(row => row.actor === 'builder').state, 'ERR_SQLITE_ERROR')
+
+  database.exec(`PRAGMA max_page_count = ${maximumPages}`)
+  if (restart) await state.restart()
+  assert.equal(state.inbox.rows()[0].state, 'queued')
+  assert.equal(state.inbox.rows()[0].prompt, persistedPrompt)
+  await state.bridge.wake()
+  assert.equal(state.harness.calls.length, 1)
+  assert.notEqual(state.harness.calls[0], persistedPrompt, 'Queued retry must rebuild its prompt from current context')
+  const delivered = JSON.parse(state.harness.calls[0].split('\n\n').at(-1))
+  assert.deepEqual(delivered.context.comments, [{ id: mention.commentId }, correction])
+  assert.deepEqual(delivered.mention, mention)
+  assert.equal(state.inbox.rows()[0].prompt, state.harness.calls[0])
+  assert.equal(state.inbox.rows()[0].state, 'accepted')
+  assert.ok(Number.isFinite(state.inbox.rows()[0].context_persisted_at))
+  await state.bridge.wake()
+  assert.equal(state.harness.calls.length, 1)
+}))
+
+it('legacy inboxes migrate without inventing context timing or losing accepted work', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-bridge-legacy-'))
+  const path = join(directory, 'inbox.sqlite'), identity = { workspaceId: 'workspace', replicaId: 'replica' }
+  const legacy = new DatabaseSync(path)
+  legacy.exec(`CREATE TABLE identity (value TEXT NOT NULL);
+    CREATE TABLE inbox (id TEXT PRIMARY KEY, actor TEXT NOT NULL, mention TEXT NOT NULL, mapping TEXT NOT NULL,
+    state TEXT NOT NULL, prompt TEXT, turn_id TEXT, reason TEXT, received_at INTEGER NOT NULL, dispatched_at INTEGER);`)
+  legacy.prepare('INSERT INTO identity VALUES (?)').run(canonical(identity))
+  legacy.prepare('INSERT INTO inbox VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(mention.id, 'builder', JSON.stringify(mention), JSON.stringify(mapping), 'accepted', 'old prompt', 'old turn', null, 1, 2)
+  legacy.close()
+  let inbox
+  try {
+    inbox = new BridgeInbox(path, identity)
+    const row = inbox.rows()[0]
+    assert.equal(row.state, 'accepted'); assert.equal(row.turn_id, 'old turn')
+    assert.equal(row.prompt, 'old prompt'); assert.equal(row.context_persisted_at, null)
+  } finally { inbox?.close(); await rm(directory, { recursive: true, force: true }) }
+})
 
 it('an idle hour performs zero harness requests; a delivery is persisted before ack and dispatched promptly', () => fixture(async state => {
   let availabilityCalls = 0
@@ -137,7 +243,10 @@ it('restart during dispatch requires explicit reconciliation when the harness ha
   assert.throws(() => state.inbox.resolve(mention.id, 'retry', ''), /evidence/)
   state.inbox.resolve(mention.id, 'retry', 'Operator inspected the stopped harness and verified no turn was accepted')
   await state.bridge.wake()
-  assert.deepEqual(state.harness.calls, ['original prompt'])
+  assert.equal(state.harness.calls.length, 1)
+  const delivered = JSON.parse(state.harness.calls[0].split('\n\n').at(-1))
+  assert.deepEqual(delivered.context, await state.source.context(mention))
+  assert.equal(state.inbox.rows()[0].prompt, state.harness.calls[0])
 }))
 
 it('accepted inbox work can dispatch with the hub offline; a wrong local replica prevents dispatch', () => fixture(async state => {
