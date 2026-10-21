@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { BridgeProviders, bridgeProviders, codexBridgeProvider } from '../lib/bridge-providers.js'
 import { AgentBridge, bridgeConfig, runBridgeCommand } from '../lib/agent-bridge.js'
 import { CodexBridgeAdapter } from '../lib/codex-bridge-adapter.js'
+import { acquireStorageLease } from '../lib/storage-lease.js'
 
 it('shutdown waits for all owners even after one close fails, and repeated stops share completion', async () => {
   let finish, closed = 0
@@ -81,6 +82,33 @@ it('default, explicit, and config-based inspection use the registry and close on
   assert.equal(calls, 4)
 }))
 
+it('configured inspection holds the bridge storage lease only for providers whose inspection owns the session', () => fixture(async ({ path, config }) => {
+  let creates = 0, inspection
+  const owner = new BridgeProviders([{ ...codexBridgeProvider, capabilities: { inspectionOwnsSession: true }, create: () => {
+    creates++
+    return { describe: () => { inspection?.started.resolve(); return inspection?.result.promise ?? { inspected: true } }, close() {} }
+  } }])
+  const flags = { config: path, actor: 'builder' }
+  await assert.rejects(runBridgeCommand('inspect', { session: 'thread', worktree: '/tmp' }, { providers: owner }), { code: 'INSPECTION_REQUIRES_CONFIG' })
+  const bridge = await acquireStorageLease(config.inboxDirectory)
+  await assert.rejects(runBridgeCommand('inspect', flags, { providers: owner }), { code: 'STORAGE_IN_USE' })
+  assert.equal(creates, 0)
+  const reader = new BridgeProviders([{ ...codexBridgeProvider, create: () => ({ describe: async () => ({ inspected: true }), close() {} }) }])
+  assert.deepEqual(await runBridgeCommand('inspect', flags, { providers: reader }), { inspected: true })
+  bridge.close()
+  for (const failed of [false, true]) {
+    inspection = { started: Promise.withResolvers(), result: Promise.withResolvers() }
+    const inspecting = runBridgeCommand('inspect', flags, { providers: owner })
+    await inspection.started.promise
+    await assert.rejects(acquireStorageLease(config.inboxDirectory), { code: 'STORAGE_IN_USE' })
+    if (failed) inspection.result.reject(new Error('inspection failed'))
+    else inspection.result.resolve({ inspected: true })
+    await (failed ? assert.rejects(inspecting, /inspection failed/) : inspecting)
+    ;(await acquireStorageLease(config.inboxDirectory)).close()
+  }
+  assert.equal(creates, 2)
+}))
+
 it('a shutdown failure after a failed start keeps the startup error', () => fixture(async ({ path }) => {
   const adapter = Object.assign(new EventEmitter(), {
     on() { throw Object.assign(new Error('start failed'), { code: 'START_FAILED' }) },
@@ -124,4 +152,6 @@ it('provider connection identity blocks both queued and uncertain work before an
 it('provider registration requires unique IDs and a complete contract', () => {
   assert.throws(() => new BridgeProviders([codexBridgeProvider, codexBridgeProvider]), /unique/)
   assert.throws(() => new BridgeProviders([{ ...codexBridgeProvider, create: undefined }]), /requires create/)
+  assert.throws(() => new BridgeProviders([{ ...codexBridgeProvider, inspectionMapping: undefined }]), /requires inspectionMapping/)
+  new BridgeProviders([{ ...codexBridgeProvider, capabilities: { inspectionOwnsSession: true }, inspectionMapping: undefined }])
 })
