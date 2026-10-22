@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -106,9 +107,46 @@ function canonical(value) {
 }
 const equal = (left, right) => JSON.stringify(canonical(left)) === JSON.stringify(canonical(right))
 
-export function planForFiles(files, { base = null, head = null, manifestVersions = {} } = {}) {
+const gateScripts = ['test', 'verify', 'test:acceptance', 'test:qualification', 'test:runtime', 'test:cli', 'test:ui', 'ui:build']
+const regressionScripts = new Set(['test:qualification', 'test:runtime', 'test:cli', 'test:ui'])
+const testFile = /^test\/[^\s'"`$;&|<>]+\.test\.js$/
+
+// Compare each version's gate commands with the merge base. Only a regression command whose
+// tokens are unchanged apart from inserted test files is additive; anything else is a change.
+export function gateScriptChanges(versions) {
+  const changes = []
+  for (const script of gateScripts) {
+    const commands = versions.map(document => document?.scripts?.[script] ?? null)
+    const added = new Set()
+    let changed = false
+    for (const command of commands.slice(1)) {
+      if (command === commands[0]) continue
+      const extra = additiveTestFiles(commands[0], command)
+      if (!regressionScripts.has(script) || !extra) changed = true
+      else for (const file of extra) added.add(file)
+    }
+    if (changed) changes.push({ kind: 'changed', script })
+    else if (added.size) changes.push({ kind: 'additive', script, added: [...added].sort() })
+  }
+  return changes
+}
+
+function additiveTestFiles(before, after) {
+  if (typeof before !== 'string' || typeof after !== 'string') return null
+  const old = before.trim().split(/\s+/), next = after.trim().split(/\s+/)
+  const added = []
+  let index = 0
+  for (const token of next) {
+    if (index < old.length && token === old[index]) index++
+    else if (testFile.test(token) && !old.includes(token)) added.push(token)
+    else return null
+  }
+  return index === old.length && added.length ? added : null
+}
+
+export function planForFiles(files, { base = null, head = null, repository = null, tooling = null, overlay = null, origins = null, manifestVersions = {} } = {}) {
   files = [...new Set(files)].sort()
-  const selected = new Set(), triggers = [], unclassified = []
+  const selected = new Set(), triggers = [], reviewRequired = [], unclassified = []
   for (const path of files) {
     const group = classifyPath(path)
     if (!group) unclassified.push(path)
@@ -126,27 +164,41 @@ export function planForFiles(files, { base = null, head = null, manifestVersions
       triggers.push({ kind: 'dependency', path, reason: 'Node, Automerge, WebSocket, browser tooling, or dependency overrides changed' })
     }
     if (path === 'package.json') {
-      const gateScripts = document => Object.fromEntries(['test', 'verify', 'test:acceptance', 'test:qualification', 'test:runtime', 'test:cli', 'test:ui', 'ui:build']
-        .map(name => [name, document?.scripts?.[name] ?? null]))
-      if (versions.some(value => !equal(gateScripts(value), gateScripts(versions[0])))) {
+      const changes = gateScriptChanges(versions)
+      if (changes.some(change => change.kind === 'changed')) {
         triggers.push({ kind: 'harness', path, reason: 'A regression, build, or acceptance command changed' })
+      } else {
+        for (const change of changes) reviewRequired.push({ kind: 'additive-test-inclusion', path, script: change.script, added: change.added,
+          reason: 'Test files were only added to an otherwise unchanged regression command; record a semantic review of what the new tests measure' })
       }
     }
   }
+  const origin = path => origins?.[path] ?? 'subject'
+  for (const entry of [...triggers, ...reviewRequired]) entry.origin = origin(entry.path)
   return {
-    schemaVersion: 1, base, head, files,
+    schemaVersion: 2, repository, tooling, base, head, overlay, files,
+    origins: Object.fromEntries(files.map(path => [path, origin(path)])),
     scripts: scriptOrder.filter(script => selected.has(script)),
     verify: files.some(path => classifyPath(path)?.name !== 'guidance'),
-    qualification: { required: triggers.length > 0, triggers },
+    qualification: { required: triggers.length > 0, triggers, reviewRequired },
     semanticReview: files,
     unclassified,
     guidanceOnly: files.length > 0 && files.every(path => classifyPath(path)?.name === 'guidance'),
   }
 }
 
-export function createPlan({ cwd = root, base = 'origin/main' } = {}) {
-  const git = args => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
+const gitIn = cwd => args => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
+
+export function createPlan({ cwd = process.cwd(), base = 'origin/main', overlay: overlayRef = null } = {}) {
+  cwd = gitIn(resolve(cwd))(['rev-parse', '--show-toplevel']).trim()
+  const git = gitIn(cwd)
   const list = args => git(args).split('\0').filter(Boolean)
+  const repository = { root: cwd, gitDir: resolve(cwd, git(['rev-parse', '--git-dir']).trim()) }
+  let tooling = null
+  try {
+    const toolingRoot = gitIn(root)(['rev-parse', '--show-toplevel']).trim()
+    tooling = { root: toolingRoot, head: gitIn(toolingRoot)(['rev-parse', 'HEAD']).trim(), sameCheckout: toolingRoot === cwd }
+  } catch { tooling = { root, head: null, sameCheckout: false } }
   const head = git(['rev-parse', '--verify', 'HEAD']).trim()
   const commit = git(['rev-parse', '--verify', '--end-of-options', `${base}^{commit}`]).trim()
   const mergeBase = git(['merge-base', commit, head]).trim()
@@ -170,14 +222,56 @@ export function createPlan({ cwd = root, base = 'origin/main' } = {}) {
     catch (error) { if (error.code !== 'ENOENT') throw error; working = null }
     manifestVersions[path] = [readRevision(mergeBase, path), readRevision(head, path), readRevision(':', path), working]
   }
-  return planForFiles(files, { base: { ref: base, commit, mergeBase }, head, manifestVersions })
+  let overlay = null, origins = null
+  if (overlayRef) {
+    // The overlay (for example verification tooling under trial) is applied to the subject checkout.
+    // Its paths stay in the plan; origins only attribute them.
+    const overlayCommit = git(['rev-parse', '--verify', '--end-of-options', `${overlayRef}^{commit}`]).trim()
+    const overlayBase = git(['merge-base', commit, overlayCommit]).trim()
+    const overlayFiles = list(['diff', '--name-only', '--no-renames', '-z', overlayBase, overlayCommit, '--'])
+    const subjectCommitted = new Set(list(['diff', '--name-only', '--no-renames', '-z', mergeBase, head, '--']))
+    const differs = new Set(differingFromCommit(cwd, overlayCommit, overlayFiles))
+    origins = Object.fromEntries(files.map(path => [path,
+      !overlayFiles.includes(path) ? 'subject'
+        : subjectCommitted.has(path) || differs.has(path) ? 'both' : 'overlay']))
+    overlay = { ref: overlayRef, commit: overlayCommit, mergeBase: overlayBase, files: overlayFiles.sort(),
+      missing: overlayFiles.filter(path => !files.includes(path)).sort() }
+  }
+  return planForFiles(files, { base: { ref: base, commit, mergeBase }, head, repository, tooling, overlay, origins, manifestVersions })
+}
+
+// Paths whose working-tree state (including untracked files and symlinks) differs from commit,
+// computed through a temporary index so the user's index is never modified.
+function differingFromCommit(cwd, commit, paths) {
+  if (!paths.length) return []
+  const directory = mkdtempSync(join(tmpdir(), 'pardner-verify-plan-index-'))
+  try {
+    const env = { ...process.env, GIT_INDEX_FILE: join(directory, 'index') }
+    const run = args => execFileSync('git', args, { cwd, env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
+    run(['read-tree', 'HEAD'])
+    run(['add', '-A', '--', '.'])
+    return run(['diff', '--cached', '--name-only', '--no-renames', '-z', commit, '--', ...paths]).split('\0').filter(Boolean)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}
+
+export function parseArguments(args) {
+  const options = {}
+  for (let index = 0; index < args.length; index += 2) {
+    const [name, value] = [args[index], args[index + 1]]
+    if (!['--base', '--cwd', '--overlay'].includes(name) || value === undefined || name.slice(2) in options) {
+      throw new Error('Usage: node scripts/verify-plan.js [--base REF] [--cwd CHECKOUT] [--overlay REF]')
+    }
+    options[name.slice(2)] = value
+  }
+  return { base: options.base, cwd: options.cwd, overlay: options.overlay }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const args = process.argv.slice(2)
-    if (args.length && (args.length !== 2 || args[0] !== '--base')) throw new Error('Usage: node scripts/verify-plan.js [--base REF]')
-    process.stdout.write(`${JSON.stringify(createPlan({ base: args[1] }), null, 2)}\n`)
+    const { base, cwd, overlay } = parseArguments(process.argv.slice(2))
+    process.stdout.write(`${JSON.stringify(createPlan({ base, cwd: cwd ?? process.cwd(), overlay }), null, 2)}\n`)
   } catch (error) {
     console.error(`Cannot plan verification: ${error.message}`)
     process.exitCode = 1

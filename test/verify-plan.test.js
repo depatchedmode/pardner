@@ -1,11 +1,11 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, renameSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, renameSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { classifyPath, createPlan, planForFiles } from '../scripts/verify-plan.js'
+import { classifyPath, createPlan, gateScriptChanges, parseArguments, planForFiles } from '../scripts/verify-plan.js'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 
@@ -157,4 +157,85 @@ it('refuses unresolved merges and exposes CLI errors without emitting a fake pla
     assert.match(error.stderr, /Usage:/)
     return true
   })
+})
+
+it('narrows only purely additive test-file inclusion and keeps every other gate change conservative', () => {
+  const ui = 'npm run ui:build && node --test test/pardner-ui.test.js test/pardner-phone.test.js'
+  const base = { scripts: { 'test:ui': ui, 'test:runtime': 'node --test test/workspace-runtime.test.js', verify: 'node scripts/verify.js', 'ui:build': 'npm run build --prefix ui-prototype', 'test:acceptance': 'node scripts/acceptance.js' } }
+  const withScript = (name, command) => ({ scripts: { ...base.scripts, [name]: command } })
+  const plan = after => planForFiles(['package.json'], { manifestVersions: { 'package.json': [base, after] } })
+
+  const additive = plan(withScript('test:ui', `${ui} test/markdown-privacy.test.js`))
+  assert.equal(additive.qualification.required, false)
+  assert.deepEqual(additive.qualification.reviewRequired.map(({ kind, script, added }) => ({ kind, script, added })),
+    [{ kind: 'additive-test-inclusion', script: 'test:ui', added: ['test/markdown-privacy.test.js'] }])
+  assert.match(additive.qualification.reviewRequired[0].reason, /semantic review/)
+  assert.equal(plan(withScript('test:ui', ui.replace('node --test', 'node --test test/new.test.js'))).qualification.required, false, 'insertion position does not matter')
+
+  for (const [name, command, why] of [
+    ['test:ui', 'npm run ui:build && node --test test/pardner-ui.test.js', 'removed coverage'],
+    ['test:ui', `${ui} --test-concurrency=1`, 'changed execution option'],
+    ['test:ui', `${ui} --test-skip-pattern=x test/markdown-privacy.test.js`, 'option alongside an added file'],
+    ['test:ui', ui.replace('pardner-phone', 'pardner-phone-renamed'), 'replaced file'],
+    ['test:ui', `${ui} test/pardner-ui.test.js`, 'duplicate inclusion'],
+    ['test:ui', `${ui} test/helper.js`, 'non-test file'],
+    ['test:ui', ui.replace('npm run ui:build && ', ''), 'build removed'],
+    ['ui:build', 'npm run build --prefix ui-prototype -- --mode development', 'build changed'],
+    ['verify', 'node scripts/verify.js test/extra.test.js', 'verify gate is never narrowed'],
+    ['test:acceptance', 'node scripts/acceptance.js test/extra.test.js', 'acceptance measurement is never narrowed'],
+  ]) {
+    const result = plan(withScript(name, command))
+    assert.equal(result.qualification.required, true, why)
+    assert.equal(result.qualification.triggers[0].kind, 'harness', why)
+  }
+  assert.equal(plan({ scripts: { ...base.scripts, 'test:ui': undefined } }).qualification.required, true, 'deleted command')
+  const mixed = gateScriptChanges([base, withScript('test:ui', `${ui} test/a.test.js`), withScript('test:ui', `${ui} --watch`)])
+  assert.deepEqual(mixed.map(change => change.kind), ['changed'], 'any changed version overrides an additive one')
+})
+
+it('plans an explicit checkout from another working directory and records the resolved repository', t => {
+  const { cwd, write } = repository(t)
+  write('lib/workspace.js', 'changed\n')
+  const elsewhere = mkdtempSync(join(tmpdir(), 'pardner-verify-plan-elsewhere-'))
+  t.after(() => rmSync(elsewhere, { recursive: true, force: true }))
+  const output = execFileSync(process.execPath, [join(root, 'scripts/verify-plan.js'), '--cwd', join(cwd, 'lib')], { cwd: elsewhere, encoding: 'utf8' })
+  const plan = JSON.parse(output)
+  assert.equal(plan.schemaVersion, 2)
+  assert.equal(plan.repository.root, execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' }).trim())
+  assert.deepEqual(plan.files, ['lib/workspace.js'])
+  assert.equal(plan.tooling.sameCheckout, false)
+  assert.equal(plan.tooling.root, execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: root, encoding: 'utf8' }).trim())
+  assert.throws(() => createPlan({ cwd: elsewhere }), 'a non-repository must fail rather than fall back to the tooling checkout')
+  assert.deepEqual(parseArguments(['--cwd', 'a', '--base', 'b', '--overlay', 'c']), { cwd: 'a', base: 'b', overlay: 'c' })
+  for (const args of [['--cwd'], ['--cwd', 'a', '--cwd', 'b'], ['--other', 'x']]) assert.throws(() => parseArguments(args), /Usage/)
+})
+
+it('attributes subject and overlay paths without excluding either from the combined plan', t => {
+  const { cwd, git, write } = repository(t)
+  git('switch', '-c', 'tooling', 'main')
+  write('scripts/verify-plan.js', 'tooling\n')
+  write('package.json', JSON.stringify({ dependencies: { ws: '8' }, scripts: { 'verify:plan': 'node scripts/verify-plan.js' } }))
+  symlinkSync('../shared', join(cwd, 'linked'))
+  git('add', '.')
+  git('commit', '-m', 'Tooling under trial')
+  const tooling = git('rev-parse', 'HEAD')
+  git('switch', 'change')
+  write('lib/workspace.js', 'subject\n')
+  write('package.json', JSON.stringify({ dependencies: { ws: '8' }, scripts: { test: 'node --test' } }))
+  git('add', '.')
+  git('commit', '-m', 'Subject change')
+  // Apply the overlay uncommitted, as a trial does; package.json is merged by hand.
+  write('scripts/verify-plan.js', 'tooling\n')
+  symlinkSync('../shared', join(cwd, 'linked'))
+  write('package.json', JSON.stringify({ dependencies: { ws: '8' }, scripts: { test: 'node --test', 'verify:plan': 'node scripts/verify-plan.js' } }))
+  write('test/local-assertion.test.js', 'local\n')
+  const before = git('status', '--porcelain')
+  const plan = createPlan({ cwd, overlay: tooling })
+  assert.equal(git('status', '--porcelain'), before, 'origin attribution must not change the index')
+  assert.deepEqual(plan.overlay, { ref: tooling, commit: tooling, mergeBase: plan.base.mergeBase, files: ['linked', 'package.json', 'scripts/verify-plan.js'], missing: [] })
+  assert.deepEqual(plan.files, ['lib/workspace.js', 'linked', 'package.json', 'scripts/verify-plan.js', 'test/local-assertion.test.js'])
+  assert.deepEqual(plan.origins, { 'lib/workspace.js': 'subject', linked: 'overlay', 'package.json': 'both', 'scripts/verify-plan.js': 'overlay', 'test/local-assertion.test.js': 'subject' })
+  assert.equal(plan.qualification.triggers.find(trigger => trigger.path === 'package.json').origin, 'both')
+  rmSync(join(cwd, 'scripts/verify-plan.js'))
+  assert.deepEqual(createPlan({ cwd, overlay: tooling }).overlay.missing, ['scripts/verify-plan.js'], 'an overlay that was not fully applied is visible')
 })
