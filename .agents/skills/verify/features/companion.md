@@ -35,5 +35,9 @@ the failure unclear.
 Tests explicitly skip without a suitable LAN IPv4 interface. Treat that as missing
 evidence when this behavior is affected. Mobile browser contexts do not establish
 physical phone behavior, and a local proxy does not establish public HTTPS.
+The phone test waits for the pairing QR `<img>` but does not assert that the
+image loads. A change to the page's content policy or image handling needs an
+explicit check that the QR image decodes (for example `image.decode()` and a
+nonzero `naturalWidth`) in Chromium and WebKit.
 Mask tokens, one-time pairing codes, pairing links, and QR codes in artifacts.
 Never run an exercise against the user's existing workspace.
