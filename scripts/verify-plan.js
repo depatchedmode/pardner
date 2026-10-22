@@ -51,7 +51,7 @@ const groups = [
   },
   {
     name: 'verification-tooling', scripts: ['test:verification'],
-    files: names('scripts/verify-plan.js scripts/verify-smoke.js test/verify-plan.test.js'),
+    files: names('scripts/verify-plan.js scripts/verify-smoke.js scripts/verify-watchdog.js test/verify-plan.test.js test/verify-watchdog.test.js'),
   },
 ]
 const manifests = ['package.json', 'package-lock.json', 'ui-prototype/package.json', 'ui-prototype/package-lock.json']
