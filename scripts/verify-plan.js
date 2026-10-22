@@ -144,7 +144,7 @@ function additiveTestFiles(before, after) {
   return index === old.length && added.length ? added : null
 }
 
-export function planForFiles(files, { base = null, head = null, repository = null, tooling = null, overlay = null, origins = null, manifestVersions = {} } = {}) {
+export function planForFiles(files, { base = null, head = null, repository = null, tooling = null, overlay = null, origins = null, warnings = [], manifestVersions = {} } = {}) {
   files = [...new Set(files)].sort()
   const selected = new Set(), triggers = [], reviewRequired = [], unclassified = []
   for (const path of files) {
@@ -176,7 +176,7 @@ export function planForFiles(files, { base = null, head = null, repository = nul
   const origin = path => origins?.[path] ?? 'subject'
   for (const entry of [...triggers, ...reviewRequired]) entry.origin = origin(entry.path)
   return {
-    schemaVersion: 2, repository, tooling, base, head, overlay, files,
+    schemaVersion: 2, repository, tooling, base, head, overlay, files, warnings,
     origins: Object.fromEntries(files.map(path => [path, origin(path)])),
     scripts: scriptOrder.filter(script => selected.has(script)),
     verify: files.some(path => classifyPath(path)?.name !== 'guidance'),
@@ -200,6 +200,8 @@ export function createPlan({ cwd = process.cwd(), base = 'origin/main', overlay:
     tooling = { root: toolingRoot, head: gitIn(toolingRoot)(['rev-parse', 'HEAD']).trim(), sameCheckout: toolingRoot === cwd }
   } catch { tooling = { root, head: null, sameCheckout: false } }
   const head = git(['rev-parse', '--verify', 'HEAD']).trim()
+  const parents = git(['rev-list', '--parents', '-n', '1', head]).trim().split(/\s+/).slice(1)
+  const warnings = parents.length > 1 ? [{ kind: 'merge-head', reason: 'HEAD is a merge commit. Confirm the subject identity; apply tooling as a staged patch instead of merging it.' }] : []
   const commit = git(['rev-parse', '--verify', '--end-of-options', `${base}^{commit}`]).trim()
   const mergeBase = git(['merge-base', commit, head]).trim()
   const conflicts = list(['diff', '--name-only', '--diff-filter=U', '-z'])
@@ -237,7 +239,7 @@ export function createPlan({ cwd = process.cwd(), base = 'origin/main', overlay:
     overlay = { ref: overlayRef, commit: overlayCommit, mergeBase: overlayBase, files: overlayFiles.sort(),
       missing: overlayFiles.filter(path => !files.includes(path)).sort() }
   }
-  return planForFiles(files, { base: { ref: base, commit, mergeBase }, head, repository, tooling, overlay, origins, manifestVersions })
+  return planForFiles(files, { base: { ref: base, commit, mergeBase }, head, repository, tooling, overlay, origins, warnings, manifestVersions })
 }
 
 // Paths whose working-tree state (including untracked files and symlinks) differs from commit,

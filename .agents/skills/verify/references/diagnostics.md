@@ -13,19 +13,28 @@ Record the candidate fingerprint and `candidate.diff` for every tree you run.
 
 ## Bounded diagnostic reruns
 
-Decide the budget before rerunning. As a default, rerun the failing command at
-most three times on the unchanged candidate, plus any focused reruns of the
-failing file. Record every result. Reruns measure how often the failure happens;
-they do not clear it. A run that passes after a failure leaves the outcome
-`failed` or `blocked` until the failure is explained. Do not increase timeouts,
-skip or narrow tests, or reduce concurrency to obtain a pass.
+Declare a total diagnostic budget before running experiments: by default 30
+minutes including setup, comparisons and focused reruns. Use at most two repeat
+full runs per condition as initial triage, not as evidence that a flake is gone.
+At a 25% failure rate three passes still occur about 42% of the time; small
+samples cannot clear known intermittent failures. Prefer a controlled timing
+intervention over expanding a loop.
+
+Stop when the mechanism is established and a regression catches it, when the
+budget expires, or when two successive experiments produce no new information.
+Report the unresolved signature and the next falsifiable hypothesis. A larger
+investigation needs an explicit new budget and a reason; do not silently extend
+it. Count all attempts, including baselines and isolated runs. Passing after a
+failure does not clear it. Do not raise timeouts, skip tests, or reduce concurrency
+to obtain a pass. A diagnostic may vary those factors only as an explicitly
+labelled experiment, never as replacement final evidence.
 
 ## Baseline comparison
 
 Run the same command, the same number of times, on the comparison base in a
 separate scratch checkout, under matched conditions: the same Node, dependencies
 (symlinked from the candidate checkout is acceptable; record it), and machine
-load, with runs done one after another rather than concurrently. When a subject
+load, with runs done sequentially, alternating conditions to reduce time-of-day/load bias. When a subject
 and an overlay are involved, also compare the subject alone, the overlay alone
 (or the base plus overlay), and the combination. Report each arm's count of
 runs and failures and the failing test names. Small counts give weak evidence;
@@ -67,8 +76,9 @@ run directory.
   obligation.
 - Pre-existing defect exposed by timing: report it as a separate defect with
   its evidence and the proposed repair, scoped to a separate PR when it belongs
-  to product code or unrelated tests. Until that repair lands, the combined
-  candidate's routine outcome is `blocked`, naming the dependency.
+  to product code or unrelated tests. Until that repair is included, the candidate's routine outcome is `blocked`, naming the dependency. A declared repair overlay
+  can establish combined-candidate evidence before landing; it does not establish
+  a pass for the original subject alone.
 - Unexplained after the budget: the outcome is `failed`. State what was ruled
   out and what remains.
 

@@ -30,6 +30,8 @@ the candidate fingerprint separately includes built UI.
   When it differs from `repository`, record both.
 - `base`: `{ ref, commit, mergeBase }`, identifying the requested ref, its resolved
   commit, and comparison ancestor. The planner does not establish ref freshness.
+- `warnings`: diagnostic entries requiring investigation, including a merge HEAD
+  that may obscure subject identity. This is not a qualification waiver.
 - `head`: current HEAD commit, which alone does not identify uncommitted contents.
 - `files`: sorted, unique repository-relative changed paths, including deletions.
   With an overlay this is still the complete combined change.

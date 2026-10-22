@@ -14,6 +14,14 @@ deliberate qualification tier. A path trigger, a merge request, or a failed chec
 does **not** implicitly request that tier. The existing `test:qualification`
 script is a focused regression suite and is part of routine verification.
 
+## Select the role
+
+When implementing a change, repair defects within the authorized scope. When
+verifying someone else's PR, preserve its source: report defects and propose
+separate patches instead of editing the subject unless repairs are authorized.
+Run experimental mutations in disposable copies and restore them. Coverage
+exercises may live outside the subject; record their source and exact commands.
+
 ## Plan and state the expected behavior
 
 1. Read the task, diff, and affected contracts. Name each intended behavior and
@@ -55,14 +63,19 @@ script is a focused regression suite and is part of routine verification.
 Sometimes the change under verification (the **subject**, such as a PR head) is
 checked with tooling or guidance that is not yet merged (the **overlay**, such
 as an unmerged version of this skill). Check out the subject, apply the overlay
-without committing it, and plan with `--overlay REF`:
+as a staged patch, without merging or committing it. For example, in a clean
+subject checkout, save `git diff --binary BASE...OVERLAY` outside the checkout,
+then use `git apply --3way --index PATCH`. Review conflicts and preserve both
+changes. Record the subject HEAD before application; it must remain unchanged.
+Do not use a merge commit to combine the candidates. Plan with `--overlay REF`:
 
 ```sh
 npm --silent run verify:plan -- --cwd "$PWD" --base origin/main --overlay "$overlay_ref" > "$run_dir/plan.json"
 ```
 
 Record both commits and how the overlay was applied, including any conflict and
-its resolution; never drop either side to make it apply. The plan keeps every
+its resolution; never drop either side to make it apply. Investigate any
+`warnings`, especially a merge HEAD, before interpreting attribution. The plan keeps every
 path and attributes each to `subject`, `overlay`, or `both`; `overlay.missing`
 lists overlay paths that were not applied. All checks run against, and all
 evidence describes, the **combined candidate**. Do not exclude overlay files,
@@ -108,7 +121,8 @@ version. Select the pinned one with your version manager (for example
 `nvm use "$(cat .node-version)"`, `fnm use`, or `volta run --node "$(cat .node-version)"`),
 or put its `bin` directory first on `PATH`. Agent shells often do not keep
 environment changes between commands, so select it in every command that runs
-Node, and record `node -v` with each log. From an unprepared checkout:
+Node, and record `node -v` with each log. In zsh run `hash -r` after
+changing versions so cached command paths do not retain the previous Node. From an unprepared checkout:
 
 ```sh
 npm ci
@@ -173,6 +187,13 @@ descendants in other process groups, such as browsers. It then terminates them
 the normal duration, never as a substitute for a test's own timeout. A timeout
 is a failure to investigate, not a slow pass.
 
+The watchdog supports macOS/Linux. It snapshots `$TMPDIR/pardner-*` before
+and after each run without deleting directories. New names are cleanup leads,
+not proof of ownership when other agents are active. Retain only attributable
+scratch paths, and remove only disposable data created by your run. It tracks
+observed descendants, including detached ones; children that detach and exit
+the parent chain between samples can escape detection. Inspect leftovers too.
+
 For guidance-only work, check paths, links, and `git diff --check`; also inspect
 new untracked text because Git's diff check does not include it. Qualification
 claims in documentation still require their own evidence.
@@ -193,6 +214,12 @@ tmp_index=$(mktemp -u) && GIT_INDEX_FILE="$tmp_index" git read-tree HEAD \
   && GIT_INDEX_FILE="$tmp_index" git add -A && GIT_INDEX_FILE="$tmp_index" git diff --cached --binary HEAD > "$run_dir/candidate.diff"
 rm -f "$tmp_index"
 ```
+
+Node test discovery does not honor `.gitignore`: saved `*.test.js`, `*-test.js`,
+and other matching files under `output/` can enter the suite. Even
+`support/workspace-test.js` matches discovery. Save probes and copied tests
+outside the repository or with a `.txt` suffix; use explicit paths when
+executing them. Do not save runnable test copies inside evidence directories.
 
 A plain `git diff HEAD` omits untracked files, which may include an applied
 overlay or new tests. The
@@ -231,6 +258,12 @@ UI build. Never treat a matching fingerprint as evidence that a command ran.
   the final code. Establish the final candidate and rerun affected evidence. A
   qualification run must match the final candidate exactly.
 
+For visual inspection, drive the affected UI with representative content, wait
+for loading to settle, and capture and inspect screenshots at the relevant
+viewport in each required engine. Check layout, readable text, focus/error
+states, and nearby behavior against the stated expectation. Pair images with
+DOM/network/state readback; an uninspected screenshot is not visual evidence.
+
 Capture actions and resulting state: CLI arguments/results, browser actions and
 readback, or service receipts and restart recovery. Screenshots alone cannot
 establish persistence. Mock only boundaries already isolated in production and
@@ -244,12 +277,17 @@ and scratch removal in `finally`; use the handles returned by the launch helper,
 never a process-name kill. Attempt cleanup after failed runs too. If stopping
 fails, retain scratch state and report the owned process/directory for recovery.
 
+A node:test timeout cancels the test but does not necessarily settle its async
+body. If that body is awaiting an unresolved promise, its `finally` cleanup
+may never run. This timeout-with-unfinished-cleanup pattern can leak service
+processes and scratch directories. Test adverse paths under the watchdog from
+the first attempt, including mutation checks.
+
 A hung test can leave descendants after its runner is gone. Before terminating
 anything, confirm ownership: the process descends from a command you started,
 or its working directory or listening ports belong to your scratch checkout.
 Record the process tree and open sockets first (`ps`, `lsof -p PID -a -i`),
-because they are diagnostic evidence. The watchdog does this for commands it
-runs. Do not kill processes you cannot attribute to the run. A descendant that
+because they are diagnostic evidence. The watchdog records this for processes it observes during cleanup. Do not kill processes you cannot attribute to the run. A descendant that
 was reparented after its parent died can escape the watchdog's tree, so check
 for leftover processes from the scratch checkout before finishing.
 Do not touch an existing `.pardner` or a previous install. Keep evidence outside
@@ -258,7 +296,10 @@ still exist; `verify:smoke` performs this check itself.
 
 ## Report and enforce
 
-Write `report.md` in the run directory containing:
+Write `report.md` in the run directory. If the harness cannot write files,
+return the same report in the response, state that limitation, and identify
+which evidence could actually be retained. Never claim inaccessible artifacts
+were saved. Include:
 
 - Scope, base/HEAD and candidate identity, subject and overlay identities when
   used, environment, and artifact locations, including linked smoke and
