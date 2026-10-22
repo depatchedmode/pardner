@@ -3,15 +3,19 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { cli, startCliService } from '../support/cli-resources.js'
 import { candidateFingerprint } from '../support/acceptance/candidate.js'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
-assert.equal(process.argv.length, 2, 'Usage: node scripts/verify-smoke.js')
-await mkdir(join(root, 'output/verification'), { recursive: true })
-const output = await mkdtemp(join(root, 'output/verification/smoke-'))
+const usage = 'Usage: node scripts/verify-smoke.js [--report-dir RUN_DIR]'
+const args = process.argv.slice(2)
+assert.ok(args.length === 0 || (args.length === 2 && args[0] === '--report-dir'), usage)
+// With --report-dir the smoke evidence is kept inside the caller's verification run directory.
+const parent = args.length ? resolve(args[1]) : join(root, 'output/verification')
+await mkdir(parent, { recursive: true })
+const output = await mkdtemp(join(parent, 'smoke-'))
 const directory = await mkdtemp(join(tmpdir(), 'pardner-verify-smoke-'))
 const report = {
   schemaVersion: 1, startedAt: new Date().toISOString(), outcome: 'incomplete',
