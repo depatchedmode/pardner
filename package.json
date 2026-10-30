@@ -21,7 +21,8 @@
     "verify": "node scripts/verify.js",
     "smoke:native-peer": "node scripts/native-peer-smoke.js",
     "stress:native-peer": "node scripts/stress-native-peer.js",
-    "ui:build": "npm run build --prefix ui-prototype"
+    "ui:build": "npm run build --prefix ui-prototype",
+    "test:control-runtime": "npm run ui:build && python3 -B -m unittest discover -s test -p control_runtime_test.py"
   },
   "keywords": [
     "pardner",
