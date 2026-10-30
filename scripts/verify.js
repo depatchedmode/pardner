@@ -15,6 +15,7 @@ async function run(command, args) {
 }
 
 await run('npm', ['run', 'ui:build'])
+await run('python3', ['-B', '-m', 'unittest', 'discover', '-s', 'test', '-p', 'control_runtime_test.py'])
 await run(process.execPath, ['--test'])
 await run(process.execPath, ['scripts/acceptance.js', '--repeat', '1', '--seed', '1'])
 console.log('Regression, built UI, and one complete acceptance scenario passed.')
