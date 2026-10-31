@@ -18,6 +18,7 @@
     "test:cli": "node --test test/pardner-cli-workflow.test.js test/pardner-cli-auth-fallback.test.js test/pardner-cli-mentions.test.js test/pardner-brand.test.js",
     "test:ui": "npm run ui:build && node --test test/pardner-ui.test.js test/pardner-phone.test.js test/pardner-connection-ui.test.js",
     "test:acceptance": "node scripts/acceptance.js",
+    "test:t3-qualification": "node scripts/t3-qualification.js",
     "verify": "node scripts/verify.js",
     "smoke:native-peer": "node scripts/native-peer-smoke.js",
     "stress:native-peer": "node scripts/stress-native-peer.js",
