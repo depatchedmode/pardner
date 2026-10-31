@@ -771,6 +771,31 @@ it('another controller on the same ledger cannot act on this thread', () => fixt
   } finally { bob.close() }
 }))
 
+it('stops rather than treating an unrecognized run ID as run zero', () => fixture(async ({ t3, open }) => {
+  const execution = open()
+  await execution.observe(threadId)
+  t3.start('completed')
+  await execution.observe(threadId)
+  t3.runs.push({ runId: 'run:thread:thread-one:other-format', status: 'completed' })
+  execution.enqueue(intent('first'))
+  await assert.rejects(execution.pump(threadId), { code: 'UNRECOGNIZED_RUN_ID' })
+  assert.equal(t3.submissions.length, 0)
+}))
+
+it('a thread_not_found read supersedes an older read still in flight', () => fixture(async ({ t3, open }) => {
+  const execution = open()
+  await execution.observe(threadId)
+  const stale = { ...await t3.read(), runs: [{ runId: runId(1), status: 'completed' }] }
+  const read = t3.read.bind(t3)
+  let deliver
+  t3.read = () => { t3.read = async () => { throw new T3Rejected('thread_not_found', 'Gone') }; return new Promise(done => { deliver = () => done(stale) }) }
+  const slow = execution.observe(threadId)
+  await assert.rejects(execution.observe(threadId), { code: 'thread_not_found' })
+  deliver()
+  assert.equal((await slow).superseded, true)
+  assert.deepEqual(execution.holds(threadId), [])
+}))
+
 it('rolls back a partial controller claim', () => fixture(async ({ t3, path, open }) => {
   open('controller').close()
   assert.throws(() => new T3Execution({ path, transport: t3, ownerId: 'other', routes: [{ ...route, actorId: 'a', threadId: 'new' }, { ...route, actorId: 'b' }] }), { code: 'CONTROLLER_CONFLICT' })
@@ -779,12 +804,15 @@ it('rolls back a partial controller claim', () => fixture(async ({ t3, path, ope
 }))
 
 it('names only runs with a waiting item as pending, ignoring a stale count', async () => {
-  const replies = [{ thread: { pendingRequestCount: 1 }, recentRuns: [] }, { items: [{ status: 'completed', runId: 'old' }, { status: 'waiting', runId: 'blocked' }], hasMore: false },
+  const replies = [{ thread: { pendingRequestCount: 1, activeRunId: 'blocked' }, recentRuns: [] }, { items: [{ status: 'completed', runId: 'old' }, { status: 'waiting', runId: 'blocked' }], hasMore: false },
     { thread: { pendingRequestCount: 0 }, recentRuns: [] }]
   const client = new T3McpClient({ origin: 'http://127.0.0.1:1', token: 't', fetch: async () => new Response(JSON.stringify({ result: { structuredContent: replies.shift() } })) })
   client.connected = true
   assert.deepEqual((await client.read('t')).pendingRunIds, ['blocked'])
   assert.deepEqual((await client.read('t')).pendingRunIds, [])
+  replies.push({ thread: { pendingRequestCount: 1, activeRunId: null }, recentRuns: [] })
+  assert.deepEqual((await client.read('t')).pendingRunIds, [])
+  assert.equal(replies.length, 0, 'no timeline walk without an active run')
 })
 
 it('sends the arguments the contract depends on', async () => {

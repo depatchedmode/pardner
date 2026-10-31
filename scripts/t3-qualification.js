@@ -55,10 +55,12 @@ function recorder(label) {
     if (request.method !== 'tools/call' || response.status === 404) return response
     const text = await response.clone().text()
     const line = text.startsWith('{') ? text : text.split('\n').findLast(entry => entry.startsWith('data:'))?.slice(5)
-    const result = JSON.parse(line ?? '{}').result
+    const parse = (text, fallback) => { try { return JSON.parse(text) } catch { return fallback } }
+    const result = parse(line ?? '', {}).result
     const { name, arguments: input } = request.params
-    let reply = result?.isError ? { error: JSON.parse(result.content?.[0]?.text ?? '{}') } : result?.structuredContent
-    if (name === 't3_thread_read' && !result?.isError) {
+    let reply = result?.isError ? { error: parse(result.content?.[0]?.text, { unstructured: result.content?.[0]?.text }) } : result?.structuredContent
+    if (reply === undefined) reply = { http: response.status, body: text.slice(0, 200) }
+    if (name === 't3_thread_read' && reply.thread) {
       reply = { status: reply.thread.status, activeRunId: reply.thread.activeRunId, pendingRequestCount: reply.thread.pendingRequestCount,
         runs: reply.recentRuns?.map(({ runId, status }) => ({ runId, status })), items: input.view ? reply.items?.map(({ messageId, runId, type, status }) => ({ messageId, runId, type, status })) : undefined }
       const signature = JSON.stringify(reply)
