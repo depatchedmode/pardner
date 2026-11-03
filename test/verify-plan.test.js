@@ -1,7 +1,7 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, renameSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, renameSync, symlinkSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -30,6 +30,15 @@ it('plans conservative checks without confusing routine test:qualification with 
   assert.deepEqual(plan.qualification.triggers.map(trigger => trigger.path), ['lib/storage-key.js'])
   assert.deepEqual(plan.semanticReview, plan.files)
   assert.equal(plan.scripts.includes('test:acceptance'), false)
+})
+
+it('routes files without a package script to their focused commands', () => {
+  const plan = planForFiles(['lib/t3-execution.js', 'scripts/control-runtime.py', 'scripts/t3-qualification.js'])
+  assert.deepEqual(plan.scripts, ['test:control-runtime'])
+  assert.deepEqual(plan.focusedCommands.map(check => check.command), ['node --test test/t3-execution.test.js', 'npm run test:t3-qualification'])
+  assert.match(plan.focusedCommands[1].note, /pinned T3 app/)
+  assert.equal(plan.verify, true)
+  assert.equal(plan.qualification.required, false)
 })
 
 it('leaves semantic questions open even when paths have no automatic trigger', () => {
@@ -200,14 +209,15 @@ it('plans an explicit checkout from another working directory and records the re
   t.after(() => rmSync(elsewhere, { recursive: true, force: true }))
   const output = execFileSync(process.execPath, [join(root, 'scripts/verify-plan.js'), '--cwd', join(cwd, 'lib')], { cwd: elsewhere, encoding: 'utf8' })
   const plan = JSON.parse(output)
-  assert.equal(plan.schemaVersion, 2)
+  assert.equal(plan.schemaVersion, 3)
   assert.equal(plan.repository.root, execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' }).trim())
   assert.deepEqual(plan.files, ['lib/workspace.js'])
   assert.equal(plan.tooling.sameCheckout, false)
   assert.equal(plan.tooling.root, execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: root, encoding: 'utf8' }).trim())
   assert.throws(() => createPlan({ cwd: elsewhere }), 'a non-repository must fail rather than fall back to the tooling checkout')
-  assert.deepEqual(parseArguments(['--cwd', 'a', '--base', 'b', '--overlay', 'c']), { cwd: 'a', base: 'b', overlay: 'c' })
-  for (const args of [['--cwd'], ['--cwd', 'a', '--cwd', 'b'], ['--other', 'x']]) assert.throws(() => parseArguments(args), /Usage/)
+  assert.deepEqual(parseArguments(['--cwd', 'a', '--base', 'b', '--overlay', 'c', '--overlay', 'd..e']), { cwd: 'a', base: 'b', overlays: ['c', 'd..e'] })
+  assert.deepEqual(parseArguments([]).overlays, [])
+  for (const args of [['--cwd'], ['--cwd', 'a', '--cwd', 'b'], ['--other', 'x'], ['--overlay']]) assert.throws(() => parseArguments(args), /Usage/)
 })
 
 it('attributes subject and overlay paths without excluding either from the combined plan', t => {
@@ -230,14 +240,81 @@ it('attributes subject and overlay paths without excluding either from the combi
   write('package.json', JSON.stringify({ dependencies: { ws: '8' }, scripts: { test: 'node --test', 'verify:plan': 'node scripts/verify-plan.js' } }))
   write('test/local-assertion.test.js', 'local\n')
   const before = git('status', '--porcelain')
-  const plan = createPlan({ cwd, overlay: tooling })
+  const plan = createPlan({ cwd, overlays: [tooling] })
   assert.equal(git('status', '--porcelain'), before, 'origin attribution must not change the index')
-  assert.deepEqual(plan.overlay, { ref: tooling, commit: tooling, mergeBase: plan.base.mergeBase, files: ['linked', 'package.json', 'scripts/verify-plan.js'], missing: [] })
+  assert.deepEqual(plan.overlays, [{ ref: tooling, commit: tooling, base: { ref: `merge-base(origin/main, ${tooling})`, commit: plan.base.mergeBase },
+    files: ['linked', 'package.json', 'scripts/verify-plan.js'], missing: [], divergent: ['package.json'], includesSubject: false }])
   assert.deepEqual(plan.files, ['lib/workspace.js', 'linked', 'package.json', 'scripts/verify-plan.js', 'test/local-assertion.test.js'])
-  assert.deepEqual(plan.origins, { 'lib/workspace.js': 'subject', linked: 'overlay', 'package.json': 'both', 'scripts/verify-plan.js': 'overlay', 'test/local-assertion.test.js': 'subject' })
-  assert.equal(plan.qualification.triggers.find(trigger => trigger.path === 'package.json').origin, 'both')
+  const overlay = `overlay:${tooling}`
+  assert.deepEqual(plan.origins, { 'lib/workspace.js': ['subject'], linked: [overlay], 'package.json': ['subject', overlay], 'scripts/verify-plan.js': [overlay], 'test/local-assertion.test.js': ['unattributed'] })
+  assert.deepEqual(plan.unattributed, ['test/local-assertion.test.js'], 'a local file explained by neither side is reported, not labelled subject')
+  assert.deepEqual(plan.warnings.map(warning => warning.kind), ['unattributed-paths'])
+  assert.deepEqual(plan.qualification.triggers.find(trigger => trigger.path === 'package.json').origin, ['subject', overlay])
   rmSync(join(cwd, 'scripts/verify-plan.js'))
-  assert.deepEqual(createPlan({ cwd, overlay: tooling }).overlay.missing, ['scripts/verify-plan.js'], 'an overlay that was not fully applied is visible')
+  assert.deepEqual(createPlan({ cwd, overlays: [tooling] }).overlays[0].missing, ['scripts/verify-plan.js'], 'an overlay that was not fully applied is visible')
+})
+
+it('attributes several overlays with their own bases, including one that already contains the subject', t => {
+  const { cwd, git, write, baseline } = repository(t)
+  write('lib/workspace.js', 'subject\n')
+  git('add', '.')
+  git('commit', '-m', 'Subject change')
+  const head = git('rev-parse', 'HEAD')
+  git('switch', '-c', 'repair', 'main')
+  write('lib/cli.js', 'repair\n')
+  git('add', '.')
+  git('commit', '-m', 'Repair from main')
+  const repair = git('rev-parse', 'HEAD')
+  git('switch', '-c', 'coverage', 'change')
+  write('test/new-coverage.test.js', 'coverage\n')
+  git('add', '.')
+  git('commit', '-m', 'Coverage on top of the subject')
+  const coverage = git('rev-parse', 'HEAD')
+  git('switch', 'change')
+  write('lib/cli.js', 'repair\n')
+  write('test/new-coverage.test.js', 'coverage\n')
+  // Dependency reuse through links to matching installs, outside the repository.
+  mkdirSync(join(cwd, 'ui-prototype'))
+  symlinkSync('../shared-install/node_modules', join(cwd, 'node_modules'))
+  symlinkSync('../../shared-install/ui-prototype/node_modules', join(cwd, 'ui-prototype/node_modules'))
+
+  const plan = createPlan({ cwd, overlays: [repair, `${head}..${coverage}`] })
+  assert.deepEqual(plan.files, ['lib/cli.js', 'lib/workspace.js', 'node_modules', 'test/new-coverage.test.js', 'ui-prototype/node_modules'])
+  assert.deepEqual(plan.origins, {
+    'lib/cli.js': [`overlay:${repair}`], 'lib/workspace.js': ['subject'], node_modules: ['environment'],
+    'test/new-coverage.test.js': [`overlay:${coverage}`], 'ui-prototype/node_modules': ['environment'],
+  })
+  assert.deepEqual(plan.unattributed, [])
+  assert.deepEqual(plan.warnings, [])
+  assert.deepEqual(plan.overlays.map(({ ref, base, files, includesSubject, divergent, missing }) => ({ ref, base: base.commit, files, includesSubject, divergent, missing })), [
+    { ref: repair, base: baseline, files: ['lib/cli.js'], includesSubject: false, divergent: [], missing: [] },
+    { ref: coverage, base: head, files: ['test/new-coverage.test.js'], includesSubject: true, divergent: [], missing: [] },
+  ])
+  assert.equal(plan.overlays[1].base.ref, head)
+  assert.deepEqual(plan.environment.dependencyLinks, [
+    { path: 'node_modules', target: '../shared-install/node_modules', resolved: join(plan.repository.root, '..', 'shared-install/node_modules') },
+    { path: 'ui-prototype/node_modules', target: '../../shared-install/ui-prototype/node_modules', resolved: join(plan.repository.root, '..', 'shared-install/ui-prototype/node_modules') },
+  ])
+  assert.deepEqual(plan.unclassified, [], 'verified dependency links are classified; other unknown paths still are not')
+  assert.deepEqual(plan.scripts, ['test:qualification', 'test:runtime', 'test:cli'])
+  assert.equal(plan.tiers.deliberate.command, 'npm run test:acceptance -- --repeat 20 --seed 1')
+  assert.equal(plan.tiers.routine.verify, 'npm run verify')
+
+  // The same coverage branch declared from its merge base repeats the subject's content.
+  const repeated = createPlan({ cwd, overlays: [coverage] })
+  assert.deepEqual(repeated.warnings.map(warning => warning.kind), ['overlay-includes-subject', 'unattributed-paths'])
+  assert.match(repeated.warnings[0].reason, new RegExp(`HEAD\\.\\.${coverage}`))
+  assert.deepEqual(repeated.overlays[0].files, ['lib/workspace.js', 'test/new-coverage.test.js'])
+  assert.deepEqual(repeated.origins['lib/workspace.js'], ['subject'], 'content identical to the subject is not credited to the overlay')
+  assert.deepEqual(repeated.origins['lib/cli.js'], ['unattributed'], 'an undeclared repair is not silently labelled subject')
+
+  // A real dependency directory is ignored by Git and never appears; a link elsewhere is still unknown.
+  unlinkSync(join(cwd, 'node_modules'))
+  mkdirSync(join(cwd, 'node_modules'))
+  write('node_modules/.gitignore', '*\n')
+  assert.deepEqual(createPlan({ cwd, overlays: [repair] }).files.includes('node_modules'), false)
+  assert.throws(() => createPlan({ cwd, overlays: ['..x'] }), /BASE\.\.REF/)
+  assert.throws(() => createPlan({ cwd, overlays: [`${head}..`] }), /BASE\.\.REF/)
 })
 
 it('warns when a merge commit obscures subject and overlay identity', t => {

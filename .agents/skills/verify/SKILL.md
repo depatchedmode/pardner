@@ -12,7 +12,10 @@ implementation in [README.md](../../../README.md#current-implementation).
 `/verify` means routine verification. `/verify qualify` additionally requests the
 deliberate qualification tier. A path trigger, a merge request, or a failed check
 does **not** implicitly request that tier. The existing `test:qualification`
-script is a focused regression suite and is part of routine verification.
+script is a focused regression suite and is part of routine verification; the
+plan's `tiers` table states this per command. Copy that table into the report
+so an approver can see which commands are routine and which single command is
+the deliberate gate.
 
 ## Select the role
 
@@ -67,21 +70,37 @@ as a staged patch, without merging or committing it. For example, in a clean
 subject checkout, save `git diff --binary BASE...OVERLAY` outside the checkout,
 then use `git apply --3way --index PATCH`. Review conflicts and preserve both
 changes. Record the subject HEAD before application; it must remain unchanged.
-Do not use a merge commit to combine the candidates. Plan with `--overlay REF`:
+Do not use a merge commit to combine the candidates. Declare every overlay,
+repeating `--overlay` for each one:
 
 ```sh
-npm --silent run verify:plan -- --cwd "$PWD" --base origin/main --overlay "$overlay_ref" > "$run_dir/plan.json"
+npm --silent run verify:plan -- --cwd "$PWD" --base origin/main \
+  --overlay "$tooling_ref" --overlay "$repair_ref" > "$run_dir/plan.json"
 ```
 
-Record both commits and how the overlay was applied, including any conflict and
-its resolution; never drop either side to make it apply. Investigate any
-`warnings`, especially a merge HEAD, before interpreting attribution. The plan keeps every
-path and attributes each to `subject`, `overlay`, or `both`; `overlay.missing`
-lists overlay paths that were not applied. All checks run against, and all
+`--overlay REF` diffs the overlay from its merge base with the planning base.
+When an overlay already contains the subject (for example added coverage
+committed on top of the PR head), declare it as `--overlay HEAD..REF` so only
+its own changes are attributed; the planner warns when the merge-base form
+would repeat subject content. Record both commits and how the overlay was
+applied, including any conflict and its resolution; never drop either side to
+make it apply. Investigate every `warnings` entry, especially a merge HEAD or
+`unattributed-paths`, before interpreting attribution. The plan keeps every
+path and lists each path's sources (`subject`, one `overlay:REF` per overlay,
+`environment`, or `unattributed`); `overlays[].missing` lists overlay paths
+that were not applied and `overlays[].divergent` the paths merged by hand. An
+`unattributed` path is explained by neither the subject's commits nor a
+declared overlay: declare its source or record why it is present, never treat
+it as subject work. All checks run against, and all
 evidence describes, the **combined candidate**. Do not exclude overlay files,
 tests, or scripts from the run or its fingerprint. A failure is attributed to
 the subject or to the overlay only through the diagnostics below. Report subject
 results, overlay effects, and combined-candidate results separately.
+
+Reusing matching installs through symlinks at `node_modules` and
+`ui-prototype/node_modules` is permitted; the plan records them under
+`environment.dependencyLinks` and attributes them to `environment`. Confirm the
+linked install's lockfile matches the checkout's and record that identity.
 
 ### Semantic qualification questions
 

@@ -1,12 +1,13 @@
-# Verification plan, version 2
+# Verification plan, version 3
 
-Run `npm --silent run verify:plan -- [--cwd CHECKOUT] [--base REF] [--overlay REF]`.
+Run `npm --silent run verify:plan -- [--cwd CHECKOUT] [--base REF] [--overlay REF | --overlay BASE..REF]...`.
 `--cwd` selects the checkout to plan (default: the current directory, which
 `npm run` sets to the tooling checkout's root). The planner resolves it to that
 repository's top level and fails rather than falling back to another checkout.
 Omit `--base REF` to use that checkout's locally available `origin/main`.
-`--overlay REF` names unmerged tooling applied to the subject checkout; see
-below. Stdout is one JSON object;
+`--overlay` is repeatable and names unmerged work applied to the subject
+checkout (tooling under trial, a declared repair, added coverage); see below.
+Stdout is one JSON object;
 errors go to stderr with a nonzero exit. The planner neither runs tests nor
 changes Git/GitHub state. Exit zero means a plan was produced, not verification
 passed. Consumers must inspect `unclassified` and complete semantic review.
@@ -21,10 +22,14 @@ the candidate fingerprint separately includes built UI.
 
 ## JSON fields
 
-- `schemaVersion`: integer `2`. A breaking interface change increments this.
+- `schemaVersion`: integer `3`. A breaking interface change increments this.
   Version 2 added `repository`, `tooling`, `overlay`, `origins`, and
   `qualification.reviewRequired`, and stopped treating additive test inclusion
-  as a harness trigger.
+  as a harness trigger. Version 3 replaced the single `overlay` with the
+  `overlays` list, made every `origin` a list of sources, and added
+  `unattributed`, `environment`, `focusedCommands`, and `tiers`. A consumer of
+  version 2 must read `overlays[0]` and `origins[path][0]` instead; the CLI
+  flags remain accepted.
 - `repository`: `{ root, gitDir }` of the planned checkout.
 - `tooling`: `{ root, head, sameCheckout }` of the checkout whose planner ran.
   When it differs from `repository`, record both.
@@ -35,16 +40,47 @@ the candidate fingerprint separately includes built UI.
 - `head`: current HEAD commit, which alone does not identify uncommitted contents.
 - `files`: sorted, unique repository-relative changed paths, including deletions.
   With an overlay this is still the complete combined change.
-- `overlay`: `null`, or `{ ref, commit, mergeBase, files, missing }` for `--overlay`.
-  `files` are the paths the overlay changes relative to its own merge base with
-  the planning base; `missing` lists overlay paths absent from the combined diff
-  (overlay not fully applied).
-- `origins`: each path mapped to `subject`, `overlay` (unchanged from the overlay
-  commit and not changed by the subject's commits), or `both`. Without an overlay
-  every path is `subject`. Origins attribute paths; they never remove paths from
-  checks or evidence.
+- `overlays`: one entry per `--overlay`, in order:
+  `{ ref, commit, base: { ref, commit }, files, missing, divergent, includesSubject }`.
+  `files` are the paths `base..commit` changes. For `--overlay REF` the base is
+  the merge base of the planning base and `REF`; for `--overlay BASE..REF` it is
+  exactly `BASE`. `missing` lists overlay paths absent from the combined diff
+  (overlay not fully applied); `divergent` lists overlay paths whose working
+  tree content differs from the overlay commit (merged by hand, or not applied
+  to a path the subject also changed). `includesSubject` is true when the
+  overlay commit descends from the subject HEAD; declaring such an overlay from
+  its merge base repeats the subject's content and produces an
+  `overlay-includes-subject` warning that names the `HEAD..REF` form to use.
+- `origins`: each path mapped to a list of sources: `subject` (changed by the
+  subject's committed diff), `overlay:REF` for every declared overlay whose
+  `files` include the path and whose content is present in the working tree,
+  `environment` for a dependency link, or `unattributed` when nothing declared
+  explains the path. Without `--overlay` every path is `subject`, because the
+  working tree is then the implementer's own change. With overlays the subject
+  is its committed diff and anything else must be declared or explained; the
+  planner never labels an undeclared repair `subject`. Origins attribute paths;
+  they never remove paths from checks or evidence.
+- `unattributed`: the paths whose origin is `unattributed`; also reported as an
+  `unattributed-paths` warning.
+- `environment`: `{ dependencyLinks }`. Each link is `{ path, target, resolved }`
+  for an untracked symlink at `node_modules` or `ui-prototype/node_modules`.
+  Git ignores only real directories at those paths, so a link to a matching
+  install elsewhere appears as an untracked path; the planner classifies exactly
+  that case as `dependency-link` (origin `environment`, no scripts) and leaves
+  every other unknown path unclassified. Record the linked install's lockfile
+  identity in the report; the candidate fingerprint still covers the lockfiles.
 - `scripts`: ordered, unique package script names for focused routine regression.
   Run each with `npm run NAME`. No acceptance repetition is automatically selected.
+- `focusedCommands`: `{ command, note }` entries for classified files whose
+  coverage is not a package script (for example `node --test
+  test/t3-execution.test.js`, or the T3 qualification harness that needs the
+  pinned T3 app). Run or record them alongside `scripts`.
+- `tiers`: a command-to-tier table. `routine` lists `scripts`,
+  `focusedCommands`, and `npm run verify`; `deliberate` names the only
+  qualification command, `npm run test:acceptance -- --repeat 20 --seed 1`, with
+  `required` mirroring `qualification.required`. The `test:qualification`
+  script is routine despite its name; copy this table into the report so an
+  approver does not mistake it for the deliberate tier.
 - `verify`: whether the diff calls for `npm run verify`. Unknown paths set this
   true; an empty diff sets it false and requires the skill's clean-baseline rule.
 - `qualification`: `{ required, triggers, reviewRequired }`. Each trigger is
@@ -98,6 +134,7 @@ changes still select broad routine regression. Unsupported lockfile formats
 require classification support, not an assumed clearance.
 
 Test with `npm run test:verification`. It also covers invocation from another
-directory with `--cwd`, overlay attribution, and the narrowing above. Scenarios cover divergent bases, rename
+directory with `--cwd`, single and multiple overlay attribution with explicit
+bases, dependency-link classification, and the narrowing above. Scenarios cover divergent bases, rename
 sources, staged reversals, untracked names, deleted paths, unknown modules,
 foundation dependency changes, malformed inputs, and unresolved conflicts.
