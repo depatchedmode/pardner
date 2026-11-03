@@ -52,7 +52,8 @@ const groups = [
   },
   {
     name: 'verification-tooling', scripts: ['test:verification'],
-    files: names('scripts/verify-plan.js scripts/verify-smoke.js scripts/verify-watchdog.js test/verify-plan.test.js test/verify-watchdog.test.js'),
+    files: names(`scripts/verify-plan.js scripts/verify-sanitize.js scripts/verify-smoke.js scripts/verify-watchdog.js
+      test/verify-plan.test.js test/verify-sanitize.test.js test/verify-watchdog.test.js`),
   },
   {
     name: 't3-execution', scripts: [], files: names('lib/t3-execution.js lib/t3-mcp-client.js'),

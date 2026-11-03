@@ -184,6 +184,36 @@ credentials. Prefer never writing secrets: mask them in screenshots, record
 receipts rather than request headers, and inspect any artifact that captured
 request or connection data. Report what was checked and how.
 
+### Artifact privacy
+
+The acceptance runner (`npm run verify` and `test:acceptance`) starts browser
+tracing before credential entry. Its `browser-N.zip` traces therefore contain
+the disposable service tokens in `Authorization` headers, the credential fill
+action, DOM snapshots of the password field, and WebSocket tickets; the seed
+report carries delivery claim tokens. Treat everything under
+`output/acceptance/` as private. Never copy raw traces into a shared run
+directory, attach them to a PR, or describe them as safe.
+
+To retain trace evidence, produce a sanitized copy with the dedicated tool:
+
+```sh
+npm --silent run verify:sanitize -- --source output/acceptance/<run>/seed-1 --target "$run_dir/acceptance-seed-1"
+```
+
+It never edits the source. It collects credential values from structured
+positions (authorization and cookie headers, credential-named JSON keys,
+credential input actions, password inputs in DOM snapshots, bearer schemes,
+and credential query parameters), redacts them in place, replaces every
+collected value in every retained text, removes screenshot frames and any
+entry it cannot read as text, and then checks the bytes it is about to write;
+nothing is written if a collected value survives. `sanitization.json` in the
+target records counts, hashes, and the transformation, never a value. Link
+that manifest from `report.md`, state that the copies are sanitized and lack
+screenshot playback, and keep the originals private. The tool detects what it
+can recognize: review its counts against what the run captured (for example
+one token per browser context and one ticket per WebSocket connection), and
+report a mismatch as unresolved rather than assuming the copy is clean.
+
 ## Run, repair, and collect evidence
 
 For implementation changes, run the focused scripts in `plan.scripts`, any

@@ -24,7 +24,9 @@ cases inspect stale acknowledgements, authored conflicts, and SIGKILL recovery.
 
 `npm run verify` also runs one complete acceptance scenario with public CLI and
 browser mutations. Inspect `output/acceptance/<run>/seed-1/report.json`, the intent
-manifest, per-replica readback, and browser traces. Required qualification adds
+manifest, per-replica readback, and browser traces. Those traces and the seed
+report contain disposable credentials; retain them only through
+`verify:sanitize` (SKILL.md, Artifact privacy). Required qualification adds
 the deliberate 20-seed gate only when requested. A new conflict/recovery behavior
 needs direct coverage even if the existing gate passes.
 
