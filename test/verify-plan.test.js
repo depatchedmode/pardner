@@ -182,6 +182,10 @@ it('narrows only purely additive test-file inclusion and keeps every other gate 
   assert.equal(plan(withScript('test:ui', ui.replace('node --test', 'node --test test/new.test.js'))).qualification.required, false, 'insertion position does not matter')
 
   for (const [name, command, why] of [
+    ['test:runtime', 'node test/added.test.js --test test/workspace-runtime.test.js', 'file before the test runner flag changes execution'],
+    ['test:runtime', 'test/added.test.js node --test test/workspace-runtime.test.js', 'file before executable'],
+    ['test:ui', `${ui} test/new.test.js test/new.test.js`, 'duplicate new inclusion'],
+    ['pretest:ui', 'node test/extra.test.js', 'lifecycle command changes the gate'],
     ['test:ui', 'npm run ui:build && node --test test/pardner-ui.test.js', 'removed coverage'],
     ['test:ui', `${ui} --test-concurrency=1`, 'changed execution option'],
     ['test:ui', `${ui} --test-skip-pattern=x test/markdown-privacy.test.js`, 'option alongside an added file'],
@@ -200,6 +204,18 @@ it('narrows only purely additive test-file inclusion and keeps every other gate 
   assert.equal(plan({ scripts: { ...base.scripts, 'test:ui': undefined } }).qualification.required, true, 'deleted command')
   const mixed = gateScriptChanges([base, withScript('test:ui', `${ui} test/a.test.js`), withScript('test:ui', `${ui} --watch`)])
   assert.deepEqual(mixed.map(change => change.kind), ['changed'], 'any changed version overrides an additive one')
+})
+
+it('tracks the delegated UI build and its lifecycle commands across every manifest version', () => {
+  const before = { scripts: { build: 'vite build' } }
+  const plan = versions => planForFiles(['ui-prototype/package.json'], { manifestVersions: { 'ui-prototype/package.json': versions } })
+  for (const after of [{ scripts: { build: 'vite build --mode development' } }, { scripts: {} },
+    { scripts: { build: 'vite build', prebuild: 'node prepare.js' } }, { scripts: { build: 'vite build', postbuild: 'node alter-output.js' } }]) {
+    const result = plan([before, before, after, before])
+    assert.equal(result.qualification.required, true)
+    assert.ok(result.qualification.triggers.some(trigger => trigger.kind === 'harness' && trigger.path === 'ui-prototype/package.json'))
+  }
+  assert.equal(plan([before, { scripts: { ...before.scripts, dev: 'vite --host' } }]).qualification.required, false)
 })
 
 it('plans an explicit checkout from another working directory and records the resolved repository', t => {

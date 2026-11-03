@@ -123,9 +123,9 @@ const testFile = /^test\/[^\s'"`$;&|<>]+\.test\.js$/
 
 // Compare each version's gate commands with the merge base. Only a regression command whose
 // tokens are unchanged apart from inserted test files is additive; anything else is a change.
-export function gateScriptChanges(versions) {
+export function gateScriptChanges(versions, scripts = gateScripts) {
   const changes = []
-  for (const script of gateScripts) {
+  for (const script of scripts.flatMap(name => [`pre${name}`, name, `post${name}`])) {
     const commands = versions.map(document => document?.scripts?.[script] ?? null)
     const added = new Set()
     let changed = false
@@ -144,9 +144,15 @@ export function gateScriptChanges(versions) {
 function additiveTestFiles(before, after) {
   if (typeof before !== 'string' || typeof after !== 'string') return null
   const old = before.trim().split(/\s+/), next = after.trim().split(/\s+/)
+  const testIndex = old.indexOf('--test')
+  if (testIndex < 1 || old[testIndex - 1] !== 'node' || (testIndex > 1 && old[testIndex - 2] !== '&&')) return null
+  const firstFile = testIndex + 1
+  if (!old.slice(firstFile).length || !old.slice(firstFile).every(token => testFile.test(token))) return null
+  if (!equal(old.slice(0, firstFile), next.slice(0, firstFile))) return null
+  if (new Set(next.slice(firstFile)).size !== next.length - firstFile) return null
   const added = []
-  let index = 0
-  for (const token of next) {
+  let index = firstFile
+  for (const token of next.slice(firstFile)) {
     if (index < old.length && token === old[index]) index++
     else if (testFile.test(token) && !old.includes(token)) added.push(token)
     else return null
@@ -182,8 +188,8 @@ export function planForFiles(files, { base = null, head = null, repository = nul
     if (foundationsByVersion.some(value => !equal(value, foundationsByVersion[0]))) {
       triggers.push({ kind: 'dependency', path, reason: 'Node, Automerge, WebSocket, browser tooling, or dependency overrides changed' })
     }
-    if (path === 'package.json') {
-      const changes = gateScriptChanges(versions)
+    if (path === 'package.json' || path === 'ui-prototype/package.json') {
+      const changes = gateScriptChanges(versions, path === 'package.json' ? gateScripts : ['build'])
       if (changes.some(change => change.kind === 'changed')) {
         triggers.push({ kind: 'harness', path, reason: 'A regression, build, or acceptance command changed' })
       } else {

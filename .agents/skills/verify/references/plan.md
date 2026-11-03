@@ -123,11 +123,14 @@ dependency overrides trigger qualification when changed. Lockfile comparisons
 include nested installations and integrity/resolution metadata. Changes to core
 regression/build/acceptance commands also trigger it, with one narrowing. When
 the only difference in `test:qualification`, `test:runtime`, `test:cli`, or
-`test:ui` is inserted `test/*.test.js` files not already listed, and every
-other token is unchanged and in order, the planner records `reviewRequired`
+`test:ui` is inserted `test/*.test.js` file arguments after the existing
+`node --test` prefix, with no duplicates and every other token unchanged and
+in order, the planner records `reviewRequired`
 instead of a trigger. Removed or replaced files, duplicates, non-test
 arguments, changed options or build steps, deleted commands, and any change to
-`test`, `verify`, `test:acceptance`, or `ui:build` remain harness triggers. If
+`test`, `verify`, `test:acceptance`, or `ui:build` remain harness triggers.
+The delegated `ui-prototype/package.json` build and npm pre/post lifecycle
+commands for these gates are checked too. If
 any compared version (merge base, HEAD, index, working tree) has a non-additive
 change, the trigger applies. Unrelated dependency
 changes still select broad routine regression. Unsupported lockfile formats
