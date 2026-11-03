@@ -207,14 +207,35 @@ an issue link, pairing, project and thread mapping, a queued follow-up, an appro
 block with its T3 link, a held follow-up, a stale read while T3 is down, cancellation
 with partial output, and separate verdicts.
 
+## Live smoke
+
+On 2026-11-03 the pane ran against the owner's installed T3 0.1.6, with a throwaway
+Pardner service and a scratch git project. The pane paired its own `approval-required`
+credential and launched a new thread, which used Claude Opus 5.5 through T3's
+`claudeAgent` provider. Then:
+
+- A harmless prompt was sent once and reached `completed`. Its captured output was the
+  assistant's reply alone.
+- A long prompt was cancelled after 6 seconds. The interrupt named the exact run, and
+  a fresh read reported `interrupted`. T3 had recorded only reasoning by then, so nothing
+  was captured.
+- A follow-up queued behind it stayed `queued` with the cancellation hold, was never
+  sent, and was then withdrawn.
+
+The first attempt found a defect. T3 marks a prompt sent over MCP as
+`createdBy: agent`, so the captured output included the prompt. Output now keeps
+only `assistant_message` items, and the scripted T3 models this. No approval was
+exercised, and no person was involved. That proof remains with
+[#79](https://github.com/depatchedmode/pardner/issues/79).
+
 ## Limits
 
 - **The scripted T3 is a model.** The live qualification against installed T3 is in
-  the qualification report. The pane itself has not dispatched through a live T3 or
-  a real provider. That proof, with live human approval, belongs to
+  the qualification report. The pane's own live run is the smoke above; approvals,
+  restarts and human acceptance against a real provider belong to
   [#79](https://github.com/depatchedmode/pardner/issues/79).
 - **Output capture uses read fields that were not qualified.** It reads the run's
-  non-user messages after T3 reports the run ended and once more to confirm, up to
+  assistant messages after T3 reports the run ended and once more to confirm, up to
   20,000 characters. Treat it as evidence, not a transcript.
 - **Worktree threads were not qualified** and are labeled so. Child threads are
   refused. Paging through very long threads was not qualified.
