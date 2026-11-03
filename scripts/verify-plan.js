@@ -64,6 +64,11 @@ const groups = [
     focused: [{ command: 'npm run test:t3-qualification', note: 'Requires the pinned T3 app; see docs/PARDNER-T3-QUALIFICATION.md' }],
   },
   { name: 'control-runtime', scripts: ['test:control-runtime'], files: names('scripts/control-runtime.py test/control_runtime_test.py') },
+  {
+    name: 'lifecycle-model', scripts: ['test:runtime'],
+    files: names('formal/lifecycle/checker.js formal/lifecycle/model.js formal/lifecycle/check.js formal/lifecycle/mutations.js formal/lifecycle/mapping.json'),
+    focused: [{ command: 'npm run verify:model', note: 'Bounded model check with source/model drift detection; see docs/PARDNER-LIFECYCLE-MODEL.md' }],
+  },
 ]
 const manifests = ['package.json', 'package-lock.json', 'ui-prototype/package.json', 'ui-prototype/package-lock.json']
 const scriptOrder = ['test:verification', 'test:qualification', 'test:runtime', 'test:cli', 'test:ui', 'test:control-runtime']
@@ -83,7 +88,7 @@ export function classifyPath(path) {
     return { name: 'regression-test', scripts: ['test:runtime'] }
   }
   if (['README.md', 'AGENTS.md', 'CLAUDE.md', 'LICENSE', '.claude/skills'].includes(path)
-    || /^(docs|skills|\.agents)\/.*\.md$/.test(path)) return { name: 'guidance', scripts: [] }
+    || /^(docs|skills|\.agents)\/.*\.md$/.test(path) || /^docs\/evidence\/.*\.json$/.test(path)) return { name: 'guidance', scripts: [] }
   if (['.gitignore', 'ui-prototype/.gitignore'].includes(path)) return { name: 'repository-config', scripts: [] }
   return null
 }
