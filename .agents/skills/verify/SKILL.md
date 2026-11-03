@@ -367,7 +367,11 @@ were saved. Include:
 - Scope, base/HEAD and candidate identity, subject and overlay identities when
   used, environment, and artifact locations, including linked smoke and
   exercise reports.
-- The overall outcome:
+- Two outcomes, stated separately. The **routine outcome** covers the checks
+  this skill ran on the final candidate. The **overall outcome** also counts
+  required qualification and any other obligation: when qualification is
+  required but was not run, the routine outcome can be `passed` while the
+  overall outcome is `incomplete`. Each uses:
   - `passed`: every applicable check passed on the final candidate.
   - `failed`: a check failed and the cause is the change, or not yet known.
   - `incomplete`: required evidence is missing.
@@ -376,6 +380,9 @@ were saved. Include:
     by the run, an inaccessible prerequisite, or a product decision. Name the
     blocker, its evidence, and the separate repair or decision it needs. A
     blocked run is not a pass and does not release a merge recommendation.
+  When overlays were declared, say what the results establish for the
+  combined candidate and that they establish nothing for the subject alone or
+  for each overlay alone unless those arms were actually run.
 - Each changed behavior: expected result, exercised check, observed result, and
   `passed`, `failed`, or `incomplete` status.
 - Commands/counts/skips, repairs, unrelated defects, and evidence gaps. Keep
@@ -391,7 +398,11 @@ When qualification is required but not explicitly requested, report
 When explicitly requested, follow that procedure after routine verification.
 
 Maintain a `Qualification` section in the current PR description and the
-`needs-qualification` label. Preserve other PR content. If no PR exists yet,
+`needs-qualification` label. Preserve other PR content. When a repair or
+coverage overlay was declared, the section must separate what the subject PR
+still owes (its own qualification on its own final candidate) from the
+obligations that belong to the overlay's own PR; a combined-candidate result is
+not a standalone assessment of the subject. If no PR exists yet,
 include the section in the local report and carry it into the PR when created;
 verification alone does not authorize publishing a PR. If GitHub is unavailable,
 or the user or task instructions forbid GitHub updates (comments, descriptions,

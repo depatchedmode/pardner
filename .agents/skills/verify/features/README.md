@@ -15,6 +15,11 @@ already covered. Match the exact assertions to the task's expected result.
 - [Companion browsers](companion.md): pairing, Actor/filter persistence,
   reconnect, response loss, and browser credential lifecycle.
 
+Entries describe the checks that exist in this checkout. When a coverage
+overlay under trial adds assertions (for example both-engine QR image loading
+or tracker receipts), report them as overlay coverage; update the map in the
+change that lands the assertions, not in the candidate under trial.
+
 Shared launch/doctor/cleanup and reporting instructions are in
 [SKILL.md](../SKILL.md). Exercise each affected entry point: a CLI check cannot
 establish a changed browser control's behavior. Use existing tests where their

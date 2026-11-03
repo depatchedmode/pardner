@@ -5,6 +5,17 @@ cause, including intermittent failures and failures that appear only with a
 tooling overlay. The goal is a causal conclusion, or an honest statement that
 there is none yet. A green run is not the goal.
 
+## When not to diagnose
+
+A setup or permission failure with direct evidence (a denied `ps`, a sandbox
+refusing a Git metadata write, a missing browser) is a prerequisite problem,
+not a product failure. Resolve or report it and rerun the affected check; do
+not run baseline arms or build hypotheses about the product from it. Likewise,
+a combined candidate that passes with declared repair overlays does not prove
+that each repair was needed or correct; only a run of the subject without that
+overlay, under matched conditions, can show that. Report "not run" rather than
+inferring it.
+
 ## Preserve first
 
 Keep the failing log, the watchdog record, and any trace before running anything

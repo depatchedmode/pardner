@@ -37,8 +37,11 @@ evidence when this behavior is affected. Mobile browser contexts do not establis
 physical phone behavior, and a local proxy does not establish public HTTPS.
 The phone test waits for the pairing QR `<img>` but does not assert that the
 image loads. A change to the page's content policy or image handling needs an
-explicit check that the QR image decodes (for example `image.decode()` and a
-nonzero `naturalWidth`) in Chromium and WebKit.
+explicit check that the QR image loads as an image (for example
+`image.decode()` resolving and a nonzero `naturalWidth`) in Chromium and
+WebKit. Describe that check as image loading: it does not read the QR payload,
+compare it with the pairing link, or show that a phone camera can scan it.
+Payload and scannability need a QR decoder or the physical-phone exercise.
 Mask tokens, one-time pairing codes, pairing links, and QR codes in artifacts.
 Browser traces of pairing capture the credential entry and ticketed WebSocket
 URL; retain only copies produced by `verify:sanitize` (see SKILL.md, Artifact
