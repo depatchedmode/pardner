@@ -219,6 +219,11 @@ can recognize: review its counts against what the run captured (for example
 one token per browser context and one ticket per WebSocket connection), and
 report a mismatch as unresolved rather than assuming the copy is clean.
 
+Failure watchdog records can capture descendant command lines, including
+`--hub-token` arguments. Keep those raw records private too: command-line
+credentials are not a recognized sanitizer pattern unless their exact value
+was collected elsewhere. Inspect them independently before sharing a copy.
+
 ## Run, repair, and collect evidence
 
 For implementation changes, run the focused scripts in `plan.scripts`, any
