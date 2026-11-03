@@ -1,0 +1,115 @@
+import { it } from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { chromium, webkit } from 'playwright'
+import AutomergeSyncServer from '../automerge-sync-server.js'
+import { ACTORS } from '../support/workspace-test.js'
+import { FakeT3 } from '../support/fake-t3-server.js'
+
+for (const engine of [chromium, webkit]) it(`shows stale reads, approval blocks, held follow-ups, cancellation output and separate verdicts in ${engine.name()}`, { timeout: 90000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-control-ui-'))
+  const t3 = await new FakeT3().start()
+  t3.thread('thread-ui', { title: 'Pardner control thread' })
+  const server = new AutomergeSyncServer({ directory, actors: ACTORS, env: {}, apiToken: 'ui-token', httpPort: 0, wsPort: 0, logger: {},
+    control: { pollMs: 150, staleAfterMs: 1500 } })
+  await server.start()
+  const browser = await engine.launch({ headless: true })
+  t.after(async () => {
+    await browser.close()
+    await server.stop()
+    await t3.stop().catch(() => {})
+    await rm(directory, { recursive: true, force: true })
+  })
+  const errors = []
+  const operation = async (type, payload) => (await (await fetch(`http://127.0.0.1:${server.httpPort}/automerge/operations`, { method: 'POST',
+    headers: { Authorization: 'Bearer ui-token', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, payload, actorId: 'alice', operationId: randomUUID() }) })).json()).result
+  await operation('task.create', { title: 'Build the control pane' })
+
+  const page = await (await browser.newContext({ viewport: { width: 1440, height: 1000 } })).newPage()
+  page.on('pageerror', error => errors.push(error.message))
+  await page.goto(`http://127.0.0.1:${server.httpPort}/pardner/`)
+  await page.getByLabel('Local service token').fill('ui-token')
+  await page.getByRole('button', { name: 'Connect', exact: true }).click()
+  await page.getByLabel('Actor', { exact: true }).selectOption('alice')
+
+  // Link an existing GitHub issue from the task itself.
+  await page.getByRole('button', { name: /Build the control pane/ }).click()
+  await page.getByLabel('Link GitHub issue').fill('depatchedmode/pardner#77')
+  await page.getByRole('button', { name: 'Link issue', exact: true }).click()
+  await page.getByRole('link', { name: 'depatchedmode/pardner#77' }).waitFor()
+  await page.getByRole('button', { name: 'Close', exact: true }).first().click()
+
+  await page.getByRole('button', { name: 'Control', exact: true }).click()
+  await page.getByLabel('T3 address').fill(t3.origin)
+  await page.getByLabel('T3 pairing code').fill(t3.issueCode())
+  await page.getByRole('button', { name: 'Pair T3' }).click()
+  await page.getByText(/T3 credential: valid/).waitFor()
+  await page.getByLabel('Project ID').fill('pardner')
+  await page.getByLabel('Project name').fill('Pardner')
+  await page.getByLabel('GitHub repository').fill('depatchedmode/pardner')
+  await page.getByRole('button', { name: 'Save project' }).click()
+  await page.getByLabel('Project', { exact: true }).selectOption('pardner')
+  await page.getByLabel('T3 thread ID').fill('thread-ui')
+  await page.getByLabel('Agent Actor').selectOption('builder')
+  await page.getByRole('checkbox', { name: 'Build the control pane' }).check()
+  await page.getByRole('checkbox', { name: 'alice' }).check()
+  await page.getByRole('button', { name: 'Map thread' }).click()
+  const thread = page.getByRole('region', { name: 'T3 thread Pardner control thread' })
+  await thread.waitFor()
+  await thread.getByText('project folder (T3 reports no worktree)', { exact: false }).waitFor()
+
+  const followUp = thread.getByLabel(/Follow-up for builder/)
+  await followUp.fill('Implement the pane')
+  await thread.getByRole('button', { name: 'Queue follow-up' }).click()
+  const first = thread.getByRole('article').filter({ hasText: 'Implement the pane' })
+  await first.getByText('Running', { exact: true }).waitFor()
+  const runId = t3.threads.get('thread-ui').runs[0].runId
+
+  t3.block(runId)
+  await first.getByText('Waiting for approval or input').waitFor()
+  assert.equal(await first.getByRole('link', { name: 'Decide in T3' }).getAttribute('href'), t3.threads.get('thread-ui').link)
+  await followUp.fill('Address review feedback')
+  await thread.getByRole('button', { name: 'Queue follow-up' }).click()
+  const second = thread.getByRole('article').filter({ hasText: 'Address review feedback' })
+  await second.getByText('Queued in Pardner').waitFor()
+  await thread.getByText(/Dispatch held: Awaiting this controller/).waitFor()
+
+  // T3 becomes unreachable: the last read is shown as stale rather than current.
+  const port = new URL(t3.origin).port
+  await t3.stop()
+  await thread.getByText(/^Stale: last read/).first().waitFor()
+  await thread.getByText(/Last T3 pass failed/).waitFor()
+  t3.server.listen(Number(port), '127.0.0.1')
+  await new Promise(resolve => t3.server.once('listening', resolve))
+  await thread.getByText(/^Read \d+s ago/).first().waitFor()
+
+  t3.unblock(runId)
+  t3.say(runId, 'Partial work: wrote the registry')
+  t3.slowInterrupt = true
+  await first.getByRole('button', { name: 'Cancel this run' }).click()
+  await first.getByText('Cancellation requested').waitFor()
+  t3.finish(runId, 'interrupted')
+  await first.getByText('Ended: interrupted').waitFor()
+  await first.getByText('Partial work: wrote the registry').waitFor()
+  assert.equal(await second.getByText('Queued in Pardner').count(), 1, 'cancellation holds queued work')
+  await thread.getByText(/Cancellation of .* holds queued work/).first().waitFor()
+
+  await first.getByLabel('Verdict evidence').fill('Partial output reviewed; not accepted')
+  await first.getByRole('button', { name: 'Reject' }).click()
+  await first.getByText('rejected by alice').waitFor()
+  const verdicts = await first.locator('.verdicts').innerText()
+  assert.match(verdicts, /Execution\s+interrupted/)
+  assert.match(verdicts, /Independent check\s+Not recorded/)
+  assert.match(verdicts, /Human acceptance\s+rejected by alice/)
+
+  await thread.getByLabel('Review evidence').fill('Confirmed the interrupted run ended')
+  await thread.getByRole('button', { name: 'Release held work' }).click()
+  await second.getByText('Running', { exact: true }).waitFor()
+  assert.equal(t3.sends.length, 2)
+  assert.deepEqual(t3.interrupts.map(entry => entry.runId), [runId])
+  assert.deepEqual(errors, [])
+})

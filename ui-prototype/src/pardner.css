@@ -547,3 +547,82 @@ code {
 .app > .error p {
   max-width: 75ch;
 }
+.control {
+  max-width: 1000px;
+  margin: 20px auto;
+  padding: 0 28px;
+}
+.control form,
+.control-setup form {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+.control-session {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+.control .notice,
+.control .error {
+  padding: 10px 15px;
+  border: 1px solid #80643b;
+}
+.identity,
+.verdicts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  font-size: 13px;
+}
+.identity dt,
+.verdicts dt {
+  color: var(--muted);
+}
+.identity dd,
+.verdicts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.execution {
+  padding: 14px;
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.state-label {
+  font-size: 13px;
+  color: var(--accent);
+}
+.state-unknown,
+.state-blocked,
+.state-cancel_requested,
+.stale-label {
+  color: var(--warning);
+}
+.fresh-label {
+  color: var(--accent);
+}
+.output {
+  white-space: pre-wrap;
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px;
+  background: #0a0a0a;
+}
+.control fieldset {
+  border: 1px solid var(--line);
+}
+.control .check {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+}
+.control .check input {
+  width: auto;
+  margin: 0;
+}
+.issue-links {
+  padding-left: 18px;
+}

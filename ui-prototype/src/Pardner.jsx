@@ -5,6 +5,7 @@ import './pardner.css'
 import { createOperationId } from './operation-id.js'
 import { createConnection, loadConfiguration, websocketUrl } from './connection.js'
 import PhoneAccess from './PhoneAccess.jsx'
+import ControlPane from './ControlPane.jsx'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const LABELS = {
@@ -456,6 +457,12 @@ function Workspace({ config, reloadConfiguration }) {
         >
           Activity
         </button>
+        <button
+          aria-pressed={view === 'control'}
+          onClick={() => setView('control')}
+        >
+          Control
+        </button>
         <SelectActor
           label="Assigned to"
           emptyLabel="All Actors"
@@ -527,6 +534,8 @@ function Workspace({ config, reloadConfiguration }) {
           </div>
         ) : view === 'goals' ? (
           <Goals goals={goals} veins={veins} showVein={showVein} />
+        ) : view === 'control' ? (
+          <ControlPane request={request} actors={actors} tasks={doc.tasks} actor={actor} canManageAccess={config.canManageAccess} />
         ) : (
           <section className="activity">
             <h2>Workspace activity</h2>
@@ -732,6 +741,41 @@ function TaskForm({
     </section>
   )
 }
+/** Links to existing GitHub issues. Pardner stores the reference only; GitHub status never moves the task. */
+function IssueLinks({ taskId, issues, canWrite, submit }) {
+  const [reference, setReference] = useState('')
+  const [invalid, setInvalid] = useState(false)
+  return (
+    <section aria-label="GitHub issues">
+      <h3>GitHub issues</h3>
+      {issues.length ? (
+        <ul className="issue-links">
+          {issues.map(issue => (
+            <li key={`${issue.repository}#${issue.number}`}>
+              <a href={issue.url} target="_blank" rel="noreferrer">{issue.repository}#{issue.number}</a>{' '}
+              <button disabled={!canWrite} onClick={() => submit('task.unlink-issue', {
+                taskId, repository: issue.repository, number: issue.number, expectedRevisions: issue.revisions,
+              })}>Unlink</button>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="muted">No linked issues. Linking does not contact GitHub.</p>}
+      <form onSubmit={async event => {
+        event.preventDefault()
+        const match = /^\s*([^#\s]+\/[^#\s]+)#(\d+)\s*$/.exec(reference)
+        setInvalid(!match)
+        if (!match) return
+        const receipt = await submit('task.link-issue', { taskId, repository: match[1], number: Number(match[2]) })
+        if (receipt) setReference(current => current === reference ? '' : current)
+      }}>
+        <label>Link GitHub issue<input placeholder="owner/repo#123" value={reference} onChange={event => setReference(event.target.value)} /></label>
+        {invalid && <p className="error" role="alert">Name the issue as owner/repo#number.</p>}
+        <button disabled={!canWrite || !reference.trim()}>Link issue</button>
+      </form>
+    </section>
+  )
+}
+
 function TaskDetail({
   taskId,
   actors,
@@ -815,6 +859,7 @@ function TaskDetail({
         <p className="muted">Veins: {context.veins.map(vein => `${vein.title} (${LABELS[vein.status]})`).join(', ')}</p>
       )}
       <ErrorNotice error={failure} />
+      <IssueLinks taskId={taskId} issues={context.issues ?? []} canWrite={canWrite} submit={submit} />
       {draft ? (
         <TaskForm
           editing
