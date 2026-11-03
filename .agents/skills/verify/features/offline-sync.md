@@ -30,6 +30,15 @@ report contain disposable credentials; retain them only through
 the deliberate 20-seed gate only when requested. A new conflict/recovery behavior
 needs direct coverage even if the existing gate passes.
 
+## Lifecycle ordering model
+
+`npm run verify:model` checks a bounded, code-mapped model of request admission,
+persistence acknowledgement and shutdown ordering, with implementation checks in
+`test/lifecycle-conformance.test.js`. Use the
+[verify-lifecycle-model skill](../../verify-lifecycle-model/SKILL.md) when the
+mapped runtime files change or the check reports drift; see
+[PARDNER-LIFECYCLE-MODEL.md](../../../../docs/PARDNER-LIFECYCLE-MODEL.md).
+
 ## Gotchas
 
 Companion browsers own no offline Automerge replica. Cutting the hub path must

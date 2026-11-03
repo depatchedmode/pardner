@@ -1,0 +1,396 @@
+{
+  "issue": 97,
+  "recorded": "2026-11-03",
+  "tools": {
+    "node": "v24.11.1",
+    "checker": "formal/lifecycle/checker.js (explicit-state, weak fairness)",
+    "externalTools": "none"
+  },
+  "mapping": {
+    "revision": "bdf0ef091ca224b91da5a4f6b5739a1e04081990",
+    "files": {
+      "automerge-sync-server.js": "ec30421bd70788f0d5ed39e36eabe4ef51b69b5ea6adf3dc3f048fce0a100ffe",
+      "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+      "lib/workspace-runtime.js": "ecbedacaed6740499eda73451b692c4984ef24715569af1aa69c23656569f2f0",
+      "lib/workspace.js": "e454add5eb36d16b94f1e814b12d3c3032f3f3fe01cb5ef64bc20b9facf78d3d"
+    }
+  },
+  "modelCheck": {
+    "command": "npm run verify:model",
+    "bounds": {
+      "replicaEdits": 2,
+      "hubOps": 1,
+      "ackAttempts": 1,
+      "storageFailures": 1
+    },
+    "states": 174614,
+    "transitions": 679456,
+    "durationMs": 7695,
+    "invariants": [
+      "ReceiptAfterBarrier",
+      "StorageAvailableWhileAdmitted",
+      "NoAdmissionWhileStopping",
+      "AckedHeadsPersisted"
+    ],
+    "progress": "ShutdownCompletes",
+    "fairActions": [
+      "Handle",
+      "PersistRun",
+      "Respond",
+      "ReclaimIdle",
+      "ListenerClosed",
+      "StoreCloseBegin",
+      "StoreCloseComplete",
+      "ReplicaReceive",
+      "ReplicaAckCommit"
+    ],
+    "violation": null,
+    "witnesses": {
+      "acknowledgement admitted before stop() is still in flight while the listener drains": 34944,
+      "operation admitted before stop() is still in flight while the listener drains": 47632,
+      "keep-alive connection becomes idle after stop() began": 23362,
+      "request rejected with 503 after stop() began": 2046,
+      "persistence failure reported to a request": 35068,
+      "acknowledgement for older heads pending while the replica has newer edits": 29008,
+      "replica edits acknowledged": 760,
+      "hub operation acknowledged by the replica": 2590,
+      "synced change still unpersisted when shutdown completes (never acknowledged)": 3248,
+      "shutdown completed with every persisted head acknowledged": 150
+    },
+    "unreachableWitnesses": []
+  },
+  "widerBounds": [
+    {
+      "bounds": {
+        "replicaEdits": 1,
+        "hubOps": 1,
+        "ackAttempts": 1,
+        "storageFailures": 0
+      },
+      "states": 17934,
+      "transitions": 59471,
+      "durationMs": 422,
+      "result": "pass"
+    },
+    {
+      "bounds": {
+        "replicaEdits": 1,
+        "hubOps": 1,
+        "ackAttempts": 1,
+        "storageFailures": 1
+      },
+      "states": 40446,
+      "transitions": 141460,
+      "durationMs": 973,
+      "result": "pass"
+    },
+    {
+      "bounds": {
+        "replicaEdits": 1,
+        "hubOps": 1,
+        "ackAttempts": 2,
+        "storageFailures": 1
+      },
+      "states": 218314,
+      "transitions": 813586,
+      "durationMs": 6393,
+      "result": "pass"
+    },
+    {
+      "bounds": {
+        "replicaEdits": 2,
+        "hubOps": 1,
+        "ackAttempts": 2,
+        "storageFailures": 1
+      },
+      "states": 1006412,
+      "transitions": 4134456,
+      "durationMs": 123435,
+      "result": "pass",
+      "note": "about 4 GB resident; not part of the routine command"
+    }
+  ],
+  "mutationDemonstration": {
+    "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+    "started": "2026-11-03T20:16:47.660Z",
+    "finished": "2026-11-03T20:17:13.040Z",
+    "workingTreeUnchanged": true,
+    "ok": true,
+    "controls": [
+      {
+        "check": "test/lifecycle-conformance.test.js#local-save receipt only after the storage barrier",
+        "outcome": "passed",
+        "passed": 1,
+        "failed": 0
+      },
+      {
+        "check": "test/lifecycle-conformance.test.js#acknowledges heads only after the hub persisted them",
+        "outcome": "passed",
+        "passed": 1,
+        "failed": 0
+      },
+      {
+        "check": "test/lifecycle-conformance.test.js#does not acknowledge heads the hub does not hold",
+        "outcome": "passed",
+        "passed": 1,
+        "failed": 0
+      },
+      {
+        "check": "test/workspace-runtime.test.js#does not let a delayed hub acknowledgement clear newer local work",
+        "outcome": "passed",
+        "passed": 1,
+        "failed": 0
+      },
+      {
+        "check": "test/workspace-runtime.test.js#rejects the pipelined request",
+        "outcome": "passed",
+        "passed": 1,
+        "failed": 0
+      },
+      {
+        "check": "test/lifecycle-conformance.test.js#keeps storage open until an acknowledgement admitted before stop",
+        "outcome": "passed",
+        "passed": 1,
+        "failed": 0
+      },
+      {
+        "check": "test/lifecycle-conformance.test.js#drains queued persistence before releasing the storage lease",
+        "outcome": "passed",
+        "passed": 1,
+        "failed": 0
+      },
+      {
+        "check": "test/workspace-runtime.test.js#keep-alive socket that goes idle after stop",
+        "outcome": "passed",
+        "passed": 1,
+        "failed": 0
+      }
+    ],
+    "mutations": [
+      {
+        "name": "receipt-before-persist",
+        "property": "ReceiptAfterBarrier",
+        "file": "lib/workspace.js",
+        "description": "workspace.apply returns savedLocally without awaiting the flush",
+        "implementation": {
+          "check": "node --test --test-name-pattern=local-save receipt only after the storage barrier test/lifecycle-conformance.test.js",
+          "exitCode": 1,
+          "failed": 1,
+          "passed": 0,
+          "outcome": "caught"
+        },
+        "drift": {
+          "outcome": "reported",
+          "drifted": [
+            "lib/workspace.js"
+          ]
+        },
+        "model": {
+          "outcome": "counterexample",
+          "violation": {
+            "kind": "invariant",
+            "property": "ReceiptAfterBarrier"
+          },
+          "states": 44
+        },
+        "restored": true
+      },
+      {
+        "name": "ack-before-persist",
+        "property": "ReceiptAfterBarrier",
+        "file": "lib/workspace.js",
+        "description": "workspace.acknowledge responds without awaiting the flush",
+        "implementation": {
+          "check": "node --test --test-name-pattern=acknowledges heads only after the hub persisted them test/lifecycle-conformance.test.js",
+          "exitCode": 1,
+          "failed": 1,
+          "passed": 0,
+          "outcome": "caught"
+        },
+        "drift": {
+          "outcome": "reported",
+          "drifted": [
+            "lib/workspace.js"
+          ]
+        },
+        "model": {
+          "outcome": "counterexample",
+          "violation": {
+            "kind": "invariant",
+            "property": "ReceiptAfterBarrier"
+          },
+          "states": 1745
+        },
+        "restored": true
+      },
+      {
+        "name": "hub-acks-unknown-heads",
+        "property": "ReceiptAfterBarrier",
+        "file": "lib/workspace.js",
+        "description": "workspace.acknowledge no longer checks that it holds the requested heads",
+        "implementation": {
+          "check": "node --test --test-name-pattern=does not acknowledge heads the hub does not hold test/lifecycle-conformance.test.js",
+          "exitCode": 1,
+          "failed": 1,
+          "passed": 0,
+          "outcome": "caught"
+        },
+        "drift": {
+          "outcome": "reported",
+          "drifted": [
+            "lib/workspace.js"
+          ]
+        },
+        "model": {
+          "outcome": "counterexample",
+          "violation": {
+            "kind": "invariant",
+            "property": "ReceiptAfterBarrier"
+          },
+          "states": 1743
+        },
+        "restored": true
+      },
+      {
+        "name": "stale-ack-accepted",
+        "property": "AckedHeadsPersisted",
+        "file": "lib/workspace-runtime.js",
+        "description": "synchronizeAcknowledgement records the current heads without the requested-heads guards",
+        "implementation": {
+          "check": "node --test --test-name-pattern=does not let a delayed hub acknowledgement clear newer local work test/workspace-runtime.test.js",
+          "exitCode": 1,
+          "failed": 1,
+          "passed": 0,
+          "outcome": "caught"
+        },
+        "drift": {
+          "outcome": "reported",
+          "drifted": [
+            "lib/workspace-runtime.js"
+          ]
+        },
+        "model": {
+          "outcome": "counterexample",
+          "violation": {
+            "kind": "invariant",
+            "property": "AckedHeadsPersisted"
+          },
+          "states": 16544
+        },
+        "restored": true
+      },
+      {
+        "name": "admit-while-stopping",
+        "property": "NoAdmissionWhileStopping",
+        "file": "automerge-sync-server.js",
+        "description": "the stopping middleware no longer rejects requests",
+        "implementation": {
+          "check": "node --test --test-name-pattern=rejects the pipelined request test/workspace-runtime.test.js",
+          "exitCode": 1,
+          "failed": 1,
+          "passed": 0,
+          "outcome": "caught"
+        },
+        "drift": {
+          "outcome": "reported",
+          "drifted": [
+            "automerge-sync-server.js"
+          ]
+        },
+        "model": {
+          "outcome": "counterexample",
+          "violation": {
+            "kind": "invariant",
+            "property": "NoAdmissionWhileStopping"
+          },
+          "states": 7875
+        },
+        "restored": true
+      },
+      {
+        "name": "close-store-before-drain",
+        "property": "StorageAvailableWhileAdmitted",
+        "file": "automerge-sync-server.js",
+        "description": "stop() closes the store before the listeners have drained",
+        "implementation": {
+          "check": "node --test --test-name-pattern=keeps storage open until an acknowledgement admitted before stop test/lifecycle-conformance.test.js",
+          "exitCode": 1,
+          "failed": 1,
+          "passed": 0,
+          "outcome": "caught"
+        },
+        "drift": {
+          "outcome": "reported",
+          "drifted": [
+            "automerge-sync-server.js"
+          ]
+        },
+        "model": {
+          "outcome": "counterexample",
+          "violation": {
+            "kind": "invariant",
+            "property": "StorageAvailableWhileAdmitted"
+          },
+          "states": 489
+        },
+        "restored": true
+      },
+      {
+        "name": "lease-before-drain",
+        "property": "StorageAvailableWhileAdmitted",
+        "file": "lib/workspace-runtime.js",
+        "description": "closeResources releases the storage lease before the persistence queue drains",
+        "implementation": {
+          "check": "node --test --test-name-pattern=drains queued persistence before releasing the storage lease test/lifecycle-conformance.test.js",
+          "exitCode": 1,
+          "failed": 1,
+          "passed": 0,
+          "outcome": "caught"
+        },
+        "drift": {
+          "outcome": "reported",
+          "drifted": [
+            "lib/workspace-runtime.js"
+          ]
+        },
+        "model": {
+          "outcome": "counterexample",
+          "violation": {
+            "kind": "invariant",
+            "property": "StorageAvailableWhileAdmitted"
+          },
+          "states": 3937
+        },
+        "restored": true
+      },
+      {
+        "name": "no-idle-reclaim",
+        "property": "ShutdownCompletes",
+        "file": "automerge-sync-server.js",
+        "description": "listen() no longer reclaims a connection that becomes idle after stop() began",
+        "implementation": {
+          "check": "node --test --test-name-pattern=keep-alive socket that goes idle after stop test/workspace-runtime.test.js",
+          "exitCode": 1,
+          "failed": 1,
+          "passed": 0,
+          "outcome": "caught"
+        },
+        "drift": {
+          "outcome": "reported",
+          "drifted": [
+            "automerge-sync-server.js"
+          ]
+        },
+        "model": {
+          "outcome": "counterexample",
+          "violation": {
+            "kind": "stutter",
+            "property": "ShutdownCompletes"
+          },
+          "states": 174614
+        },
+        "restored": true
+      }
+    ]
+  }
+}
