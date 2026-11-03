@@ -382,6 +382,53 @@ it('keeps a refusal when the read after it also fails', () => fixture(async ({ t
   assert.equal(execution.row('first').state, 'running')
 }))
 
+it('returns a refused repeat cancellation to the observed blocked state', () => fixture(async ({ t3, open }) => {
+  const execution = open()
+  execution.enqueue(intent('first'))
+  await execution.pump(threadId)
+  t3.pending = 1
+  await execution.observe(threadId)
+  assert.equal(execution.row('first').state, 'blocked')
+  // The first request is inconclusive, so the row stays cancel_requested and the cancel is repeated.
+  t3.interrupt = async () => { throw new T3Unknown('reply lost') }
+  await assert.rejects(execution.cancel('first'), T3Unknown)
+  assert.equal(execution.row('first').state, 'cancel_requested')
+  t3.interrupt = async () => { throw new T3Rejected('capability_denied', 'Denied') }
+  assert.equal((await execution.cancel('first')).state, 'blocked')
+  // Without a fresh read, the state before the first request is kept rather than guessed.
+  await execution.observe(threadId)
+  t3.interrupt = async () => { throw new T3Unknown('reply lost') }
+  await assert.rejects(execution.cancel('first'), T3Unknown)
+  t3.interrupt = async () => { throw new T3Rejected('capability_denied', 'Denied') }
+  t3.read = async () => { throw new T3Rejected('auth_invalid', 'Refused') }
+  assert.equal((await execution.cancel('first')).state, 'blocked')
+}))
+
+it('changes routes at runtime without treating in-flight sends as crashed', () => fixture(async ({ t3, open }) => {
+  const execution = open()
+  execution.enqueue(intent('first'))
+  let release
+  const send = t3.send.bind(t3)
+  t3.send = async (...args) => { await new Promise(resolve => { release = resolve }); return send(...args) }
+  const sending = execution.pump(threadId)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(execution.row('first').state, 'submitting')
+  const second = { actorId: 'other', threadId: 'thread-two', allowedTaskIds: ['task'], allowedFromActorIds: ['alice'] }
+  execution.setRoutes([route, second])
+  assert.equal(execution.row('first').state, 'submitting')
+  release()
+  await sending
+  assert.equal(execution.row('first').state, 'running')
+  assert.ok(execution.enqueue({ ...intent('elsewhere'), actorId: 'other', threadId: 'thread-two' }))
+  assert.throws(() => execution.setRoutes([route, { ...second, actorId: 'builder' }]), { code: 'AMBIGUOUS_ROUTE' })
+  // Removing a route keeps its intent queued instead of dispatching it.
+  execution.enqueue(intent('later'))
+  t3.finish()
+  execution.setRoutes([second])
+  assert.match((await execution.pump(threadId)).reason, /no longer authorized/)
+  assert.equal(execution.row('later').state, 'queued')
+}))
+
 it('reports only the run with a waiting request as blocked', () => fixture(async ({ t3, open }) => {
   const execution = open()
   execution.enqueue(intent('first'))

@@ -109,6 +109,8 @@ function handle(message) {
 }
 
 let buffer = ''
+// Decode as UTF-8 across chunks, so a character split between reads stays intact.
+process.stdin.setEncoding('utf8')
 process.stdin.on('data', chunk => {
   buffer += chunk
   for (let end = buffer.indexOf('\n'); end >= 0; end = buffer.indexOf('\n')) {
