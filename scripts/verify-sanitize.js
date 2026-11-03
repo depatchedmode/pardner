@@ -265,8 +265,10 @@ function checkPaths(paths) {
   const seen = new Set()
   for (const path of paths) {
     if (!path || path.startsWith('/') || path.includes('\\') || path.split('/').some(part => part === '..' || part === '.')) throw new Error('Unsafe artifact path; no artifact was written')
-    if (seen.has(path)) throw new Error('Redaction would collide artifact paths; no artifact was written')
-    seen.add(path)
+    // Copies may be shared across case-insensitive and Unicode-normalizing filesystems.
+    const portable = path.normalize('NFC').toLowerCase()
+    if (seen.has(portable)) throw new Error('Redaction would collide artifact paths; no artifact was written')
+    seen.add(portable)
   }
   for (const path of seen) {
     const parts = path.split('/')
@@ -366,9 +368,9 @@ export function sanitizeTree({ source, target }) {
   for (const item of written) {
     const destination = join(target, item.path)
     mkdirSync(dirname(destination), { recursive: true })
-    writeFileSync(destination, item.buffer, { mode: 0o600 })
+    writeFileSync(destination, item.buffer, { mode: 0o600, flag: 'wx' })
   }
-  writeFileSync(join(target, 'sanitization.json'), manifestText, { mode: 0o600 })
+  writeFileSync(join(target, 'sanitization.json'), manifestText, { mode: 0o600, flag: 'wx' })
   return manifest
 }
 

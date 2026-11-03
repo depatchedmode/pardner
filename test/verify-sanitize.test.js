@@ -260,13 +260,19 @@ it('rejects source/target aliases through existing ancestors without writing', t
 
 it('rejects path/key collisions and residual credentials before any output', t => {
   const { root } = fixture(t)
-  for (const kind of ['file', 'archive', 'key', 'manifest']) {
+  for (const kind of ['file', 'archive', 'key', 'manifest', 'case', 'unicode']) {
     const source = join(root, kind), target = join(root, `${kind}-copy`)
     mkdirSync(source)
     writeFileSync(join(source, 'report.json'), JSON.stringify({ token: kind === 'manifest' ? 'sanitized' : secrets.token }))
     if (kind === 'file') for (const name of [secrets.token, REDACTED]) writeFileSync(join(source, `${name}.txt`), 'evidence')
     if (kind === 'archive') writeFileSync(join(source, 'trace.zip'), writeZip([secrets.token, REDACTED].map(name => ({ name: `${name}.txt`, data: Buffer.from('evidence') }))))
     if (kind === 'key') writeFileSync(join(source, 'keys.json'), JSON.stringify({ [secrets.token]: 'one', [REDACTED]: 'two' }))
+    if (kind === 'case' || kind === 'unicode') {
+      writeFileSync(join(source, 'report.json'), JSON.stringify({ token: secrets.token, ticket: secrets.ticket }))
+      const prefixes = kind === 'case' ? ['a-', 'A-'] : ['é-', 'e\u0301-']
+      writeFileSync(join(source, `${prefixes[0]}${secrets.token}.txt`), 'first evidence')
+      writeFileSync(join(source, `${prefixes[1]}${secrets.ticket}.txt`), 'second evidence')
+    }
     assert.throws(() => sanitizeTree({ source, target }), /no artifact was written/)
     assert.equal(existsSync(target), false)
   }
