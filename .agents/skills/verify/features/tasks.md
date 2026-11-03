@@ -8,9 +8,14 @@ Reopen locally saved state after a service restart.
 
 ## How to get to it (user POV)
 
-Open `/pardner/`, enter the local service token, choose an **Actor**, then use
-**New task** or open a task. The CLI exposes `task create`, `show`, `update`, and
-`comment`; mutations need `--actor`, and retries reuse `--operation-id` and payload.
+Open `/pardner/`, expand **Connect with a local service token** (open by default
+on loopback), enter the token from the disposable instance's `connection.json`,
+press **Connect**, choose an **Actor**, then use **New task** or open a task. The
+CLI exposes `task create`, `show`, `update`, and `comment`; mutations need
+`--actor` (or `PARDNER_ACTOR`), `update` also needs the `--revisions` read from
+`show`, and retries reuse `--operation-id` and payload. The same ID with a
+different payload fails with `OPERATION_ID_REUSED`; without the flag every
+invocation gets a fresh ID, so an unflagged retry is not deduplicated.
 
 ## Driving it with CLI and Playwright
 
@@ -23,6 +28,8 @@ The printed `output/verification/smoke-*/report.json` records commands, receipts
 candidate, and cleanup results and remains after scratch deletion.
 
 Run `node --test test/pardner-cli-workflow.test.js` for the fuller CLI workflow.
+`test/workspace-operations.test.js` (in `npm run test:runtime`) holds the
+in-process replay, stale-revision, and storage-failure cases.
 Run `node --test test/pardner-ui.test.js` after building UI for browser operations.
 The browser uses `getByLabel('Actor', { exact: true })`, **New task**, **Title**,
 **Create task**, **Comment**, **Add comment**, and **Retry saved request**. Its

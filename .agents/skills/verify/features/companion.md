@@ -18,22 +18,35 @@ for setup, recovery, and the separate physical-phone exercise.
 
 Run `npm run test:ui` with pinned Chromium and WebKit installed. The phone test
 uses actual non-loopback IPv4 HTTP, enables LAN through the desktop UI, restarts,
-pairs a persistent mobile context, and checks Actor/review filters after browser
-reopening. It checks desktop/phone updates and reads back writes through the CLI.
-The connection tests cover failed pairing, credential rotation, late stale auth
-responses, bootstrap failures, and local proxy routing.
+pairs a persistent mobile context from the **Device address** link (not the QR),
+and checks the **Actor** and **Status filter** after browser reopening
+(**Assigned to** persistence is not asserted). It checks that a CLI comment
+reaches the phone live and reads the phone's writes back through the CLI; the
+desktop page is not asserted to receive the phone's writes. The connection tests
+cover failed pairing, credential rotation, and late stale auth responses in
+Chromium and WebKit over LAN, and bootstrap failures and local proxy routing on
+loopback in Chromium only. `test/browser-connection.test.js`,
+`test/lan-server.test.js`, and `test/lan-access.test.js` (storage persistence,
+LAN listeners, single-use and throttled pairing, loopback-only administration)
+run only under the full `node --test`, not `test:ui`.
 
 Expected: only matching tasks appear, no repeated pairing on normal reopen,
 correct Actor attribution, one write after retry, and recovery after restart.
-Inspect the saved masked screenshots under `output/playwright/`; copy relevant
+Inspect the saved screenshots under `output/playwright/`: only
+`pardner-phone-setup.png` is masked; `pardner-phone-reviews-<engine>.png` is
+unmasked and must show no secret; the connection tests save none. Copy relevant
 ones into the unique verification run directory so later runs cannot replace
 the evidence. Capture traces for new interactions where assertions alone leave
 the failure unclear.
 
 ## Gotchas
 
-Tests explicitly skip without a suitable LAN IPv4 interface. Treat that as missing
-evidence when this behavior is affected. Mobile browser contexts do not establish
+The LAN tests skip without a suitable non-loopback IPv4 interface; the loopback
+cases always run. Treat a skip as missing evidence when this behavior is affected.
+Pairing is browser and HTTP only; there are no CLI pairing or LAN commands.
+After a token rotation, a connected companion page reports "The service
+credential changed"; a companion reopened afterwards shows the pairing form with
+a connection-failure message instead. Mobile browser contexts do not establish
 physical phone behavior, and a local proxy does not establish public HTTPS.
 The phone test waits for the pairing QR `<img>` but does not assert that the
 image loads. A change to the page's content policy or image handling needs an

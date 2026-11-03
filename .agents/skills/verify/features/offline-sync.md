@@ -8,16 +8,20 @@ distinguish locally saved heads from explicit hub persistence acknowledgement.
 
 ## How to get to it (user POV)
 
-Enroll a local service against a hub, then use its CLI or `/pardner/` browser.
-Keep that local service reachable while disconnecting its hub path. Select the
+Join a hub with `pardner serve --role replica --hub URL --hub-ws ws://host:port/automerge --hub-token TOKEN`
+(there is no `enroll` command; without the hub's token the replica fails with
+`AUTH_REQUIRED`), then use its CLI or `/pardner/` browser. Later restarts reuse
+the saved role, hub settings, and ports. Keep that local service reachable while
+disconnecting its hub path. Select the
 editing Actor. After reconnect, inspect alternatives and use **Resolve status**
 and **Keep this status** for a task status conflict.
 
 ## Driving it with service fixtures and public clients
 
 Run `npm run test:qualification` and `npm run test:runtime`. In
-`test/workspace-runtime.test.js`, the public-operation scenario enrolls a replica,
-stops its hub, reopens the replica, saves an offline task, then restores the hub.
+`test/workspace-runtime.test.js`, the public-operation scenario joins a replica,
+stops the replica and then the hub, reopens the replica offline, saves an
+offline task, then restores the hub.
 Expected: unchanged workspace identity, startup under five seconds, locally
 saved offline work with sync pending, and convergence after reconnect. Other
 cases inspect stale acknowledgements, authored conflicts, and SIGKILL recovery.
@@ -28,7 +32,9 @@ manifest, per-replica readback, and browser traces. Those traces and the seed
 report contain disposable credentials; retain them only through
 `verify:sanitize` (SKILL.md, Artifact privacy). Required qualification adds
 the deliberate 20-seed gate only when requested. A new conflict/recovery behavior
-needs direct coverage even if the existing gate passes.
+needs direct coverage even if the existing gate passes. The browser's
+**Resolve status** / **Keep this status** controls are exercised only by
+`scripts/acceptance.js`, not by `test/pardner-ui.test.js`.
 
 ## Gotchas
 
@@ -36,4 +42,6 @@ Companion browsers own no offline Automerge replica. Cutting the hub path must
 leave the local service available; the acceptance network gate cuts both HTTP
 and native WebSocket paths. Equal snapshots alone cannot detect shared data
 loss—check expected operation intents and receipts. Process kills do not prove
-power-loss durability. Follow the local-first design skill for transport changes.
+power-loss durability. Acknowledged heads live in memory only, so a reopened
+replica reports `syncPending: true` until the hub acknowledges again. Follow the
+local-first design skill for transport changes.
