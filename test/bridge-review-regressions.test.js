@@ -162,3 +162,38 @@ it('partial retirement restarts after a real worktree move with historical paths
   for (const plan of f.inbox.retirement().worktrees) await access(plan.destination)
   assert.deepEqual(f.state.archived, ['builder', 'reviewer'])
 }))
+
+it('binds a queued real-service mention to its author and original content', () => fixture(async f => {
+  const taskId = await f.create()
+  const mapping = { ...f.config.mappings[0], allowedTaskIds: [taskId], allowedFromActorIds: ['alice'] }
+  const config = { ...f.config, mappings: [mapping], completionCleanup: undefined }
+  const harness = new EventEmitter(), calls = []
+  let busy = true
+  Object.assign(harness, {
+    availability: async () => busy ? 'busy' : 'ready',
+    dispatch: async (_mapping, prompt) => { calls.push(prompt); return 'turn-one' },
+    reconcile: async () => null, close: () => {},
+  })
+  const bridge = new AgentBridge({ config, inbox: f.inbox, source: f.source, adapterFactory: () => harness })
+  try {
+    const added = await f.operation('comment.add', { taskId, text: '@builder original' })
+    await bridge.wake()
+    const original = f.inbox.rows()[0].mention
+    assert.match(original.commentDigest, /^[a-f0-9]{64}$/)
+    const payload = { commentId: added.result.commentId, text: '@builder replacement', expectedRevisions: [added.operationId] }
+    for (const type of ['comment.edit', 'comment.resolve']) {
+      assert.equal((await f.operation(type, payload, 'bob')).code, 'FORBIDDEN')
+    }
+    assert.equal((await f.context(taskId)).comments[0].content, '@builder original')
+    assert.equal((await f.operation('comment.edit', payload)).success, true)
+    assert.deepEqual((await f.context(taskId)).mentions[0], original)
+    busy = false
+    await bridge.wake()
+    assert.equal(calls.length, 0)
+    assert.match(f.inbox.rows()[0].reason, /content binding/)
+    await f.operation('comment.add', { taskId, text: '@builder newly authorized' })
+    await bridge.wake()
+    assert.equal(calls.length, 1)
+    assert.equal(f.inbox.rows().filter(row => row.state === 'accepted').length, 1)
+  } finally { await bridge.stop() }
+}))

@@ -107,6 +107,20 @@ The bridge dispatches at most one eligible delivery per Actor per pass, retainin
 the waiting row and its reason so later replica synchronization can release it.
 Busy sessions, approvals, and uncertain dispatch still block that Actor's dispatch.
 
+Comment edits and conflict resolution require the original author Actor. Each new
+mention stores a SHA-256 digest of its originating comment text alongside its
+operation ID and sender. Before dispatch, the bridge requires the same text,
+revision and editor, with no unresolved comment conflicts. An edited comment
+cannot reuse the original mention's authorization, even if its text is restored.
+Changed or legacy mentions without a digest remain queued with a blocking reason;
+send a new comment to authorize fresh work. Existing receipts and inbox records
+are preserved, including uncertain-dispatch reconciliation. No migration rewrites
+old mention authorizations.
+
+This binds the originating comment, not the entire live task context. Other task
+fields and comments remain workspace data, and Actor IDs still use the existing
+shared-token trust model; this check does not authenticate individual people.
+
 Deliveries progress through `queued → dispatching → accepted`. Busy sessions retain
 queued work. `accepted` means the harness returned a turn ID or matching history
 established acceptance, not that the task succeeded. Pending approvals and input
