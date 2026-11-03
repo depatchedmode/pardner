@@ -68,6 +68,15 @@ It queues busy work and reconciles uncertain dispatch without model polling.
 Real co-host rehearsals cover handoff and archive recovery; other adapters and
 separate-machine qualification remain follow-up work.
 
+The board's **Control** view is a [project control pane](docs/PARDNER-CONTROL-PANE.md)
+for development through T3 Code. It maps existing T3 threads to agent Actors with
+explicit task and sender authorization, saves follow-ups before sending them one at
+a time, and keeps intent, run identity, holds, output and verdicts on this host across
+restarts. Execution completion, an independent check and human acceptance are
+recorded separately. Tasks can link to existing GitHub issues; Pardner stores the
+reference only and never changes GitHub. Live dispatch with a real provider is not
+yet qualified.
+
 For development coordination, use the separately pinned
 [control runtime](docs/PARDNER-CONTROL-RUNTIME.md), whose data and evidence live
 outside candidate checkouts. Its historical compatibility pin is distinct from
@@ -123,6 +132,7 @@ See the [service and CLI guide](docs/PARDNER-CLI.md) for complete examples.
 | Delivery | `pardner mentions claim-next --actor builder --request-id ID` |
 | Explicit observed reads | `pardner read TASK --receipts JSON --actor alice` |
 | Commit evidence | `pardner commit --task TASK --actor builder -- -m MESSAGE` |
+| Link an existing GitHub issue | `pardner issue link TASK owner/repo#77 --actor alice` |
 | Start a vein toward a new or existing goal | `pardner vein create --title TEXT --goal 'GOAL_ID or new goal title' --actor alice` |
 | Add a task to a vein | `pardner vein add VEIN TASK --actor builder` |
 | Record a vein's verdict | `pardner vein update VEIN --status proven --revisions JSON --actor alice` |

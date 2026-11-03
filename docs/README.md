@@ -4,6 +4,7 @@
 - [Companion device and LAN access](PARDNER-LAN.md)
 - [Event-driven agent bridge](PARDNER-BRIDGE.md)
 - [Real-agent bridge rehearsal](PARDNER-BRIDGE-REHEARSAL.md)
+- [Project control pane](PARDNER-CONTROL-PANE.md)
 - [T3 execution contract qualification](PARDNER-T3-QUALIFICATION.md)
 - [Acceptance criteria](PARDNER-ACCEPTANCE.md)
 - [Milestone audit](PARDNER-GOAL-AUDIT.md)
