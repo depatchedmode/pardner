@@ -9,9 +9,13 @@ effects. Accepted work may continue locally when new hub leases are unavailable.
 ## How to get to it (user POV)
 
 From a task choose a **Recipient**, enter a **Handoff message**, then **Hand off**.
-The CLI offers `handoff`, `mentions claim-next`, and `mentions ack`. Register
-the human, builder, and reviewer Actors; supply current assignment/status
-revisions and the returned claim token. A real harness must persist receipt
+The CLI offers `handoff`, `mentions pending`, `mentions claim-next --request-id`
+(optional `--ttl-ms`), `mentions ack`, and `mentions release`, backed by the
+`/automerge/deliveries` routes. Register the human, builder, and reviewer Actors;
+supply current assignment/status revisions and the returned claim token.
+Repeating `claim-next` with the same request ID replays the same claim, and
+repeating `ack` with the same token returns `acknowledged: true, replayed: true`;
+a wrong or expired token returns `STALE_CLAIM`. A real harness must persist receipt
 before acknowledging a delivery.
 
 ## Driving it with CLI and worker subprocesses
@@ -22,11 +26,21 @@ human handoffs, checks assignment and mention counts, and rejects stale changes.
 The component worker test kills deterministic workers before acknowledgement and
 after a saved effect, then inspects their durable SQLite inbox/effect counts and
 the public task context. Expected: one completed delivery/effect and no duplicate
-authored comment after replay. The full acceptance scenario adds browser handoff,
-hub response loss, and complete context/evidence checks.
+authored comment after replay. Idempotent effects come from the worker's
+deterministic `--operation-id`, not from the ledger. The full acceptance scenario
+adds browser handoff, lost sync-ack responses (not lost delivery acks), and
+complete context/evidence checks. `test/mention-lifecycle.test.js` (full
+`node --test` only) covers release, lease expiry, simultaneous claims, restart,
+and comment-delete cancellation; `test/pardner-cli-mentions.test.js` (in
+`npm run test:cli`) covers replica forwarding and `HUB_UNAVAILABLE` while
+accepted work still saves locally.
 
 For provider-bridge changes, inspect the relevant `test/bridge-*.test.js` and
 `test/codex-bridge-adapter.test.js` assertions; use synthetic fixtures first.
+Queued agent mentions are bound to the authorizing comment's content digest,
+revision, and editor; a changed or deleted originating comment keeps the delivery
+blocked with a reason (`test/bridge-review-regressions.test.js`,
+`test/agent-bridge.test.js`, [bridge guide](../../../../docs/PARDNER-BRIDGE.md)).
 Do not invoke real provider/remote rehearsal scripts merely because their paths
 appear in a diff plan. A real-agent rehearsal is a separate requested exercise.
 

@@ -9,6 +9,7 @@
 - [Acceptance criteria](PARDNER-ACCEPTANCE.md)
 - [Milestone audit](PARDNER-GOAL-AUDIT.md)
 - [Implementation evidence](PARDNER-EVIDENCE.md)
+- [Lifecycle ordering model](PARDNER-LIFECYCLE-MODEL.md)
 - [Commit and trace attribution](AGENT-TRACE.md)
 - [Two-machine rehearsal](PARDNER-REHEARSAL.md)
 - [Three collaboration modes](PARDNER-COLLABORATION-MODES.md)
