@@ -271,3 +271,43 @@ it('rejects path/key collisions and residual credentials before any output', t =
     assert.equal(existsSync(target), false)
   }
 })
+
+it('collects individual cookie values from headers and HAR arrays and removes their echoes', t => {
+  const { root } = fixture(t)
+  const source = join(root, 'cookies'), target = join(root, 'cookies-copy')
+  mkdirSync(source)
+  const requestSecret = 'synthetic-session-cookie-0123456789'
+  const responseSecret = 'synthetic-response-cookie-9876543210'
+  const arrayOnly = 'synthetic-array-only-cookie-1122334455'
+  const headerOnly = 'synthetic-header-only-cookie-5566778899'
+  writeFileSync(join(source, 'test.network'), lines([{ type: 'resource-snapshot', snapshot: {
+    request: { url: 'https://example.invalid/', headers: [{ name: 'Cookie', value: `session=${requestSecret}; preference="${headerOnly}"` }],
+      cookies: [{ name: 'session', value: requestSecret }, { name: 'arbitrary_name', value: arrayOnly }] },
+    response: { status: 200, headers: [{ name: 'Set-Cookie', value: `session=${responseSecret}; Path=/; HttpOnly; SameSite=Lax` }],
+      cookies: [{ name: 'session', value: responseSecret }, { name: 'token', value: arrayOnly }] },
+  } }, { type: 'log', message: [requestSecret, responseSecret, arrayOnly, headerOnly].join(' ') }]))
+  writeFileSync(join(source, 'headers.json'), JSON.stringify({ headers: { Cookie: `session=${requestSecret}`, 'Set-Cookie': `session=${responseSecret}; Path=/` } }))
+  const manifest = sanitizeTree({ source, target })
+  assert.equal(manifest.residualCheck.passed, true)
+  const [record, log] = readFileSync(join(target, 'test.network'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
+  assert.equal(record.snapshot.request.url, 'https://example.invalid/')
+  assert.equal(record.snapshot.response.status, 200)
+  for (const side of ['request', 'response']) {
+    assert.ok(record.snapshot[side].headers.every(header => header.value === REDACTED))
+    assert.ok(record.snapshot[side].cookies.every(cookie => cookie.value === REDACTED))
+  }
+  assert.equal(log.message, Array(4).fill(REDACTED).join(' '))
+  for (const { text } of everyText(target)) for (const value of [requestSecret, responseSecret, arrayOnly, headerOnly]) assert.equal(text.includes(value), false)
+})
+
+it('recognizes bearer scheme casing without treating redaction markers as credentials', t => {
+  const { root } = fixture(t)
+  const source = join(root, 'schemes'), target = join(root, 'schemes-copy')
+  mkdirSync(source)
+  writeFileSync(join(source, 'mixed.log'), `bearer ${secrets.token}\nBEARER ${secrets.ticket}\n`)
+  writeFileSync(join(source, 'masked.json'), JSON.stringify({ token: REDACTED }))
+  const manifest = sanitizeTree({ source, target })
+  assert.equal(manifest.credentialValues, 2)
+  assert.equal(readFileSync(join(target, 'mixed.log'), 'utf8'), `bearer ${REDACTED}\nBEARER ${REDACTED}\n`)
+  assert.deepEqual(JSON.parse(readFileSync(join(target, 'masked.json'), 'utf8')), { token: REDACTED })
+})

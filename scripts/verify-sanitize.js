@@ -12,7 +12,7 @@ const credentialKey = /^(authorization|proxy-authorization|cookie|set-cookie|x-a
 const credentialSelector = /token|password|secret|credential|ticket|pairing/i
 const inputMethods = new Set(['fill', 'type', 'press', 'insertText', 'pressSequentially'])
 const credentialQuery = /([?&](?:ticket|token|code|key|secret|claim_token|hub_token|access_token)=)(?!\[REDACTED\])([^&"'\s\\<>]+)/gi
-const bearer = /(\bBearer\s+)([A-Za-z0-9._~+/=-]{8,})/g
+const bearer = /(\bBearer\s+)([A-Za-z0-9._~+/=-]{8,})/gi
 const imageEntry = /\.(jpe?g|png|webp|gif|bmp)$/i
 const jsonLines = /\.(trace|network|stacks|jsonl)$/
 
@@ -87,7 +87,25 @@ const asText = buffer => { try { return decoder.decode(buffer) } catch { return 
 const headerValue = value => value.replace(/^(Bearer|Basic|Digest|Token)\s+/i, '')
 // Collected values plus a count of in-place redactions, so a file is reported as rewritten only when
 // something was redacted, not when JSON was merely reformatted.
-const tracker = () => ({ values: new Set(), redactions: 0, add(value) { this.values.add(value); this.redactions++ } })
+const tracker = () => ({ values: new Set(), redactions: 0, add(value) {
+  if (!value || value === REDACTED) return
+  this.values.add(value)
+  this.redactions++
+} })
+
+function collectCredential(name, value, secrets) {
+  secrets.add(headerValue(value))
+  if (!/^(cookie|set-cookie)$/i.test(name)) return
+  for (const line of value.split(/\r?\n/)) {
+    const pairs = /^set-cookie$/i.test(name) ? [line.split(';')[0]] : line.split(';')
+    for (const pair of pairs) {
+      const equals = pair.indexOf('=')
+      if (equals < 0) continue
+      const cookie = pair.slice(equals + 1).trim()
+      secrets.add(cookie.startsWith('"') && cookie.endsWith('"') ? cookie.slice(1, -1) : cookie)
+    }
+  }
+}
 
 // Walk a JSON value, collecting credential values from structured positions and replacing them in place.
 function redactValue(value, secrets, context = {}) {
@@ -104,16 +122,21 @@ function redactValue(value, secrets, context = {}) {
     return value
   }
   if (!value || typeof value !== 'object') return typeof value === 'string' ? redactText(value, secrets) : value
-  if (typeof value.name === 'string' && typeof value.value === 'string' && credentialKey.test(value.name)) {
-    secrets.add(headerValue(value.value))
+  if (context.cookie && typeof value.value === 'string') {
+    secrets.add(value.value)
+    value.value = REDACTED
+  } else if (typeof value.name === 'string' && typeof value.value === 'string' && credentialKey.test(value.name)) {
+    collectCredential(value.name, value.value, secrets)
     value.value = REDACTED
   }
   const method = typeof value.method === 'string' ? value.method : context.method
   for (const key of Object.keys(value)) {
     const child = value[key]
     if (typeof child === 'string' && credentialKey.test(key)) {
-      secrets.add(headerValue(child))
+      collectCredential(key, child, secrets)
       value[key] = REDACTED
+    } else if (key.toLowerCase() === 'cookies' && Array.isArray(child)) {
+      value[key] = redactValue(child, secrets, { method, cookie: true })
     } else if (key === 'params' && child && typeof child === 'object' && inputMethods.has(method ?? '') && typeof child.selector === 'string' && credentialSelector.test(child.selector)) {
       for (const field of ['value', 'text', 'key']) if (typeof child[field] === 'string') { secrets.add(child[field]); child[field] = REDACTED }
       value[key] = redactValue(child, secrets, { method })
@@ -292,7 +315,6 @@ export function sanitizeTree({ source, target }) {
   // Metadata can contain the same credential patterns as artifact bodies.
   const metadata = redactValue({ source, target, files: prepared.map(item => item.record) }, secrets)
   // Pass 2: replace every collected value, including short values, across content and names.
-  secrets.values.delete('')
   const global = [...secrets.values].sort((a, b) => b.length - a.length)
   const scrub = text => replaceAll(text, global)
   for (const item of prepared) {
@@ -301,7 +323,7 @@ export function sanitizeTree({ source, target }) {
   const manifest = {
     schemaVersion: 1, source: scrub(metadata.source), target: scrub(metadata.target), startedAt, outcome: 'sanitized', credentialValues: secrets.values.size,
     credentialValuesReplacedGlobally: global.length, credentialValuesRedactedInPlaceOnly: 0, files: [],
-    policy: 'Collected credential values from structured positions (authorization/cookie headers, credential-named JSON keys, credential input actions, password inputs in DOM snapshots, bearer schemes, and credential query parameters), redacted them in place, then replaced every collected value in retained text, decoded JSON strings, artifact names and metadata. Image frames, records that reference them, and any entry or file that is not UTF-8 text were removed rather than copied. Path collisions or a residual value prevent all output.',
+    policy: 'Collected credential values from structured positions (authorization headers, individual cookie values in headers and HAR arrays, credential-named JSON keys, credential input actions, password inputs in DOM snapshots, bearer schemes, and credential query parameters), redacted them in place, then replaced every collected value in retained text, decoded JSON strings, artifact names and metadata. Image frames, records that reference them, and any entry or file that is not UTF-8 text were removed rather than copied. Path collisions or a residual value prevent all output.',
     limitations: ['Sanitized copies are not the original traces: screenshot playback and removed binary entries are unavailable.', 'Collection depends on recognizable positions and patterns; a credential that appears only in an unrecognized form is not detected. Review the manifest counts against what the run captured.', 'Originals remain where they were and still contain credentials; keep them private.'],
   }
   const written = []

@@ -201,7 +201,8 @@ npm --silent run verify:sanitize -- --source output/acceptance/<run>/seed-1 --ta
 ```
 
 It never edits the source. It collects credential values from structured
-positions (authorization and cookie headers, credential-named JSON keys,
+positions (authorization headers, individual cookie values in headers and HAR
+cookie arrays, credential-named JSON keys,
 credential input actions, password inputs in DOM snapshots, bearer schemes,
 and credential query parameters), redacts them in place, replaces every
 collected value in retained text, decoded JSON strings, filenames, ZIP entry
