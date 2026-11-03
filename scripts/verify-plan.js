@@ -63,7 +63,7 @@ const groups = [
     name: 't3-qualification-harness', scripts: [], files: names('scripts/t3-qualification.js support/t3-fake-codex.mjs'),
     focused: [{ command: 'npm run test:t3-qualification', note: 'Requires the pinned T3 app; see docs/PARDNER-T3-QUALIFICATION.md' }],
   },
-  { name: 'control-runtime', scripts: ['test:control-runtime'], files: ['scripts/control-runtime.py'] },
+  { name: 'control-runtime', scripts: ['test:control-runtime'], files: names('scripts/control-runtime.py test/control_runtime_test.py') },
 ]
 const manifests = ['package.json', 'package-lock.json', 'ui-prototype/package.json', 'ui-prototype/package-lock.json']
 const scriptOrder = ['test:verification', 'test:qualification', 'test:runtime', 'test:cli', 'test:ui', 'test:control-runtime']

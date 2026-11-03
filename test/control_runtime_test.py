@@ -217,7 +217,13 @@ class RecoveryTests(unittest.TestCase):
                     paths = git(ROOT, 'ls-files', '--cached', '--others', '--exclude-standard', '-z').split('\0')
                     for name in filter(None, paths):
                         origin, target = ROOT / name, release / name
-                        if origin.exists():
+                        if origin.is_symlink():
+                            # Mirror a tracked link (such as .claude/skills) as a link; copying through it fails on a directory.
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            if target.is_symlink() or target.exists():
+                                target.unlink()
+                            os.symlink(os.readlink(origin), target)
+                        elif origin.exists():
                             target.parent.mkdir(parents=True, exist_ok=True)
                             shutil.copy2(origin, target)
                         elif target.exists():
