@@ -204,9 +204,14 @@ It never edits the source. It collects credential values from structured
 positions (authorization and cookie headers, credential-named JSON keys,
 credential input actions, password inputs in DOM snapshots, bearer schemes,
 and credential query parameters), redacts them in place, replaces every
-collected value in every retained text, removes screenshot frames and any
-entry it cannot read as text, and then checks the bytes it is about to write;
-nothing is written if a collected value survives. `sanitization.json` in the
+collected value in retained text, decoded JSON strings, filenames, ZIP entry
+names and manifest metadata, and removes screenshot frames and entries it
+cannot read as text. Numbered and named Playwright trace entries are parsed
+record by record. It checks all output before writing; a surviving value or
+colliding redacted name prevents all output, including the manifest. Very short
+values that also occur in fixed metadata or hashes can therefore block a copy.
+Source and target are checked through filesystem aliases before writing.
+`sanitization.json` in the
 target records counts, hashes, and the transformation, never a value. Link
 that manifest from `report.md`, state that the copies are sanitized and lack
 screenshot playback, and keep the originals private. The tool detects what it

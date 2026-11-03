@@ -185,3 +185,89 @@ it('sanitizes a single archive through the CLI and prints counts only', t => {
     assert.equal(data.toString().includes(secrets.token), false, name)
   }
 })
+
+it('redacts short and JSON-escaped credentials from decoded echoes and keys', t => {
+  const { root } = fixture(t)
+  const source = join(root, 'escaped')
+  mkdirSync(source)
+  const values = ['739206', 'synthetic-quote-"-backslash-\\-token']
+  for (const [index, value] of values.entries()) {
+    writeFileSync(join(source, `${index}.json`), JSON.stringify({ pairing_code: value, message: `echo ${value}`, [value]: 'ordinary' }))
+  }
+  const target = join(root, 'escaped-copy')
+  const manifest = sanitizeTree({ source, target })
+  assert.equal(manifest.credentialValuesRedactedInPlaceOnly, 0)
+  for (const index of values.keys()) {
+    assert.deepEqual(JSON.parse(readFileSync(join(target, `${index}.json`), 'utf8')), { pairing_code: REDACTED, message: `echo ${REDACTED}`, [REDACTED]: 'ordinary' })
+  }
+})
+
+it('redacts names and manifest metadata as well as artifact payloads', t => {
+  const { root } = fixture(t)
+  const value = secrets.token
+  const source = join(root, `${value}-source`), target = join(root, `${value}-copy`)
+  mkdirSync(source)
+  writeFileSync(join(source, 'report.json'), JSON.stringify({ token: value }))
+  writeFileSync(join(source, `${value}.txt`), 'ordinary evidence')
+  symlinkSync(`../${value}`, join(source, 'linked'))
+  writeFileSync(join(source, 'trace.zip'), writeZip([{ name: `resources/${value}.json`, data: Buffer.from(JSON.stringify({ message: value })) }]))
+  const manifest = sanitizeTree({ source, target })
+  assert.equal(JSON.stringify(manifest).includes(value), false)
+  assert.ok(existsSync(join(target, `${REDACTED}.txt`)))
+  const [entry] = readZip(readFileSync(join(target, 'trace.zip')))
+  assert.equal(entry.name, `resources/${REDACTED}.json`)
+  assert.deepEqual(JSON.parse(entry.data.toString()), { message: REDACTED })
+  assert.equal(manifest.files.find(file => file.path === 'linked').target, `../${REDACTED}`)
+})
+
+it('parses merged and named Playwright traces before collecting credentials', t => {
+  const { root } = fixture(t)
+  const source = join(root, 'merged.zip'), target = join(root, 'merged-copy')
+  writeFileSync(source, writeZip([
+    { name: '0-trace.trace', data: Buffer.from(lines([
+      { type: 'before', method: 'fill', params: { selector: 'input[placeholder="token"]', value: secrets.token } },
+      { type: 'log', message: `echo ${secrets.token}` },
+    ])) },
+    { name: 'test.trace', data: Buffer.from(lines([
+      { type: 'frame-snapshot', snapshot: { html: ['INPUT', { type: 'password', __playwright_value_: secrets.hub }] } },
+      { type: 'log', message: `echo ${secrets.hub}` },
+    ])) },
+    { name: '1-trace.network', data: Buffer.from(lines([
+      { type: 'resource-snapshot', snapshot: { request: { headers: [{ name: 'Cookie', value: secrets.claim }] } } },
+      { type: 'log', message: `echo ${secrets.claim}` },
+    ])) },
+  ]))
+  const manifest = sanitizeTree({ source, target })
+  assert.equal(manifest.credentialValues, 3)
+  const entries = readZip(readFileSync(join(target, 'merged.zip')))
+  assert.equal(entries.length, 3)
+  for (const { data } of entries) {
+    const records = data.toString().trim().split('\n').map(line => JSON.parse(line))
+    assert.equal(records.length, 2)
+    assert.equal(records[1].message, `echo ${REDACTED}`)
+    for (const value of Object.values(secrets)) assert.equal(data.toString().includes(value), false)
+  }
+})
+
+it('rejects source/target aliases through existing ancestors without writing', t => {
+  const { root, source } = fixture(t)
+  const alias = join(root, 'alias')
+  symlinkSync(source, alias)
+  assert.throws(() => sanitizeTree({ source, target: join(alias, 'derived') }), /contain each other/)
+  assert.equal(existsSync(join(source, 'derived')), false)
+  assert.throws(() => sanitizeTree({ source: alias, target: source }), /in place/)
+})
+
+it('rejects path/key collisions and residual credentials before any output', t => {
+  const { root } = fixture(t)
+  for (const kind of ['file', 'archive', 'key', 'manifest']) {
+    const source = join(root, kind), target = join(root, `${kind}-copy`)
+    mkdirSync(source)
+    writeFileSync(join(source, 'report.json'), JSON.stringify({ token: kind === 'manifest' ? 'sanitized' : secrets.token }))
+    if (kind === 'file') for (const name of [secrets.token, REDACTED]) writeFileSync(join(source, `${name}.txt`), 'evidence')
+    if (kind === 'archive') writeFileSync(join(source, 'trace.zip'), writeZip([secrets.token, REDACTED].map(name => ({ name: `${name}.txt`, data: Buffer.from('evidence') }))))
+    if (kind === 'key') writeFileSync(join(source, 'keys.json'), JSON.stringify({ [secrets.token]: 'one', [REDACTED]: 'two' }))
+    assert.throws(() => sanitizeTree({ source, target }), /no artifact was written/)
+    assert.equal(existsSync(target), false)
+  }
+})

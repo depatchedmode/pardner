@@ -2,20 +2,19 @@
 // Produce a sanitized copy of verification artifacts (Playwright trace archives, reports, logs) that
 // captured disposable credentials. Originals are never modified; the copy records its transformation.
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { crc32, deflateRawSync, inflateRawSync } from 'node:zlib'
 
 export const REDACTED = '[REDACTED]'
-const minimumGlobalLength = 8
 const credentialKey = /^(authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|token|ticket|claim_?token|hub_?token|access_?token|refresh_?token|secret|password|credential|api_?key|pairing_?code)$/i
 const credentialSelector = /token|password|secret|credential|ticket|pairing/i
 const inputMethods = new Set(['fill', 'type', 'press', 'insertText', 'pressSequentially'])
 const credentialQuery = /([?&](?:ticket|token|code|key|secret|claim_token|hub_token|access_token)=)(?!\[REDACTED\])([^&"'\s\\<>]+)/gi
 const bearer = /(\bBearer\s+)([A-Za-z0-9._~+/=-]{8,})/g
 const imageEntry = /\.(jpe?g|png|webp|gif|bmp)$/i
-const jsonLines = /^(trace\.(trace|network|stacks)|.*\.jsonl)$/
+const jsonLines = /\.(trace|network|stacks|jsonl)$/
 
 // --- Minimal ZIP support (stored and deflated entries, no zip64) ---------------------------------
 export function readZip(buffer) {
@@ -148,12 +147,44 @@ const replaceAll = (text, values) => {
   for (const value of values) text = text.split(value).join(REDACTED)
   return text
 }
+
+function mapStrings(value, transform) {
+  if (typeof value === 'string') return transform(value)
+  if (Array.isArray(value)) return value.map(child => mapStrings(child, transform))
+  if (!value || typeof value !== 'object') return value
+  const entries = Object.entries(value).map(([key, child]) => [transform(key), mapStrings(child, transform)])
+  if (new Set(entries.map(([key]) => key)).size !== entries.length) throw new Error('Redaction would collide JSON keys; no artifact was written')
+  return Object.fromEntries(entries)
+}
+
+// Work on decoded strings so quotes, backslashes and other JSON escapes cannot conceal a copy.
+function replaceDocument(text, values) {
+  let parsed
+  try { parsed = JSON.parse(text) } catch { return replaceAll(text, values) }
+  const indent = /^[[{]\r?\n( +)/.exec(text)?.[1].length
+  return JSON.stringify(mapStrings(parsed, value => replaceAll(value, values)), null, indent) + (text.endsWith('\n') ? '\n' : '')
+}
+
+function replaceEntry(name, text, values) {
+  return jsonLines.test(name) ? text.split('\n').map(line => replaceDocument(line, values)).join('\n') : replaceDocument(text, values)
+}
+
+function decodedTexts(name, text) {
+  const texts = [text]
+  for (const document of jsonLines.test(name) ? text.split('\n') : [text]) {
+    let parsed
+    try { parsed = JSON.parse(document) } catch { continue }
+    mapStrings(parsed, value => { texts.push(value); return value })
+  }
+  return texts
+}
+
 const sha256 = buffer => createHash('sha256').update(buffer).digest('hex')
 
 // --- Tree processing -----------------------------------------------------------------------------
 function listFiles(root) {
   const stat = lstatSync(root)
-  if (!stat.isDirectory()) return [{ path: '.', absolute: root, stat }]
+  if (!stat.isDirectory()) return [{ path: basename(root), absolute: root, stat }]
   const found = []
   const walk = directory => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -201,15 +232,37 @@ function sanitizeArchive(buffer, secrets) {
   return { counts, output }
 }
 
+// Resolve existing ancestors too: a new target below a symlink must not alias the source.
+function canonicalPath(path) {
+  path = resolve(path)
+  return existsSync(path) ? realpathSync(path) : join(canonicalPath(dirname(path)), basename(path))
+}
+
+function checkPaths(paths) {
+  const seen = new Set()
+  for (const path of paths) {
+    if (!path || path.startsWith('/') || path.includes('\\') || path.split('/').some(part => part === '..' || part === '.')) throw new Error('Unsafe artifact path; no artifact was written')
+    if (seen.has(path)) throw new Error('Redaction would collide artifact paths; no artifact was written')
+    seen.add(path)
+  }
+  for (const path of seen) {
+    const parts = path.split('/')
+    while (parts.length > 1) {
+      parts.pop()
+      if (seen.has(parts.join('/'))) throw new Error('Redaction would collide a file and directory; no artifact was written')
+    }
+  }
+}
+
 export function sanitizeTree({ source, target }) {
   source = resolve(source)
-  target = resolve(target)
   if (!existsSync(source)) throw new Error(`Source does not exist: ${source}`)
+  source = realpathSync(source)
+  target = canonicalPath(target)
   if (source === target) throw new Error('Refusing to sanitize in place: target must differ from source')
   const inside = (child, parent) => child === parent || child.startsWith(parent + sep)
   if (inside(target, source) || inside(source, target)) throw new Error('Source and target must not contain each other')
   if (existsSync(target) && readdirSync(target).length) throw new Error(`Target must be empty or absent: ${target}`)
-  mkdirSync(target, { recursive: true })
   const startedAt = new Date().toISOString()
   const secrets = tracker()
   const files = listFiles(source)
@@ -236,14 +289,19 @@ export function sanitizeTree({ source, target }) {
     const next = redactEntry(file.absolute.split(/[\\/]/).at(-1), text, secrets)
     prepared.push({ record: { ...record, kind: 'text' }, next, redacted: secrets.redactions > redactionsBefore })
   }
-  // Pass 2: exact-value replacement of every collected credential across every retained text, then write.
+  // Metadata can contain the same credential patterns as artifact bodies.
+  const metadata = redactValue({ source, target, files: prepared.map(item => item.record) }, secrets)
+  // Pass 2: replace every collected value, including short values, across content and names.
   secrets.values.delete('')
-  const global = [...secrets.values].filter(value => value.length >= minimumGlobalLength).sort((a, b) => b.length - a.length)
-  const short = secrets.values.size - global.length
+  const global = [...secrets.values].sort((a, b) => b.length - a.length)
+  const scrub = text => replaceAll(text, global)
+  for (const item of prepared) {
+    for (const key of ['path', 'target', 'error']) if (typeof item.record[key] === 'string') item.record[key] = scrub(item.record[key])
+  }
   const manifest = {
-    schemaVersion: 1, source, target, startedAt, outcome: 'incomplete', credentialValues: secrets.values.size,
-    credentialValuesReplacedGlobally: global.length, credentialValuesRedactedInPlaceOnly: short, files: [],
-    policy: 'Collected credential values from structured positions (authorization/cookie headers, credential-named JSON keys, credential input actions, password inputs in DOM snapshots, bearer schemes, and credential query parameters), redacted them in place, then replaced every collected value of at least eight characters in every retained text. Image frames, records that reference them, and any entry or file that is not UTF-8 text were removed rather than copied.',
+    schemaVersion: 1, source: scrub(metadata.source), target: scrub(metadata.target), startedAt, outcome: 'sanitized', credentialValues: secrets.values.size,
+    credentialValuesReplacedGlobally: global.length, credentialValuesRedactedInPlaceOnly: 0, files: [],
+    policy: 'Collected credential values from structured positions (authorization/cookie headers, credential-named JSON keys, credential input actions, password inputs in DOM snapshots, bearer schemes, and credential query parameters), redacted them in place, then replaced every collected value in retained text, decoded JSON strings, artifact names and metadata. Image frames, records that reference them, and any entry or file that is not UTF-8 text were removed rather than copied. Path collisions or a residual value prevent all output.',
     limitations: ['Sanitized copies are not the original traces: screenshot playback and removed binary entries are unavailable.', 'Collection depends on recognizable positions and patterns; a credential that appears only in an unrecognized form is not detected. Review the manifest counts against what the run captured.', 'Originals remain where they were and still contain credentials; keep them private.'],
   }
   const written = []
@@ -252,46 +310,43 @@ export function sanitizeTree({ source, target }) {
     manifest.files.push(record)
     if (record.kind === 'archive') {
       const entries = item.output.map(({ name, next, redacted }) => {
-        const final = replaceAll(next, global)
+        const final = replaceEntry(name, next, global)
         if (redacted || final !== next) record.entries.textRewritten++
-        return { name, data: Buffer.from(final, 'utf8') }
+        return { name: scrub(name), data: Buffer.from(final, 'utf8') }
       })
+      checkPaths(entries.map(entry => entry.name))
       const buffer = writeZip(entries)
       record.sha256After = sha256(buffer)
       record.bytesAfter = buffer.length
-      written.push({ path: record.path, buffer, texts: entries.map(entry => entry.data.toString('utf8')) })
+      written.push({ path: record.path, buffer, texts: entries.flatMap(entry => [entry.name, ...decodedTexts(entry.name, entry.data.toString('utf8'))]) })
     } else if (record.kind === 'text') {
-      const final = replaceAll(item.next, global)
+      const final = replaceEntry(record.path, item.next, global)
       record.rewritten = item.redacted || final !== item.next
       const buffer = Buffer.from(final, 'utf8')
       record.sha256After = sha256(buffer)
       record.bytesAfter = buffer.length
-      written.push({ path: record.path, buffer, texts: [final] })
+      written.push({ path: record.path, buffer, texts: decodedTexts(record.path, final) })
     }
   }
   // Residual check on the exact bytes about to be written. Nothing is written if a collected value survives.
   const residual = { passed: true, occurrences: 0, patternMatches: 0 }
-  for (const item of written) {
-    for (const text of item.texts) {
-      for (const value of global) residual.occurrences += text.split(value).length - 1
-      residual.patternMatches += (text.match(bearer)?.length ?? 0) + (text.match(credentialQuery)?.length ?? 0)
-    }
+  manifest.finishedAt = new Date().toISOString()
+  manifest.residualCheck = residual
+  const manifestText = `${JSON.stringify(manifest, null, 2)}\n`
+  checkPaths(['sanitization.json', ...written.map(item => item.path)])
+  for (const text of [...written.flatMap(item => [item.path, ...item.texts]), ...decodedTexts('sanitization.json', manifestText)]) {
+    for (const value of global) residual.occurrences += text.split(value).length - 1
+    residual.patternMatches += (text.match(bearer)?.length ?? 0) + (text.match(credentialQuery)?.length ?? 0)
   }
   residual.passed = residual.occurrences === 0 && residual.patternMatches === 0
-  manifest.residualCheck = residual
-  if (residual.passed) {
-    for (const item of written) {
-      const destination = item.path === '.' ? join(target, files[0].absolute.split(/[\\/]/).at(-1)) : join(target, item.path)
-      mkdirSync(dirname(destination), { recursive: true })
-      writeFileSync(destination, item.buffer, { mode: 0o600 })
-    }
-    manifest.outcome = 'sanitized'
-  } else {
-    manifest.outcome = 'failed'
-    manifest.error = 'A collected credential or credential pattern survived sanitization; no artifact was written'
+  if (!residual.passed) throw new Error('A collected credential or credential pattern survived sanitization; no artifact was written')
+  mkdirSync(target, { recursive: true })
+  for (const item of written) {
+    const destination = join(target, item.path)
+    mkdirSync(dirname(destination), { recursive: true })
+    writeFileSync(destination, item.buffer, { mode: 0o600 })
   }
-  manifest.finishedAt = new Date().toISOString()
-  writeFileSync(join(target, 'sanitization.json'), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 })
+  writeFileSync(join(target, 'sanitization.json'), manifestText, { mode: 0o600 })
   return manifest
 }
 
