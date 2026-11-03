@@ -62,7 +62,9 @@ export class FakeT3 {
 
   say(runId, text) {
     const thread = [...this.threads.values()].find(candidate => candidate.runs.some(run => run.runId === runId))
-    thread.items.push({ itemId: `item-${thread.items.length + 1}`, runId, type: 'assistant_message', createdBy: 'agent', status: 'completed', text, textTruncated: false })
+    thread.items.push({ itemId: `item-${thread.items.length + 1}`, runId, type: 'assistant_message', createdBy: 'agent', creationSource: 'provider', status: 'completed', text, textTruncated: false })
+    // Reasoning is activity, not output.
+    thread.items.push({ itemId: `item-${thread.items.length + 1}`, runId, type: 'reasoning', createdBy: null, status: 'completed', text: `thinking about ${text}`, textTruncated: false })
   }
 
   block(runId) { this.runById(runId).waiting = true }
@@ -112,7 +114,8 @@ export class FakeT3 {
         const busy = thread.runs.some(candidate => ACTIVE.has(candidate.status))
         run = this.addRun(thread, busy ? 'queued' : 'running')
         this.dedupe.set(key, run)
-        thread.items.push({ itemId: `item-${thread.items.length + 1}`, runId: run.runId, type: 'user_message', createdBy: 'user', status: 'completed',
+        // As observed live in 0.1.6, a prompt sent over MCP is a user_message created by an agent.
+        thread.items.push({ itemId: `item-${thread.items.length + 1}`, runId: run.runId, type: 'user_message', createdBy: 'agent', creationSource: 'mcp', status: 'completed',
           messageId: `message:mcp:client%3A${client}:thread-send:${encodeURIComponent(input.clientRequestId)}`, text: input.message, textTruncated: false })
       }
       return { threadId: thread.threadId, link: thread.link, runId: run.runId, status: run.status, delivery: run.status }
