@@ -153,7 +153,6 @@ export async function runWithWatchdog({ command, args, timeout, grace = 10, log,
       result.outcome = 'supervision-failed'
       result.error = outcome.supervisionError
       result.cleanup = await reclaimOwnGroup(child, childAlive, grace)
-      result.unverifiedProcesses = [...owned.values()].filter(row => row.pgid !== child.pid).map(({ pid, pgid, command }) => ({ pid, pgid, command }))
       if (!childAlive()) Object.assign(result, await exited)
     } else {
       const remaining = refresh()
@@ -185,6 +184,12 @@ export async function runWithWatchdog({ command, args, timeout, grace = 10, log,
     process.off('SIGTERM', onTerm)
     process.off('SIGINT', onInt)
     closeSync(fd)
+    if (result.outcome === 'supervision-failed') {
+      // A successful group signal establishes only the reaped leader's exit. Without ps, observed
+      // descendants may have survived or changed groups; include them even if they shared its group.
+      result.unverifiedProcesses = [...owned.values()].filter(row => row.pid !== child?.pid || childAlive())
+        .map(({ pid, pgid, started, command }) => ({ pid, pgid, started, command }))
+    }
     if (signalErrors.length) result.signalErrors = signalErrors
   }
   return finish()

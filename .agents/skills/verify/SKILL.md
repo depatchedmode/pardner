@@ -248,7 +248,8 @@ preflight fails (for example a sandbox denying `ps`), it records
 cannot enumerate cannot be reclaimed. If enumeration fails after the spawn,
 it records `supervision-failed` with the raw error, signals only the child's
 own process group (which cannot be reused while the child is alive), lists
-observed processes outside that group under `unverifiedProcesses` without
+observed descendants whose exit cannot be established under `unverifiedProcesses`,
+including those in the same group, without
 signalling them, and exits `3`. Resolve the permission and rerun; do not treat
 either record as a command result. A command that never starts records
 `spawn-failed` (exit `127`). The process-group reclaim is a conservative

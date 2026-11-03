@@ -156,7 +156,7 @@ it('records a later enumeration failure and reclaims only the child process grou
   assert.equal(alive(child), false)
   assert.equal(alive(sibling), false, 'same-group members are reclaimed with the group')
   assert.ok(ps.calls() > 4, 'enumeration was attempted after the spawn')
-  assert.deepEqual(record.unverifiedProcesses, [], 'nothing outside the group was observed, so nothing was left unverified')
+  assert.ok(record.unverifiedProcesses.some(row => row.pid === sibling), 'a group signal does not verify a descendant exit without enumeration')
 })
 
 it('leaves observed processes outside the child group alone when it cannot re-verify them', { timeout: 30000 }, t => {
@@ -194,4 +194,38 @@ it('reclaims an observed detached descendant after the parent exits', { timeout:
   assert.ok(result.orphansAfterExit.some(row => row.pid === pid))
   assert.equal(alive(pid), false)
   assert.deepEqual(result.survivorsAfterKill, [])
+})
+
+it('reports same-group survivors when enumeration fails during supervision or exit cleanup', { timeout: 30000 }, t => {
+  for (const phase of ['supervision', 'cleanup']) {
+    const directory = scratch(t)
+    const pids = join(directory, 'pids.json')
+    const ps = denyingPs(directory, 1000)
+    const ready = join(directory, 'ready')
+    const siblingProgram = `process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(${JSON.stringify(ready)}, 'ready'); setInterval(() => {}, 1000)`
+    const program = `
+      const { spawn } = require('node:child_process'); const fs = require('node:fs');
+      const sibling = spawn(process.execPath, ['-e', ${JSON.stringify(siblingProgram)}], { stdio: 'ignore' });
+      fs.writeFileSync(${JSON.stringify(pids)}, JSON.stringify([process.pid, sibling.pid]));
+      const timer = setInterval(() => {
+        if (!fs.existsSync(${JSON.stringify(ready)}) || Number(fs.readFileSync(${JSON.stringify(join(directory, 'ps-calls'))}, 'utf8')) < 6) return;
+        clearInterval(timer);
+        fs.writeFileSync(${JSON.stringify(join(directory, 'ps-limit'))}, '0');
+        ${phase === 'cleanup' ? 'process.exit(0)' : 'setInterval(() => {}, 1000)'};
+      }, 10);`
+    const run = watchdog(directory, { PATH: ps.PATH }, 20, program)
+    const [child, sibling] = JSON.parse(readFileSync(pids, 'utf8'))
+    t.after(() => { for (const pid of [child, sibling]) try { process.kill(pid, 'SIGKILL') } catch {} })
+    assert.equal(run.status, exitCodes.unsupervised, run.stderr)
+    const record = JSON.parse(readFileSync(join(directory, 'run.json'), 'utf8'))
+    assert.equal(record.outcome, 'supervision-failed')
+    if (phase === 'cleanup') assert.equal(record.exitCode, 0, 'enumeration failed after the normal command exit')
+    assert.equal(record.cleanup.childExited, true)
+    assert.equal(alive(child), false)
+    assert.equal(alive(sibling), true)
+    assert.ok(record.unverifiedProcesses.some(row => row.pid === sibling && row.pgid === child && row.started), phase)
+    assert.equal(record.unverifiedProcesses.some(row => row.pid === child), false, 'Node reaped the leader')
+    assert.equal(record.cleanup.signals.includes('SIGKILL'), false, 'never signal the group after its leader exits')
+    process.kill(sibling, 'SIGKILL')
+  }
 })
