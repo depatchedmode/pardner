@@ -291,43 +291,39 @@ it('preserves human and agent alternatives across an offline partition and conve
   }
 })
 
-it('drains accepted HTTP work and rejects pipelined requests during shutdown', { timeout: 15000 }, async () => {
-  const root = await mkdtemp(join(tmpdir(), 'pardner-drain-'))
+it('completes an accepted acknowledgement after stop() begins and rejects the pipelined request', { timeout: 15000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-stop-pipeline-'))
   const hub = service(join(root, 'hub'))
-  let socket
-  let stopping
-  let release
+  let socket, stopping, release
   try {
     await hub.start()
-    let entered
-    const accepted = new Promise(resolve => { entered = resolve })
-    const gate = new Promise(resolve => { release = resolve })
-    hub.app.get('/test-drain', async (_req, res) => {
-      entered()
-      await gate
-      res.json({ accepted: true })
-    })
+    const entered = Promise.withResolvers()
+    const gate = Promise.withResolvers()
+    release = gate.resolve
+    const acknowledge = hub.store.acknowledge.bind(hub.store)
+    hub.store.acknowledge = async (...args) => { entered.resolve(); await gate.promise; return acknowledge(...args) }
     socket = connect(hub.httpPort, '127.0.0.1')
-    let response = ''
-    socket.on('data', bytes => { response += bytes.toString() })
-    const closed = once(socket, 'close')
+    socket.setTimeout(5000, () => socket.destroy(new Error('shutdown response timed out')))
+    const received = []
+    socket.on('data', chunk => received.push(chunk))
+    const ended = once(socket, 'end')
+    ended.catch(() => {})
     await once(socket, 'connect')
-    const request = path => `GET ${path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer ${token}\r\nConnection: keep-alive\r\n\r\n`
-    socket.write(request('/test-drain'))
-    await accepted
+    const body = JSON.stringify({ workspaceId: hub.store.manifest.workspaceId, heads: [] })
+    socket.write(`POST /automerge/sync-ack HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer ${token}\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`)
+    await entered.promise
     stopping = hub.stop()
     const nextRequest = once(hub.httpServer, 'request')
-    socket.write(request('/automerge/url'))
+    socket.write(`GET /automerge/status HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer ${token}\r\n\r\n`)
     await nextRequest
     release()
-    await eventually(() => (response.match(/HTTP\/1\.1/g) ?? []).length === 2)
-    assert.match(response, /HTTP\/1\.1 200 OK/)
-    assert.match(response, /"accepted":true/)
-    assert.match(response, /HTTP\/1\.1 503 Service Unavailable/)
+    await ended
+    await stopping
+    const response = Buffer.concat(received).toString()
+    assert.deepEqual([...response.matchAll(/HTTP\/1\.1 (\d+)/g)].map(match => match[1]), ['200', '503'])
+    assert.match(response, /"acknowledged":true/)
     assert.match(response, /Connection: close/i)
     assert.match(response, /SERVICE_STOPPING/)
-    await closed
-    await stopping
   } finally {
     release?.()
     socket?.destroy()
