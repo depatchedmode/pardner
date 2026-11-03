@@ -187,6 +187,20 @@ descendants in other process groups, such as browsers. It then terminates them
 the normal duration, never as a substitute for a test's own timeout. A timeout
 is a failure to investigate, not a slow pass.
 
+The record's `outcome` states what the watchdog itself established. Before
+spawning anything it reads the process table and the scratch root; when that
+preflight fails (for example a sandbox denying `ps`), it records
+`preflight-failed`, starts no command, and exits `3`, because a command it
+cannot enumerate cannot be reclaimed. If enumeration fails after the spawn,
+it records `supervision-failed` with the raw error, signals only the child's
+own process group (which cannot be reused while the child is alive), lists
+observed processes outside that group under `unverifiedProcesses` without
+signalling them, and exits `3`. Resolve the permission and rerun; do not treat
+either record as a command result. A command that never starts records
+`spawn-failed` (exit `127`). The process-group reclaim is a conservative
+fallback: `SIGTERM` to the group, then `SIGKILL` if the child is still alive
+after `--grace` seconds.
+
 The watchdog supports macOS/Linux. It snapshots `$TMPDIR/pardner-*` before
 and after each run without deleting directories. New names are cleanup leads,
 not proof of ownership when other agents are active. Retain only attributable
