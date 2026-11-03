@@ -155,6 +155,9 @@ what has actually passed. The schema 2 milestone passed the 20-seed acceptance g
 and fresh-checkout verification. Schema 3 review fixes passed `npm run verify`;
 see the separate qualification in the [milestone audit](docs/PARDNER-GOAL-AUDIT.md). The [two-machine real-agent rehearsal](docs/PARDNER-REHEARSAL.md)
 is prepared for separate human signoff; automated success does not claim it ran.
+`npm run verify:model` checks a bounded, code-mapped [lifecycle ordering model](docs/PARDNER-LIFECYCLE-MODEL.md)
+of request admission, persistence acknowledgement and shutdown; it establishes
+its properties within that model only.
 
 ## Storage and dependencies
 

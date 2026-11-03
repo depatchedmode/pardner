@@ -1,0 +1,9 @@
+{
+  "revision": "bdf0ef091ca224b91da5a4f6b5739a1e04081990",
+  "files": {
+    "automerge-sync-server.js": "ec30421bd70788f0d5ed39e36eabe4ef51b69b5ea6adf3dc3f048fce0a100ffe",
+    "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+    "lib/workspace-runtime.js": "ecbedacaed6740499eda73451b692c4984ef24715569af1aa69c23656569f2f0",
+    "lib/workspace.js": "e454add5eb36d16b94f1e814b12d3c3032f3f3fe01cb5ef64bc20b9facf78d3d"
+  }
+}

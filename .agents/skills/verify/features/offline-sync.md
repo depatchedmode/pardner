@@ -36,6 +36,15 @@ needs direct coverage even if the existing gate passes. The browser's
 **Resolve status** / **Keep this status** controls are exercised only by
 `scripts/acceptance.js`, not by `test/pardner-ui.test.js`.
 
+## Lifecycle ordering model
+
+`npm run verify:model` checks a bounded, code-mapped model of request admission,
+persistence acknowledgement and shutdown ordering, with implementation checks in
+`test/lifecycle-conformance.test.js`. Use the
+[verify-lifecycle-model skill](../../verify-lifecycle-model/SKILL.md) when the
+mapped runtime files change or the check reports drift; see
+[PARDNER-LIFECYCLE-MODEL.md](../../../../docs/PARDNER-LIFECYCLE-MODEL.md).
+
 ## Gotchas
 
 Companion browsers own no offline Automerge replica. Cutting the hub path must
