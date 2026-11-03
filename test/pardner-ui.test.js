@@ -90,6 +90,9 @@ for (const uuidAvailable of [true, false]) it(
         .getByRole('button', { name: 'Mark displayed comments read' })
         .click()
       await bob.getByText('0 unread for bob', { exact: true }).waitFor()
+      // Alice's comments and unread count arrive in the same task-context response, so wait for her
+      // rendered comment and then read the count; Bob's receipt applies to Bob only.
+      await alice.locator('article.comment').getByText('The requirements are ready for @builder.', { exact: true }).waitFor()
       assert.match(
         await alice.getByText(/unread for alice/).textContent(),
         /1 unread/,

@@ -68,6 +68,11 @@ It queues busy work and reconciles uncertain dispatch without model polling.
 Real co-host rehearsals cover handoff and archive recovery; other adapters and
 separate-machine qualification remain follow-up work.
 
+For development coordination, use the separately pinned
+[control runtime](docs/PARDNER-CONTROL-RUNTIME.md), whose data and evidence live
+outside candidate checkouts. Its historical compatibility pin is distinct from
+the current implementation described here.
+
 ## Quick start
 
 Use Node **24.11.1**. From this checkout:

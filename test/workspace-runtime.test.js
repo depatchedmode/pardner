@@ -291,46 +291,118 @@ it('preserves human and agent alternatives across an offline partition and conve
   }
 })
 
-it('drains accepted HTTP work and rejects pipelined requests during shutdown', { timeout: 15000 }, async () => {
-  const root = await mkdtemp(join(tmpdir(), 'pardner-drain-'))
+it('completes an accepted acknowledgement after stop() begins and rejects the pipelined request', { timeout: 15000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-stop-pipeline-'))
   const hub = service(join(root, 'hub'))
-  let socket
-  let stopping
-  let release
+  let socket, stopping, release
   try {
     await hub.start()
-    let entered
-    const accepted = new Promise(resolve => { entered = resolve })
-    const gate = new Promise(resolve => { release = resolve })
-    hub.app.get('/test-drain', async (_req, res) => {
-      entered()
-      await gate
-      res.json({ accepted: true })
-    })
+    const entered = Promise.withResolvers()
+    const gate = Promise.withResolvers()
+    release = gate.resolve
+    const acknowledge = hub.store.acknowledge.bind(hub.store)
+    hub.store.acknowledge = async (...args) => { entered.resolve(); await gate.promise; return acknowledge(...args) }
     socket = connect(hub.httpPort, '127.0.0.1')
-    let response = ''
-    socket.on('data', bytes => { response += bytes.toString() })
-    const closed = once(socket, 'close')
+    socket.setTimeout(5000, () => socket.destroy(new Error('shutdown response timed out')))
+    const received = []
+    socket.on('data', chunk => received.push(chunk))
+    const ended = once(socket, 'end')
+    ended.catch(() => {})
     await once(socket, 'connect')
-    const request = path => `GET ${path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer ${token}\r\nConnection: keep-alive\r\n\r\n`
-    socket.write(request('/test-drain'))
-    await accepted
+    const body = JSON.stringify({ workspaceId: hub.store.manifest.workspaceId, heads: [] })
+    socket.write(`POST /automerge/sync-ack HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer ${token}\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`)
+    await entered.promise
     stopping = hub.stop()
     const nextRequest = once(hub.httpServer, 'request')
-    socket.write(request('/automerge/url'))
+    socket.write(`GET /automerge/status HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer ${token}\r\n\r\n`)
     await nextRequest
     release()
-    await eventually(() => (response.match(/HTTP\/1\.1/g) ?? []).length === 2)
-    assert.match(response, /HTTP\/1\.1 200 OK/)
-    assert.match(response, /"accepted":true/)
-    assert.match(response, /HTTP\/1\.1 503 Service Unavailable/)
+    await ended
+    await stopping
+    const response = Buffer.concat(received).toString()
+    assert.deepEqual([...response.matchAll(/HTTP\/1\.1 (\d+)/g)].map(match => match[1]), ['200', '503'])
+    assert.match(response, /"acknowledged":true/)
     assert.match(response, /Connection: close/i)
     assert.match(response, /SERVICE_STOPPING/)
-    await closed
-    await stopping
   } finally {
     release?.()
     socket?.destroy()
+    await (stopping ?? hub.stop())
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+it('does not let a keep-alive socket that goes idle after stop() begins hold shutdown', { timeout: 15000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-stop-idle-'))
+  const hub = service(join(root, 'hub'))
+  let socket, stopping, release
+  try {
+    await hub.start()
+    const entered = Promise.withResolvers()
+    const gate = Promise.withResolvers()
+    release = gate.resolve
+    const acknowledge = hub.store.acknowledge.bind(hub.store)
+    hub.store.acknowledge = async (...args) => { entered.resolve(); await gate.promise; return acknowledge(...args) }
+    socket = connect(hub.httpPort, '127.0.0.1')
+    let response = ''
+    socket.on('data', chunk => { response += chunk })
+    const closed = once(socket, 'close')
+    await once(socket, 'connect')
+    const body = JSON.stringify({ workspaceId: hub.store.manifest.workspaceId, heads: [] })
+    socket.write(`POST /automerge/sync-ack HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer ${token}\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`)
+    await entered.promise
+    stopping = hub.stop()
+    release()
+    // The client never sends another request and never closes; Node's keepAliveTimeout alone would hold stop() for seconds.
+    const stopped = await Promise.race([stopping.then(() => true), delay(3000, false)])
+    assert.equal(stopped, true, 'stop() must reclaim a socket that became idle after the listeners closed')
+    await closed
+    assert.deepEqual([...response.matchAll(/HTTP\/1\.1 (\d+)/g)].map(match => match[1]), ['200'])
+    assert.match(response, /"acknowledged":true/)
+  } finally {
+    release?.()
+    socket?.destroy()
+    await (stopping ?? hub.stop())
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+it('stops while a replica acknowledgement is still being answered', { timeout: 30000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-stop-in-flight-'))
+  const hub = service(join(root, 'hub'))
+  let replica, stopping, release
+  try {
+    await hub.start()
+    replica = new WorkspaceRuntime({ directory: join(root, 'replica'), role: 'replica', token, retryMs: 100,
+      hubUrl: `http://127.0.0.1:${hub.httpPort}`, hubWsUrl: `ws://127.0.0.1:${hub.wsPort}/automerge` })
+    await replica.init()
+    await eventually(() => !replica.status().syncPending && !replica.syncing)
+    // Hold the next acknowledgement so its response is sent after stop() has closed the listeners.
+    const acknowledge = hub.store.acknowledge.bind(hub.store)
+    const entered = Promise.withResolvers()
+    const gate = Promise.withResolvers()
+    release = gate.resolve
+    hub.store.acknowledge = async (...args) => { entered.resolve(); await gate.promise; return acknowledge(...args) }
+    const requestHub = replica.requestHub.bind(replica)
+    const receipts = []
+    replica.requestHub = (path, ...rest) => {
+      const response = requestHub(path, ...rest)
+      if (path === '/automerge/sync-ack') receipts.push(response)
+      return response
+    }
+    const created = await replica.execute({ operationId: randomUUID(), actorId: 'builder', type: 'task.create', payload: { title: 'Acknowledged during shutdown' } })
+    await entered.promise
+    await eventually(() => Boolean(hub.store.getDoc().tasks[created.result.taskId]))
+    stopping = hub.stop()
+    release()
+    const stopped = await Promise.race([stopping.then(() => true), delay(3000, false)])
+    assert.equal(stopped, true, 'hub.stop() must not wait on a connection whose response finished during shutdown')
+    // The acknowledgement that was already accepted still reaches the replica; later retries may fail.
+    assert.equal(receipts.length, 1)
+    assert.equal((await receipts[0]).acknowledged, true)
+  } finally {
+    release?.()
+    await replica?.close()
     await (stopping ?? hub.stop())
     await rm(root, { recursive: true, force: true })
   }
