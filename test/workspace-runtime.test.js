@@ -387,16 +387,23 @@ it('stops while a replica acknowledgement is still being answered', { timeout: 3
     const gate = Promise.withResolvers()
     release = gate.resolve
     hub.store.acknowledge = async (...args) => { entered.resolve(); await gate.promise; return acknowledge(...args) }
-    await replica.execute({ operationId: randomUUID(), actorId: 'builder', type: 'task.create', payload: { title: 'Acknowledged during shutdown' } })
+    const requestHub = replica.requestHub.bind(replica)
+    const receipts = []
+    replica.requestHub = (path, ...rest) => {
+      const response = requestHub(path, ...rest)
+      if (path === '/automerge/sync-ack') receipts.push(response)
+      return response
+    }
+    const created = await replica.execute({ operationId: randomUUID(), actorId: 'builder', type: 'task.create', payload: { title: 'Acknowledged during shutdown' } })
     await entered.promise
+    await eventually(() => Boolean(hub.store.getDoc().tasks[created.result.taskId]))
     stopping = hub.stop()
     release()
     const stopped = await Promise.race([stopping.then(() => true), delay(3000, false)])
     assert.equal(stopped, true, 'hub.stop() must not wait on a connection whose response finished during shutdown')
-    // The acknowledgement that was already accepted still reaches the replica.
-    await eventually(() => !replica.syncing)
-    assert.equal(replica.status().syncPending, false)
-    assert.equal(replica.lastSyncError, null)
+    // The acknowledgement that was already accepted still reaches the replica; later retries may fail.
+    assert.equal(receipts.length, 1)
+    assert.equal((await receipts[0]).acknowledged, true)
   } finally {
     release?.()
     await replica?.close()
