@@ -216,6 +216,13 @@ class AutomergeSyncServer {
   }
 
   async listen(server, port, host) {
+    server.on('request', (_req, res) => {
+      res.once('finish', () => {
+        // A keep-alive socket whose accepted response finishes after stop() began must not hold shutdown
+        // until keepAliveTimeout; let Node mark it idle before reclaiming it.
+        if (this.stopping) setImmediate(() => server.closeIdleConnections())
+      })
+    })
     await new Promise((resolve, reject) => {
       server.once('error', reject)
       server.listen(port, host, () => { server.off('error', reject); resolve() })
