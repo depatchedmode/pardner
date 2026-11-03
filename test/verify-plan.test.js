@@ -19,6 +19,8 @@ it('classifies every current lib, scripts, and support file explicitly', () => {
   const files = ['lib', 'scripts', 'support'].flatMap(walk).filter(path => !path.endsWith('.pyc') && !path.endsWith('.DS_Store'))
   assert.deepEqual(files.filter(path => !classifyPath(path)), [], 'Classify new implementation and harness files before claiming verification is complete')
   for (const path of ['lib/new-store.js', 'support/new-fixture.js', 'scripts/new-check.js']) assert.equal(classifyPath(path), null)
+  assert.equal(classifyPath('docs/evidence/t3-0.1.6-qualification.json').name, 'evidence')
+  assert.equal(classifyPath('docs/evidence/nested/file.json'), null)
 })
 
 it('plans conservative checks without confusing routine test:qualification with the deliberate gate', () => {

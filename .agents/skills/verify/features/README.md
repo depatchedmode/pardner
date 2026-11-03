@@ -14,6 +14,8 @@ already covered. Match the exact assertions to the task's expected result.
   receipt, acknowledgement loss, and effect replay.
 - [Companion browsers](companion.md): pairing, Actor/filter persistence,
   reconnect, response loss, and browser credential lifecycle.
+- [Control pane and issue links](control.md): T3 credential, registry, routes,
+  queued intent, stale reads, approvals, cancellation, verdicts, and GitHub links.
 
 Entries describe the checks that exist in this checkout. When a coverage
 overlay under trial adds assertions (for example both-engine QR image loading
