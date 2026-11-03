@@ -28,6 +28,51 @@ def git(directory, *argv):
                                    env={**module.environment(), 'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_CONFIG_NOSYSTEM': '1'}, text=True).strip()
 
 
+def mirror_working_source(source, release):
+    tracked = set(git(source, 'ls-files', '--cached', '-z').split('\0'))
+    paths = git(source, 'ls-files', '--cached', '--others', '--exclude-standard', '-z').split('\0')
+    for name in filter(None, paths):
+        origin, target = source / name, release / name
+        if name not in tracked and name in {'node_modules', 'ui-prototype/node_modules'} and origin.is_symlink():
+            # Dependencies are prepared separately; these links describe the test environment, not source.
+            continue
+        if origin.is_symlink():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.is_symlink() or target.exists():
+                target.unlink()
+            os.symlink(os.readlink(origin), target)
+        elif origin.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(origin, target)
+        elif target.is_symlink() or target.exists():
+            target.unlink()
+
+
+class FixtureTests(unittest.TestCase):
+    def test_working_source_preserves_source_links_and_excludes_dependency_links(self):
+        with tempfile.TemporaryDirectory(prefix='pardner-control-fixture-') as scratch:
+            root = Path(scratch)
+            source, release, install = root / 'source', root / 'release', root / 'install'
+            for path in [source, release, install, source / 'ui-prototype', source / '.claude']:
+                path.mkdir()
+            git(source, 'init', '-q')
+            (source / '.gitignore').write_text('node_modules/\nui-prototype/node_modules/\n')
+            (source / '.claude/skills').symlink_to('../.agents/skills')
+            git(source, 'add', '.gitignore', '.claude/skills')
+            (source / 'candidate.txt').write_text('uncommitted source')
+            for name in ['node_modules', 'ui-prototype/node_modules']:
+                (source / name).symlink_to(install, target_is_directory=True)
+            (install / 'dependency.txt').write_text('installed dependency')
+            mirror_working_source(source, release)
+            self.assertEqual(os.readlink(release / '.claude/skills'), '../.agents/skills')
+            self.assertEqual((release / 'candidate.txt').read_text(), 'uncommitted source')
+            for name in ['node_modules', 'ui-prototype/node_modules']:
+                self.assertFalse((release / name).is_symlink())
+                self.assertFalse((release / name).exists())
+                shutil.copytree(source / name, release / name, symlinks=False)
+                self.assertEqual((release / name / 'dependency.txt').read_text(), 'installed dependency')
+
+
 def ports():
     sockets = [socket.socket(), socket.socket()]
     try:
@@ -214,20 +259,7 @@ class RecoveryTests(unittest.TestCase):
                 release.parent.mkdir(parents=True)
                 subprocess.run(['/usr/bin/git', 'clone', '--quiet', '--no-hardlinks', str(source), str(release)], check=True)
                 if source == ROOT:
-                    paths = git(ROOT, 'ls-files', '--cached', '--others', '--exclude-standard', '-z').split('\0')
-                    for name in filter(None, paths):
-                        origin, target = ROOT / name, release / name
-                        if origin.is_symlink():
-                            # Mirror a tracked link (such as .claude/skills) as a link; copying through it fails on a directory.
-                            target.parent.mkdir(parents=True, exist_ok=True)
-                            if target.is_symlink() or target.exists():
-                                target.unlink()
-                            os.symlink(os.readlink(origin), target)
-                        elif origin.exists():
-                            target.parent.mkdir(parents=True, exist_ok=True)
-                            shutil.copy2(origin, target)
-                        elif target.exists():
-                            target.unlink()
+                    mirror_working_source(ROOT, release)
                     git(release, 'add', '-A')
                     if git(release, 'diff', '--cached', '--name-only'):
                         git(release, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
