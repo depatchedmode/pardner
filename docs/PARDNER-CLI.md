@@ -118,6 +118,21 @@ An existing matching operation is replayed; reuse for a different payload return
 `OPERATION_ID_REUSED`. `pardner operation --request JSON` exposes the complete
 shared-operation envelope for deterministic agent clients.
 
+## Link GitHub issues
+
+A task can link to one or more existing GitHub issues, and one issue to several
+tasks. Pardner records the reference only: it does not contact GitHub, and task
+status never changes the issue.
+
+```sh
+pardner issue link TASK depatchedmode/pardner#77 --actor alice
+pardner issue unlink TASK depatchedmode/pardner#77 --actor alice \
+  --revisions '["LINK_REVISION"]'
+```
+
+`show` lists each link's `repository`, `number`, `url` and `revisions`. An unlink
+needs the revisions it observed, so a link another replica added concurrently stays.
+
 ## Pursue goals through veins
 
 A vein is a line of work toward a goal. Every vein pursues exactly one goal.
