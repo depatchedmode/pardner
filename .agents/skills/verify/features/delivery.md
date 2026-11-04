@@ -51,3 +51,16 @@ exercise the protocol, not a durable production inbox. Use the worker/inbox chec
 for receipt guarantees. Exactly-once fake effects do not establish arbitrary
 external-side-effect idempotency. Preserve the boundary between automated worker
 evidence and the two-machine real-agent rehearsal.
+
+## Bounded three-agent review
+
+[Three-agent runbook](../../../../docs/PARDNER-THREE-AGENT.md) and
+[current readiness](../../../../docs/PARDNER-66-READINESS.md) distinguish the
+PR70 historical native run from current-candidate evidence. Run
+`node --test test/agent-bridge.test.js test/bridge-rehearsal-support.test.js test/three-agent-review.test.js test/three-agent-coordinator.test.js`
+for durable context timing, retry after SQLite capacity failures, separate
+worktrees, exact submission correlation, two-review same-SHA barriers, rejected
+stale/edited/conflicted artifacts, and cancellation/drain containment. These
+fixtures make no model requests. The rehearsal script's `--check` creates and
+archives a disposable native session; do not run it under a no-archival boundary.
+Native `--run` and the separate approval probe require explicit authorization.
