@@ -397,5 +397,25 @@
     "revision": "d849d26a51d27b2788092bdbae0c08a280ab1616",
     "issue": 77,
     "reason": "Control pane opens in start(), adds /pardner/control routes after the admission middleware, and closes after listenersClosed and before store.close(); workspace snapshot adds a read-only issue-link index. No model action, invariant or witness changed."
+  },
+  "securityIntegrationReview": {
+    "recorded": "2026-11-04",
+    "mapping": {
+      "revision": "509a8357a4ef0197825eacf70a5d7a5504fb1795",
+      "files": {
+        "automerge-sync-server.js": "0b8d091ed66cab0cce2d4c0b3e5ecdd37dc0b70a7b5d9491f76dcab3df7cead4",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "db3eb7b8aaf0a3a2360c13e26439b193931e3e9e22ffc61712b9a1d4caae0a31",
+        "lib/workspace.js": "db8d3768446f04bdd3a75493b0f82ed1453adff8e941ce4f1aa2d70fdd9d48ca"
+      }
+    },
+    "node": "v24.11.1",
+    "states": 174614,
+    "transitions": 679456,
+    "durationMs": 4530,
+    "invariants": "all four hold",
+    "progress": "ShutdownCompletes holds under declared weak fairness",
+    "coverage": "all ten witnesses reachable",
+    "reason": "Admission credential narrowing, source-address pairing, synchronous response headers and listener validation preserve modeled ordering. IPv6 query parsing uses a fixed URL base; only query extraction changes. No model action/invariant/witness changes. Prior mutation and wider-bounds records remain historical; not rerun for this candidate."
   }
 }
