@@ -1,5 +1,9 @@
 # Reliability wave: dependency contracts and evidence boundaries
 
+The initial-wave evidence below is historical. See the [post-#102 integration
+and qualification report](PARDNER-RELIABILITY-QUALIFICATION.md) for the current
+#106 merge candidate. Capacity and later policy work remain separate.
+
 Starting source: `bd55f246bacae5068b761c999e7b849501e7a5e3` (main on
 2026-11-04). PR86 subject: `5cfe8e0cc605b5097ed661ae1fd1ca1f7de1c6f7`.
 This wave prepares #61 and a bounded baseline; it does not close #58–63.

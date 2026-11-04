@@ -1,0 +1,711 @@
+{
+  "base": "c636854cbf307bc67529e670c6658ff856267535",
+  "integrationHead": "5b281eb451fd7bc9c584baeb708809f9432ca447",
+  "priorStandaloneHead": "9e8d14b7510a532c5a9dbee503701f8e79e09e7b",
+  "candidateSha256": "3599ddb1c86f0d695120f6fe221c26044d0fd3fbe1fed7350ea11a23354d22d4",
+  "candidateStable": true,
+  "routineOutcome": "passed",
+  "qualificationOutcome": "passed",
+  "scopedOverallOutcome": "passed",
+  "node": "v24.11.1",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "browsers": {
+    "chromium": "151.0.7922.34",
+    "webkit": "26.5"
+  },
+  "pythonTests": 17,
+  "nodeTests": 484,
+  "skips": 0,
+  "qualification": {
+    "directory": "output/acceptance/2026-11-04T19-30-38.290Z",
+    "candidateSha256": "3599ddb1c86f0d695120f6fe221c26044d0fd3fbe1fed7350ea11a23354d22d4",
+    "repeat": 20,
+    "scenarioPassed": true,
+    "reportDigestsVerified": true,
+    "rows": [
+      {
+        "seed": 1,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 2,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 3,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 4,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 5,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 6,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 7,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 8,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 9,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 10,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 11,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 12,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 13,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 14,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 15,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 16,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 17,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 18,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 19,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      },
+      {
+        "seed": 20,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      }
+    ],
+    "metrics": {
+      "local-ack": {
+        "count": 14220,
+        "maxMs": 1482.2527500001015
+      },
+      "convergence": {
+        "count": 200,
+        "maxMs": 3605.951500000083
+      },
+      "local-ui-visible": {
+        "count": 40,
+        "maxMs": 93.90091700013727
+      },
+      "offline-start": {
+        "count": 20,
+        "maxMs": 2367.498416000046
+      },
+      "agent-effect-ack": {
+        "count": 70,
+        "maxMs": 206.91608399990946
+      }
+    },
+    "receiptLocalAcknowledgements": {
+      "count": 14380,
+      "maxMs": 1482.2527500001015
+    },
+    "allLocalAcknowledgementObservations": {
+      "count": 14410,
+      "maxMs": 1482.2527500001015
+    },
+    "inclusiveDefinition": "Union of local-ack/agent-effect-ack timing entries and every manifest receipt elapsedMs; deduplicated by seed, request ID and measured duration. Distinct retry observations remain included.",
+    "limits": {
+      "localAckMs": 2000,
+      "localVisibleMs": 2000,
+      "offlineStartMs": 5000,
+      "convergenceMs": 10000
+    },
+    "privacy": "Allowlisted aggregate facts only; raw reports/traces include disposable credentials and remain private."
+  },
+  "fullVerifyAcceptance": {
+    "directory": "output/acceptance/2026-11-04T19-27-08.715Z",
+    "candidateSha256": "3599ddb1c86f0d695120f6fe221c26044d0fd3fbe1fed7350ea11a23354d22d4",
+    "repeat": 1,
+    "scenarioPassed": true,
+    "reportDigestsVerified": true,
+    "rows": [
+      {
+        "seed": 1,
+        "scenarioPassed": true,
+        "reportDigestVerified": true,
+        "snapshotDigestVerified": true,
+        "operationCount": 719,
+        "snapshotCount": 3,
+        "failures": 0,
+        "cleanupErrors": 0
+      }
+    ],
+    "metrics": {
+      "local-ack": {
+        "count": 711,
+        "maxMs": 260.54354199999943
+      },
+      "convergence": {
+        "count": 10,
+        "maxMs": 3028.7227910000074
+      },
+      "local-ui-visible": {
+        "count": 2,
+        "maxMs": 54.96058400000038
+      },
+      "offline-start": {
+        "count": 1,
+        "maxMs": 2011.4117090000072
+      },
+      "agent-effect-ack": {
+        "count": 4,
+        "maxMs": 165.6837499999965
+      }
+    },
+    "receiptLocalAcknowledgements": {
+      "count": 719,
+      "maxMs": 260.54354199999943
+    },
+    "allLocalAcknowledgementObservations": {
+      "count": 721,
+      "maxMs": 260.54354199999943
+    },
+    "inclusiveDefinition": "Union of local-ack/agent-effect-ack timing entries and every manifest receipt elapsedMs; deduplicated by seed, request ID and measured duration. Distinct retry observations remain included.",
+    "limits": {
+      "localAckMs": 2000,
+      "localVisibleMs": 2000,
+      "offlineStartMs": 5000,
+      "convergenceMs": 10000
+    },
+    "privacy": "Allowlisted aggregate facts only; raw reports/traces include disposable credentials and remain private."
+  },
+  "checks": [
+    {
+      "name": "compatibility",
+      "command": [
+        "node",
+        "support/reliability/compatibility.mjs",
+        "/tmp/pardner-reliability-baseline-bd55f246",
+        "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-reliability-baseline",
+        "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-reliability-baseline/output/verification/reliability-post102/schema-compatibility.json"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 377,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {},
+      "logSha256": "ad9d389ea0de23a00fea715c77196f5bfac7f532eaafc4790978cf64701ebd4b"
+    },
+    {
+      "name": "integrity",
+      "command": [
+        "node",
+        "--test",
+        "test/operation-integrity.test.js"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 9148,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {
+        "tests": "2",
+        "pass": "2",
+        "fail": "0",
+        "cancelled": "0",
+        "skipped": "0"
+      },
+      "logSha256": "4ddecdd963243ae4eaea5a54963f060f1e35a42fd61713e0fee9bb4c7c46c818"
+    },
+    {
+      "name": "preparation",
+      "command": [
+        "bash",
+        "/tmp/pardner-reliability-post102-prep.sh"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 14639,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {},
+      "logSha256": "e63a5b5e6530125a3df55a30fc9af863210d355ea50428526d763e36e081529d"
+    },
+    {
+      "name": "privacy-visual",
+      "command": [
+        "node",
+        "--test",
+        "/tmp/pardner-reliability-post102-privacy.mjs"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 3379,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {
+        "tests": "2",
+        "pass": "2",
+        "fail": "0",
+        "cancelled": "0",
+        "skipped": "0"
+      },
+      "logSha256": "1ea0c6b4636b329da6c4e8ad58a031e8343b4faf9668959a1a70d0d8376a36ba"
+    },
+    {
+      "name": "qualification",
+      "command": [
+        "npm",
+        "run",
+        "test:acceptance",
+        "--",
+        "--repeat",
+        "20",
+        "--seed",
+        "1"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 2517012,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {},
+      "logSha256": "25f4a15303bb8c8247b4751dafa12f34853a79dea1c2ad3ce527c1e766d1539a"
+    },
+    {
+      "name": "security",
+      "command": [
+        "node",
+        "--test",
+        "test/native-replica-auth.test.js",
+        "test/private-state.test.js",
+        "test/framing.test.js",
+        "test/markdown-privacy.test.js",
+        "test/vite-security.test.js",
+        "test/lan-access.test.js",
+        "test/lan-server.test.js",
+        "test/bridge-retirement.test.js",
+        "test/bridge-config-retirement.test.js",
+        "test/bridge-review-regressions.test.js",
+        "test/native-peer-storage-security.test.js",
+        "test/automerge-sync-server.test.js",
+        "test/ticket-reconnect.test.js",
+        "test/bridge-integration.test.js",
+        "test/native-peer-tools.test.js",
+        "test/native-message-security.test.js",
+        "test/websocket-sync.test.js"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 7067,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {
+        "tests": "121",
+        "pass": "121",
+        "fail": "0",
+        "cancelled": "0",
+        "skipped": "0"
+      },
+      "logSha256": "5e00cbb28253ebf26c7b7b995057d53a74e17c532f871933f53356ff4bec2a71"
+    },
+    {
+      "name": "smoke",
+      "command": [
+        "npm",
+        "run",
+        "verify:smoke",
+        "--",
+        "--report-dir",
+        "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-reliability-baseline/output/verification/reliability-post102"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 1604,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {},
+      "logSha256": "74873d7029a57325a159915c07d034c9235110dee5bbfe002bcb5a9cc5e48e6b"
+    },
+    {
+      "name": "test-cli",
+      "command": [
+        "npm",
+        "run",
+        "test:cli"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 4167,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {
+        "tests": "12",
+        "pass": "12",
+        "fail": "0",
+        "cancelled": "0",
+        "skipped": "0"
+      },
+      "logSha256": "4bd8754626e952211174166c9399a6aacb41aa6a51e70c84fbfd523f14aac463"
+    },
+    {
+      "name": "test-control-runtime",
+      "command": [
+        "npm",
+        "run",
+        "test:control-runtime"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 16173,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {},
+      "logSha256": "18ca6a136db9ad824c2a4485d74ab58f3bf68ea16e06df3a51a51b8fd3738b07"
+    },
+    {
+      "name": "test-qualification",
+      "command": [
+        "npm",
+        "run",
+        "test:qualification"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 1950,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {
+        "tests": "12",
+        "pass": "12",
+        "fail": "0",
+        "cancelled": "0",
+        "skipped": "0"
+      },
+      "logSha256": "f52c3c2db7d12dd67c5a77b34e4902ab6e316b599136951383c53f1672df7cb2"
+    },
+    {
+      "name": "test-runtime",
+      "command": [
+        "npm",
+        "run",
+        "test:runtime"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 16297,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {
+        "tests": "118",
+        "pass": "118",
+        "fail": "0",
+        "cancelled": "0",
+        "skipped": "0"
+      },
+      "logSha256": "0faf5f53715762361127b81df6d635657c20621a616d3d049f200b231bddfe8b"
+    },
+    {
+      "name": "test-ui",
+      "command": [
+        "npm",
+        "run",
+        "test:ui"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 30883,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {
+        "tests": "14",
+        "pass": "14",
+        "fail": "0",
+        "cancelled": "0",
+        "skipped": "0"
+      },
+      "logSha256": "ecb936a36085f14838fd33936082329b57adffdb56cef99c04e86eea03ced85e"
+    },
+    {
+      "name": "test-verification",
+      "command": [
+        "npm",
+        "run",
+        "test:verification"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 12667,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {
+        "tests": "39",
+        "pass": "39",
+        "fail": "0",
+        "cancelled": "0",
+        "skipped": "0"
+      },
+      "logSha256": "3e39abf1be30e3c7e125d5e816f98b2440c05f86c7bb5de30ce88be12a0729df"
+    },
+    {
+      "name": "verify",
+      "command": [
+        "npm",
+        "run",
+        "verify"
+      ],
+      "outcome": "completed",
+      "exitCode": 0,
+      "durationMs": 181444,
+      "timedOut": false,
+      "survivors": 0,
+      "unverifiedProcesses": 0,
+      "newScratch": 0,
+      "counts": {
+        "tests": "484",
+        "pass": "484",
+        "fail": "0",
+        "cancelled": "0",
+        "skipped": "0"
+      },
+      "logSha256": "a42e9165fa309cc9d74cff0b9240d345c45c439538d152bfc1f3e9604b44c878"
+    }
+  ],
+  "schemaCompatibility": {
+    "oldSource": "/tmp/pardner-reliability-baseline-bd55f246",
+    "newSource": "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-reliability-baseline",
+    "result": "passed",
+    "error": "INCOMPATIBLE_SCHEMA",
+    "receipt": {
+      "operationId": "preserved-schema4",
+      "actorId": "alice",
+      "replicaId": "replica-1f68152f-6979-4910-8945-611dac699292",
+      "result": {
+        "taskId": "task-a3260e16253286627fccc178"
+      },
+      "replayed": false,
+      "savedLocally": true,
+      "heads": [
+        "09de6bba83a4e07ed4cdc94afcd988c8f724c87ea9417bb3b8bbd5af29359a0a"
+      ],
+      "syncPending": false,
+      "status": {
+        "role": "hub",
+        "workspaceId": "012254ca-9fbe-476a-9282-34c29e5d5b91",
+        "heads": [
+          "09de6bba83a4e07ed4cdc94afcd988c8f724c87ea9417bb3b8bbd5af29359a0a"
+        ],
+        "replicaId": "replica-1f68152f-6979-4910-8945-611dac699292",
+        "savedLocally": true,
+        "hubConnected": true,
+        "syncPending": false,
+        "lastSyncedAt": null,
+        "storageError": null,
+        "syncError": null
+      }
+    },
+    "files": {
+      "deliveries.sqlite": "866db46cda8f53a2f0da10e3e8a7a69bc82f7be0ba10caa4569a2905d8a6a4e0",
+      "repo/36/XMFD23U96YiNu9fEk6qDh1UAzy/snapshot/67437813b03bf7cac45371034ae5cc3bacc255336008a9e2ed900224e6f63f75": "b8d2981303623d00c6c7510e0c0912379f2059ac63f5ce0becc8d5a5794a41b1",
+      "repo/st/orage-adapter-id": "acf69a74875d32575615de104d96275f69dd3bce4da74c4129b72ab1bdbfd109",
+      "workspace.json": "c8e79c9a438da4cc15e385ae6ce0c9742636e6530d6f7f420e2bedb56ce3742d"
+    },
+    "unchanged": true,
+    "exclusion": "runtime ownership SQLite lease files"
+  },
+  "mapping": {
+    "revision": "9e8d14b7510a532c5a9dbee503701f8e79e09e7b",
+    "files": {
+      "automerge-sync-server.js": "3f63aa976f995222cb7d23d65d9f85c6556664893860768bc0595c5fc928e259",
+      "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+      "lib/workspace-runtime.js": "db3eb7b8aaf0a3a2360c13e26439b193931e3e9e22ffc61712b9a1d4caae0a31",
+      "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
+    }
+  },
+  "cleanup": {
+    "watchdogsClean": true,
+    "processAuditUnattributed": 0,
+    "preExistingToolingPreserved": 5,
+    "singleLockAcquisition": true,
+    "driverPid": 17145,
+    "lockReleased": true,
+    "lockFileUnlinked": false,
+    "downstreamHandoff": false
+  },
+  "evidenceBoundaries": [
+    "Source qualification only; no deployment or migration",
+    "No paid real-provider or human acceptance",
+    "No full #63 capacity campaign or #58\u201362 policy completion",
+    "Future #101/#105/#104 combinations require their own qualification"
+  ],
+  "privacy": "Only allowlisted aggregate facts, synthetic schema-preservation receipt and hashes published. Raw acceptance reports/traces remain private."
+}

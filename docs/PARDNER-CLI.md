@@ -1,6 +1,6 @@
 # Pardner local service and CLI
 
-The default service and executable now use the version 3 workspace. Human and
+The default service and executable now use the schema 5 workspace. Human and
 agent Actors author through the same local HTTP operations. The UI integration and
 full acceptance milestone are still in progress; see [implementation evidence](PARDNER-EVIDENCE.md).
 
@@ -122,7 +122,8 @@ Version 4 stores mutable task, vein, and goal fields and comment bodies in share
 register maps. Retried creation requests on disconnected replicas therefore share
 each field's merge location. A shared map records superseded field revisions, so
 a late retry cannot resurrect an initial value after an edit or explicit
-resolution. Version 4 adds goals, veins, and task–vein links to version 3.
+resolution. Version 4 added goals, veins, and task–vein links to version 3;
+schema 5 adds request-bound stored operation identities and integrity inspection.
 Earlier directories must be preserved and replaced with a fresh workspace; all
 services participating in a workspace must use the same schema version.
 

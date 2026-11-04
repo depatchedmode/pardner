@@ -1,5 +1,9 @@
 # Reliability initial-wave report
 
+The initial-wave evidence below is historical. See the [post-#102 integration
+and qualification report](PARDNER-RELIABILITY-QUALIFICATION.md) for the current
+#106 merge candidate. Capacity and later policy work remain separate.
+
 Source baseline: `bd55f246bacae5068b761c999e7b849501e7a5e3`.
 Original PR86 head: `5cfe8e0cc605b5097ed661ae1fd1ca1f7de1c6f7`.
 Integrity integration: `9f1c0d7`; baseline/tooling: `f2b6d33`.
