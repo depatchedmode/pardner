@@ -7,7 +7,8 @@ reviewable baseline; it does not close either issue or authorize #67.
 
 Base: `bd55f246bacae5068b761c999e7b849501e7a5e3` (current main when fetched).
 Imported source: PR70 `17d65d1c1aa011f90bfa5d24a7c3e9f9c5aa9243`.
-Implementation candidate: `1277bf70b26eb47459df0efcfe6e37feb047693c`.
+Initial implementation: `1277bf70b26eb47459df0efcfe6e37feb047693c`.
+Planner-repaired candidate: `42547d4a39c0209e2f2157e58638da3d2de2b075`.
 
 ## Reconciliation and trust boundaries
 
@@ -109,16 +110,30 @@ It records exact commands, outcomes, environment, and retained logs. Node is
 and test adapters, never paid models. No test assertion, latency limit, or Node
 pin was relaxed.
 
-The shared heavy-test lock `/tmp/pardner-selfhost-heavy-tests.lock` was attempted
-nonblocking and was busy. Full runtime/CLI/verify checks remain pending rather
-than competing with another track. The subsequent coordinator queue reserves
-this track after reliability and before security. On release, the declared batch
-is `npm run test:runtime`, `npm run test:cli`, and `npm run verify`, each under
-the 900-second watchdog with unchanged suite timeouts; the lock spans the entire
-batch. The focused batch above finished before this queue handoff instruction;
-no further multi-service focused checks will run outside the reserved slot. The watchdog's initial sandbox preflight
-could not enumerate processes and started no tests; focused checks were rerun
-with process supervision available. These are separate outcomes.
+The first reserved heavy batch ran on `07a4b39cd016127badc8ea238cadfb15647156e0`
+(the initial implementation plus guidance), holding the shared advisory lock
+through all subprocesses. Runtime passed **116/116**, CLI **12/12**. Full verify
+passed the build and **14 Python tests**, then **471/472 Node tests** passed with
+zero skips/cancellations. The sole failure was the planner's explicit file-map
+assertion: the four new rehearsal files were unclassified. **Acceptance did not
+run.** Before/after fingerprints matched the initial `b50f467b…` candidate.
+
+Repair `42547d4` classifies those four files in the existing bridge group without
+weakening the map assertion. All **16 planner tests passed** and the regenerated
+plan has zero unclassified paths. Repaired fingerprint:
+`a985f43d531c319ed1f1eb1c828b4cdfd745015feaaf80e57d20ea7dba389e02`.
+This is not a full-verification pass. The failed attempt remains in the local
+report/logs. The watchdog completed normally, reported no survivors or scratch,
+and no checkout-owned test processes remained; the lock was released without
+unlinking it and security was notified.
+
+A repair-verification slot is reserved after security, cloud and proof. On proof's
+release, run `npm run test:verification` then `npm run verify`, with 900-second
+watchdogs and the lock held across both child processes. Capture the repaired
+candidate before/after and keep the new logs separate. Runtime/CLI's preceding
+passes establish the unchanged runtime code only; no combined candidate,
+acceptance or native success is inferred. The initial sandbox watchdog preflight
+also remains recorded: process enumeration failed before any child started.
 
 Qualification is **required, not run** on this candidate: delivery persistence
 and recovery changed. The required 20-seed command remains
