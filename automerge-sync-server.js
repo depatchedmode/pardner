@@ -553,7 +553,7 @@ class AutomergeSyncServer {
     })
 
     const operationFailure = (res, error) => {
-      const statuses = { NOT_FOUND: 404, STALE_UPDATE: 409, OPERATION_ID_REUSED: 409,
+      const statuses = { NOT_FOUND: 404, STALE_UPDATE: 409, OPERATION_ID_REUSED: 409, OPERATION_INTEGRITY_CONFLICT: 409,
         CONFLICT_REQUIRES_RESOLUTION: 409, WORKSPACE_MISMATCH: 409, STORAGE_FAILED: 507,
         LOCAL_SERVICE_UNAVAILABLE: 503, HUB_UNAVAILABLE: 503, HUB_REQUIRED: 409, STALE_CLAIM: 409, AUTH_REQUIRED: 401 }
       res.status(statuses[error.code] ?? (error.code ? 400 : 500)).json({

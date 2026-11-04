@@ -397,5 +397,23 @@
     "revision": "d849d26a51d27b2788092bdbae0c08a280ab1616",
     "issue": 77,
     "reason": "Control pane opens in start(), adds /pardner/control routes after the admission middleware, and closes after listenersClosed and before store.close(); workspace snapshot adds a read-only issue-link index. No model action, invariant or witness changed."
+  },
+  "operationIntegrityMappingReview": {
+    "recorded": "2026-11-04",
+    "mapping": {
+      "revision": "bd55f246bacae5068b761c999e7b849501e7a5e3",
+      "files": {
+        "automerge-sync-server.js": "53492a21086f3d134470e37aa24bd82a6db36af1b688937a0b443ea8df813576",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "ecbedacaed6740499eda73451b692c4984ef24715569af1aa69c23656569f2f0",
+        "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
+      }
+    },
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "durationMs": 5697,
+    "result": "passed",
+    "review": "Only operation receipt/projection and integrity-error HTTP status changed. Admission, flush barrier and shutdown model actions/anchors unchanged. Prior wider-bound and mutation evidence above is historical, not rerun in this wave."
   }
 }

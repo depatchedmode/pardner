@@ -118,6 +118,27 @@ An existing matching operation is replayed; reuse for a different payload return
 `OPERATION_ID_REUSED`. `pardner operation --request JSON` exposes the complete
 shared-operation envelope for deterministic agent clients.
 
+The request's `operationId` is a caller-selected retry key. Receipts and history
+return it as `requestId`; their `operationId` is a service-derived SHA-256 identity
+binding that key to the operation type, resolved Actor ID, and canonical payload.
+Use returned operation IDs as revision tokens; retry with the original request
+key and payload. Identical requests on disconnected replicas remain one logical
+operation. Different requests sharing a key receive distinct stored identities,
+so both effects and history survive convergence; subsequent reuse of that
+ambiguous key returns `OPERATION_INTEGRITY_CONFLICT` (HTTP 409), with
+`details.requestId`, `status: unresolved`, and every acknowledged variant.
+Local incompatible reuse before a conflict is known remains `OPERATION_ID_REUSED`.
+`show`/task context includes `integrityConflicts`, and the task browser shows an
+unresolved operation ID conflict with full variants. Each variant's `origins`
+lists every recorded replica/timestamp; these are provenance, not request identity.
+No inspection or retry repairs/replays the conflicting mutations. Ordinary field
+resolution does not resolve operation integrity. Same-field collisions also
+require explicit field resolution.
+
+This identity format requires schema 5 on every service. Older workspace data is
+preserved and rejected as incompatible; do not overwrite or automatically migrate
+it. Enroll a new workspace using compatible services.
+
 ## Link GitHub issues
 
 A task can link to one or more existing GitHub issues, and one issue to several

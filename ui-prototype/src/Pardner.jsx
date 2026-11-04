@@ -917,6 +917,18 @@ function TaskDetail({
           </button>
         </>
       )}
+      {(context.integrityConflicts ?? []).map(group => (
+        <section className="conflict integrity-conflict" key={group.requestId} aria-label="Operation integrity conflict">
+          <h3>Unresolved operation ID conflict</h3>
+          <p>Retry key {group.requestId} acknowledged different requests. Both are preserved. Inspection does not replay or repair them.</p>
+          {group.variants.map(variant => (
+            <details key={variant.fingerprint}>
+              <summary>{variant.type} by {variant.actorId} — {variant.fingerprint}</summary>
+              <pre>{JSON.stringify(variant, null, 2)}</pre>
+            </details>
+          ))}
+        </section>
+      ))}
       {Object.entries(conflicts).map(([field, choices]) => (
         <section className="conflict" key={field}>
           <h3>Resolve {field}</h3>

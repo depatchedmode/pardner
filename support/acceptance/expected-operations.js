@@ -9,6 +9,8 @@ function sort(value) {
 }
 export const hash = value => createHash('sha256').update(canonical(value)).digest('hex')
 
+const storedId = request => `op-${hash([request.operationId, hash({ type: request.type, actorId: request.actorId, payload: request.payload })])}`
+
 /** Intents are recorded before execution; successful receipts never define expected effects. */
 export class ExpectedOperations {
   constructor() { this.intents = new Map(); this.receipts = new Map(); this.sources = new Map() }
@@ -31,7 +33,7 @@ export class ExpectedOperations {
     for (const [id, intent] of this.intents) {
       if (!this.receipts.has(id)) continue
       if (intent.type === 'task.create') {
-        const taskId = `task-${createHash('sha256').update(id).digest('hex').slice(0, 24)}`
+        const taskId = `task-${createHash('sha256').update(storedId(intent)).digest('hex').slice(0, 24)}`
         tasks.set(taskId, { description: '', status: 'backlog', assignee: null, priority: 'p2', tags: [], ...intent.payload })
       }
       if (intent.type === 'task.update') Object.assign(tasks.get(intent.payload.taskId), intent.payload.updates)
@@ -45,15 +47,17 @@ export class ExpectedOperations {
     }
     for (const [id, { receipt }] of this.receipts) {
       const intent = this.intents.get(id)
-      const event = snapshot.operations[id]
+      const operationId = storedId(intent)
+      const event = snapshot.operations[operationId]
       assert.ok(event, `Acknowledged operation missing: ${id}`)
-      assert.equal(event.operationId, id)
+      assert.equal(event.operationId, operationId)
+      assert.equal(event.requestId, id)
       assert.equal(event.actorId, intent.actorId)
       assert.equal(event.type, intent.type)
       assert.equal(canonical(event.payload), canonical(intent.payload))
       assert.equal(event.replicaId, receipt.replicaId)
       if (intent.type === 'comment.add') {
-        const matching = Object.values(snapshot.comments).filter(comment => comment.revisionId === id)
+        const matching = Object.values(snapshot.comments).filter(comment => comment.revisionId === operationId)
         assert.equal(matching.length, 1, `Comment ${id} must appear exactly once`)
         assert.equal(matching[0].content, intent.payload.text)
         assert.equal(matching[0].taskId, intent.payload.taskId)
@@ -70,10 +74,10 @@ export class ExpectedOperations {
         }
       }
       if (intent.type === 'task.handoff') {
-        const comment = Object.values(snapshot.comments).find(comment => comment.revisionId === id)
+        const comment = Object.values(snapshot.comments).find(comment => comment.revisionId === operationId)
         assert.equal(comment?.content, intent.payload.message)
         assert.equal(comment?.actorId, intent.actorId)
-        assert.equal(Object.values(snapshot.comments).filter(comment => comment.revisionId === id).length, 1)
+        assert.equal(Object.values(snapshot.comments).filter(comment => comment.revisionId === operationId).length, 1)
         assert.equal(Object.values(snapshot.mentions).filter(mention => mention.commentId === receipt.result.commentId && mention.toActorId === intent.payload.to).length, 1)
       }
     }

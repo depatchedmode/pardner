@@ -43,3 +43,14 @@ Fixtures must explicitly register Actors. `test:cli` does not include the separa
 vein workflow. A locally saved result does not establish remote hub persistence.
 The smoke covers graceful restart of one local hub; use the offline/conflict map
 for partition and process-kill guarantees. It does not prove power-loss durability.
+
+## Operation integrity
+
+Schema 5 distinguishes caller retry keys (`requestId` in receipts) from stored
+`operationId`/revision identities. `test/operation-integrity.test.js` drives
+public operations on disconnected persisted services, both reconnect orders,
+restart, canonical equivalence, full provenance, explicit integrity responses,
+and Chromium/WebKit inspection. Run it explicitly under the shared heavy-test
+lock as well as the full discovered suite. Task context `integrityConflicts`
+contains every unresolved request variant; browser details expose those records.
+A field resolution does not repair a reused retry key. No automatic repair runs.
