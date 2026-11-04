@@ -374,3 +374,23 @@ it('defers startup recovery, rather than skipping it, while T3 is unreachable at
   assert.deepEqual([(await execution('during-outage')).state, (await execution('during-outage')).runId], ['running', runId])
   assert.equal(t3.sends.length, 1)
 }))
+
+it('Cloud API reserves a separate provider context, authorizes intent, and never enables dispatch implicitly', async () => withControl(async f => {
+  const taskId = await f.setup()
+  const mapping = { contextId: 'cloud', projectId: 'pardner', actorId: 'reviewer', allowedTaskIds: [taskId], allowedFromActorIds: ['alice'], repository: 'https://github.com/depatchedmode/pardner', startingRef: 'main' }
+  const context = await f.ok('/pardner/control/cloud/contexts', mapping)
+  assert.match(context.agentId, /^bc-/)
+  const intent = { executionId: 'cloud-a', contextId: 'cloud', actorId: 'reviewer', taskId, fromActorId: 'alice', text: 'Review' }
+  const rejected = await f.api('/pardner/control/cloud/executions', { ...intent, taskId: 'wrong' })
+  assert.equal(rejected.httpStatus, 403)
+  await f.ok('/pardner/control/cloud/executions', intent)
+  let snapshot = await f.poll()
+  assert.equal(snapshot.cloud.dispatchEnabled, false); assert.equal(snapshot.cloud.executions[0].submissions, 0)
+  assert.equal(snapshot.cloud.contexts[0].location.kind, 'cloud'); assert.equal('worktreePath' in snapshot.cloud.contexts[0].location, false)
+  assert.equal((await f.api('/pardner/control/cloud/executions/cancel', { ...intent, fromActorId: 'bob' })).httpStatus, 403)
+  await f.restart(); snapshot = await f.poll()
+  assert.equal(snapshot.cloud.executions[0].state, 'queued'); assert.equal(snapshot.cloud.executions[0].runId, null)
+  await f.ok('/pardner/control/cloud/executions/cancel', intent)
+  snapshot = await f.poll(); assert.equal(snapshot.cloud.executions[0].outcome, 'WITHDRAWN')
+  assert.equal(snapshot.cloud.executions[0].submissions, 0)
+}))

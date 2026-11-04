@@ -1,3 +1,4 @@
+import CloudControl from './CloudControl.jsx'
 import { useCallback, useEffect, useState } from 'react'
 import { createOperationId } from './operation-id.js'
 
@@ -255,6 +256,7 @@ export default function ControlPane({ request, actors, tasks, actor, canManageAc
     {canManageAccess && <Setup {...{ state, actors, tasks, act, busy }} />}
     {!actor && <p className="notice">Choose the Actor making these requests.</p>}
     {!state.sessions.length && <p className="empty">No T3 threads are mapped yet.</p>}
+    <CloudControl cloud={state.cloud} {...{ actor, act, busy, canManageAccess }} />
     {state.sessions.map(session => <SessionCard key={session.threadId} {...{ session, state, actors, tasks, actor, canManage: canManageAccess, act, busy }} />)}
   </section>
 }

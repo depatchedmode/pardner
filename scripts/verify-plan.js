@@ -59,6 +59,8 @@ const groups = [
     name: 't3-execution', scripts: [], files: names('lib/t3-execution.js lib/t3-mcp-client.js'),
     focused: [{ command: 'node --test test/t3-execution.test.js', note: 'Also discovered by npm run verify' }],
   },
+  { name: 'cursor-cloud', scripts: ['test:runtime', 'test:ui'], files: names('lib/cursor-cloud-client.js lib/cursor-cloud-execution.js'),
+    focused: [{ command: 'node --test test/cursor-cloud.test.js', note: 'Deterministic official API fixtures; no live Cloud runs' }] },
   { name: 'control-pane', scripts: ['test:runtime', 'test:ui'], files: names('lib/control-pane.js support/fake-t3-server.js') },
   {
     name: 't3-qualification-harness', scripts: [], files: names('scripts/t3-qualification.js support/t3-fake-codex.mjs'),

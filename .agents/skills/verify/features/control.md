@@ -41,3 +41,17 @@ provider behavior. Live qualification is `npm run test:t3-qualification`, and li
 human approval belongs to #79. Settings and owner decisions need a loopback page,
 so a LAN browser sees the pane but not its settings. Control records are
 host-local and never synchronize; issue links do.
+
+## Cursor Cloud
+
+[Cloud contract](../../../../docs/PARDNER-CURSOR-CLOUD.md).
+`node --test test/cursor-cloud.test.js` checks the separate SQLite adapter and
+official HTTP/SSE boundary with deterministic fixtures: route rejection, same-ID
+retry, controller fencing, restart, acceptance-write failure, lost replies,
+queueing, exact cancellation races, SSE replay/stale state and immutable artifact
+gates. These tests do not qualify account permissions or a live paid run.
+`test/control-pane.test.js` also checks the Cloud HTTP routes, disabled dispatch
+and restart. `test/pardner-control-ui.test.js` registers a Cloud context, saves
+intent and withdraws it in both Chromium and WebKit; screenshots are saved to
+`output/verification/cloud-ui/` for inspection. Live dispatch must remain disabled
+until separately authorized.

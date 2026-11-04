@@ -1,6 +1,6 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -27,7 +27,7 @@ for (const engine of [chromium, webkit]) it(`shows stale reads, approval blocks,
   const operation = async (type, payload) => (await (await fetch(`http://127.0.0.1:${server.httpPort}/automerge/operations`, { method: 'POST',
     headers: { Authorization: 'Bearer ui-token', 'Content-Type': 'application/json' },
     body: JSON.stringify({ type, payload, actorId: 'alice', operationId: randomUUID() }) })).json()).result
-  await operation('task.create', { title: 'Build the control pane' })
+  const task = await operation('task.create', { title: 'Build the control pane' })
 
   const page = await (await browser.newContext({ viewport: { width: 1440, height: 1000 } })).newPage()
   page.on('pageerror', error => errors.push(error.message))
@@ -111,5 +111,21 @@ for (const engine of [chromium, webkit]) it(`shows stale reads, approval blocks,
   await second.getByText('Running', { exact: true }).waitFor()
   assert.equal(t3.sends.length, 2)
   assert.deepEqual(t3.interrupts.map(entry => entry.runId), [runId])
+  await page.locator('summary').filter({ hasText: 'Register Cloud context' }).click()
+  for (const [label, value] of Object.entries({ 'Cloud context ID': 'cloud-review', 'Cloud project ID': 'pardner', 'Cloud agent Actor': 'reviewer',
+    'Cloud repository URL': 'https://github.com/depatchedmode/pardner', 'Cloud starting ref': 'main',
+    'Cloud authorized task IDs (comma separated)': task.taskId, 'Cloud authorized sender Actors (comma separated)': 'alice' })) await page.getByLabel(label, { exact: true }).fill(value)
+  await page.getByRole('button', { name: 'Register Cloud context', exact: true }).click()
+  const cloud = page.getByRole('article', { name: 'Cloud context cloud-review', exact: true })
+  await cloud.waitFor()
+  await cloud.getByLabel('Cloud follow-up').fill('Review the immutable attempt')
+  await cloud.getByRole('button', { name: 'Save Cloud intent' }).click()
+  await cloud.getByText(/submissions: 0/).waitFor()
+  await page.getByText(/Live dispatch disabled/).waitFor()
+  await cloud.getByRole('button', { name: 'Cancel exact Cloud run' }).click()
+  await cloud.getByText(/WITHDRAWN/).waitFor()
+  await mkdir('output/verification/cloud-ui', { recursive: true })
+  await cloud.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: `output/verification/cloud-ui/${engine.name()}.png` })
   assert.deepEqual(errors, [])
 })
