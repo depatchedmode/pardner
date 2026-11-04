@@ -1,3 +1,4 @@
+import { replicaEnvironment } from '../support/replica-credentials.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
@@ -11,7 +12,7 @@ const execute = promisify(execFile)
 const script = fileURLToPath(new URL('../scripts/native-peer-smoke.js', import.meta.url))
 it('native smoke commands require an Actor, persist edits, and safely replay a stable operation ID', { timeout: 20000 }, async () => {
   await withWorkspaceServer(async ({ server, directory }) => {
-    const env = cliEnvironment({ PARDNER_SYNC_SERVER: `http://127.0.0.1:${server.httpPort}`,
+    const env = cliEnvironment({ ...replicaEnvironment, PARDNER_SYNC_SERVER: `http://127.0.0.1:${server.httpPort}`,
       PARDNER_WS_BASE: `ws://127.0.0.1:${server.wsPort}`, PARDNER_API_TOKEN: 'test-token' })
     const run = async (args, extra = {}) => {
       let result

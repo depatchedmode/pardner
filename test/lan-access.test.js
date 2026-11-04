@@ -50,7 +50,7 @@ it('rejects ambiguous selection and preserves saved settings after a failed writ
   await assert.rejects(new LanAccess(directory).load(), SyntaxError)
 }))
 
-it('pairing is single use, expires, resets on restart, and throttles service-wide attempts', () => fixture(async directory => {
+it('pairing is single use, expires, resets on restart, and throttles repeated attempts from one source', () => fixture(async directory => {
   let now = 100000
   const access = new LanAccess(directory, { now: () => now, interfaces: () => [{ name: 'wifi', address: '192.168.1.5' }] })
   await access.load()
@@ -83,4 +83,37 @@ it('only actual loopback host and origin requests can manage phone access', () =
   assert.deepEqual(lanInterfaces({ lo: [{ family: 'IPv4', internal: true, address: '127.0.0.1' }],
     wifi: [{ family: 'IPv6', internal: false, address: '::1' }, { family: 'IPv4', internal: false, address: '192.168.1.5' }],
     link: [{ family: 'IPv4', internal: false, address: '169.254.2.3' }] }), [{ name: 'wifi', address: '192.168.1.5' }])
+})
+
+it('isolates a noisy source, including its IPv4-mapped address, from other devices', () => {
+  const access = new LanAccess('.', { now: () => 100000 })
+  access.saved.enabled = true
+  access.active = { address: '192.168.1.5' }
+  access.pairing = { code: '12345678', expiresAt: 200000 }
+  for (let i = 0; i < 10; i++) {
+    assert.throws(() => access.redeem('wrong', '192.168.1.10'), { code: 'PAIRING_INVALID' })
+  }
+  for (let i = 0; i < 200; i++) {
+    assert.throws(() => access.redeem('12345678', '::ffff:192.168.1.10'), { code: 'PAIRING_THROTTLED' })
+  }
+  access.redeem('12345678', '192.168.1.11')
+  assert.equal(access.pairing, null)
+})
+
+it('caps distributed attempts and releases both limits at the window boundary', () => {
+  let now = 100000
+  const access = new LanAccess('.', { now: () => now })
+  access.saved.enabled = true
+  access.active = { address: '192.168.1.5' }
+  access.pairing = { code: '12345678', expiresAt: 300000 }
+  for (let source = 1; source <= 10; source++) {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      assert.throws(() => access.redeem('wrong', `192.168.1.${source}`), { code: 'PAIRING_INVALID' })
+    }
+  }
+  now += 59999
+  assert.throws(() => access.redeem('12345678', '192.168.1.11'), { code: 'PAIRING_THROTTLED' })
+  now++
+  access.redeem('12345678', '192.168.1.1')
+  assert.equal(access.pairing, null)
 })

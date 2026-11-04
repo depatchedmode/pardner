@@ -1,3 +1,4 @@
+import { replicaOptions } from '../support/replica-credentials.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
@@ -26,7 +27,7 @@ for (const mode of ['co-worktree', 'co-host', 'replica']) {
       let local = server, dataDirectory = directory
       if (mode === 'replica') {
         dataDirectory = join(root, 'replica')
-        replica = new AutomergeSyncServer({ directory: dataDirectory, role: 'replica',
+        replica = new AutomergeSyncServer({ ...replicaOptions, directory: dataDirectory, role: 'replica',
           hubUrl: `http://127.0.0.1:${server.httpPort}`, hubWsUrl: `ws://127.0.0.1:${server.wsPort}/automerge`,
           hubToken: 'test-token', apiToken: 'test-token', env: {}, httpPort: 0, wsPort: 0, logger: {} })
         await replica.start(); local = replica
@@ -118,7 +119,7 @@ it('a task missing from the local replica does not starve later context and disp
     await operation('comment.add', { taskId: second, text: '@builder complete local context' })
     const secondMention = (await context(second)).mentions[0]
     const dataDirectory = join(root, 'replica')
-    replica = new AutomergeSyncServer({ directory: dataDirectory, role: 'replica',
+    replica = new AutomergeSyncServer({ ...replicaOptions, directory: dataDirectory, role: 'replica',
       hubUrl: `http://127.0.0.1:${server.httpPort}`, hubWsUrl: `ws://127.0.0.1:${server.wsPort}/automerge`,
       hubToken: 'test-token', apiToken: 'test-token', env: {}, httpPort: 0, wsPort: 0, logger: {} })
     await replica.start()

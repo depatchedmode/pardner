@@ -48,14 +48,20 @@ After a token rotation, a connected companion page reports "The service
 credential changed"; a companion reopened afterwards shows the pairing form with
 a connection-failure message instead. Mobile browser contexts do not establish
 physical phone behavior, and a local proxy does not establish public HTTPS.
-The phone test waits for the pairing QR `<img>` but does not assert that the
-image loads. A change to the page's content policy or image handling needs an
-explicit check that the QR image loads as an image (for example
-`image.decode()` resolving and a nonzero `naturalWidth`) in Chromium and
-WebKit. Describe that check as image loading: it does not read the QR payload,
-compare it with the pairing link, or show that a phone camera can scan it.
+The phone test decodes the pairing QR image and asserts nonzero natural width in
+Chromium and WebKit. This establishes image loading under the image policy;
+it does not read the QR payload or show that a phone camera can scan it.
 Payload and scannability need a QR decoder or the physical-phone exercise.
 Mask tokens, one-time pairing codes, pairing links, and QR codes in artifacts.
 Browser traces of pairing capture the credential entry and ticketed WebSocket
 URL; retain only copies produced by `verify:sanitize` (see SKILL.md, Artifact
 privacy). Never run an exercise against the user's existing workspace.
+
+Security coverage: `test/markdown-privacy.test.js` covers persisted description and
+comment images, CSP enforcement, formatting, data images, and referrer-free links
+in Chromium and WebKit (`test:ui`). `test/framing.test.js` covers response headers
+and Chromium iframe rejection. `test/vite-security.test.js` covers the development
+listener and filesystem denial; both run through full test discovery.
+`lan-access` and `lan-server` exercise source-address pairing budgets and ignored
+forwarding headers. Insecure listeners stay on numeric loopback; native sync
+still requires enrolled credentials (`automerge-sync-server`, `native-replica-auth`).
