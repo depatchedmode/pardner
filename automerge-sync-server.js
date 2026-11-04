@@ -369,7 +369,7 @@ class AutomergeSyncServer {
 
     if (allowLegacyWsQueryToken && this.allowLegacyWsQueryToken) {
       try {
-        const url = new URL(req.url || '', `http://${this.host}:${this.httpPort}`)
+        const url = new URL(req.url || '', 'http://localhost')
         const queryToken = url.searchParams.get('token')
         if (queryToken) return queryToken
       } catch {
@@ -382,7 +382,7 @@ class AutomergeSyncServer {
 
   wsTicketFromRequest(req) {
     try {
-      const url = new URL(req.url || '', `http://${this.host}:${this.httpPort}`)
+      const url = new URL(req.url || '', 'http://localhost')
       const ticket = url.searchParams.get('ticket')
       if (ticket) return ticket
     } catch {

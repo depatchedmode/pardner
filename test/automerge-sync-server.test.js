@@ -17,6 +17,7 @@ import {
   wsUrl,
   TEST_TOKEN,
   mintReplicaTicket,
+  mintWsTicket,
 } from '../support/resources.js'
 
 function withTempServer(overrides, fn) {
@@ -164,6 +165,20 @@ for (const host of ['127.0.0.1', '::1']) {
     })
   })
 }
+
+it('accepts scoped tickets and the opted-in legacy UI token on IPv6', async () => {
+  await withStartedServer({ host: '::1', allowLegacyWsQueryToken: true }, async server => {
+    for (const path of [
+      `/?ticket=${await mintWsTicket(server)}`,
+      `/automerge?ticket=${await mintReplicaTicket(server)}`,
+      `/?token=${TEST_TOKEN}`,
+    ]) {
+      const socket = await expectWebSocketOpen(wsUrl(server, path))
+      socket.terminate()
+    }
+    assert.equal((await requestWebSocketUpgrade(`http://[::1]:${server.wsPort}/automerge?token=${TEST_TOKEN}`)).statusCode, 401)
+  })
+})
 
 it('rechecks changed configuration before startup and at each listener', async () => {
   const directory = createTempDir('pardner-bind-')
