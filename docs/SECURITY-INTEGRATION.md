@@ -1,8 +1,10 @@
 # Security integration for the dogfood candidate
 
-Assessment date: 2026-11-04. Base: `bd55f246bacae5068b761c999e7b849501e7a5e3`
-(current `origin/main` when fetched). Branch: `t3/selfhost-security-integration`.
-This is a schema-4 source candidate, not an installed runtime or a merge recommendation.
+Assessment date: 2026-11-04. Current base: `1f484062b2d3fe99b9e318a56786ea72413f69f3`
+(actual main after #103). Initial source review used `bd55f246bacae5068b761c999e7b849501e7a5e3`.
+Branch: `t3/selfhost-security-integration`. This schema-4 source candidate has passed
+the post-#103 automated gate below; the coordinator owns the exact-head merge. It is
+not an installed runtime.
 The historical schema-2 installation remains untouched. PR86's schema-5 candidate
 belongs to reliability and is not incorporated here.
 
@@ -127,7 +129,7 @@ all ten coverage witnesses. Runtime conformance checks passed with the runtime
 suite. Historical wider-bound and mutation runs were not repeated. Bounded-model results cannot prove the implementation,
 merge semantics, power-loss durability or real-provider behavior.
 
-## Fresh validation and Qualification
+## Historical standalone validation before #103
 
 The reserved batch uses Node 24.11.1 on macOS with matching root/UI dependency
 lockfiles and pinned Chromium/WebKit. Dependencies are symlinked from the existing
@@ -171,10 +173,9 @@ Routine tier: security regressions, planner scripts `test:verification`,
 `test:qualification`, `test:runtime`, `test:cli`, `test:ui`, `test:control-runtime`,
 lifecycle check, then `npm run verify`. Deliberate tier:
 `npm run test:acceptance -- --repeat 20 --seed 1`, required and requested. Routine outcome: **passed**. Standalone qualification and overall verification
-outcome for the recorded candidate: **passed**. Ordered merge readiness remains
-**pending**: after #103 merges, the coordinator must schedule current-main
-integration and requalification of any changed candidate. This standalone result
-cannot certify that future union. `needs-qualification` remains for that gate.
+outcome for the recorded candidate: **passed**. At that checkpoint, ordered merge readiness was **pending** for the post-#103
+integration gate. That standalone result could not certify the later union;
+`needs-qualification` was retained until the fresh gate recorded below.
 
 The single 20-seed attempt completed in 2,506.189 seconds with all reports for
 seeds 1–20, successful scenario outcomes, no failure records, and the same source/
@@ -216,9 +217,88 @@ watchdog records and cleanup note. Raw acceptance artifacts remain private under
 rehearsal, human acceptance, physical-device test, live cutover or power-loss test
 occurred.
 
+## Post-#103 qualification for the current candidate
+
+Actual target main: `1f484062b2d3fe99b9e318a56786ea72413f69f3` (merged #103 head
+`8d359be6346ea4c04236866b69381e3ee5f03b91`). Merge commit
+`e7ff4264fb0437cca640191e5176342285054c59` preserves both main and prior security head
+`735a9acf8ae29bb6524c22cf82efb2e6779e4c5e`; it applied cleanly. No other track
+union is included. The changed fingerprint inputs are exactly
+`scripts/control-runtime.py` and `test/control_runtime_test.py`. Schema remains 4.
+
+The imported controller guard reads the selected release's literal schema and
+manifest without loading application code or opening old storage. Its disposable
+regressions verify rejection of unknown/incompatible schemas before seal/start
+and before stopping for restart, while preserving existing bytes. This changes
+recovery/start prerequisites, so it required fresh qualification. It is not a
+dependency-integrity sandbox. The four mapped lifecycle source files and mapping
+are unchanged; review found no new model action or drift to accept. The fresh
+model and implementation conformance both passed.
+
+The refreshed plan has no unclassified paths. Its merge-head warning describes
+integration of the actual target base, not a tooling overlay. Every semantic
+answer from the security review remains applicable. The new guard adds a recovery
+admission obligation. Node 24.11.1, matching root/UI lockfiles, a fresh 364-module
+UI build, and actual launches of pinned Chromium 151.0.7922.34/WebKit 26.5 preceded
+all checks. Source, tests, dependencies and build stayed fixed through the batch.
+
+| Tier | Command/exercise | Fresh result |
+| --- | --- | --- |
+| Routine | Focused security regressions (15 files) | 108 passed |
+| Routine | `npm run test:control-runtime` | 17 Python tests passed, including imported guard |
+| Routine | `npm run test:verification` | 39 passed |
+| Routine | `npm run test:qualification` | 12 passed |
+| Routine | `npm run test:runtime` | 116 passed, including lifecycle conformance |
+| Routine | `npm run test:cli` | 12 passed |
+| Routine | `npm run test:ui` | 14 passed, including real LAN and both-engine QR image loading |
+| Routine | External Markdown privacy visual probe | 2 passed; both screenshots inspected |
+| Routine | `npm run verify:model` | 174,614 states, 679,456 transitions; all properties and ten witnesses passed |
+| Routine | `npm run verify` | 480 Node tests, 17 Python tests and one acceptance seed passed |
+| Deliberate qualification | `npm run test:acceptance -- --repeat 20 --seed 1` | All seeds 1–20 passed in one run, 2,406.208 seconds |
+
+All commands exited zero; there were no skipped/cancelled tests or failing test
+attempts in this post-#103 batch. Earlier failures and repairs remain recorded
+above. All 21 report digests (the full-verify seed and separate 20-seed run) were
+checked. The twenty gate reports share the same candidate, successful outcomes,
+three matching replica snapshots per seed and the unchanged asserted limits.
+Their measured maxima, rather than thresholds, were:
+
+| Observation | Maximum ms | Count |
+| --- | ---: | ---: |
+| Local acknowledgement | 1,043.212 | 14,220 |
+| Convergence | 3,192.733 | 200 |
+| Local UI visibility | 95.185 | 40 |
+| Offline startup | 2,081.524 | 20 |
+| Agent-effect acknowledgement | 174.977 | 70 |
+
+Before/after fingerprint: `402b2719f6b583253fdaa4aae40d16fdc64694de2acd682fb174052169173e65`.
+Routine outcome: **passed**. Qualification: **passed for this fingerprint**.
+Overall automated verification outcome: **passed**. The remaining publication
+edits are guidance/evidence only and leave that executable fingerprint unchanged.
+The post-#103 qualification obligation is satisfied; the coordinator owns the
+exact-head merge. This result does not qualify a later schema-5/bridge/cloud/proof
+union or authorize deployment.
+
+One nonblocking OS-lock acquisition covered preparation, routine tests, the
+20-seed child and cleanup. Every watchdog reported zero survivors, unverified
+processes and new scratch directories. An additional process/cwd inspection found
+only four pre-existing CUA/Xcode tooling processes, all older than the lock driver;
+these were preserved. No test orphan remained. The driver exited zero and released
+`/tmp/pardner-selfhost-heavy-tests.lock` without unlinking it. No automatic handoff
+to another track was sent; the coordinator controls the next slot after #102.
+
+The [public evidence summary](evidence/security-post103-qualification.json) contains
+only allowlisted identities, counts, timing measurements and outcomes. Local exact
+commands, plan/semantic review, logs, screenshots, fingerprints and process attribution
+are in `output/verification/security-post103-1/`. Original acceptance artifacts
+remain private in `output/acceptance/2026-11-04T18-30-08.318Z/` and
+`output/acceptance/2026-11-04T18-34-59.428Z/`; no raw traces, claim tokens or credentials
+are published. No fresh-checkout milestone claim or separate real-agent/human
+acceptance is inferred from this automated gate.
+
 ## Recommended runtime gate
 
-Do not deploy this draft or close source PRs based only on this standalone
+Do not deploy or close source PRs based solely on this candidate
 qualification. Select the exact combined source/schema with runtime and reliability,
 preserve the old install, and obtain fresh applicable regressions plus the
 20-seed qualification on that immutable candidate. Before shared-token execution,
