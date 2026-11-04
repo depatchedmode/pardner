@@ -1,176 +1,185 @@
-# Issue 66 readiness on current main
+# Issue 66 readiness on integrated main
 
-This is the November 4, 2026 reconciliation of [PR70](https://github.com/depatchedmode/pardner/pull/70)
-for [#66](https://github.com/depatchedmode/pardner/issues/66), under the
-[#50](https://github.com/depatchedmode/pardner/issues/50) umbrella. It prepares a
-reviewable baseline; it does not close either issue or authorize #67.
+This is the November 4, 2026 integration of [PR70](https://github.com/depatchedmode/pardner/pull/70)
+through [PR101](https://github.com/depatchedmode/pardner/pull/101), for
+[#66](https://github.com/depatchedmode/pardner/issues/66) under
+[#50](https://github.com/depatchedmode/pardner/issues/50). It assesses an automated
+implementation candidate, not the remaining native/human acceptance of #66.
+**Routine verification passed; deliberate qualification failed. No merge
+recommendation is made while the latency failure remains unexplained.**
+It does not implement or close #67. The coordinator owns the merge decision.
 
-Base: `bd55f246bacae5068b761c999e7b849501e7a5e3` (current main when fetched).
-Imported source: PR70 `17d65d1c1aa011f90bfa5d24a7c3e9f9c5aa9243`.
-Initial implementation: `1277bf70b26eb47459df0efcfe6e37feb047693c`.
-Planner-repaired candidate: `42547d4a39c0209e2f2157e58638da3d2de2b075`.
+Integrated main: `e0fee59cbdeac55733aca15de73d45c2e2d14bfb`, including #103 runtime,
+#102 security/PR85 cleanup approval, and #106 schema5 operation integrity.
+Tested implementation: `34abcf98b9204bc1b564774a84554429c20d35c1`.
+Source/test/lockfile/built-UI fingerprint:
+`0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3`.
+Guidance-only evidence commits can follow this implementation without altering
+that fingerprint. No #105/#104 union is included or qualified here.
 
-## Reconciliation and trust boundaries
+## Reconciliation and behavior
 
-The bridge's durable-context timing and retry repairs, bounded two-round
-coordinator, real-execution rehearsal, focused regressions, and runbooks come
-from PR70. Main's authorizing-comment digest/revision/editor check remains intact;
-ported capacity fixtures now retain that authorized context. No provider
-registry or other-provider branch was imported. No acceptance budget override,
-acceptance assertion change, or unrelated UI test change was imported.
+PR70 `17d65d1c1aa011f90bfa5d24a7c3e9f9c5aa9243` supplies the bounded two-round
+coordinator, native-execution rehearsal, durable-context timing/retry repairs,
+and their regressions. Its history/provenance and this branch's planner repair
+`42547d4` are retained. Main was integrated in `416f34c`; the only textual merge
+conflict was the delivery feature map, resolved by retaining both sections.
+No provider registry, other-provider branch, acceptance-budget override or
+unrelated UI assertion change was imported.
 
-One additional correctness repair rejects builder artifacts edited by another
-Actor or carrying unresolved conflicts/deletion before freezing their source.
-The prior coordinator checked original authorship but discarded these fields.
-Review results already checked them. Actor attribution remains workspace evidence,
-not cryptographic isolation of mutually hostile agents.
+The integrated bridge preserves all of these independent requirements:
 
-The local replica remains authoritative. Inbox receipt precedes delivery ack;
-the prompt commit and timestamp/dispatch-intent commit precede RPC. Failure before
-RPC leaves queued work retryable with fresh authorized context. After uncertain
-submission, the exact stored prompt is retained for history reconciliation.
-Legacy inboxes gain a nullable timing column without inventing historical timing
-or changing accepted receipts. Tests exercise disposable SQLite databases, not
-active controller data. Process-crash and SQLite capacity evidence does not prove
-power-loss durability.
+- Explicit Actor/task/sender/session/worktree/policy mapping and sole dispatch.
+- Durable inbox receipt before delivery acknowledgement; durable prompt then
+  timestamp/dispatch-intent commit before RPC. Preparation failure remains queued
+  and retries fresh authorized context; uncertain submission retains its exact
+  saved prompt for supported history reconciliation.
+- Main's originating-comment digest, editor and observed-revision checks.
+  Schema5 `receipt.requestId` is the caller's retry key; `receipt.operationId`
+  is the stored content-bound identity used by mentions and comment revisions.
+- Both `cleanupApproval` and `contextPersistedAt` in status. Local cleanup approval
+  and revocation remain private, with ownership/scope/revision checks before each
+  archive or move effect. Timing changes do not authorize retirement.
+- Unresolved operation-integrity groups in task context block queued dispatch,
+  builder-artifact selection, review votes, local cleanup approval and the next
+  retirement effect. All variants/provenance remain intact; coordinator failures
+  retain structured integrity-error details and never silently retry writes.
+- Two independent same-immutable-SHA approvals. Old-round/old-SHA, duplicate,
+  contradictory and misattributed reviews cannot supply the second vote.
+  Foreign-edited, deleted or conflicted builder artifacts cannot be frozen.
 
-No transport changed: same-host loopback service and App Server remain the
-supported baseline. The hub is still required for enrollment/new delivery leases;
-accepted work can save locally during outages. App Server/model unavailability
-leaves work visibly pending or uncertain; it does not permit a second dispatcher.
-Existing bridge reconciliation, export/recovery requirements and explicit
-sender/task/session/worktree/policy mappings are preserved.
+The local service still owns the persisted replica. No transport, shared-secret
+admission, schema migration or broad Actor identity redesign was introduced here.
+Same-host loopback remains the native baseline; enrolled replicas/new hub leases
+retain their existing dependency boundaries. All merged native credentials,
+private-state, browser/privacy, LAN and controller safeguards remain present.
+Tests use disposable data and fake archival adapters; no live controller data,
+credentials, native sessions, worktrees or approval prompts were operated on.
 
-Security owns PR85's local approval for session archival/worktree retirement.
-The overlapping changes here are limited to `BridgeInbox.begin`, the additive
-`context_persisted_at` column, fresh queued prompts, and status timing. Security
-was notified of these exact overlaps. PR85 is not included or qualified here;
-its local approval checks must survive combination. The three-agent configuration
-does not enable completion cleanup. Broader Actor/Location identity remains with
-the reliability track. #91/#92 maintenance and #67 feature work are untouched.
+## Fresh automated evidence
 
-## Evidence provenance
+Node **24.11.1**, both locked installs and current UI build on macOS arm64.
+Pinned Chromium **151.0.7922.34** and WebKit **26.5** actually launched.
+The planner reports no warnings or unclassified paths. All checks run with the
+same integrated executable candidate under one exclusive nonblocking OS advisory
+lock at `/tmp/pardner-selfhost-heavy-tests.lock`; the lock is retained across
+subprocesses and never unlinked. Normal assertions and latency bounds are intact.
 
-The [historical report](PARDNER-66-QUALIFICATION.md) records PR70's prior
-`febaf78ad073350fb888427a5eec64e6b483501c` source and fingerprint
+| Check | Result |
+| --- | --- |
+| Targeted bridge/cleanup/rehearsal, schema5 integrity, native auth/storage and private-state union | 142/142 passed |
+| Verification tooling / runtime / CLI | 39/39, 118/118, 12/12 passed |
+| Storage/conflict qualification regression suite | 12/12 passed |
+| UI suite, including Chromium/WebKit actual LAN HTTP and privacy coverage | 14/14 passed |
+| Lifecycle model/mapping | 174,614 states, 679,456 transitions; invariants, progress and all coverage witnesses passed within declared bounds |
+| `npm run verify` | Build, 17 Python + 522 Node tests, then seed-1 acceptance passed; no test skips/cancellations |
+| Routine seed audit | 719 operations, 3 recorded replica verifications; snapshot/report digests and schema5 request/stored identities checked |
+| `npm run test:acceptance -- --repeat 20 --seed 1` | Failed on seed 5: 2,384.036 ms local acknowledgement exceeded 2,000 ms; seeds 1–4 passed, 6–20 not run |
+
+Before/after routine, failed-gate and diagnostic fingerprints match. The 20-seed
+invocation exited 1 after 662.039 seconds, without timeout, skipped seeds or
+retries. The failed operation was `seed-5-operation-661`, a scripted offline
+`task.update` of priority, after the fixture's restart. A prior operation took
+1,818.734 ms, also retained. The failure is not a qualification pass; no summary
+was generated. The four completed reports and snapshots were re-audited, and the
+failed seed's manifest/cleanup artifacts were inspected. See the curated
+[evidence record](evidence/issue-66-integrated.json).
+
+A declared 30-minute diagnostic budget covered a sequential matched seed-5 run
+on actual main (disposable source archive, matching dependency links/UI build)
+and this candidate. Both passed: maximum receipt-inclusive acknowledgements
+**336.009 ms** and **258.382 ms**. The affected CLI task-update path is unchanged
+from main; changed bridge modules are loaded only for bridge commands. This does
+not establish the original failure's cause. Host load averages observed after
+the miss were 215.19/142.51/65.08 and later fell to 39.25/99.08/57.97; no thermal
+warning was reported. Those observations are correlation, not proof that host
+pressure caused this operation's delay. Passing isolated reruns do not clear the
+failure, so diagnosis stopped instead of silently retrying the full gate.
+
+All watchdogs completed and recorded no hung processes, survivors or leftover
+scratch. Owned test processes were absent after diagnosis, the disposable baseline
+archive was removed, and the lock wrapper exited 0, releasing the stable lock
+without unlinking it. No downstream track was handed the slot automatically.
+The next investigation must distinguish CLI spawn/scheduling, request/service
+handling and persistence time under recorded pressure, or use an explicitly
+controlled host/time window; then rerun the entire 20-seed gate unchanged.
+
+The routine seed's evidence remains a separate single-seed result. The routine seed's maximum measured
+receipt-inclusive acknowledgement was **322.595 ms** (2,000 ms limit), UI visibility
+**77.602 ms** (2,000 ms), offline reopen **2,048.637 ms** (5,000 ms), and convergence
+**2,647.113 ms** (10,000 ms). These are observed values, not budget substitutions.
+
+Private raw artifacts and the detailed report live at
+`output/verification/issue-66-integrated/`; acceptance traces and receipts stay
+under `output/acceptance/`. Browser traces contain disposable credentials and are
+not public evidence. The audit rechecks the first retained snapshot per seed;
+the other two replicas have recorded live verification results, not separately
+retained snapshots. Model bounds, deterministic workers, simulated devices and
+process kills do not establish arbitrary external effects, physical devices,
+native model participation or power-loss durability.
+
+## Historical results and failed attempt
+
+PR70's [historical report](PARDNER-66-QUALIFICATION.md) records source
+`febaf78ad073350fb888427a5eec64e6b483501c`, fingerprint
 `b2d0a60b0b925795acaca96c9c15da319e355d9d854d3bb7567307f79abbf630`:
-331 default tests, a three-native-agent two-round run, a non-answering approval
-probe, and an uninterrupted 20-seed gate. PR70 reports its October 21 rebase
-preserved that fingerprint. These are retained reports, not newly reproduced
-results; their private artifacts were not re-audited here. Current main has
-substantive source changes, so that qualification does not transfer.
+331 tests, a three-native-agent two-round run, a non-answering approval probe
+and a 20-seed gate. PR70 reports that its October 21 rebase retained that
+fingerprint. Those private artifacts were not re-audited in this wave and do not
+qualify the current candidate's native execution.
 
-Related branch metadata read from GitHub:
+Metadata/evidence was read for open PR71 `fc0e50a5` (340 tests + seed 1), PR72
+`3b99b722` (383 tests + seed 1) and PR73 `7f59e3c0` (366 tests + seed 1). None
+reported fresh native/mixed-provider qualification after restack; earlier explicit
+10-second-budget runs do not prove today's 2-second default. None was imported.
 
-| PR | Inspected head | Reported evidence and boundary |
+The initial current-main reconciliation `1277bf70` passed 74 focused tests and
+build; guidance head `07a4b39` passed 116 runtime and 12 CLI tests, then full verify
+passed 14 Python and 471/472 Node tests. Its one failure was this change's missing
+four planner classifications; **acceptance did not run**. Repair `42547d4` retained
+the assertion, added the paths, and passed 16 planner tests. Initial fingerprint
+`b50f467b…` and repaired `a985f43d…` are historical only. These attempts, the initial
+sandbox preflight failure (no test child started), and lock-busy outcome remain
+in `output/verification/issue-66-readiness/`. No failed or earlier candidate's
+seeds are combined into current qualification.
+
+## Acceptance matrix and remaining boundaries
+
+| #66 requirement | Current evidence | Remaining observation |
 | --- | --- | --- |
-| #71 provider foundation | `fc0e50a5b1ca237cca0570ef1d3ab8cce762e287` | 340 tests + seed 1 after restack; no fresh native-provider qualification |
-| #72 Cursor ACP | `3b99b722f3e7b024881d783aa457d3269de61b33` | 383 tests + seed 1; native/mixed-provider qualification unrun |
-| #73 Claude channel | `7f59e3c0ad4d8d94615e58ce1323bd622d8bd1c0` | 366 tests + seed 1; cooperative receipts are not native acceptance |
+| Fresh operator setup/lifecycle | [Runbook](PARDNER-THREE-AGENT.md), explicit mappings and inspected policy | Fresh native operator rehearsal |
+| One kickoff → two reviewers → correction → final human queue | Bounded coordinator and deterministic regressions | Fresh actual three-agent run |
+| Independent Actors/worktrees and immutable revision | Real Git worktree fixtures, review barriers, command/timing journal | Native participation on this fingerprint |
+| Delayed/busy, duplicates, stale results and authorization | Bridge/review regressions, restart/reconciliation fixtures | Fresh native busy/reply-loss probes |
+| Input blocking without answering | Preserved adapter regressions and separate probe | Native probe; human approval/resume remains unqualified |
+| Durable receipt, queued retry, lost reply and recovery | Fresh context, SQLite capacity, restart, precise saved-prompt and cancellation tests | No universal exactly-once external-effect guarantee |
+| Bounds/idle | Unchanged 2s dispatch, 45s startup, 30s context, 20min model workflow; deterministic idle ticks | Native timing and real one-hour idle unqualified |
+| Repository verification | Fresh integrated routine passes; deliberate gate failed as above | Actual human accept/reject remains separate |
+| Preserve data/credentials/privacy | Disposable automated fixtures; merged security checks retained | No live deployment/migration or archival authorized |
 
-All three remained open. Their older explicit 10-second-budget results do not
-establish the current 2-second default, and their implementations are unnecessary
-for #66's Codex-only baseline.
-
-## Acceptance matrix
-
-“Historical” refers only to the PR70 report above. Automated fixtures cannot count
-as actual agent participation or human acceptance.
-
-| #66 requirement | Implemented evidence path | Current readiness / remaining observation |
-| --- | --- | --- |
-| Fresh operator setup and lifecycle | [Runbook](PARDNER-THREE-AGENT.md), explicit mappings and policy inspection | Documented; fresh native operator rehearsal pending |
-| One kickoff, two reviews, correction, human queue | Three-agent script; two bounded rounds | Deterministic coordinator checks; native flow historical only |
-| Three real independent Actors/worktrees | Per-Actor sessions, immutable Git source, command journal | Worktree fixtures; fresh three-agent participation pending |
-| Same-SHA two-review barrier, stale/duplicate rejection | `three-agent-review.test.js` | Focused regression; one result/receipt cannot supply two votes |
-| Builder attribution survives edits/conflicts | `builderArtifacts`, new regression | Foreign edits/conflicted/deleted source rejected before freezing |
-| Busy queue, unauthorized tasks/senders, policy mismatch | Bridge tests; script's declared probes | Automated evidence; fresh native busy probe pending |
-| Approval/input blocking without answering | Adapter regressions; separate approval script | Historical native probe only; no approval-and-resume claim |
-| Durable receipt, restart, duplicate containment | Bridge SQLite/restart regressions | Automated fixtures; fresh native restart pending |
-| Lost accepted reply and uncertain reconciliation | Exact stored prompt and submission identity | Automated fixtures; native reply-loss run pending; ambiguity stays blocked |
-| Bounds and zero idle inference | 2s dispatch, 45s startup, 30s context, 20min workflow | Limits unchanged; native 5s idle historical, one-hour idle unqualified |
-| Tests and final human acceptance | Independent tests plus both final approvals; parent in review | Required full checks pending; actual human accept/reject not run |
-| Preserve data and private evidence | Disposable fixtures; no live operations | No model requests, native sessions, archival, live approvals or deployment in this wave |
-
-## Fresh validation and qualification
-
-On implementation SHA `1277bf70b26eb47459df0efcfe6e37feb047693c`, the five-file
-focused batch passed **74/74**, with zero failures, cancellations or skips
-(18.070 seconds). It covers bridge inbox/context, existing bridge authorization
-and cleanup regressions, rehearsal support, review barriers and coordinator
-cancellation. The production UI build also passed. The post-build source/test/UI
-fingerprint is `b50f467b3b018cbffdd90bb7d3a66a659ca585feec2bdb9e826f030964c8d22b`;
-it differs from PR70's historical candidate. The fingerprint was captured after
-the focused tests/build, not before them; the tested source is the clean committed
-implementation SHA, with only guidance edits outstanding.
-
-The local verification report is `output/verification/issue-66-readiness/report.md`.
-It records exact commands, outcomes, environment, and retained logs. Node is
-24.11.1; dependencies use both lockfiles. Automated tests use disposable services
-and test adapters, never paid models. No test assertion, latency limit, or Node
-pin was relaxed.
-
-The first reserved heavy batch ran on `07a4b39cd016127badc8ea238cadfb15647156e0`
-(the initial implementation plus guidance), holding the shared advisory lock
-through all subprocesses. Runtime passed **116/116**, CLI **12/12**. Full verify
-passed the build and **14 Python tests**, then **471/472 Node tests** passed with
-zero skips/cancellations. The sole failure was the planner's explicit file-map
-assertion: the four new rehearsal files were unclassified. **Acceptance did not
-run.** Before/after fingerprints matched the initial `b50f467b…` candidate.
-
-Repair `42547d4` classifies those four files in the existing bridge group without
-weakening the map assertion. All **16 planner tests passed** and the regenerated
-plan has zero unclassified paths. Repaired fingerprint:
-`a985f43d531c319ed1f1eb1c828b4cdfd745015feaaf80e57d20ea7dba389e02`.
-This is not a full-verification pass. The failed attempt remains in the local
-report/logs. The watchdog completed normally, reported no survivors or scratch,
-and no checkout-owned test processes remained; the lock was released without
-unlinking it and security was notified.
-
-A repair-verification slot is reserved after security, cloud and proof. On proof's
-release, run `npm run test:verification` then `npm run verify`, with 900-second
-watchdogs and the lock held across both child processes. Capture the repaired
-candidate before/after and keep the new logs separate. Runtime/CLI's preceding
-passes establish the unchanged runtime code only; no combined candidate,
-acceptance or native success is inferred. The initial sandbox watchdog preflight
-also remains recorded: process enumeration failed before any child started.
-
-Qualification is **required, not run** on this candidate: delivery persistence
-and recovery changed. The required 20-seed command remains
-`npm run test:acceptance -- --repeat 20 --seed 1` on Node 24.11.1, with prepared
-UI and pinned browsers, holding the exclusive advisory lock for the entire
-watchdog/child process. No historical result releases that gate. Routine and
-overall readiness remain incomplete until the missing checks are satisfied.
-No merge recommendation is made.
+Keep #50 and #66 open. #67 waits for its separately qualified native/human
+baseline. Automated code qualification permits a bounded implementation merge
+review; it does not satisfy these remaining issue acceptance criteria.
 
 ## Bounded next native rehearsal proposal
 
-After integration with required security fixes, freeze the exact implementation
-SHA, source/test/build fingerprint, native CLI version, configured model/effort,
-and test artifacts. First finish routine checks and the deliberate 20-seed gate
-under the shared lock at unchanged bounds. A combined candidate needs its own
-results; this branch's focused checks do not qualify PR85 or other tracks.
+After the automated integration is accepted, separately authorize one same-host
+replica, one dedicated App Server, three independent sessions/Actors/worktrees,
+and two immutable fixture rounds with `--drop-dispatch-reply`. Record exact source,
+build fingerprint, native CLI version, model/effort and spending ceiling first.
+The 20-minute workflow bound is not a dollar cap; disclose any inability to enforce
+a hard monetary cap before running. No paid/native session is authorized by the
+automated qualification or merge request.
 
-The next separately authorized native exercise is one same-host isolated replica,
-one dedicated App Server, three independent sessions/Actors/worktrees, and two
-immutable fixture rounds with `--drop-dispatch-reply`. Retain the declared busy
-restart, duplicate-result/notification, old-SHA, unauthorized-task and policy
-mismatch probes. The correction adds the documented blocked-task requirement;
-clean initial reviews are valid. No #67 code is involved. Stop on any approval
-request without answering; record interruption as incomplete, not a pass.
+Retain the declared busy restart, duplicate/stale, unauthorized task and policy
+mismatch probes. A clean initial review is valid: the correction adds the declared
+blocked-task requirement rather than inventing a bug. Stop on input/approval
+requests without answering. The separate non-answering approval probe needs its
+own bounded native authorization. Even `--check` creates/archives a disposable
+readiness session, so it was not run in this wave. Any permission must name only
+that disposable session, not existing user sessions or worktrees.
 
-The exact remaining authorization is permission to spend on the inspected model
-for this bounded fixture and the separate non-answering approval probe, plus
-permission to create and archive **only the disposable readiness session**.
-Even `--check` creates/archives that session, so it was not run in this wave.
-Before authorization, disclose the chosen model/effort and obtain an explicit
-spending ceiling; the 20-minute workflow timeout is not a dollar cap. If a hard
-monetary cap cannot be enforced, report that limitation before running.
-Retain evidence privately; publish only a manually inspected, redacted report.
-
-Successful automation ends at two same-final-SHA approvals and the human-review
-queue. Obtain an actual human accept/reject verdict separately. A human
-approval-and-resume UI, one-hour idle observation, separate machines, other
-providers, hub-loss qualification, and arbitrary external-effect idempotency
-remain outside this proposed run. #50 stays an open umbrella; #66 remains open
-pending fresh qualification and human acceptance; #67 waits for that baseline.
+Automation ends at two final-SHA approvals and the human-review queue. Record an
+actual human verdict separately. A human approval/resume UI, physical/separate
+machines, other providers, hub-loss native qualification, one-hour idle and
+arbitrary external-effect idempotency remain outside that proposed run.

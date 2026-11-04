@@ -115,7 +115,10 @@ assessments. This exercises correction when the initial implementation is clean;
 it does not manufacture a bug. The coordinator addresses that request to
 `@builder`, freezes the new submitted artifact, and requests both reviewers again.
 Builder artifacts edited by another Actor, deleted, or carrying unresolved
-conflicts are rejected before source is frozen. Earlier approvals are invalidated. Duplicate assessments count once; mismatched
+conflicts are rejected before source is frozen. Schema5 task contexts with
+unresolved operation-integrity groups cannot supply a builder artifact or reviewer
+vote. Preserve the group's request ID, distinct stored operation IDs and replica
+origins for inspection; do not treat either variant as the authoritative result. Earlier approvals are invalidated. Duplicate assessments count once; mismatched
 rounds/SHAs, unrelated runs, wrong attribution, and conflicted comments cannot pass
 the barrier. Contradictory results from one reviewer block the bounded run.
 Both final-SHA approvals put the parent in `review`, assigned to `human`.
