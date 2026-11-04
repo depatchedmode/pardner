@@ -19,6 +19,8 @@ import { resolve } from 'node:path'
 import { findGitRoot, getTraceByCommit } from './lib/agent-trace.js'
 import { parseGithubRepo } from './lib/github-remote.js'
 import { LanAccess, canManageAccess, isLoopback } from './lib/lan-access.js'
+import { ControlPane } from './lib/control-pane.js'
+import { T3Busy, T3Rejected, T3Unknown } from './lib/t3-mcp-client.js'
 
 const DEFAULT_HTTP_PORT = 8004
 const DEFAULT_WS_PORT = 8005
@@ -103,6 +105,9 @@ class AutomergeSyncServer {
     this.wsHttpServer = null
     this.host = options.host ?? env.PARDNER_BIND_HOST ?? '127.0.0.1'
     this.access = options.access ?? new LanAccess(this.store.directory)
+    // Host-local T3 control records; `control: false` leaves them unopened.
+    this.controlOptions = options.control ?? {}
+    this.control = null
     this.lanServers = []
     this.browserWsPath = options.browserWsPath ?? env.PARDNER_BROWSER_WS_PATH
     if (this.browserWsPath !== undefined && !/^\/(?!\/)[^?#\\]*$/.test(this.browserWsPath)) {
@@ -156,6 +161,12 @@ class AutomergeSyncServer {
     this.store.docHandle.on('change', this.onDocumentChange)
     this.store.on?.('status', this.onRuntimeStatus)
     this.logger.log?.('✅ Backend AutomergeStore initialized')
+    if (this.controlOptions !== false) {
+      this.control = await new ControlPane({ directory: this.store.directory, logger: this.logger, ...this.controlOptions,
+        identity: { workspaceId: this.store.manifest.workspaceId, replicaId: this.store.manifest.replicaId },
+        doc: () => this.store.getDoc() }).open()
+      this.control.start()
+    }
     
     // Setup Express for HTTP API
     this.setupHTTPAPI()
@@ -260,6 +271,8 @@ class AutomergeSyncServer {
     this.automergeWsAdapter = null
 
     const listenerResults = await listenersClosed
+    await this.control?.close()
+    this.control = null
     this.wsHttpServer = null
     this.httpServer = null
     this.lanServers = []
@@ -407,6 +420,48 @@ class AutomergeSyncServer {
     return res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' })
   }
   
+  /**
+   * Control records for T3 threads this service controls. Credentials, the
+   * registry, routes and owner decisions need the local loopback page; dispatch,
+   * cancellation and verdicts use ordinary workspace access plus route checks.
+   */
+  setupControlAPI() {
+    const statuses = { NOT_FOUND: 404, ROUTE_REJECTED: 403, FORBIDDEN: 403, LOCAL_ADMIN_REQUIRED: 403, AMBIGUOUS_ROUTE: 409,
+      CONTROLLER_CONFLICT: 409, INVALID_EXECUTION_STATE: 409, OPERATION_ID_REUSED: 409, UNREVIEWED_RUN: 409, HOLD_CHANGED: 409,
+      CREDENTIAL_CHANGED: 409, UNQUALIFIED_THREAD: 409, VERSION_ACCEPTANCE_REQUIRED: 409, UNKNOWN_ACTOR: 400, CONTROL_UNAVAILABLE: 503 }
+    const failure = (res, error) => {
+      const t3 = error instanceof T3Rejected ? 502 : error instanceof T3Busy ? 503 : error instanceof T3Unknown ? 504 : null
+      if (!t3 && !error.code) this.logger.error?.(error)
+      res.status(t3 ?? statuses[error.code] ?? (error.code ? 400 : 500)).json({ success: false, error: error.message,
+        code: t3 ? `T3_${error.name.slice(2).toUpperCase()}` : error.code ?? 'INTERNAL_ERROR', ...(t3 && error.code ? { t3Code: error.code } : {}) })
+    }
+    const handle = (path, action, { admin = false } = {}) => this.app.post(`/pardner/control${path}`, async (req, res) => {
+      res.set('Cache-Control', 'no-store')
+      try {
+        if (!this.control) throw Object.assign(new Error('The control pane is not running in this service'), { code: 'CONTROL_UNAVAILABLE' })
+        if (admin && !canManageAccess(req)) throw Object.assign(new Error('Open Pardner on this computer through its loopback address to change control settings.'), { code: 'LOCAL_ADMIN_REQUIRED' })
+        res.json({ success: true, result: await action(req.body ?? {}) })
+      } catch (error) { failure(res, error) }
+    })
+    this.app.get('/pardner/control', (_req, res) => {
+      res.set('Cache-Control', 'no-store')
+      if (!this.control) return res.json({ enabled: false })
+      try { res.json({ enabled: true, ...this.control.snapshot() }) } catch (error) { failure(res, error) }
+    })
+    handle('/credential', body => this.control.pair(body), { admin: true })
+    handle('/projects', body => this.control.registerProject(body), { admin: true })
+    handle('/sessions', body => this.control.mapSession(body), { admin: true })
+    handle('/sessions/authorize', body => this.control.authorize(body), { admin: true })
+    handle('/sessions/release', body => this.control.release(body), { admin: true })
+    handle('/executions', body => this.control.dispatch(body))
+    handle('/executions/cancel', body => this.control.cancel(body.id))
+    handle('/executions/reconcile', body => this.control.reconcile(body.id))
+    handle('/executions/resolve', body => this.control.resolve(body.id, body.decision, body.evidence), { admin: true })
+    handle('/executions/artifacts', body => this.control.recordArtifact(body))
+    handle('/executions/verdicts', body => this.control.recordVerdict(body))
+    handle('/poll', async () => { await this.control.poll(); return this.control.snapshot() })
+  }
+
   setupHTTPAPI() {
     this.app.use((_req, res, next) => {
       if (this.stopping) {
@@ -465,6 +520,7 @@ class AutomergeSyncServer {
         res.status(409).json({ code: error.code, error: error.message })
       }
     })
+    this.setupControlAPI()
     const commands = new Set(['/automerge/operations', '/automerge/sync-ack', '/automerge/ws-ticket',
       '/automerge/deliveries/claim', '/automerge/deliveries/ack', '/automerge/deliveries/release'])
     this.app.use((req, res, next) => {

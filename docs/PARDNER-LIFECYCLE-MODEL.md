@@ -46,7 +46,9 @@ invariants become `INVARIANT`s and the progress property becomes
 
 ## Mapping to the implementation
 
-The mapping was recorded against source revision `bdf0ef091ca224b91da5a4f6b5739a1e04081990`.
+The mapping was recorded against source revision `d849d26a51d27b2788092bdbae0c08a280ab1616`. That review, for
+[#77](https://github.com/depatchedmode/pardner/issues/77), confirmed that the control pane's routes sit behind the same
+admission middleware and that it closes after `listenersClosed` and before `store.close()`; no action changed.
 `formal/lifecycle/mapping.json` holds that revision and the SHA-256 of each
 mapped file; `npm run verify:model` fails with exit code 2 when any of those
 files changes or when an anchor string no longer occurs exactly once.
@@ -137,7 +139,7 @@ clients closing their sockets.
 ## Results
 
 Recorded on 2026-11-03 with Node 24.11.1 against mapping revision
-`bdf0ef091ca224b91da5a4f6b5739a1e04081990` (file hashes in `mapping.json`). No external tools.
+`d849d26a51d27b2788092bdbae0c08a280ab1616` (file hashes in `mapping.json`). No external tools.
 
 Model check with the default bounds: 174,614 states, 679,456 transitions, about
 5 s. All four invariants hold and `ShutdownCompletes` holds under weak fairness

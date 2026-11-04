@@ -2,15 +2,17 @@
 
 This report covers [issue #76](https://github.com/depatchedmode/pardner/issues/76).
 Pardner owns intent, tasks and review. T3 owns local execution and its native
-approval flow. Everything below applies to **T3 Code 0.1.5** (orchestration
+approval flow. Everything below was established on **T3 Code 0.1.5** (orchestration
 protocol 2, 66 MCP tools listed for a full-access client) and must be requalified on upgrade.
+[T3 0.1.6](#t3-016) was requalified with the same script; its differences are listed there.
 
 Results come from [`scripts/t3-qualification.js`](../scripts/t3-qualification.js),
 which runs the installed T3 server against a disposable home with a
 [scripted provider](../support/t3-fake-codex.mjs). It passes the server an allowlisted
 environment, makes no model turns and never connects to the owner's T3 server.
 
-The sanitized output is [`evidence/t3-0.1.5-qualification.json`](evidence/t3-0.1.5-qualification.json).
+The sanitized output is [`evidence/t3-0.1.5-qualification.json`](evidence/t3-0.1.5-qualification.json)
+for 0.1.5 and [`evidence/t3-0.1.6-qualification.json`](evidence/t3-0.1.6-qualification.json) for 0.1.6.
 It holds the checks, separately listed observations, request/response transcripts,
 per-execution state transitions and submission counts. `submissions` counts sends that
 T3 may have accepted, so a deduplicated retry can count twice. Thread, client, project and
@@ -21,7 +23,7 @@ it, and any later edit to those files makes it stale. It has a hash of every too
 definitions for nine thread, queue, request and project tools. It records one run.
 
 ```sh
-npm run test:t3-qualification -- --output docs/evidence/t3-0.1.5-qualification.json
+npm run test:t3-qualification -- --output docs/evidence/t3-0.1.6-qualification.json
 node --test test/t3-execution.test.js
 ```
 
@@ -80,9 +82,11 @@ used the scripted provider, which reports the request resolved; a real provider 
 
 ## Execution states
 
-[`lib/t3-execution.js`](../lib/t3-execution.js) is the reference contract for the
-project pane in [issue #77](https://github.com/depatchedmode/pardner/issues/77). It is not
-yet connected to the CLI, service or UI.
+[`lib/t3-execution.js`](../lib/t3-execution.js) is the contract the
+[project control pane](PARDNER-CONTROL-PANE.md) drives from the local service and UI.
+The pane supplies what the contract does not: polling, startup reconciliation,
+repeated cancellation, persisted routes and authorization, the runtime-mode check
+and one managed credential.
 
 | State | Meaning | Not implied |
 | --- | --- | --- |
@@ -95,7 +99,7 @@ yet connected to the CLI, service or UI.
 | `unknown` | Acceptance cannot be established or the run has vanished; the thread's context is blocked | Non-acceptance |
 
 The contract is passive: **the caller must poll `observe`, call `reconcile` on startup and
-after a lost reply, and call `pump`.** Nothing runs on its own, and `observedAt` marks when
+after a lost reply, and call `pump`**, as the control pane does. Nothing runs on its own, and `observedAt` marks when
 a reply arrived, so a slow reply can look fresher than it is.
 
 Rules the contract enforces:
@@ -103,8 +107,9 @@ Rules the contract enforces:
 - Authorization happens before persistence. A wrong route leaves no record and
   makes zero submissions.
 - Each thread has one controller per ledger, checked at open and on every operation, and
-  each open has one route and Actor per thread. Routes are constructor input, so the caller
-  owns persisting them. A second owner gets `CONTROLLER_CONFLICT`, and nothing reassigns ownership yet. Run one
+  each open has one route and Actor per thread. Routes are constructor input, and
+  `setRoutes` changes them while running without treating in-flight sends as crashed;
+  the caller owns persisting them. A second owner gets `CONTROLLER_CONFLICT`, and nothing reassigns ownership yet. Run one
   process per controller: reopening a ledger treats its in-flight sends as crashed.
   Dispatch rechecks the route, so revoked work stays queued. A local write failure after
   a send surfaces as `unknown` on the next read.
@@ -177,3 +182,26 @@ T3, not the controller.
   given evidence file may show the contract's extra hold only through the fixtures.
 - **Single-writer limit.** Pardner detects another dispatcher only after its run
   appears, so it cannot prevent one.
+
+## T3 0.1.6
+
+The same script was run against the installed T3 0.1.6 on Node 24.11.1, with the
+contract as changed for [#77](https://github.com/depatchedmode/pardner/issues/77):
+all 39 checks passed. The thread, queue, request and launch tool definitions are
+unchanged. The `t3_project_*` and `html_render` definitions changed and were not
+qualified. Observed differences from 0.1.5:
+
+- **A run queued before a T3 crash ran after restart**, instead of staying `queued`
+  while the thread reported `completed`. Removing it then failed with
+  `orchestration_error`, because it was no longer queued. Pardner keeps only one
+  submission in T3 at a time, so a queued run there is either this controller's
+  current run or one it does not own and holds the thread for.
+- The number of T3 resume runs after a crash varies: one in the published file, two in
+  an earlier 0.1.6 run. Each one holds the thread.
+
+The 0.1.5 evidence predates the #77 contract changes, so its
+`source.qualificationFilesSha256` no longer matches the code. Those changes are a
+direct row lookup, restoring the observed state after a refused repeat cancellation,
+`setRoutes`, the environment and output reads, and checking a sign-in reply's status
+before parsing it.
+

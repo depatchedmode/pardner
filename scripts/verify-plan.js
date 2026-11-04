@@ -21,7 +21,7 @@ const groups = [
   },
   {
     name: 'delivery', scripts: ['test:runtime', 'test:cli'], qualification: 'Durable delivery, leases, or replay',
-    files: names('lib/delivery-ledger.js lib/bridge-inbox.js'),
+    files: names('lib/delivery-ledger.js lib/bridge-inbox.js lib/sqlite-transaction.js'),
   },
   {
     name: 'domain', scripts: ['test:runtime', 'test:qualification', 'test:cli'],
@@ -59,6 +59,7 @@ const groups = [
     name: 't3-execution', scripts: [], files: names('lib/t3-execution.js lib/t3-mcp-client.js'),
     focused: [{ command: 'node --test test/t3-execution.test.js', note: 'Also discovered by npm run verify' }],
   },
+  { name: 'control-pane', scripts: ['test:runtime', 'test:ui'], files: names('lib/control-pane.js support/fake-t3-server.js') },
   {
     name: 't3-qualification-harness', scripts: [], files: names('scripts/t3-qualification.js support/t3-fake-codex.mjs'),
     focused: [{ command: 'npm run test:t3-qualification', note: 'Requires the pinned T3 app; see docs/PARDNER-T3-QUALIFICATION.md' }],
@@ -82,7 +83,7 @@ export function classifyPath(path) {
     return { name: 'ui', scripts: ['test:ui'] }
   }
   if (/^test\/[^/]+\.test\.js$/.test(path)) {
-    if (/pardner-(ui|phone|connection-ui)|browser-connection|lan-/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
+    if (/pardner-(ui|phone|connection-ui|control-ui)|browser-connection|lan-/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
     if (/storage|conflict|ticket/.test(path)) return { name: 'qualification-test', scripts: ['test:qualification'], qualification: 'Persistence or conflict regression evidence changed' }
     if (/pardner-cli|pardner-brand/.test(path)) return { name: 'cli-test', scripts: ['test:cli'] }
     return { name: 'regression-test', scripts: ['test:runtime'] }

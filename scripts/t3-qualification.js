@@ -89,7 +89,8 @@ const killServer = signal => { try { process.kill(-server.pid, signal) } catch {
 
 async function providerLog() {
   const text = await readFile(env.PARDNER_FAKE_CODEX_LOG, 'utf8').catch(() => '')
-  return text.trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
+  // The provider may be mid-write, so only newline-terminated entries are complete.
+  return text.slice(0, text.lastIndexOf('\n') + 1).split('\n').filter(Boolean).map(line => JSON.parse(line))
 }
 const providerTurns = async text => (await providerLog()).filter(entry => entry.in?.method === 'turn/start'
   && (entry.in.params.input ?? []).some(input => input.text === text)).length

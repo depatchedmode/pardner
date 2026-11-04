@@ -95,6 +95,8 @@ export const MUTATIONS = [
     name: 'close-store-before-drain', property: 'StorageAvailableWhileAdmitted', file: SERVER,
     description: 'stop() closes the store before the listeners have drained',
     find: `    const listenerResults = await listenersClosed
+    await this.control?.close()
+    this.control = null
     this.wsHttpServer = null
     this.httpServer = null
     this.lanServers = []
@@ -103,6 +105,8 @@ export const MUTATIONS = [
 `,
     replace: `    await this.store.close()
     const listenerResults = await listenersClosed
+    await this.control?.close()
+    this.control = null
     this.wsHttpServer = null
     this.httpServer = null
     this.lanServers = []
