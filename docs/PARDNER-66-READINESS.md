@@ -96,6 +96,12 @@ warning was reported. Those observations are correlation, not proof that host
 pressure caused this operation's delay. Passing isolated reruns do not clear the
 failure, so diagnosis stopped instead of silently retrying the full gate.
 
+A separately authorized 45-minute [phase investigation](PARDNER-66-LATENCY-DIAGNOSTIC.md)
+subsequently measured 800 offline updates across four diagnostic prefixes. It
+quantified ordinary CLI/client overhead but did not reproduce or explain the
+original miss. It left qualification **FAILED**, preserved these results, and
+ran no new full acceptance gate.
+
 All watchdogs completed and recorded no hung processes, survivors or leftover
 scratch. Owned test processes were absent after diagnosis, the disposable baseline
 archive was removed, and the lock wrapper exited 0, releasing the stable lock

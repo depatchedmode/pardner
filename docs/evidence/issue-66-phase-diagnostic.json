@@ -1,0 +1,435 @@
+{
+  "schemaVersion": 1,
+  "status": "FAILED",
+  "diagnosticConclusion": "Original latency failure remains unexplained; ordinary CLI overhead measured, no causal attribution or repair established.",
+  "budget": {
+    "authorizedMinutes": 45,
+    "startedAt": "2026-11-04T20:48:07Z",
+    "deadline": "2026-11-04T21:33:07Z",
+    "experimentsFinishedAt": "2026-11-04T21:00:19Z",
+    "cleanupCompletedAt": "2026-11-04T21:01:41.838128+00:00",
+    "stopReason": "Two alternating-request intervention arms did not reproduce or localize the original miss; no additional green-seeking repeats."
+  },
+  "main": {
+    "sha": "e0fee59cbdeac55733aca15de73d45c2e2d14bfb",
+    "fingerprint": "3599ddb1c86f0d695120f6fe221c26044d0fd3fbe1fed7350ea11a23354d22d4"
+  },
+  "candidate": {
+    "sha": "9d1e8329ca9bb7695c0ee7874a5ddde38cbafd88",
+    "implementationSha": "34abcf98b9204bc1b564774a84554429c20d35c1",
+    "fingerprint": "0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3"
+  },
+  "environment": {
+    "node": "24.11.1",
+    "platform": "darwin",
+    "arch": "arm64",
+    "logicalCpus": 10,
+    "dependencies": "Both locked installs reused from candidate; baseline dependency symlinks and identical copied built UI; lockfile hashes match.",
+    "browser": "Pinned Chromium 151.0.7922.34; two active browser contexts per prefix. Earlier routine WebKit qualification unchanged."
+  },
+  "attempts": {
+    "setupFault": 1,
+    "instrumentedPrefix": 2,
+    "alternatingRequestPrefix": 2,
+    "newFullSeedRuns": 0,
+    "new20SeedGates": 0,
+    "syntheticLoadRuns": 0
+  },
+  "fixture": {
+    "seed": 5,
+    "tasks": 100,
+    "comments": 400,
+    "offlineUpdatesPerArm": 200,
+    "browserContexts": 2,
+    "offlineRestartAfterUpdateIndex": 85,
+    "stoppedBefore": "reconnection/conflict/delivery/native-agent phases; these are diagnostic prefixes, not acceptance passes"
+  },
+  "probe": {
+    "external": true,
+    "clock": "process.hrtime.bigint monotonic milliseconds across local processes",
+    "phases": [
+      "parent spawn",
+      "CLI preload initialization",
+      "client request",
+      "server HTTP admission",
+      "workspace admission/queue",
+      "prepare and change",
+      "persistence flush",
+      "server response",
+      "client headers/body",
+      "CLI exit",
+      "parent child close"
+    ],
+    "hostSampling": "one-second driver samples of aggregate CPU counters/load average and event-loop delay",
+    "recordedSecrets": false,
+    "sourceDigests": {
+      "phase-probe.mjs.txt": "95b98bae4cebea79162e0814435bd36c921ef1a975619a6265261198d0393d95",
+      "make-diagnostic.py.txt": "3f305800472b49499b5f825cc54b8c00ce6b062fb0b4b99be012ab28b214233e",
+      "phase-arms.sh.txt": "38022ea54a5559c52a3cd46796ab6ea08cc3005eeb14b13a87eb0308aadb3756",
+      "main-prefix.mjs.txt": "56cdeea5d870b3fe1e31eb27d40b6eba8976f7c62fe649f6ad4ee88304697b2b",
+      "candidate-prefix.mjs.txt": "effd7b13d9718a81385471ffd9b7b76cd38716fe845ffc2c0691bd71ec40d5a5",
+      "make-direct.py.txt": "de1e06166ae5a11596af08cb17a0901b24c4ac8179ad6758691d939b9e26c7fc",
+      "direct-arms.sh.txt": "3a062f76d76625e051f8bd39288d7e8898d9c4e6129787ddba231ba57e29f488",
+      "main-direct.mjs.txt": "50311761df3a43d5403dff4c86e3da1619252d37c26c0b49fdc9dac50e3d20a5",
+      "candidate-direct.mjs.txt": "f457f2868406f6ad9b471b8631ec413dfe9b26a851ac32c85d9a19b67c13bb9e",
+      "summarize-phases.py.txt": "750d75875eebc7ab91c6337b151b39318acc5fcd9318149d12d458e45105c229",
+      "make-load.py.txt": "f95fc3e9c456fcc74f34a969a7f8ed571d9976a22c6c6fb8d0df3a0690ee498c",
+      "load-arms.sh.txt": "9db25a6c1d2965e10f3e85b2c83247d682aa9e14cf66ecc8192fb44836537896",
+      "main-load.mjs.txt": "6f184de899867a9be74ec64b9be2a7b7c92ede26f5880d2613e3ebc5b836836c",
+      "candidate-load.mjs.txt": "10d1a64a65ca1a93837b37a149d7bc3781c8e46aa6b020d93f7cc14483aef624"
+    },
+    "accounting": "All 800 update chains complete; phase totals match outer acknowledgement within 0.582 ms."
+  },
+  "arms": {
+    "main": {
+      "updates": 200,
+      "completePhaseChains": 200,
+      "allAcknowledgementMaxMs": 262.0909580000007,
+      "byMode": {
+        "cli": {
+          "count": 200,
+          "receiptInclusiveMedianMs": 154.089,
+          "receiptInclusiveMaxMs": 262.091,
+          "phaseMs": {
+            "spawnToPreload": {
+              "median": 49.195,
+              "max": 63.758
+            },
+            "preloadToRequest": {
+              "median": 20.819,
+              "max": 23.538
+            },
+            "serverApply": {
+              "median": 58.422,
+              "max": 170.443
+            },
+            "prepareAndChange": {
+              "median": 47.883,
+              "max": 55.248
+            },
+            "flush": {
+              "median": 10.001,
+              "max": 118.786
+            },
+            "requestToAdmission": {
+              "median": 8.646,
+              "max": 12.279
+            }
+          },
+          "accountingResidualMaxMs": 0.487,
+          "accountingResidualMinMs": 0.258
+        }
+      },
+      "host": {
+        "samples": 116,
+        "oneMinuteLoadRange": [
+          3.66748046875,
+          6.10302734375
+        ],
+        "aggregateBusyPercent": {
+          "median": 32.5,
+          "max": 86.6
+        },
+        "driverLoopMaxMs": 28.966911
+      },
+      "reportSha256": "93a131ec2a9372a9cbeaca2e949604b45140e33b85521baf8ef7e19e6e3ab6e3",
+      "watchdog": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 116611,
+        "hungProcesses": [],
+        "survivorsAfterKill": [],
+        "newScratch": []
+      }
+    },
+    "candidate": {
+      "updates": 200,
+      "completePhaseChains": 200,
+      "allAcknowledgementMaxMs": 264.5797500000044,
+      "byMode": {
+        "cli": {
+          "count": 200,
+          "receiptInclusiveMedianMs": 156.048,
+          "receiptInclusiveMaxMs": 264.58,
+          "phaseMs": {
+            "spawnToPreload": {
+              "median": 50.868,
+              "max": 90.241
+            },
+            "preloadToRequest": {
+              "median": 21.671,
+              "max": 60.995
+            },
+            "serverApply": {
+              "median": 58.421,
+              "max": 171.594
+            },
+            "prepareAndChange": {
+              "median": 47.651,
+              "max": 81.523
+            },
+            "flush": {
+              "median": 10.56,
+              "max": 119.728
+            },
+            "requestToAdmission": {
+              "median": 8.835,
+              "max": 29.691
+            }
+          },
+          "accountingResidualMaxMs": 0.531,
+          "accountingResidualMinMs": 0.268
+        }
+      },
+      "host": {
+        "samples": 115,
+        "oneMinuteLoadRange": [
+          4.04150390625,
+          10.2421875
+        ],
+        "aggregateBusyPercent": {
+          "median": 40.13,
+          "max": 97.6
+        },
+        "driverLoopMaxMs": 37.257215
+      },
+      "reportSha256": "63aec737f52d402089c978a26bcbea3c5e6a25a172b01175d6fb211550d7659e",
+      "watchdog": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 115853,
+        "hungProcesses": [],
+        "survivorsAfterKill": [],
+        "newScratch": []
+      }
+    },
+    "candidate-direct": {
+      "updates": 200,
+      "completePhaseChains": 200,
+      "allAcknowledgementMaxMs": 204.61970799999835,
+      "byMode": {
+        "cli": {
+          "count": 100,
+          "receiptInclusiveMedianMs": 154.901,
+          "receiptInclusiveMaxMs": 204.62,
+          "phaseMs": {
+            "spawnToPreload": {
+              "median": 50.156,
+              "max": 60.733
+            },
+            "preloadToRequest": {
+              "median": 21.07,
+              "max": 33.483
+            },
+            "serverApply": {
+              "median": 58.869,
+              "max": 97.428
+            },
+            "prepareAndChange": {
+              "median": 48.212,
+              "max": 82.526
+            },
+            "flush": {
+              "median": 10.221,
+              "max": 48.007
+            },
+            "requestToAdmission": {
+              "median": 8.803,
+              "max": 12.034
+            }
+          },
+          "accountingResidualMaxMs": 0.524,
+          "accountingResidualMinMs": 0.266
+        },
+        "direct-http": {
+          "count": 100,
+          "receiptInclusiveMedianMs": 61.115,
+          "receiptInclusiveMaxMs": 184.511,
+          "phaseMs": {
+            "serverApply": {
+              "median": 57.928,
+              "max": 181.599
+            },
+            "prepareAndChange": {
+              "median": 47.74,
+              "max": 57.622
+            },
+            "flush": {
+              "median": 9.945,
+              "max": 129.259
+            },
+            "requestToAdmission": {
+              "median": 1.214,
+              "max": 4.194
+            }
+          },
+          "accountingResidualMaxMs": 0.582,
+          "accountingResidualMinMs": 0.073
+        }
+      },
+      "host": {
+        "samples": 106,
+        "oneMinuteLoadRange": [
+          6.33935546875,
+          10.26904296875
+        ],
+        "aggregateBusyPercent": {
+          "median": 38.97,
+          "max": 73.69
+        },
+        "driverLoopMaxMs": 32.538623
+      },
+      "reportSha256": "72067903628018e7f33f25bbc105b8d3bef482a7f13c235d35df1cf609913435",
+      "watchdog": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 106679,
+        "hungProcesses": [],
+        "survivorsAfterKill": [],
+        "newScratch": []
+      }
+    },
+    "main-direct": {
+      "updates": 200,
+      "completePhaseChains": 200,
+      "allAcknowledgementMaxMs": 302.4699580000015,
+      "byMode": {
+        "cli": {
+          "count": 100,
+          "receiptInclusiveMedianMs": 157.532,
+          "receiptInclusiveMaxMs": 302.47,
+          "phaseMs": {
+            "spawnToPreload": {
+              "median": 51.099,
+              "max": 69.927
+            },
+            "preloadToRequest": {
+              "median": 21.977,
+              "max": 63.103
+            },
+            "serverApply": {
+              "median": 59.49,
+              "max": 165.635
+            },
+            "prepareAndChange": {
+              "median": 48.599,
+              "max": 81.854
+            },
+            "flush": {
+              "median": 10.733,
+              "max": 108.217
+            },
+            "requestToAdmission": {
+              "median": 8.93,
+              "max": 18.248
+            }
+          },
+          "accountingResidualMaxMs": 0.547,
+          "accountingResidualMinMs": 0.266
+        },
+        "direct-http": {
+          "count": 100,
+          "receiptInclusiveMedianMs": 62.344,
+          "receiptInclusiveMaxMs": 186.668,
+          "phaseMs": {
+            "serverApply": {
+              "median": 59.114,
+              "max": 183.137
+            },
+            "prepareAndChange": {
+              "median": 48.171,
+              "max": 65.997
+            },
+            "flush": {
+              "median": 10.7,
+              "max": 131.698
+            },
+            "requestToAdmission": {
+              "median": 1.253,
+              "max": 5.858
+            }
+          },
+          "accountingResidualMaxMs": 0.39,
+          "accountingResidualMinMs": 0.066
+        }
+      },
+      "host": {
+        "samples": 109,
+        "oneMinuteLoadRange": [
+          5.419921875,
+          10.6396484375
+        ],
+        "aggregateBusyPercent": {
+          "median": 44.49,
+          "max": 92.0
+        },
+        "driverLoopMaxMs": 29.982719
+      },
+      "reportSha256": "e36caa792de58990ba123731791bd99cbc3be7560a6604f6466565b280b7e31d",
+      "watchdog": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 110093,
+        "hungProcesses": [],
+        "survivorsAfterKill": [],
+        "newScratch": []
+      }
+    }
+  },
+  "syntheticLoadDecision": "Not run: observed one-minute load 9.74 on 10 logical CPUs and approximately 98% aggregate busy peak. No workers were started. Used alternating CLI/direct HTTP instead.",
+  "originalFailure": {
+    "preserved": true,
+    "operation": "seed-5-operation-661",
+    "acknowledgementMs": 2384.036167000071,
+    "limitMs": 2000,
+    "gate": "npm run test:acceptance -- --repeat 20 --seed 1",
+    "passedSeeds": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "failedSeed": 5,
+    "unrunSeeds": [
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20
+    ],
+    "priorPassingComparisonsPreserved": true
+  },
+  "cleanup": {
+    "at": "2026-11-04T21:01:18.217423+00:00",
+    "ownedProbePidsChecked": 627,
+    "ownedSurvivors": [],
+    "baselineArchiveRemoved": true,
+    "productionDataTouched": false,
+    "syntheticWorkersStarted": 0,
+    "lockRelease": "shell and wrapper exited 0; stable file retained",
+    "lockReleasedAt": "2026-11-04T21:01:41.838128+00:00"
+  },
+  "nextHypothesis": "A transient parent/child scheduling or event-loop stall, versus persistence-queue/flush delay, caused the miss. Capture a threshold-crossing operation with these phases before attribution.",
+  "nextDecision": "Coordinator may authorize one traced seed-1-through-5 diagnostic replay with unchanged limits and bounded watchdog on a suitably observable host. No such replay or full 20-seed gate was run here.",
+  "limits": [
+    "Different time windows and uncontrolled background load prevent matched-pressure claims.",
+    "Probe imports and synchronous trace writes add overhead; these are not replacement qualification results.",
+    "Direct requests remove process startup and cold per-process HTTP initialization together; they do not isolate OS scheduling alone.",
+    "Original operation has no phase trace. No preexisting product defect or PR101 regression was established.",
+    "No candidate implementation changes, production data/credentials, native paid sessions, live approvals, archival, deployment, merge or issue closure."
+  ]
+}
