@@ -1,0 +1,42 @@
+{
+  "oldSource": "/tmp/pardner-reliability-baseline-bd55f246",
+  "newSource": "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-reliability-baseline",
+  "result": "passed",
+  "error": "INCOMPATIBLE_SCHEMA",
+  "receipt": {
+    "operationId": "preserved-schema4",
+    "actorId": "alice",
+    "replicaId": "replica-bf01c1eb-94ce-46ea-bfe9-9764209cba05",
+    "result": {
+      "taskId": "task-a3260e16253286627fccc178"
+    },
+    "replayed": false,
+    "savedLocally": true,
+    "heads": [
+      "c0d00f7b1924f0c18bb10dd1c34d084aeab67144e31f6b67c4e1020674be8d68"
+    ],
+    "syncPending": false,
+    "status": {
+      "role": "hub",
+      "workspaceId": "a0b744ef-71c9-475f-87cd-46409c0a712c",
+      "heads": [
+        "c0d00f7b1924f0c18bb10dd1c34d084aeab67144e31f6b67c4e1020674be8d68"
+      ],
+      "replicaId": "replica-bf01c1eb-94ce-46ea-bfe9-9764209cba05",
+      "savedLocally": true,
+      "hubConnected": true,
+      "syncPending": false,
+      "lastSyncedAt": null,
+      "storageError": null,
+      "syncError": null
+    }
+  },
+  "files": {
+    "deliveries.sqlite": "866db46cda8f53a2f0da10e3e8a7a69bc82f7be0ba10caa4569a2905d8a6a4e0",
+    "repo/8R/avUfr7t3xHMdcNTZ2w9akX2Zk/snapshot/d95959f74b03f95c45b100be4f1727830cac708f0a2e8c588cf42aa707847404": "c166fb4ff738bc8503ff4fef0fdcbd062efce588e7e4ef8a17ef204bc55410e4",
+    "repo/st/orage-adapter-id": "7a909062978df0db434dbd6ad569eefe42d760f2f6467dcdfd2fddf4652d7435",
+    "workspace.json": "ac94c34bf76a1793c401a5d99403c191d1cca2a5a692acaec9dc7796dd3cc8cb"
+  },
+  "unchanged": true,
+  "exclusion": "runtime ownership SQLite lease files"
+}
