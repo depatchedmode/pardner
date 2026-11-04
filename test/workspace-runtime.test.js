@@ -375,7 +375,7 @@ it('stops while a replica acknowledgement is still being answered', { timeout: 3
   let replica, stopping, release
   try {
     await hub.start()
-    replica = new WorkspaceRuntime({ directory: join(root, 'replica'), role: 'replica', token, retryMs: 100,
+    replica = new WorkspaceRuntime({ ...replicaOptions, directory: join(root, 'replica'), role: 'replica', token, retryMs: 100,
       hubUrl: `http://127.0.0.1:${hub.httpPort}`, hubWsUrl: `ws://127.0.0.1:${hub.wsPort}/automerge` })
     await replica.init()
     await eventually(() => !replica.status().syncPending && !replica.syncing)

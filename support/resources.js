@@ -94,11 +94,11 @@ export async function waitFor(
 }
 
 export function httpUrl(server, path) {
-  return `http://${server.host}:${server.httpPort}${path}`
+  return `http://${server.host.includes(':') ? `[${server.host}]` : server.host}:${server.httpPort}${path}`
 }
 
 export function wsUrl(server, path = '/') {
-  return `ws://${server.host}:${server.wsPort}${path}`
+  return `ws://${server.host.includes(':') ? `[${server.host}]` : server.host}:${server.wsPort}${path}`
 }
 
 export function authedFetch(server, path, options = {}) {

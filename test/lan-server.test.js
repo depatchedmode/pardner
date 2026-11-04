@@ -6,7 +6,7 @@ import { WebSocket } from 'ws'
 import { LanAccess, lanInterfaces } from '../lib/lan-access.js'
 import { createServer, createTempDir, cleanupTempDir } from '../support/resources.js'
 
-it('serves assets, authenticated APIs, and subscriptions over persisted LAN listeners', { timeout: 60000 }, async t => {
+it('serves assets, authenticated APIs, and subscriptions over persisted LAN listeners', { timeout: 20000 }, async t => {
   const candidate = lanInterfaces()[0]
   if (!candidate) return t.skip('LAN listeners require a real non-loopback IPv4 interface.')
   const directory = createTempDir('pardner-lan-server-')

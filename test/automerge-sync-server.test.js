@@ -16,6 +16,7 @@ import {
   httpUrl,
   wsUrl,
   TEST_TOKEN,
+  mintReplicaTicket,
 } from '../support/resources.js'
 
 function withTempServer(overrides, fn) {
@@ -32,7 +33,7 @@ function requestWebSocketUpgrade(url, options = {}) {
 
   return new Promise((resolve, reject) => {
     const req = request({
-      hostname: target.hostname,
+      hostname: target.hostname.replace(/^\[|\]$/g, ''),
       port: target.port,
       path: `${target.pathname}${target.search}`,
       method: 'GET',
@@ -148,13 +149,15 @@ for (const host of ['', '0.0.0.0', '::', '192.168.1.5', '2001:db8::1', 'localhos
 }
 
 for (const host of ['127.0.0.1', '::1']) {
-  it(`serves unauthenticated HTTP and both WebSockets only on loopback ${host}`, async () => {
+  it(`serves insecure HTTP/UI on loopback but requires enrolled native credentials on ${host}`, async () => {
     await withStartedServer({ host, apiToken: '', allowInsecureLocal: true }, async server => {
       assert.equal(server.httpServer.address().address, host)
       assert.equal(server.wsHttpServer.address().address, host)
       const authority = host.includes(':') ? `[${host}]` : host
       assert.equal((await fetch(`http://${authority}:${server.httpPort}/automerge/doc`)).status, 200)
-      for (const path of ['/', '/automerge']) {
+      assert.equal((await requestWebSocketUpgrade(`http://${authority}:${server.wsPort}/automerge`)).statusCode, 401)
+      const ticket = await mintReplicaTicket(server)
+      for (const path of ['/', `/automerge?ticket=${ticket}`]) {
         const socket = await expectWebSocketOpen(`ws://${authority}:${server.wsPort}${path}`)
         socket.terminate()
       }
