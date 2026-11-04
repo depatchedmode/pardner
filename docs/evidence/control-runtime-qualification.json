@@ -1,0 +1,185 @@
+{
+  "head": "7c20e724c5e33ec82fad8d59328d1722e9da5312",
+  "base": "bd55f246bacae5068b761c999e7b849501e7a5e3",
+  "candidateSha256": "b298bdff3da16ed005075d3ad1700d74c3a43414d6d85fe8c2b477e5f786c827",
+  "node": "v24.11.1",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "command": "npm run test:acceptance -- --repeat 20 --seed 1",
+  "repeat": 20,
+  "scenarioPassed": true,
+  "candidateStable": true,
+  "startedAt": "2026-11-04T17:42:10.080Z",
+  "durationMs": 2345312,
+  "exitCode": 0,
+  "maxima": {
+    "local-ack": {
+      "elapsedMs": 1022.8836669999873,
+      "seed": 5,
+      "boundMs": 2000
+    },
+    "convergence": {
+      "elapsedMs": 2947.633540999843,
+      "seed": 11,
+      "boundMs": 10000
+    },
+    "local-ui-visible": {
+      "elapsedMs": 378.5509580000071,
+      "seed": 7,
+      "boundMs": 2000
+    },
+    "offline-start": {
+      "elapsedMs": 2257.0177919999696,
+      "seed": 15,
+      "boundMs": 5000
+    },
+    "agent-effect-ack": {
+      "elapsedMs": 217.9354169999715,
+      "seed": 13,
+      "boundMs": 2000
+    }
+  },
+  "seeds": [
+    {
+      "seed": 1,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "bdff5b6acb3ef9995dda297ff18f9919a3b59307e3b3b59672cf2b6bf4ab0482"
+    },
+    {
+      "seed": 2,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "c23cd77e880f871d7d677596044f9b46a76e588b459699b303264dbc44754bf2"
+    },
+    {
+      "seed": 3,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "9772873a66be0259eea48e5720f0defe1dde8ec3f45c59665d3f56f83a170a7f"
+    },
+    {
+      "seed": 4,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "f10781262f4a5c6f9a2a99bef86d1156aade0ae269839ca64fe313d2101152f5"
+    },
+    {
+      "seed": 5,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "7cc2dc3b3915528561c18709dab4905c358e3acaf82214ff378bb4f19cb1189a"
+    },
+    {
+      "seed": 6,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "95ab45d2a2d820e4ccfe97502f2df2d94f9540f7f6c631d623bd2e889160aee3"
+    },
+    {
+      "seed": 7,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "aae8b152949de3f578afd2bacafc766324c07fa1576a7cc9a8f3642cdc220eb8"
+    },
+    {
+      "seed": 8,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "08595e1bddf971281f159bc508e2a02aaa9be7bd983803d3ea583fbb58dacc7d"
+    },
+    {
+      "seed": 9,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "3f92b420768ecf7f069c4f63506b9fe5c890205253c310d3dac1cf4067107d9d"
+    },
+    {
+      "seed": 10,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "54f4ccb46152461fd59d2ddc8f6cf79364709de9e9ba604092f059f16740b458"
+    },
+    {
+      "seed": 11,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "7d8182805bcb7c2b100be4c44888e1bfaad1b89a07080f7e1bb6e09de5be35ed"
+    },
+    {
+      "seed": 12,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "4298256e76ecffa0def769fb6bc431f9062c0962a48bb635ce024d8f3d9a2520"
+    },
+    {
+      "seed": 13,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "f5c0fedf7b9788e5c011a540f4868823b70c11566b50563cd7188bfe7fb6112f"
+    },
+    {
+      "seed": 14,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "6dd39b697a221c22bb9682b9f5d89b5d268e667234c9d5284e1c8bde52fa2645"
+    },
+    {
+      "seed": 15,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "b332e55f9c8b69a7fd39a85a776c5aec43c801105177e509d2e56d7a2ab70337"
+    },
+    {
+      "seed": 16,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "62980bb96f05b96a258dec3d6b410cec891a6901602e86262db6ffd9f0caf5c7"
+    },
+    {
+      "seed": 17,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "0fa3c24e2a508481c5bae15c1d04c6fcd91af39a23013a61b35749302dd41dcb"
+    },
+    {
+      "seed": 18,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "dd1219418c8df43d873269576aade53772ac96792e11f0b2d9ea466198710b2b"
+    },
+    {
+      "seed": 19,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "5d829bde7b542d133ec6f6f3d51e2848a475d23234b5cf40470e0ff482b5e1b4"
+    },
+    {
+      "seed": 20,
+      "scenarioPassed": true,
+      "acknowledgedOperations": 719,
+      "reportSha256": "152bd6b531348faa4128cc882b3839068701c1d7472cfe3acb7b4ef6094d0691"
+    }
+  ],
+  "cleanup": {
+    "reportedSurvivors": 0,
+    "unverifiedProcesses": 0,
+    "newScratch": 0,
+    "orphansAfterExit": 0
+  },
+  "artifactDirectory": "output/acceptance/2026-11-04T17-42-10.557Z",
+  "routineEvidence": {
+    "candidateSha256": "b298bdff3da16ed005075d3ad1700d74c3a43414d6d85fe8c2b477e5f786c827",
+    "controllerTests": 17,
+    "nodeTests": 438,
+    "skipped": 0,
+    "acceptanceSeeds": 1,
+    "reusedMatchingEvidence": true
+  },
+  "notes": [
+    "All 20 seed reports and summary hashes inspected; one successful run with no retries.",
+    "Local acknowledgement maximum includes CLI, browser and agent receipts as well as timing records.",
+    "No production data, credentials, mappings or services changed; no deployment or live-human proof.",
+    "Raw seed reports/traces remain private; this file contains only allowlisted counts, hashes and timings."
+  ]
+}

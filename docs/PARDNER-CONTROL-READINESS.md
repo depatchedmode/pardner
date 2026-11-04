@@ -185,7 +185,7 @@ The controller source SHA-256 is
 | --- | --- | --- |
 | Routine | `npm run test:control-runtime` | 17/17 Python tests passed, no skips; UI build passed |
 | Routine | `npm run verify` | 17/17 Python and 438/438 Node tests, 0 skipped; UI build and one acceptance seed passed |
-| Deliberate | `npm run test:acceptance -- --repeat 20 --seed 1` | Required, not run for this candidate |
+| Deliberate | `npm run test:acceptance -- --repeat 20 --seed 1` | **20/20**, one successful run; 2026-11-04 qualification below |
 | Preparation | Independent clone: both `npm ci --ignore-scripts` installs, `npm run ui:build` | Passed; clean exact detached pin, no Git alternates, no data or service launch |
 | Guidance | Local link resolution and `git diff --check` | Passed |
 
@@ -197,13 +197,14 @@ unlinking the lock. An initial sandboxed unit attempt could not bind its fixture
 sockets (14 setup errors); rerunning with permission passed. No assertion or
 latency bound was changed. No installed runtime was exercised by these tests.
 
-Routine outcome: **passed**. Overall outcome: **incomplete**; no merge or deployment
-recommendation. The mechanical planner selects only `test:control-runtime` and
+Routine outcome: **passed**. Automated qualification and overall outcome for this
+tooling PR: **passed**. Deployment and self-development milestone acceptance remain
+separate and incomplete; this result does not authorize cutover. The mechanical planner selects only `test:control-runtime` and
 finds no unclassified paths. Semantic review adds a qualification obligation
 because preflight changes the operator recovery/upgrade gate. Merging, operation
 identity, persistence acknowledgement, delivery leases and transport are unchanged;
-no mapped lifecycle source was edited. Qualification is **required, not run** for
-this tooling candidate and must be renewed for the final combined app candidate.
+no mapped lifecycle source was edited. The required qualification **passed for this tooling candidate** and must be
+renewed for any changed final combined app candidate.
 Human acceptance, paid rehearsals, real launchd cutover, live schema transition,
 fresh-machine recovery and power-loss behavior remain unexercised.
 
@@ -213,6 +214,51 @@ hashes, candidate path and detailed report. Raw acceptance artifacts remain priv
 under `output/acceptance/`; no traces or credentials are published. The inactive
 clone is temporary staging, not a backup or approved deployment. Rebuild it from
 the exact pin and locked dependencies if it expires.
+
+## Authorized 20-seed qualification
+
+On 2026-11-04 the explicitly authorized gate passed **20/20 seeds (1–20)** in one
+attempt at tested head `7c20e724c5e33ec82fad8d59328d1722e9da5312`, against unchanged
+main `bd55f246bacae5068b761c999e7b849501e7a5e3`. The before/after and acceptance
+fingerprints all equal `b298bdff3da16ed005075d3ad1700d74c3a43414d6d85fe8c2b477e5f786c827`.
+The routine result above was reused only after matching source, tests, actual UI
+build, Node and both source/installed dependency-lock identities. The refreshed
+planner still selected `test:control-runtime`, with no unclassified paths. Actual
+Chromium 151.0.7922.34 and WebKit 26.5 launches passed before the gate.
+
+The exact command was `npm run test:acceptance -- --repeat 20 --seed 1`, under
+Node 24.11.1 on macOS arm64. The 7,200-second watchdog recorded exit 0 after
+2,345.312 seconds, starting at 17:42:10.080 UTC. The nonblocking exclusive OS lock
+was held across the complete child lifetime, then released without unlinking it.
+No seed was skipped or retried; no assertion, timing limit or product code changed.
+
+All twenty reports, their summary hashes, persistence receipts and three-replica
+snapshot agreement were checked. Each report has 719 acknowledged operations.
+The measured maxima, rounded to two decimals, are:
+
+- Local acknowledgement, including browser and agent receipts: **1,022.88 ms** (seed 5).
+- Local UI visibility: **378.55 ms** (seed 7).
+- Offline restart: **2,257.02 ms** (seed 15).
+- Convergence: **2,947.63 ms** (seed 11).
+- Agent-effect acknowledgement: **217.94 ms** (seed 13; also included in acknowledgement review).
+
+Every observation met the unchanged contract bounds. There were no failure or
+cleanup-error artifacts, reported orphan/surviving/unverified processes, or new
+scratch directories. The lock-holder exited normally. The post-run inspector
+initially omitted the `agent-effect-ack` category from its own bound lookup; its
+undefined lookup failed, then was corrected to the existing 2,000-ms acknowledgement
+bound. All reports passed inspection. This was a report-inspector correction,
+not a failed product run or a changed gate assertion.
+
+[Published allowlisted evidence](evidence/control-runtime-qualification.json)
+contains counts, timings and report hashes. Raw reports/traces remain private in
+`output/acceptance/2026-11-04T17-42-10.557Z/`. Logs, fingerprints, refreshed planner,
+inspection script and detailed report are in
+`output/verification/runtime-readiness/qualification-20261104/`. Evidence-only
+commits after the tested head do not alter the executable fingerprint. No goal
+audit, installed data, credential, service or live approval was changed. The
+coordinator owns the head-guarded merge decision; deployment, the final combined
+candidate and #79 human/recovery proof retain their separate obligations.
 
 ## Cross-track handoff
 
