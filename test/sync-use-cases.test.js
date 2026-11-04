@@ -1,3 +1,4 @@
+import { replicaOptions } from '../support/replica-credentials.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { join } from 'node:path'
@@ -22,7 +23,7 @@ async function withReplicas(run) {
     const replicas = []
     const reopen = async index => {
       const gate = gates[index]
-      const replica = new WorkspaceRuntime({ directory: join(directory, `replica-${index}`), role: 'replica',
+      const replica = new WorkspaceRuntime({ ...replicaOptions, directory: join(directory, `replica-${index}`), role: 'replica',
         hubUrl: gate.httpUrl, hubWsUrl: gate.wsUrl, token: 'test-token', retryMs: 100 })
       replicas[index] = replica
       await replica.init()

@@ -17,6 +17,7 @@ function canonical(value) {
 }
 const fingerprint = request => createHash('sha256').update(canonical({type: request.type, actorId: 'actor-a', payload: request.payload})).digest('hex')
 const token = 'disposable-integrity-token'
+const replicaCredentials = Object.fromEntries([0, 1].map(i => [`peer-${i}`, `disposable-integrity-replica-${i}`]))
 const actors = [{id: 'actor-a', handle: 'alice', kind: 'human'}]
 async function until(check) {
   const deadline=Date.now()+10000
@@ -24,7 +25,7 @@ async function until(check) {
 }
 for (const order of [[0,1],[1,0]]) it(`preserves public collision evidence after sync order ${order}, restart and browser inspection`, {timeout:60000}, async () => {
   const root=await mkdtemp(join(tmpdir(),'pardner-integrity-'))
-  const make=(name, settings={})=>new Server({store:new WorkspaceRuntime({directory:join(root,name),role:name==='hub'?'hub':'replica',actors,token,retryMs:100,...settings}),env:{},apiToken:token,httpPort:0,wsPort:0,logger:{}})
+  const make=(name, settings={})=>new Server({replicaCredentials,store:new WorkspaceRuntime({directory:join(root,name),role:name==='hub'?'hub':'replica',actors,token,replicaCredentialId:name,replicaToken:replicaCredentials[name],retryMs:100,...settings}),env:{},apiToken:token,httpPort:0,wsPort:0,logger:{}})
   let hub=make('hub'), peers=[], browser
   async function api(server,path,body) {
     const response=await fetch(`http://127.0.0.1:${server.httpPort}${path}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})})
@@ -85,7 +86,7 @@ for (const order of [[0,1],[1,0]]) it(`preserves public collision evidence after
       assert.equal((await context(server,equivalent.result.taskId)).history.length,1)
       for(const request of requests) {
         const retry=await write(server,request)
-        assert.equal(retry.code,'OPERATION_INTEGRITY_CONFLICT')
+        assert.equal(retry.status,409);assert.equal(retry.code,'OPERATION_INTEGRITY_CONFLICT')
         assert.deepEqual(retry.details.variants.map(v=>v.fingerprint).sort(),expected)
       }
       assert.equal(Object.keys((await api(server,'/automerge/doc')).doc.operations).length,3)

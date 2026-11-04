@@ -102,6 +102,15 @@ class Controller:
         manifest = json.loads((self.data / 'workspace.json').read_text())
         if not isinstance(manifest, dict) or any(manifest.get(key) != self.config[key] for key in ['workspaceId', 'replicaId', 'role']):
             raise ControlError('Control storage identity or role mismatch')
+        # Read the pinned declaration without importing app code or opening storage.
+        source = (self.release / 'lib/workspace-schema.js').read_text()
+        versions = re.findall(r'^export const SCHEMA_VERSION = ([1-9][0-9]*)\s*;?$', source, re.MULTILINE)
+        if len(versions) != 1:
+            raise ControlError('Cannot establish release schema; preserve storage and inspect the pinned source')
+        version = manifest.get('schemaVersion')
+        if type(version) is not int or version != int(versions[0]):
+            raise ControlError('Storage schema is incompatible with the release; preserve this installation '
+                               'and choose a separate workspace or an explicitly reviewed migration')
 
     def artifacts(self):
         dist = self.release / 'ui-prototype/dist'

@@ -51,3 +51,10 @@ exercise the protocol, not a durable production inbox. Use the worker/inbox chec
 for receipt guarantees. Exactly-once fake effects do not establish arbitrary
 external-side-effect idempotency. Preserve the boundary between automated worker
 evidence and the two-machine real-agent rehearsal.
+
+Completion cleanup additionally requires local `bridge approve-cleanup` approval
+with the bridge stopped. Shared task closure supplies eligibility, not authority.
+`bridge-retirement`, `bridge-config-retirement`, and `bridge-review-regressions`
+check scope/revision invalidation, revocation between effects, CLI approval and
+interrupted retirement. These use disposable worktrees and fake archival adapters;
+they do not authorize or establish real-thread cleanup.

@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events'
 import { access, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { AgentBridge, BridgeSource, bridgeConfig, openBridgeInbox } from '../lib/agent-bridge.js'
+import { AgentBridge, BridgeSource, bridgeConfig, openBridgeInbox, runBridgeCommand } from '../lib/agent-bridge.js'
 import { retireCompletedBridge, moveArchivedWorktree } from '../lib/bridge-retirement.js'
 import { canonical } from '../lib/workspace-schema.js'
 import { createWorktrees } from '../support/bridge-rehearsal.js'
@@ -41,6 +41,12 @@ for (const alias of ['direct', 'parent']) {
       })
       inbox = await openBridgeInbox(config)
       bridge = new AgentBridge({ config, inbox, source: new BridgeSource(config), adapterFactory })
+      await update(taskId, { status: 'in-progress' })
+      await assert.rejects(runBridgeCommand('approve-cleanup', { config: path }), { code: 'CLEANUP_NOT_ELIGIBLE' })
+      assert.equal(inbox.cleanupApproval(), null)
+      await update(taskId, { status: 'completed' })
+      const approval = await runBridgeCommand('approve-cleanup', { config: path })
+      assert.equal(approval.approved, true)
       await assert.rejects(retireCompletedBridge(bridge, { move: async plan => {
         await moveArchivedWorktree(plan)
         throw new Error('Interrupted after first move')
@@ -65,6 +71,11 @@ for (const alias of ['direct', 'parent']) {
       await assert.rejects(retireCompletedBridge({ ...bridge, config: changed }), /Retiring bridge mappings changed/)
       assert.deepEqual(inbox.retirement(), retirement)
       await access(trees.reviewer)
+      assert.deepEqual(await runBridgeCommand('revoke-cleanup', { config: path }), { revoked: true })
+      await retireCompletedBridge(bridge)
+      assert.equal(inbox.retirement().state, 'archiving')
+      await access(trees.reviewer)
+      await runBridgeCommand('approve-cleanup', { config: path })
       await retireCompletedBridge(bridge)
       assert.equal(inbox.retirement().state, 'archived')
       assert.equal(inbox.retirement().signature, signature)

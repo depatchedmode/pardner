@@ -1,3 +1,4 @@
+import { replicaOptions } from '../support/replica-credentials.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
@@ -38,42 +39,40 @@ it('malformed native CBOR closes only the offending socket and leaves the servic
   const exited = once(child, 'exit')
   try {
     const [server] = await once(child, 'message', { signal: AbortSignal.timeout(30000) })
-    const api = async (path, body) => {
+    const api = async (path, body, headers = {}) => {
       const response = await fetch(`http://127.0.0.1:${server.httpPort}${path}`, {
-        method: body ? 'POST' : 'GET', headers: { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' },
+        method: body ? 'POST' : 'GET', headers: { Authorization: 'Bearer test-token', 'Content-Type': 'application/json', ...headers },
         ...(body ? { body: JSON.stringify(body) } : {}),
       })
       assert.equal(response.status, 200, stderr)
       return response.json()
     }
-    const connect = async auth => {
-      const { ticket } = auth === 'ticket' ? await api('/automerge/ws-ticket', {}) : {}
-      const ws = new WebSocket(`ws://127.0.0.1:${server.wsPort}/automerge${ticket ? `?ticket=${ticket}` : ''}`, {
-        ...(auth === 'token' ? { headers: { Authorization: 'Bearer test-token' } } : {}),
-      })
+    const connect = async () => {
+      const { ticket } = await api('/automerge/ws-ticket', {
+        purpose: 'replica', replicaId: replicaOptions.replicaCredentialId,
+      }, { 'x-pardner-replica-token': replicaOptions.replicaToken })
+      const ws = new WebSocket(`ws://127.0.0.1:${server.wsPort}/automerge?ticket=${ticket}`)
       await once(ws, 'open', { signal: AbortSignal.timeout(5000) })
       return ws
     }
-    const healthy = await connect('token')
+    const healthy = await connect()
     try {
       const greeting = once(healthy, 'message')
       healthy.send(cbor.encode({ type: 'join', senderId: 'healthy-peer' }))
       assert.equal(cbor.decode((await greeting)[0]).type, 'peer')
-      for (const auth of ['token', 'ticket']) {
-        for (const value of malformed) {
-          const ws = await connect(auth)
-          try {
-            const closed = once(ws, 'close', { signal: AbortSignal.timeout(5000) })
-            ws.send(cbor.encode(value))
-            ws.send(cbor.encode(join))
-            assert.equal((await closed)[0], 1008, `payload: ${JSON.stringify(value)}`)
-            assert.equal(child.exitCode, null, stderr)
-            assert.equal(healthy.readyState, WebSocket.OPEN)
-            const pong = once(healthy, 'pong', { signal: AbortSignal.timeout(5000) })
-            healthy.ping()
-            await pong
-          } finally { ws.terminate() }
-        }
+      for (const value of malformed) {
+        const ws = await connect()
+        try {
+          const closed = once(ws, 'close', { signal: AbortSignal.timeout(5000) })
+          ws.send(cbor.encode(value))
+          ws.send(cbor.encode(join))
+          assert.equal((await closed)[0], 1008, `payload: ${JSON.stringify(value)}`)
+          assert.equal(child.exitCode, null, stderr)
+          assert.equal(healthy.readyState, WebSocket.OPEN)
+          const pong = once(healthy, 'pong', { signal: AbortSignal.timeout(5000) })
+          healthy.ping()
+          await pong
+        } finally { ws.terminate() }
       }
       assert.ok((await api('/automerge/doc')).doc)
     } finally { healthy.terminate() }
