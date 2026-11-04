@@ -43,10 +43,19 @@ integration already in that head. This did not import unrelated old-main changes
   but native sockets still reject anonymous upgrades and require enrolled tickets.
   IPv6 test helpers now correctly bracket URL authorities and strip brackets for
   the Node HTTP hostname option.
-- PR88 missed bridge replica fixtures and main's newer in-flight-ack shutdown
-  fixture. They now supply explicit disposable replica credentials; assertions
+- PR88 missed bridge replica fixtures, main's newer in-flight-ack shutdown
+  fixture, the malformed-CBOR fixture and the native smoke-command fixture. They now supply explicit disposable replica credentials; assertions
   and timing bounds remain unchanged. The original 20-second LAN integration
   bound is restored instead of carrying PR80's historical increase to 60 seconds.
+  Malformed payloads are still checked individually against the only admitted
+  transport (enrolled native tickets); the API-token/UI-ticket refusal cases live
+  in `native-replica-auth`. No malformed-message assertion was removed.
+- The first combined focused run exposed an IPv6 credential parsing defect:
+  interpolating `::1` into a URL base made query parsing fail and rejected valid
+  native tickets. Commit `509a835` uses a fixed base for query extraction, with
+  explicit IPv6 UI/native ticket and legacy UI-token coverage. Native API-token
+  rejection remains asserted. The diagnosed run (101/102) is retained alongside
+  the repaired run (103/103).
 - PR81's generic data-image test alone did not prove that the actual pairing QR
   loads. The existing both-engine phone flow now requires `decode()` and nonzero
   width. That is image loading, not QR payload decoding or camera scannability.
@@ -111,40 +120,85 @@ listeners open; authorization narrows admitted native traffic. Credential fields
 and ticket requests do not change local persistence, ack snapshot guards, flush
 queues or shutdown ordering. The model already assumes an enrolled replica and
 excludes credential/ticket/pairing internals, so no model action change is proposed.
-Model execution, acceptance of the reviewed mapping and conformance checks remain
-pending the reserved verification slot. The old mapping is intentionally not
-silently marked current. Bounded-model results cannot prove the implementation,
+The reviewed mapping was refreshed against source revision
+`509a8357a4ef0197825eacf70a5d7a5504fb1795`. The fresh default model check passed
+174,614 states and 679,456 transitions, all four invariants, shutdown progress and
+all ten coverage witnesses. Runtime conformance checks passed with the runtime
+suite. Historical wider-bound and mutation runs were not repeated. Bounded-model results cannot prove the implementation,
 merge semantics, power-loss durability or real-provider behavior.
 
 ## Fresh validation and Qualification
 
-Routine outcome: **incomplete**. Overall outcome: **incomplete**.
-Merge recommendation: **blocked** pending required checks and qualification.
+The reserved batch uses Node 24.11.1 on macOS with matching root/UI dependency
+lockfiles and pinned Chromium/WebKit. Dependencies are symlinked from the existing
+checkout; no dependency pins changed. Candidate source/build/test fingerprint:
+`b6aabf2afe479f4512483e9ece1ea0802c394f1e00f12716d75197cf671d0881`.
+Source revision after repairs: `b2dd0df` (mapping records mapped source `509a835`).
 
-Fresh environment: macOS, Node 24.11.1 for checks/build. Root/UI dependency installs
-are symlinked from the existing checkout; both lockfiles were byte-compared and
-match. No dependency pins were changed. Source/built-UI fingerprint before the
-pending heavy batch: `7a533ebc8f73877a5763afda876e44535d1b90f27ad9351ed1701e2bcae1aa2f`.
+| Check | Fresh result |
+| --- | --- |
+| UI production build | Passed, 364 modules |
+| Initial light pairing/private-state units | 9 passed |
+| Combined security regressions after IPv6 repair | 103 passed, no skips |
+| Remaining native protocol/smoke/admission callers after enrollment repair | 10 passed, no skips |
+| Browser privacy visual exercise | 2 passed; Chromium and WebKit screenshots inspected |
+| Verification tooling | 39 passed |
+| Storage/conflict/ticket regression (`test:qualification`) | 12 passed |
+| Runtime, including lifecycle conformance | 116 passed |
+| CLI | 12 passed |
+| UI/companion, including actual QR image decode | 14 passed; no LAN/browser skips |
+| Controller runtime | 14 Python tests passed |
+| Lifecycle model | 174,614 states; all properties and witnesses passed |
+| Full `npm run verify` | Passed: 480 Node tests, 14 Python tests and one complete acceptance seed |
+| 20-seed acceptance | Passed seeds 1–20 in one run; candidate stable |
 
-- `npm run ui:build`: passed (364 modules).
-- Watchdog-supervised `node --test test/lan-access.test.js test/private-state.test.js`:
-  9 passed, 0 failed/cancelled/skipped. This covers pairing budget units and private
-  state modes/link rejection, not HTTP isolation or browser behavior.
-- `git diff --check`: passed during preparation; repeated before publication.
-- `npm run verify:model`: expected drift, exit 2; model exploration did not run.
-- Three nonblocking lock attempts exited 75 without starting a child suite.
-  Coordinator then reserved security after collaboration. No competing test
-  processes were started and the lock file was not unlinked.
-- Browser/security integration regressions, actual QR loading, affected scripts,
-  model checks and `npm run verify`: **pending**. No browser launch/visual pass,
-  full-suite pass or acceptance pass is claimed.
+All listed successful test commands exited zero with no cancelled/skipped tests,
+with full verify now complete. Original PR reports remain historical.
+The initial focused run failed IPv6 ticket admission (101 passed, 1 failed), repaired
+in `509a835`. The first full verify passed 478/480 Node tests but failed two stale
+native-auth fixtures; it did not reach acceptance. Commit `b2dd0df` enrolls those
+fixtures. Logs retain both failures and their successful targeted reruns; no timeout,
+latency bound or admission requirement was relaxed. The final full discovery covers
+all these tests together on the repaired candidate.
 
-Routine tier: security-specific regressions; `test:qualification`, `test:runtime`,
-`test:cli`, `test:ui`, `test:control-runtime`, `test:verification`; lifecycle check;
-then `npm run verify`. Deliberate tier: `npm run test:acceptance -- --repeat 20 --seed 1`,
-required and requested, pending passing routine prerequisites. Run the declared
-batch under the exclusive advisory lock and watchdog, preserving failures and
-candidate identity. Release to cloud at completion or investigated failure boundary.
+The privacy visual exercise reuses the Markdown regression in an external probe
+with only import paths and screenshot capture adapted. Both screenshots show alt
+text, readable Markdown formatting and an explicit link, without credential entry
+fields; DOM/network assertions also passed. Pairing checks decode actual QR images
+in both engines, without claiming QR payload/camera verification or physical devices.
+
+Routine tier: security regressions, planner scripts `test:verification`,
+`test:qualification`, `test:runtime`, `test:cli`, `test:ui`, `test:control-runtime`,
+lifecycle check, then `npm run verify`. Deliberate tier:
+`npm run test:acceptance -- --repeat 20 --seed 1`, required and requested. Routine outcome: **passed**. Standalone qualification and overall verification
+outcome for the recorded candidate: **passed**. Ordered merge readiness remains
+**pending**: after #103 merges, the coordinator must schedule current-main
+integration and requalification of any changed candidate. This standalone result
+cannot certify that future union. `needs-qualification` remains for that gate.
+
+The single 20-seed attempt completed in 2,506.189 seconds with all reports for
+seeds 1–20, successful scenario outcomes, no failure records, and the same source/
+built-UI fingerprint before and after. Observed maxima (not threshold values):
+local acknowledgement 1,703.723 ms (14,220 observations), convergence 2,832.040 ms
+(200), local UI visibility 104.157 ms (40), offline startup 3,544.665 ms (20), and
+agent-effect acknowledgement 151.312 ms (70). All asserted contract bounds held.
+The summary is in `output/verification/security-slot-1/qualification-summary.json`;
+private originals are in `output/acceptance/2026-11-04T16-58-57.608Z/`.
+
+Final qualification cleanup found no watchdog survivors, unverified processes or
+new scratch directories. The driver exited normally, releasing the stable lock
+without unlinking it. Runtime received the handoff as requested by the updated
+merge order (#103 → #102 → #106 → #101 → #105 → #104); Cloud was not resumed by
+this handoff. No rebase or merge occurred during the frozen run.
+
+The stable advisory lock file was held during all heavy children. The model batch's
+interactive driver initially released on an empty line; it reacquired nonblocking
+before any further heavy work. No heavy work ran unlocked and no handoff was sent
+during that gap. Subsequent batch/diagnostic children share the retained lock.
+Watchdogs retained exact commands, deadlines, exits and cleanup records. The failed
+native fixture left one disposable `pardner-public-test-wxlgiW` directory; after
+confirming no watchdog survivors and no open files with `lsof +D`, it was removed.
+No unrelated process or directory was touched.
 
 Semantic qualification review: conflict/merge rules **no**; operation identity
 **no** (PR86 excluded); persistence ordering/offline reopen promises **no** but
@@ -152,17 +206,20 @@ private storage paths/credentials affect their prerequisites; delivery authority
 **yes**, local cleanup approval changes effects/replay admission; transport/
 enrollment **yes**; milestone completion claim **no**; weakened measurement **no**.
 The additive Markdown test entry measures browser privacy, with no removed test
-or changed command option. Path-triggered storage/admission obligations remain.
+or changed command option. Final planner has no unclassified paths.
 
-Local artifacts: `output/verification/security-integration/` contains fetched PR
-metadata/diffs, plan, source fingerprint and light-check/watchdog logs. Historical
-PR reports remain historical. No paid real-agent rehearsal, human acceptance,
-physical-device exercise, live cutover or power-loss test occurred.
+Local artifacts: `output/verification/security-integration/` retains preparation
+and original-head metadata. `output/verification/security-slot-1/` retains the
+reserved batch logs, fingerprints, plan, external visual probe, screenshots,
+watchdog records and cleanup note. Raw acceptance artifacts remain private under
+`output/acceptance/`; no raw trace or credential is published. No paid real-agent
+rehearsal, human acceptance, physical-device test, live cutover or power-loss test
+occurred.
 
 ## Recommended runtime gate
 
-Do not deploy this draft or close source PRs on the strength of its historical
-reports. Select the exact combined source/schema with runtime and reliability,
+Do not deploy this draft or close source PRs based only on this standalone
+qualification. Select the exact combined source/schema with runtime and reliability,
 preserve the old install, and obtain fresh applicable regressions plus the
 20-seed qualification on that immutable candidate. Before shared-token execution,
 retain #85 local cleanup approval and #88 separation of API/native authority.
