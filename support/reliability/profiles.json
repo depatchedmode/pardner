@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "seeds": [1, 2, 3],
+  "qualification": {
+    "warmupSeconds": 300, "measurementSeconds": 1800, "idleSeconds": 300,
+    "dozensSoakSeconds": 3600, "browserSamples": 100, "offlineRestarts": 3,
+    "partitions": 3, "partitionBacklogPerReplica": 100,
+    "topology": {"hubs": 1, "replicas": 3, "browsers": 2},
+    "mix": {"taskUpdate": 0.5, "comment": 0.3, "read": 0.2, "commentMentionFraction": 0.3333333333333333},
+    "profiles": {
+      "handful": {"actors": 8, "locations": 12, "tasks": 100, "comments": 400, "preloadOperations": 1000, "writesPerSecond": 1},
+      "dozens": {"actors": 32, "locations": 48, "tasks": 500, "comments": 2500, "preloadOperations": 10000, "writesPerSecond": 2},
+      "accumulated": {"actors": 32, "locations": 48, "tasks": 1000, "comments": 10000, "preloadOperations": 50000, "writesPerSecond": 2},
+      "stretch": {"actors": 500, "locations": 750, "tasks": 1000, "comments": 10000, "preloadOperations": 50000, "writesPerSecond": 10}
+    }
+  },
+  "preliminary": {"actors": 8, "tasks": 10, "comments": 20, "preloadOperations": 60, "warmupSeconds": 10, "measurementSeconds": 30, "writesPerSecond": 1},
+  "limits": {"rssBytes": 2147483648, "diskBytes": 1073741824, "requestTimeoutMs": 10000, "preliminaryTimeoutSeconds": 180, "qualificationTimeoutSeconds": 7200},
+  "gates": {"ackMs": 2000, "uiMs": 2000, "offlineStartupMs": 5000, "convergenceMs": 10000, "eligibleHandoffMs": 2000}
+}

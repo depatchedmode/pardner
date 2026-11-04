@@ -186,6 +186,17 @@ change was never acknowledged, the replica keeps it with `syncPending`, and the
 acknowledgement protocol re-persists it after restart. No listed property is
 violated; the behavior is now explicit.
 
+## Operation-integrity mapping review (2026-11-04)
+
+The #61 integration refreshes hashes for `lib/workspace.js` (request identity in
+receipts and conflict-aware snapshot projection) and `automerge-sync-server.js`
+(the integrity error's HTTP 409 mapping). Admission, persistence barriers and
+shutdown ordering are unchanged; model actions and mutation anchors remain
+applicable. The default check passed again: 174,614 states, 679,456 transitions,
+all invariants, progress and coverage witnesses. See `operationIntegrityMappingReview`
+in the evidence JSON for exact hashes. The wider-bound and mutation runs above
+remain historical evidence, not fresh runs for this candidate.
+
 ## What the model assumes about Node boundaries
 
 The model keeps these facts as assumptions and relies on the real Node tests

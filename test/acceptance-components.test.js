@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { cli, startCliService } from '../support/cli-resources.js'
 import { NetworkGate } from '../support/acceptance/network-gate.js'
-import { ExpectedOperations } from '../support/acceptance/expected-operations.js'
+import { ExpectedOperations, hash } from '../support/acceptance/expected-operations.js'
 
 it('blocks hub HTTP and native sockets while the public local service remains writable', { timeout: 20000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'pardner-gate-'))
@@ -104,6 +104,7 @@ it('the independent manifest rejects missing effects even when replicas agree', 
   const request = { operationId: 'one', actorId: 'alice', type: 'comment.add', payload: { taskId: 'task', text: 'Required effect' } }
   expected.intend(request)
   expected.acknowledge(request, { savedLocally: true, replicaId: 'replica', result: {} }, 100)
-  const broken = { tasks: {}, operations: { one: { ...request, replicaId: 'replica' } }, comments: {} }
+  const operationId = `op-${hash([request.operationId, hash({ type: request.type, actorId: request.actorId, payload: request.payload })])}`
+  const broken = { tasks: {}, operations: { [operationId]: { ...request, operationId, requestId: 'one', replicaId: 'replica' } }, comments: {} }
   assert.throws(() => expected.verify(broken), /must appear exactly once/)
 })

@@ -157,7 +157,9 @@ the service's explicit LAN access flow described above.
 | Goals and their veins | `pardner goals --json`, `pardner goal show GOAL --json` |
 
 Writes require an Actor and field edits require the revisions returned by `show`.
-Use the same operation ID and identical payload to retry an uncertain write.
+Use the same request operation ID and identical payload to retry an uncertain write.
+Receipts expose this retry key as `requestId` and a derived `operationId` for history
+and revision tokens; see the [operation identity contract](docs/PARDNER-CLI.md).
 Coordination commands emit one JSON result on stdout; errors include stable codes
 and details, with diagnostics on stderr. Reads do not implicitly mark comments seen.
 
@@ -189,7 +191,7 @@ its properties within that model only.
 
 ## Storage and dependencies
 
-A version 3 directory contains workspace metadata, Automerge storage, an exclusive
+A schema 5 directory contains workspace metadata, Automerge storage, an exclusive
 service lock, and local connection settings. The hub additionally holds the
 SQLite delivery ledger. Incompatible prior installs are rejected and preserved;
 choose a new directory rather than migrating or deleting existing data.

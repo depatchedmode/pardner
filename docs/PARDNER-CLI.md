@@ -1,6 +1,6 @@
 # Pardner local service and CLI
 
-The default service and executable now use the version 3 workspace. Human and
+The default service and executable now use the schema 5 workspace. Human and
 agent Actors author through the same local HTTP operations. The UI integration and
 full acceptance milestone are still in progress; see [implementation evidence](PARDNER-EVIDENCE.md).
 
@@ -122,7 +122,8 @@ Version 4 stores mutable task, vein, and goal fields and comment bodies in share
 register maps. Retried creation requests on disconnected replicas therefore share
 each field's merge location. A shared map records superseded field revisions, so
 a late retry cannot resurrect an initial value after an edit or explicit
-resolution. Version 4 adds goals, veins, and task–vein links to version 3.
+resolution. Version 4 added goals, veins, and task–vein links to version 3;
+schema 5 adds request-bound stored operation identities and integrity inspection.
 Earlier directories must be preserved and replaced with a fresh workspace; all
 services participating in a workspace must use the same schema version.
 
@@ -154,6 +155,27 @@ For transport failures, retry the **same payload with the same operation ID**.
 An existing matching operation is replayed; reuse for a different payload returns
 `OPERATION_ID_REUSED`. `pardner operation --request JSON` exposes the complete
 shared-operation envelope for deterministic agent clients.
+
+The request's `operationId` is a caller-selected retry key. Receipts and history
+return it as `requestId`; their `operationId` is a service-derived SHA-256 identity
+binding that key to the operation type, resolved Actor ID, and canonical payload.
+Use returned operation IDs as revision tokens; retry with the original request
+key and payload. Identical requests on disconnected replicas remain one logical
+operation. Different requests sharing a key receive distinct stored identities,
+so both effects and history survive convergence; subsequent reuse of that
+ambiguous key returns `OPERATION_INTEGRITY_CONFLICT` (HTTP 409), with
+`details.requestId`, `status: unresolved`, and every acknowledged variant.
+Local incompatible reuse before a conflict is known remains `OPERATION_ID_REUSED`.
+`show`/task context includes `integrityConflicts`, and the task browser shows an
+unresolved operation ID conflict with full variants. Each variant's `origins`
+lists every recorded replica/timestamp; these are provenance, not request identity.
+No inspection or retry repairs/replays the conflicting mutations. Ordinary field
+resolution does not resolve operation integrity. Same-field collisions also
+require explicit field resolution.
+
+This identity format requires schema 5 on every service. Older workspace data is
+preserved and rejected as incompatible; do not overwrite or automatically migrate
+it. Enroll a new workspace using compatible services.
 
 ## Link GitHub issues
 

@@ -62,7 +62,7 @@ try {
   const context = await run(['show', created.result.taskId])
   assert.equal(context.task.title, 'Verification replay and restart')
   assert.equal(context.task.assignee, 'alice')
-  const history = context.history.filter(event => event.operationId === 'verification-task')
+  const history = context.history.filter(event => event.requestId === 'verification-task')
   assert.equal(history.length, 1)
   assert.equal(history[0].actorId, 'alice')
   report.finalCandidate = await candidateFingerprint()
