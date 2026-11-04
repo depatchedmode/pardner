@@ -107,6 +107,11 @@ ran the original full seeds 1–5 in one traced invocation. All five passed, but
 the original threshold failure was not reproduced or explained. This diagnostic
 does not replace the 20-seed gate; qualification remains **FAILED**.
 
+A subsequent authorized [controlled-CPU investigation](PARDNER-66-CPU-PREFLIGHT.md)
+stopped at preflight: no sustained quiet window met its predeclared CPU and
+runnable-process criteria. No fixture/load arms or gate ran. This missing
+environment prerequisite supplies no diagnosis and leaves qualification **FAILED**.
+
 All watchdogs completed and recorded no hung processes, survivors or leftover
 scratch. Owned test processes were absent after diagnosis, the disposable baseline
 archive was removed, and the lock wrapper exited 0, releasing the stable lock
