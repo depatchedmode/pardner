@@ -102,6 +102,11 @@ quantified ordinary CLI/client overhead but did not reproduce or explain the
 original miss. It left qualification **FAILED**, preserved these results, and
 ran no new full acceptance gate.
 
+A later, separately authorized [single sequential diagnostic](PARDNER-66-SEQUENTIAL-DIAGNOSTIC.md)
+ran the original full seeds 1–5 in one traced invocation. All five passed, but
+the original threshold failure was not reproduced or explained. This diagnostic
+does not replace the 20-seed gate; qualification remains **FAILED**.
+
 All watchdogs completed and recorded no hung processes, survivors or leftover
 scratch. Owned test processes were absent after diagnosis, the disposable baseline
 archive was removed, and the lock wrapper exited 0, releasing the stable lock

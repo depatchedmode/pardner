@@ -1,0 +1,663 @@
+{
+  "schemaVersion": 1,
+  "qualificationStatus": "FAILED",
+  "diagnosticOutcome": "One instrumented full sequential seeds1-5 invocation passed; original threshold failure remains unexplained.",
+  "hypothesis": "Accumulated complete predecessor seeds1-4 cause scenario/child/event-loop effects before seed5 that isolated prefixes omit.",
+  "budget": {
+    "budgetMinutes": 30,
+    "startedAt": "2026-11-04T21:04:43Z",
+    "deadline": "2026-11-04T21:34:43Z"
+  },
+  "testedHead": "f708fe69511a6a8714b5337dac4d977804f89680",
+  "base": "e0fee59cbdeac55733aca15de73d45c2e2d14bfb",
+  "implementationHead": "34abcf98b9204bc1b564774a84554429c20d35c1",
+  "candidateFingerprint": "0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3",
+  "attempts": {
+    "fullSequentialInvocation": 1,
+    "restarts": 0,
+    "additionalReplays": 0,
+    "full20SeedGates": 0,
+    "directHttpSubstitutions": 0,
+    "syntheticLoadRuns": 0
+  },
+  "command": "npm run test:acceptance -- --repeat 5 --seed 1 --output \"$out/reports\"",
+  "externalPreload": "NODE_OPTIONS=--import=/tmp/pardner-101-sequential-probe.mjs",
+  "watchdog": {
+    "outcome": "completed",
+    "startedAt": "2026-11-04T21:06:00.170Z",
+    "timeoutSeconds": 1500,
+    "durationMs": 735143,
+    "exitCode": 0,
+    "timedOut": false,
+    "hungProcesses": [],
+    "survivorsAfterKill": [],
+    "newScratch": []
+  },
+  "environment": {
+    "node": "v24.11.1",
+    "platform": "darwin",
+    "arch": "arm64",
+    "lockfiles": {
+      "package-lock.json": {
+        "sha256": "b40167effb550fd7feb01a85876c273f3fb2eedb76ad3be7dcdd1ee8704d592c",
+        "installedSha256": "aef1a041126fe09b9caadb8679bfeaa6dce681f874480b6cc6098f9bbadceb32",
+        "packages": 96
+      },
+      "ui-prototype/package-lock.json": {
+        "sha256": "ad58b07b1d9fbbcf8eb8a18ad5d4658b00442e04922026c813527b5a54a65649",
+        "installedSha256": "44388e48e56ce8a7c3eb26ee117dc8dd3edbc51844b18860657b9d13096a21cd",
+        "packages": 191
+      }
+    },
+    "probeSha256": "729b97a4054c4cc791ea8fdd11c22ab038882b0cbd8bcc6b33b19cc13f58f0d2",
+    "playwrightVersion": "1.62.1"
+  },
+  "browser": "Original acceptance Chromium launches; pinned chromium-1234, two contexts per seed. No separate WebKit replay was requested or run.",
+  "semanticReview": [
+    "Original scripts/acceptance.js and package command unchanged; no scenario truncation or request substitution.",
+    "ChildProcess.spawn forwards the original options and return value; only listeners/timestamps added.",
+    "HTTP emit preserves arguments, receiver and return value; request/response contents and admission unchanged.",
+    "Workspace execute/apply and DurableRepo.flush forward original arguments/receiver, resolved values and rejection; async wrappers add timing overhead.",
+    "CLI fetch preserves original call arguments, response object, JSON result/rejection; no credential/body recording.",
+    "Only task.update operation commands receive phase correlation; driver samples host pressure and event-loop lag.",
+    "Observer imports, AsyncLocalStorage, extra promise boundaries and synchronous trace writes perturb timing; diagnostic only.",
+    "Host observer narrowed to actual acceptance driver; unused module import removed; service/client probes unchanged."
+  ],
+  "validation": {
+    "completedSeeds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "operations": 3595,
+    "recordedReplicaVerifications": 15,
+    "retainedSnapshotsReverified": 5,
+    "summarySha256": "826e5eeae7779dcb0f3140b89e69d82a8cde60184a3abf325118a63bfb9bcf23",
+    "records": [
+      {
+        "seed": 1,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "74bf011520c9bdff390eda778d20a92c0cd46bf6e4d35c9b2ec23f9b5c1a61cd",
+        "snapshotSha256": "8675616f420de11e07790f8456eb3f1a3b6c9927850d73269f6921e316adc222",
+        "receiptInclusiveAckMaxMs": 1686.246124999976,
+        "timingMaxima": {
+          "local-ack": 1686.246124999976,
+          "convergence": 4677.679207999987,
+          "local-ui-visible": 60.91316699999879,
+          "offline-start": 2103.1936669999996,
+          "agent-effect-ack": 496.00525000001653
+        }
+      },
+      {
+        "seed": 2,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "5a2bf2dac69fb4c0ad23a692ae00d1116a9c2c46ba3e6501308a28158ea511a0",
+        "snapshotSha256": "b46c1b428c8579d2750e834f6046ff0e1f8623d3f295e3cebf3e5990f3393dbe",
+        "receiptInclusiveAckMaxMs": 653.4027500000084,
+        "timingMaxima": {
+          "local-ack": 653.4027500000084,
+          "convergence": 2340.189707999991,
+          "local-ui-visible": 60.61570800002664,
+          "offline-start": 2404.5954580000252,
+          "agent-effect-ack": 168.54283299995586
+        }
+      },
+      {
+        "seed": 3,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "d394eaa9f2fdf7348fe27629c69ac54157cab0d791c997cbd670b41d778264a2",
+        "snapshotSha256": "3cecedf8aa4538a8b6c12c928734d50f15ef61477c89ee0af27effbab9ed0f60",
+        "receiptInclusiveAckMaxMs": 359.813582999981,
+        "timingMaxima": {
+          "local-ack": 359.813582999981,
+          "convergence": 3119.3113330000197,
+          "local-ui-visible": 56.63904199999524,
+          "offline-start": 2058.6264579999843,
+          "agent-effect-ack": 208.12712499999907
+        }
+      },
+      {
+        "seed": 4,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "9c3b4125474e0873d3aa7993ffb15c5c57cbe059cb055f7b16c917dda5b951ca",
+        "snapshotSha256": "f51ee02beaffac878bfab9147a29cd22628c977c920b8d06424a95855adec686",
+        "receiptInclusiveAckMaxMs": 299.68491599999834,
+        "timingMaxima": {
+          "local-ack": 299.68491599999834,
+          "convergence": 2767.846707999939,
+          "local-ui-visible": 44.964334000018425,
+          "offline-start": 2057.3167919999687,
+          "agent-effect-ack": 168.9274579999037
+        }
+      },
+      {
+        "seed": 5,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "cb099740d33313c0fe0f9dcb28fb96e8159d99acee2ed0eddd3deef4cdfc95f7",
+        "snapshotSha256": "a60c5644eda5a28893360c00aea05d46b51dc6b171f12dce89701a906072fbf6",
+        "receiptInclusiveAckMaxMs": 290.17104100005236,
+        "timingMaxima": {
+          "local-ack": 290.17104100005236,
+          "convergence": 2885.315540999989,
+          "local-ui-visible": 58.10395899997093,
+          "offline-start": 2013.4588330000406,
+          "agent-effect-ack": 165.98141599993687
+        }
+      }
+    ],
+    "allTimingMaximaMs": {
+      "local-ack": 1686.246124999976,
+      "convergence": 4677.679207999987,
+      "local-ui-visible": 60.91316699999879,
+      "offline-start": 2404.5954580000252,
+      "agent-effect-ack": 496.00525000001653
+    },
+    "completeTaskUpdatePhaseChains": 1010,
+    "phaseAccountingResidualMaximumMs": 13.028709000003062,
+    "candidateStable": true,
+    "probeStable": true
+  },
+  "phaseMetricsBySeed": [
+    {
+      "seed": 1,
+      "updates": 202,
+      "complete": 202,
+      "spans": {
+        "spawnToPreload": {
+          "medianMs": 54.58,
+          "maxMs": 621.415
+        },
+        "preloadToRequest": {
+          "medianMs": 23.951,
+          "maxMs": 307.677
+        },
+        "requestToAdmission": {
+          "medianMs": 9.351,
+          "maxMs": 176.285
+        },
+        "admissionToExecute": {
+          "medianMs": 0.47,
+          "maxMs": 29.564
+        },
+        "queue": {
+          "medianMs": 0.114,
+          "maxMs": 40.382
+        },
+        "prepareAndChange": {
+          "medianMs": 48.92,
+          "maxMs": 668.324
+        },
+        "flush": {
+          "medianMs": 12.639,
+          "maxMs": 741.567
+        },
+        "flushToResponse": {
+          "medianMs": 1.002,
+          "maxMs": 40.34
+        },
+        "responseToHeaders": {
+          "medianMs": 5.246,
+          "maxMs": 160.347
+        },
+        "headersToBody": {
+          "medianMs": 0.98,
+          "maxMs": 37.725
+        },
+        "bodyToExit": {
+          "medianMs": 1.748,
+          "maxMs": 83.054
+        },
+        "exitToClose": {
+          "medianMs": 8.341,
+          "maxMs": 155.801
+        },
+        "spawnToClose": {
+          "medianMs": 170.176,
+          "maxMs": 1685.888
+        },
+        "serverApply": {
+          "medianMs": 60.952,
+          "maxMs": 1054.2
+        }
+      },
+      "host": {
+        "samples": 114,
+        "load1Range": [
+          6.607421875,
+          385.02197265625
+        ],
+        "loopMaxMs": 103.088127
+      },
+      "processSamples": 53,
+      "ownedProcessMetrics": {
+        "firstDriverRssKiB": 267904,
+        "lastDriverRssKiB": 146288,
+        "maxDriverRssKiB": 292688,
+        "minDescendants": 8,
+        "maxDescendants": 9
+      },
+      "phaseAccountingResidualMs": {
+        "min": 0.3199999999976768,
+        "max": 13.028709000003062
+      }
+    },
+    {
+      "seed": 2,
+      "updates": 202,
+      "complete": 202,
+      "spans": {
+        "spawnToPreload": {
+          "medianMs": 50.754,
+          "maxMs": 67.121
+        },
+        "preloadToRequest": {
+          "medianMs": 21.401,
+          "maxMs": 34.237
+        },
+        "requestToAdmission": {
+          "medianMs": 8.822,
+          "maxMs": 11.771
+        },
+        "admissionToExecute": {
+          "medianMs": 0.424,
+          "maxMs": 5.426
+        },
+        "queue": {
+          "medianMs": 0.105,
+          "maxMs": 0.347
+        },
+        "prepareAndChange": {
+          "medianMs": 48.74,
+          "maxMs": 70.281
+        },
+        "flush": {
+          "medianMs": 10.191,
+          "maxMs": 122.502
+        },
+        "flushToResponse": {
+          "medianMs": 0.883,
+          "maxMs": 4.092
+        },
+        "responseToHeaders": {
+          "medianMs": 4.626,
+          "maxMs": 17.617
+        },
+        "headersToBody": {
+          "medianMs": 0.917,
+          "maxMs": 4.815
+        },
+        "bodyToExit": {
+          "medianMs": 1.497,
+          "maxMs": 6.702
+        },
+        "exitToClose": {
+          "medianMs": 5.998,
+          "maxMs": 19.16
+        },
+        "spawnToClose": {
+          "medianMs": 156.709,
+          "maxMs": 264.15
+        },
+        "serverApply": {
+          "medianMs": 59.324,
+          "maxMs": 172.571
+        }
+      },
+      "host": {
+        "samples": 56,
+        "load1Range": [
+          97.97412109375,
+          233.8486328125
+        ],
+        "loopMaxMs": 33.046527
+      },
+      "processSamples": 28,
+      "ownedProcessMetrics": {
+        "firstDriverRssKiB": 364272,
+        "lastDriverRssKiB": 374000,
+        "maxDriverRssKiB": 400224,
+        "minDescendants": 8,
+        "maxDescendants": 9
+      },
+      "phaseAccountingResidualMs": {
+        "min": 0.29512500002329034,
+        "max": 1.2451249999683398
+      }
+    },
+    {
+      "seed": 3,
+      "updates": 202,
+      "complete": 202,
+      "spans": {
+        "spawnToPreload": {
+          "medianMs": 51.228,
+          "maxMs": 76.414
+        },
+        "preloadToRequest": {
+          "medianMs": 21.587,
+          "maxMs": 35.793
+        },
+        "requestToAdmission": {
+          "medianMs": 8.852,
+          "maxMs": 16.003
+        },
+        "admissionToExecute": {
+          "medianMs": 0.438,
+          "maxMs": 5.015
+        },
+        "queue": {
+          "medianMs": 0.108,
+          "maxMs": 0.752
+        },
+        "prepareAndChange": {
+          "medianMs": 47.726,
+          "maxMs": 75.549
+        },
+        "flush": {
+          "medianMs": 10.203,
+          "maxMs": 150.911
+        },
+        "flushToResponse": {
+          "medianMs": 0.869,
+          "maxMs": 3.935
+        },
+        "responseToHeaders": {
+          "medianMs": 4.705,
+          "maxMs": 17.185
+        },
+        "headersToBody": {
+          "medianMs": 0.923,
+          "maxMs": 3.119
+        },
+        "bodyToExit": {
+          "medianMs": 1.494,
+          "maxMs": 6.794
+        },
+        "exitToClose": {
+          "medianMs": 5.607,
+          "maxMs": 18.405
+        },
+        "spawnToClose": {
+          "medianMs": 155.576,
+          "maxMs": 281.44
+        },
+        "serverApply": {
+          "medianMs": 58.288,
+          "maxMs": 170.704
+        }
+      },
+      "host": {
+        "samples": 57,
+        "load1Range": [
+          18.40966796875,
+          34.97607421875
+        ],
+        "loopMaxMs": 60.325887
+      },
+      "processSamples": 28,
+      "ownedProcessMetrics": {
+        "firstDriverRssKiB": 411344,
+        "lastDriverRssKiB": 411664,
+        "maxDriverRssKiB": 430560,
+        "minDescendants": 8,
+        "maxDescendants": 9
+      },
+      "phaseAccountingResidualMs": {
+        "min": 0.29475000001303897,
+        "max": 3.118040999965274
+      }
+    },
+    {
+      "seed": 4,
+      "updates": 202,
+      "complete": 202,
+      "spans": {
+        "spawnToPreload": {
+          "medianMs": 49.957,
+          "maxMs": 92.423
+        },
+        "preloadToRequest": {
+          "medianMs": 20.88,
+          "maxMs": 38.137
+        },
+        "requestToAdmission": {
+          "medianMs": 8.665,
+          "maxMs": 21.119
+        },
+        "admissionToExecute": {
+          "medianMs": 0.428,
+          "maxMs": 5.066
+        },
+        "queue": {
+          "medianMs": 0.102,
+          "maxMs": 0.875
+        },
+        "prepareAndChange": {
+          "medianMs": 48.022,
+          "maxMs": 124.223
+        },
+        "flush": {
+          "medianMs": 9.992,
+          "maxMs": 126.507
+        },
+        "flushToResponse": {
+          "medianMs": 0.844,
+          "maxMs": 3.218
+        },
+        "responseToHeaders": {
+          "medianMs": 4.601,
+          "maxMs": 17.138
+        },
+        "headersToBody": {
+          "medianMs": 0.913,
+          "maxMs": 3.019
+        },
+        "bodyToExit": {
+          "medianMs": 1.474,
+          "maxMs": 9.806
+        },
+        "exitToClose": {
+          "medianMs": 6.017,
+          "maxMs": 15.49
+        },
+        "spawnToClose": {
+          "medianMs": 154.43,
+          "maxMs": 299.372
+        },
+        "serverApply": {
+          "medianMs": 58.269,
+          "maxMs": 176.146
+        }
+      },
+      "host": {
+        "samples": 56,
+        "load1Range": [
+          7.28857421875,
+          11.17236328125
+        ],
+        "loopMaxMs": 39.944191
+      },
+      "processSamples": 28,
+      "ownedProcessMetrics": {
+        "firstDriverRssKiB": 433808,
+        "lastDriverRssKiB": 425600,
+        "maxDriverRssKiB": 471024,
+        "minDescendants": 8,
+        "maxDescendants": 9
+      },
+      "phaseAccountingResidualMs": {
+        "min": 0.29675000002328034,
+        "max": 0.5329999999962638
+      }
+    },
+    {
+      "seed": 5,
+      "updates": 202,
+      "complete": 202,
+      "spans": {
+        "spawnToPreload": {
+          "medianMs": 49.469,
+          "maxMs": 56.253
+        },
+        "preloadToRequest": {
+          "medianMs": 20.851,
+          "maxMs": 24.291
+        },
+        "requestToAdmission": {
+          "medianMs": 8.642,
+          "maxMs": 13.591
+        },
+        "admissionToExecute": {
+          "medianMs": 0.431,
+          "maxMs": 5.53
+        },
+        "queue": {
+          "medianMs": 0.103,
+          "maxMs": 0.276
+        },
+        "prepareAndChange": {
+          "medianMs": 47.858,
+          "maxMs": 80.521
+        },
+        "flush": {
+          "medianMs": 10.346,
+          "maxMs": 127.384
+        },
+        "flushToResponse": {
+          "medianMs": 0.876,
+          "maxMs": 3.78
+        },
+        "responseToHeaders": {
+          "medianMs": 4.57,
+          "maxMs": 7.911
+        },
+        "headersToBody": {
+          "medianMs": 0.907,
+          "maxMs": 3.784
+        },
+        "bodyToExit": {
+          "medianMs": 1.429,
+          "maxMs": 4.06
+        },
+        "exitToClose": {
+          "medianMs": 4.822,
+          "maxMs": 12.852
+        },
+        "spawnToClose": {
+          "medianMs": 152.914,
+          "maxMs": 274.365
+        },
+        "serverApply": {
+          "medianMs": 58.764,
+          "maxMs": 178.913
+        }
+      },
+      "host": {
+        "samples": 55,
+        "load1Range": [
+          6.77685546875,
+          11.4990234375
+        ],
+        "loopMaxMs": 28.098559
+      },
+      "processSamples": 27,
+      "ownedProcessMetrics": {
+        "firstDriverRssKiB": 461424,
+        "lastDriverRssKiB": 448432,
+        "maxDriverRssKiB": 461424,
+        "minDescendants": 8,
+        "maxDescendants": 9
+      },
+      "phaseAccountingResidualMs": {
+        "min": 0.29662499997206737,
+        "max": 0.6411249999795245
+      }
+    }
+  ],
+  "slowestInstrumentedTaskUpdate": {
+    "processCpuMs": {
+      "cliPreloadToExit": 99.699,
+      "serverApply": 109.818,
+      "flush": 46.459
+    },
+    "operationId": "seed-1-operation-666",
+    "durationMs": {
+      "spawnToPreload": 222.721,
+      "preloadToRequest": 172.283,
+      "requestToAdmission": 50.755,
+      "admissionToExecute": 0.435,
+      "queue": 0.104,
+      "prepareAndChange": 668.324,
+      "flush": 385.33,
+      "flushToResponse": 6.213,
+      "responseToHeaders": 41.347,
+      "headersToBody": 2.808,
+      "bodyToExit": 12.178,
+      "exitToClose": 123.391,
+      "spawnToClose": 1685.888,
+      "serverApply": 1054.2
+    },
+    "complete": true
+  },
+  "aggregateHostPressure": {
+    "logicalCpus": 10,
+    "samples": 733,
+    "load1Range": [
+      4.2275390625,
+      518.4970703125
+    ],
+    "driverLoopMaxMs": 269.221887,
+    "cpuBusyPercent": {
+      "median": 52.154,
+      "max": 100.0
+    }
+  },
+  "observer": {
+    "samples": 332,
+    "deadlineReached": false,
+    "changesToObservedProcesses": false
+  },
+  "sourceDigests": {
+    "pardner-101-sequential-probe.mjs.txt": "729b97a4054c4cc791ea8fdd11c22ab038882b0cbd8bcc6b33b19cc13f58f0d2",
+    "pardner-101-sequential-diagnostic.sh.txt": "00c643c3d660d10456b4863390dd99498afce404de65962afa23f520ea6143d3",
+    "owned-sampler.py.txt": "c821299c113d16096c5514277de5ab082208f38bf99dda672bdb9587fbab9736",
+    "phase-audit.py.txt": "ada89656309bd1a551dc59ec024a36bfdecd8cb106efb455d7ba82ce3907cbac",
+    "report-audit.mjs.txt": "10405d6ab5ea5f2ef0e567049340f7d4f721d1bf92be828c2b961a47f6110c36"
+  },
+  "privatePhaseAuditSha256": "b5e336af57b8f434f463605e13f34a8b6d25ad59ba1918818be6674937d43cd6",
+  "cleanup": {
+    "at": "2026-11-04T21:19:09.896842+00:00",
+    "watchdogExited": 0,
+    "samplerExited": 0,
+    "ownedRootDriverOrGroupSurvivors": [],
+    "watchdogTrackedSurvivors": [],
+    "newScratch": [],
+    "productionDataTouched": false,
+    "lockRelease": "shell and wrapper exited 0; stable file retained",
+    "lockReleasedAt": "2026-11-04T21:19:52.573281+00:00"
+  },
+  "causalLimits": [
+    "No 2000ms threshold crossing occurred, so there is no new instrumented failure to attribute.",
+    "Complete predecessor seeds were not sufficient to reproduce the miss in this trial; intermittent accumulated effects are not ruled out.",
+    "Sampled driver RSS grew at comparable update-phase starts, but 8-9 descendants were observed throughout those phases; neither establishes a leak or explains the original miss.",
+    "Load average and CPU samples are context, not causal attribution; no unrelated workload was controlled.",
+    "Synchronous probe writes, imports, AsyncLocalStorage and promise wrappers add overhead and can alter scheduling.",
+    "CPU deltas are whole-process usage within observed spans, not exclusive-thread accounting or proof of disk versus scheduling delay.",
+    "Raw traces and credential-bearing browser/service artifacts remain private; public evidence contains allowlisted metrics and hashes.",
+    "No implementation change, native paid session, human acceptance, deployment, migration, archival, merge, issue closure or downstream handoff."
+  ],
+  "nextDecision": "Stop after this one invocation. Qualification remains FAILED and PR stays draft + needs-qualification; coordinator owns any next decision.",
+  "limitsMs": {
+    "localAcknowledgement": 2000,
+    "localVisibility": 2000,
+    "offlineRestart": 5000,
+    "convergence": 10000
+  }
+}

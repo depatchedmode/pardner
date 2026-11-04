@@ -1,5 +1,9 @@
 # Issue 66 latency investigation, November 4, 2026
 
+Historical investigation record. A separately authorized
+[sequential follow-up](PARDNER-66-SEQUENTIAL-DIAGNOSTIC.md) subsequently ran once;
+it also left the original qualification failure unresolved.
+
 **Qualification remains FAILED.** The original 2,384.036 ms acknowledgement
 against the unchanged 2,000 ms limit is preserved. This separate investigation
 measured normal CLI overhead, but did not establish the cause of that miss or
