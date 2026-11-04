@@ -1,0 +1,515 @@
+{
+  "base": "1f484062b2d3fe99b9e318a56786ea72413f69f3",
+  "sourceHead": "e7ff4264fb0437cca640191e5176342285054c59",
+  "candidate": "402b2719f6b583253fdaa4aae40d16fdc64694de2acd682fb174052169173e65",
+  "node": "v24.11.1",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "command": [
+    "npm",
+    "run",
+    "test:acceptance",
+    "--",
+    "--repeat",
+    "20",
+    "--seed",
+    "1"
+  ],
+  "repeat": 20,
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20
+  ],
+  "scenarioPassed": true,
+  "observedMaximaMs": {
+    "local-ack": 1043.2124169999734,
+    "convergence": 3192.7333330000984,
+    "local-ui-visible": 95.18549999996321,
+    "offline-start": 2081.524207999988,
+    "agent-effect-ack": 174.97679099999368
+  },
+  "timingObservationCounts": {
+    "local-ack": 14220,
+    "convergence": 200,
+    "local-ui-visible": 40,
+    "offline-start": 20,
+    "agent-effect-ack": 70
+  },
+  "durationMs": 2406208,
+  "perSeed": [
+    {
+      "seed": 1,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 193.77658400000655,
+        "convergence": 2545.873250000004,
+        "local-ui-visible": 44.42254200000025,
+        "offline-start": 1788.590916999994,
+        "agent-effect-ack": 135.3507910000044
+      }
+    },
+    {
+      "seed": 2,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 247.9196670000092,
+        "convergence": 2667.6099579999864,
+        "local-ui-visible": 54.2487919999985,
+        "offline-start": 1961.3806669999904,
+        "agent-effect-ack": 174.97679099999368
+      }
+    },
+    {
+      "seed": 3,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 266.3277090000338,
+        "convergence": 2102.734416000021,
+        "local-ui-visible": 95.18549999996321,
+        "offline-start": 2081.524207999988,
+        "agent-effect-ack": 136.7587919999496
+      }
+    },
+    {
+      "seed": 4,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 224.89724999997998,
+        "convergence": 2467.1455419999547,
+        "local-ui-visible": 40.444375000020955,
+        "offline-start": 1967.5703329999815,
+        "agent-effect-ack": 138.0087089999579
+      }
+    },
+    {
+      "seed": 5,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 226.45458299992606,
+        "convergence": 3192.7333330000984,
+        "local-ui-visible": 61.634624999947846,
+        "offline-start": 1851.2472909999778,
+        "agent-effect-ack": 132.44095800002106
+      }
+    },
+    {
+      "seed": 6,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 197.61737500003073,
+        "convergence": 1787.6608750000596,
+        "local-ui-visible": 60.90916699997615,
+        "offline-start": 1799.2087080000201,
+        "agent-effect-ack": 137.94270800007507
+      }
+    },
+    {
+      "seed": 7,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 217.54745900002308,
+        "convergence": 2722.719708999968,
+        "local-ui-visible": 50.277916999999434,
+        "offline-start": 1920.9237500000745,
+        "agent-effect-ack": 131.1267499999376
+      }
+    },
+    {
+      "seed": 8,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 236.5399580000667,
+        "convergence": 1896.7463330000173,
+        "local-ui-visible": 54.91116699995473,
+        "offline-start": 1806.3374169999734,
+        "agent-effect-ack": 144.88300000003073
+      }
+    },
+    {
+      "seed": 9,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 227.82641600002535,
+        "convergence": 2511.0346669999417,
+        "local-ui-visible": 47.90816700004507,
+        "offline-start": 1892.0851249999832,
+        "agent-effect-ack": 140.75962499994785
+      }
+    },
+    {
+      "seed": 10,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 211.86279099993408,
+        "convergence": 1921.167958999984,
+        "local-ui-visible": 44.897875000024214,
+        "offline-start": 1826.1430840000976,
+        "agent-effect-ack": 147.66391599993221
+      }
+    },
+    {
+      "seed": 11,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 194.00025000004098,
+        "convergence": 2815.299875000026,
+        "local-ui-visible": 47.396707999985665,
+        "offline-start": 1815.893374999985,
+        "agent-effect-ack": 133.30912499991246
+      }
+    },
+    {
+      "seed": 12,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 294.11666699987836,
+        "convergence": 1851.4310000000987,
+        "local-ui-visible": 57.90337499999441,
+        "offline-start": 1861.5185420000926,
+        "agent-effect-ack": 138.19062500004657
+      }
+    },
+    {
+      "seed": 13,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 187.74549999996088,
+        "convergence": 2981.8600419999566,
+        "local-ui-visible": 42.66237500007264,
+        "offline-start": 1831.5525419998448,
+        "agent-effect-ack": 131.24833400011994
+      }
+    },
+    {
+      "seed": 14,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 471.9794999998994,
+        "convergence": 1961.5692499999423,
+        "local-ui-visible": 53.10091599985026,
+        "offline-start": 1839.0913329999894,
+        "agent-effect-ack": 135.23208300000988
+      }
+    },
+    {
+      "seed": 15,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 243.3775420000311,
+        "convergence": 2506.652457999997,
+        "local-ui-visible": 54.13137500011362,
+        "offline-start": 1896.3137919998262,
+        "agent-effect-ack": 135.81070800009184
+      }
+    },
+    {
+      "seed": 16,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 190.30929200001992,
+        "convergence": 2234.0943749998696,
+        "local-ui-visible": 59.70241599995643,
+        "offline-start": 1812.0091659999453,
+        "agent-effect-ack": 137.03054199996404
+      }
+    },
+    {
+      "seed": 17,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 293.03329199994914,
+        "convergence": 2823.3850839999504,
+        "local-ui-visible": 58.79841599985957,
+        "offline-start": 1906.140582999913,
+        "agent-effect-ack": 134.51483400003053
+      }
+    },
+    {
+      "seed": 18,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 254.14541600015946,
+        "convergence": 1605.9610830000602,
+        "local-ui-visible": 54.197457999922335,
+        "offline-start": 1892.0493329998571,
+        "agent-effect-ack": 142.53583299997263
+      }
+    },
+    {
+      "seed": 19,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 631.9260419998318,
+        "convergence": 2887.4926249999553,
+        "local-ui-visible": 50.68662500008941,
+        "offline-start": 1891.082041000016,
+        "agent-effect-ack": 140.5469170003198
+      }
+    },
+    {
+      "seed": 20,
+      "scenarioPassed": true,
+      "operationCount": 719,
+      "observedMaximaMs": {
+        "local-ack": 1043.2124169999734,
+        "convergence": 1776.014624999836,
+        "local-ui-visible": 57.32837500004098,
+        "offline-start": 1864.1460420000367,
+        "agent-effect-ack": 140.33545899996534
+      }
+    }
+  ],
+  "schema": 4,
+  "routineOutcome": "passed",
+  "overallOutcome": "passed",
+  "preparation": {
+    "uiBuildModules": 364,
+    "chromium": "151.0.7922.34",
+    "webkit": "26.5",
+    "dependencyLockfiles": "byte-matched reused root and UI installs"
+  },
+  "routineCounts": [
+    {
+      "check": "security-focused",
+      "nodeCounts": {
+        "tests": [
+          "108"
+        ],
+        "pass": [
+          "108"
+        ],
+        "fail": [
+          "0"
+        ],
+        "cancelled": [
+          "0"
+        ],
+        "skipped": [
+          "0"
+        ]
+      },
+      "pythonTestCounts": []
+    },
+    {
+      "check": "test-verification",
+      "nodeCounts": {
+        "tests": [
+          "39"
+        ],
+        "pass": [
+          "39"
+        ],
+        "fail": [
+          "0"
+        ],
+        "cancelled": [
+          "0"
+        ],
+        "skipped": [
+          "0"
+        ]
+      },
+      "pythonTestCounts": []
+    },
+    {
+      "check": "test-qualification",
+      "nodeCounts": {
+        "tests": [
+          "12"
+        ],
+        "pass": [
+          "12"
+        ],
+        "fail": [
+          "0"
+        ],
+        "cancelled": [
+          "0"
+        ],
+        "skipped": [
+          "0"
+        ]
+      },
+      "pythonTestCounts": []
+    },
+    {
+      "check": "test-runtime",
+      "nodeCounts": {
+        "tests": [
+          "116"
+        ],
+        "pass": [
+          "116"
+        ],
+        "fail": [
+          "0"
+        ],
+        "cancelled": [
+          "0"
+        ],
+        "skipped": [
+          "0"
+        ]
+      },
+      "pythonTestCounts": []
+    },
+    {
+      "check": "test-cli",
+      "nodeCounts": {
+        "tests": [
+          "12"
+        ],
+        "pass": [
+          "12"
+        ],
+        "fail": [
+          "0"
+        ],
+        "cancelled": [
+          "0"
+        ],
+        "skipped": [
+          "0"
+        ]
+      },
+      "pythonTestCounts": []
+    },
+    {
+      "check": "test-ui",
+      "nodeCounts": {
+        "tests": [
+          "14"
+        ],
+        "pass": [
+          "14"
+        ],
+        "fail": [
+          "0"
+        ],
+        "cancelled": [
+          "0"
+        ],
+        "skipped": [
+          "0"
+        ]
+      },
+      "pythonTestCounts": []
+    },
+    {
+      "check": "visual",
+      "nodeCounts": {
+        "tests": [
+          "2"
+        ],
+        "pass": [
+          "2"
+        ],
+        "fail": [
+          "0"
+        ],
+        "cancelled": [
+          "0"
+        ],
+        "skipped": [
+          "0"
+        ]
+      },
+      "pythonTestCounts": []
+    },
+    {
+      "check": "verify",
+      "nodeCounts": {
+        "tests": [
+          "480"
+        ],
+        "pass": [
+          "480"
+        ],
+        "fail": [
+          "0"
+        ],
+        "cancelled": [
+          "0"
+        ],
+        "skipped": [
+          "0"
+        ]
+      },
+      "pythonTestCounts": [
+        "17"
+      ]
+    },
+    {
+      "check": "test-control-runtime",
+      "nodeCounts": {
+        "tests": [],
+        "pass": [],
+        "fail": [],
+        "cancelled": [],
+        "skipped": []
+      },
+      "pythonTestCounts": [
+        "17"
+      ]
+    }
+  ],
+  "lifecycle": {
+    "states": 174614,
+    "transitions": 679456,
+    "invariantsPassed": 4,
+    "coverageWitnessesPassed": 10,
+    "shutdownProgress": "passed",
+    "mappedSourceUnchangedByMainIntegration": true
+  },
+  "cleanup": {
+    "watchdogSurvivors": 0,
+    "unverifiedProcesses": 0,
+    "newScratchDirectories": 0,
+    "remainingTestProcesses": 0,
+    "lockReleased": true,
+    "stableLockFileRetained": true
+  },
+  "limitations": [
+    "Schema 5 and other track unions are not included.",
+    "Deterministic workers do not establish real-provider or arbitrary external-effect behavior.",
+    "No deployment, live data/credential mutation, paid rehearsal, human acceptance, physical-device exercise or power-loss test.",
+    "Earlier standalone qualification has a different fingerprint; no prior runs were composed into this pass."
+  ]
+}

@@ -46,6 +46,11 @@ identity, so the same Actor can work from more than one machine.
 
 Local operations are acknowledged only after a disk persistence barrier. Enrolled
 replicas reopen without the hub and reconnect using fresh WebSocket tickets.
+Native replicas are trusted full document writers: their synchronized changes bypass
+operation validation. They require separately enrolled replica credentials; ordinary
+API/Actor credentials authorize only the API and UI subscriptions. See
+[replica enrollment](docs/PARDNER-CLI.md#enroll-another-machine) for provisioning and
+rotation.
 Different-field edits merge; same-field alternatives retain their authors and
 require explicit resolution. A synced indicator requires an explicit hub
 persistence acknowledgement covering the displayed document heads.
@@ -54,7 +59,10 @@ The task board is served locally at `/pardner/`. It supports explicit Actor
 selection, full task context, revision-aware edits, atomic handoffs, comments,
 read receipts, conflict alternatives, history, and commit evidence. Credentials
 are entered at runtime and remembered in browser local storage without application expiry. The browser owns
-no separate Automerge database.
+no separate Automerge database. Task descriptions and comments support Markdown,
+but images are displayed as alt text to prevent automatic tracking requests.
+The browser image policy permits only same-origin assets and data images (including
+pairing QR codes), and outgoing links do not send a referrer.
 
 Agent harnesses claim mentions through their local service, which forwards lease
 requests to the hub. They must durably receive a message before acknowledging it.
@@ -120,6 +128,16 @@ its role, addresses, and credentials are then remembered locally. The hub defaul
 to loopback and must explicitly bind the intended interface for remote machines.
 See the [service and CLI guide](docs/PARDNER-CLI.md) for complete examples.
 
+## UI development
+
+Run `npm run dev --prefix ui-prototype` and open
+`http://127.0.0.1:5174/pardner/`. The development server is loopback-only and
+serves files only from `ui-prototype`; workspace state in `.pardner` is denied.
+Keep runtime data outside `ui-prototype`, including its `public` directory.
+Do not expose this development server with `--host`: its API and WebSocket
+proxies reach the local service. For companion devices, use the built UI and
+the service's explicit LAN access flow described above.
+
 ## Coordination commands
 
 | Task | Command |
@@ -139,7 +157,9 @@ See the [service and CLI guide](docs/PARDNER-CLI.md) for complete examples.
 | Goals and their veins | `pardner goals --json`, `pardner goal show GOAL --json` |
 
 Writes require an Actor and field edits require the revisions returned by `show`.
-Use the same operation ID and identical payload to retry an uncertain write.
+Use the same request operation ID and identical payload to retry an uncertain write.
+Receipts expose this retry key as `requestId` and a derived `operationId` for history
+and revision tokens; see the [operation identity contract](docs/PARDNER-CLI.md).
 Coordination commands emit one JSON result on stdout; errors include stable codes
 and details, with diagnostics on stderr. Reads do not implicitly mark comments seen.
 
@@ -171,7 +191,7 @@ its properties within that model only.
 
 ## Storage and dependencies
 
-A version 3 directory contains workspace metadata, Automerge storage, an exclusive
+A schema 5 directory contains workspace metadata, Automerge storage, an exclusive
 service lock, and local connection settings. The hub additionally holds the
 SQLite delivery ledger. Incompatible prior installs are rejected and preserved;
 choose a new directory rather than migrating or deleting existing data.

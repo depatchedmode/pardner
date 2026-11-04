@@ -35,6 +35,11 @@ pardner --data ./rehearsal-hub status --json
 
 Run an enrolled local replica on **each** machine, in a distinct directory. Point
 it to the hub's reachable HTTP/native-WebSocket addresses and supply the hub token.
+First enroll a distinct replica ID and secret for each machine using
+[the enrollment procedure](PARDNER-CLI.md#enroll-another-machine). Configure the hub's
+`PARDNER_REPLICA_CREDENTIALS` registry before startup, and set each machine's
+`PARDNER_REPLICA_ID` and `PARDNER_REPLICA_TOKEN` before running its service.
+These machines are trusted full document writers.
 The two replicas can each use their machine's local ports 8004/8005. On machine A,
 the hub and the local replica must have different directories and ports.
 

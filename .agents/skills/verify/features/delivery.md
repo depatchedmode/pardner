@@ -64,3 +64,10 @@ stale/edited/conflicted artifacts, and cancellation/drain containment. These
 fixtures make no model requests. The rehearsal script's `--check` creates and
 archives a disposable native session; do not run it under a no-archival boundary.
 Native `--run` and the separate approval probe require explicit authorization.
+
+Completion cleanup additionally requires local `bridge approve-cleanup` approval
+with the bridge stopped. Shared task closure supplies eligibility, not authority.
+`bridge-retirement`, `bridge-config-retirement`, and `bridge-review-regressions`
+check scope/revision invalidation, revocation between effects, CLI approval and
+interrupted retirement. These use disposable worktrees and fake archival adapters;
+they do not authorize or establish real-thread cleanup.

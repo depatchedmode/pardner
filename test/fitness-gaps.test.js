@@ -1,3 +1,4 @@
+import { mintReplicaTicket } from '../support/resources.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Repo } from '@automerge/automerge-repo'
@@ -8,7 +9,7 @@ import { SCHEMA_VERSION, taskView } from '../lib/workspace-schema.js'
 it('a native Automerge Repo peer resolves the production schema over the CBOR WebSocket endpoint', { timeout: 10000 }, async () => {
   await withWorkspaceServer(async ({ server, api, create }) => {
     const taskId = await create({ title: 'Native wire contract' })
-    const { ticket } = await api('/automerge/ws-ticket', {})
+    const ticket = await mintReplicaTicket(server)
     const { url } = await api('/automerge/url')
     const adapter = new WebSocketClientAdapter(`ws://127.0.0.1:${server.wsPort}/automerge?ticket=${ticket}`, 60000)
     const repo = new Repo({ network: [adapter] })
