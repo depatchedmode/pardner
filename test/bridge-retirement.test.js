@@ -24,7 +24,7 @@ async function fixture(run) {
   }
   const bridge = { config: { mappings, inboxDirectory: root, dataDirectory: join(root, 'service'), completionCleanup: { archiveDirectory: join(root, 'archive') } }, inbox,
     source: { actors: async () => ({ tasks: state.branches ?? {} }), pending: async () => ({ mentions: state.pending }),
-      context: async ({ taskId }) => ({ task: { status: state.tasks[taskId] }, conflicts: state.conflicts }) },
+      context: async ({ taskId }) => ({ task: { status: state.tasks[taskId] }, conflicts: state.conflicts, integrityConflicts: state.integrityConflicts }) },
     adapters: new Map(mappings.map(mapping => [mapping.actorId, adapter])),
   }
   const dependencies = {
@@ -289,3 +289,19 @@ for (const change of ['owner', 'workspace', 'replica', 'mapping', 'destination',
     assert.equal(state.inbox.retirement(), null)
   }))
 }
+
+it('refuses cleanup approval for unresolved operation variants and rechecks between archival effects', () => fixture(async state => {
+  const conflicts = [{ requestId: 'closure', status: 'unresolved', variants: [{ operationId: 'left' }, { operationId: 'right' }] }]
+  state.integrityConflicts = conflicts
+  await assert.rejects(state.approve(), { code: 'CLEANUP_NOT_ELIGIBLE' })
+  await state.retire()
+  assert.deepEqual(state.archived, [])
+  assert.match(state.inbox.statuses().find(row => row.actor === 'cleanup').state, /integrity conflict/)
+  state.integrityConflicts = []
+  await state.approve()
+  state.afterArchive = () => { state.integrityConflicts = conflicts }
+  await state.retire()
+  assert.deepEqual(state.archived, ['builder'])
+  assert.deepEqual(state.moved, [])
+  assert.deepEqual(state.integrityConflicts, conflicts)
+}))

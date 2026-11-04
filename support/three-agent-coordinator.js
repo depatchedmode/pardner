@@ -76,6 +76,8 @@ export function coordinatorCommands({ scope, root, runId, cliPath, data, environ
         let body
         try { body = JSON.parse(error.stdout) } catch { /* A transport timeout may have no JSON body. */ }
         const failure = new Error(`CLI ${argv[0]} failed (${body?.error?.code ?? error.code ?? 'unknown'}): ${body?.error?.message ?? error.message}`, { cause: error })
+        failure.code = body?.error?.code ?? error.code
+        failure.details = body?.error?.details ?? null
         failure.cliDiagnostic = { argv, code: error.code, signal: error.signal, killed: error.killed,
           stdout: error.stdout, stderr: error.stderr }
         await save('cli-last-error.json', failure.cliDiagnostic)

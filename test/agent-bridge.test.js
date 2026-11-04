@@ -416,3 +416,16 @@ for (const change of [
     assert.match(state.inbox.rows()[0].reason, /content binding/)
   }))
 }
+
+it('keeps integrity-conflicted task deliveries queued across restart without submitting a turn', () => fixture(async state => {
+  const context = state.source.context.bind(state.source)
+  const conflicts = [{ requestId: 'collision', status: 'unresolved', variants: [{ operationId: 'left' }, { operationId: 'right' }] }]
+  state.source.context = async received => ({ ...await context(received), integrityConflicts: conflicts })
+  state.source.mentions.push(mention)
+  await state.bridge.wake()
+  await state.restart(); await state.bridge.wake()
+  assert.equal(state.harness.calls.length, 0)
+  assert.equal(state.inbox.rows()[0].state, 'queued')
+  assert.match(state.inbox.rows()[0].reason, /unresolved operation integrity conflict/)
+  assert.deepEqual((await state.source.context(mention)).integrityConflicts, conflicts)
+}))

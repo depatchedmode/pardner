@@ -326,3 +326,25 @@ it('final test commands receive only the sanitized environment even when options
     assert.deepEqual(JSON.parse(stdout), { safe: 'retained', pardner: [] })
   }
 })
+
+it('preserves schema5 conflict provenance and never silently retries a rejected write', async t => {
+  const details = { requestId: 'fixture-review', status: 'unresolved', variants: [
+    { operationId: 'left', origins: [{ replicaId: 'one' }] }, { operationId: 'right', origins: [{ replicaId: 'two' }] },
+  ] }
+  let calls = 0, saved
+  const coordinator = await fixture(t, { run: async () => {
+    calls++
+    throw Object.assign(new Error('CLI exit 1'), { code: 1, stdout: JSON.stringify({ success: false,
+      error: { code: 'OPERATION_INTEGRITY_CONFLICT', message: 'Inspect every variant', details } }) })
+  }, save: async (_name, value) => { saved = value } })
+  await assert.rejects(coordinator.comment('review', 'parent', { kind: 'review' }), error => {
+    assert.equal(error.code, 'OPERATION_INTEGRITY_CONFLICT')
+    assert.deepEqual(error.details, details)
+    return true
+  })
+  assert.equal(calls, 1)
+  assert.deepEqual(JSON.parse(saved.stdout).error.details, details)
+  const outbox = JSON.parse(await readFile(join(coordinator.root, 'outbox', 'review.json'), 'utf8'))
+  assert.equal(Object.hasOwn(outbox, 'result'), false)
+  assert.equal(outbox.args[outbox.args.indexOf('--operation-id') + 1], 'fixture-review')
+})

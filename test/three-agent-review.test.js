@@ -156,3 +156,20 @@ it('retries the exact persisted operation after response loss and reuses a confi
     assert.equal(submissions, 2)
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
+
+it('unresolved schema5 operation groups cannot supply a frozen artifact or a review vote', () => {
+  const integrityConflicts = [{ requestId: 'collision', status: 'unresolved', variants: [
+    { operationId: 'left', origins: [{ replicaId: 'first' }] }, { operationId: 'right', origins: [{ replicaId: 'second' }] },
+  ] }]
+  const artifact = { kind: 'builder-artifact', actor: 'builder', source: 'candidate' }
+  const builder = { integrityConflicts, comments: [{ id: 'artifact', actorId: 'builder', content: JSON.stringify(artifact) }] }
+  assert.equal(builderArtifacts(builder).accepted.length, 0)
+  assert.match(builderArtifacts(builder).rejected[0].reason, /integrity conflict/)
+  const reviews = contexts({ 'reviewer-a': [result('reviewer-a')], 'reviewer-b': [result('reviewer-b')] })
+  reviews['reviewer-a'].integrityConflicts = integrityConflicts
+  const assessment = collectReviews(round, reviews)
+  assert.equal(assessment.complete, false)
+  assert.equal(nextReviewAction(round, assessment), 'wait')
+  assert.match(assessment.rejected[0].reason, /integrity conflict/)
+  assert.deepEqual(reviews['reviewer-a'].integrityConflicts, integrityConflicts)
+})

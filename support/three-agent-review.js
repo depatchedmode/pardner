@@ -14,7 +14,8 @@ export function builderArtifacts(context) {
     try { artifact = JSON.parse(comment.content) } catch { continue }
     if (artifact?.kind !== 'builder-artifact') continue
     let reason
-    if (comment.actorId !== 'builder' || artifact.actor !== 'builder'
+    if (context.integrityConflicts?.length) reason = 'unresolved operation integrity conflict'
+    else if (comment.actorId !== 'builder' || artifact.actor !== 'builder'
       || (comment.editedBy && comment.editedBy !== 'builder')) reason = 'wrong builder attribution'
     else if (comment.conflicts?.length || comment.deleted) reason = 'conflicted or deleted artifact'
     if (reason) rejected.push({ commentId: comment.id, reason })
@@ -45,7 +46,8 @@ export function collectReviews(round, contexts) {
       try { result = JSON.parse(comment.content) } catch { continue }
       if (result?.kind !== 'review-result') continue
       let reason
-      if (comment.actorId !== actor || result.actor !== actor || (comment.editedBy && comment.editedBy !== actor)) reason = 'wrong reviewer attribution'
+      if (context.integrityConflicts?.length) reason = 'unresolved operation integrity conflict'
+      else if (comment.actorId !== actor || result.actor !== actor || (comment.editedBy && comment.editedBy !== actor)) reason = 'wrong reviewer attribution'
       else if (comment.conflicts?.length || comment.deleted) reason = 'conflicted or deleted result'
       else if (result.runId !== round.runId || result.round !== round.round
         || result.commitSha !== round.commitSha || result.sourceSha256 !== round.sourceSha256) reason = 'stale or unrelated revision'
