@@ -29,7 +29,8 @@ all unrelated files. Record the actual runtime, model/harness where available,
 working directory, workspace ID, replica ID, operation IDs, and task history.
 Do not include connection tokens in evidence.
 
-Local save and visibility must each take at most 2 seconds. Remote offline opening
+Local operation acknowledgement must take at most 2.5 seconds; local UI visibility
+must take at most 2 seconds. Remote offline opening
 must take at most 5 seconds, and replicas must converge within 10 seconds after
 reconnection. Acknowledged operations must survive restart. Same-field conflicts
 must preserve both alternatives until explicit resolution. Retrying an operation

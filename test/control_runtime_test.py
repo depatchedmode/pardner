@@ -103,11 +103,13 @@ class ControllerTests(unittest.TestCase):
         self.release.mkdir(parents=True)
         self.data = self.home / 'data'
         self.data.mkdir()
-        (self.data / 'workspace.json').write_text(json.dumps({'workspaceId': 'workspace', 'replicaId': 'replica', 'role': 'hub'}))
+        (self.data / 'workspace.json').write_text(json.dumps({'workspaceId': 'workspace', 'replicaId': 'replica', 'role': 'hub', 'schemaVersion': 4}))
         shutil.copy2(SOURCE, self.home / 'control')
         (self.home / 'service.plist').write_text('fixture job')
         git(self.release, 'init', '-q')
         (self.release / '.gitignore').write_text('node_modules/\nui-prototype/dist/\nui-prototype/node_modules/\n')
+        (self.release / 'lib').mkdir()
+        (self.release / 'lib/workspace-schema.js').write_text('export const SCHEMA_VERSION = 4\n')
         (self.release / 'bin').mkdir()
         (self.release / 'bin/pardner.js').write_text('process.exit(17)\n')
         for name in module.LOCKFILES:
@@ -172,6 +174,56 @@ class ControllerTests(unittest.TestCase):
         with patch.object(self.control, 'job', return_value={'loaded': True, 'owned': True, 'pid': os.getpid()}):
             with self.assertRaisesRegex(module.ControlError, 'Stop this installation'):
                 self.control.seal()
+
+    def test_incompatible_schema_cannot_seal_start_or_stop_for_restart(self):
+        manifest = self.data / 'workspace.json'
+        for version in [2, None, '4', True]:
+            with self.subTest(version=version):
+                metadata = json.loads(manifest.read_text())
+                metadata['schemaVersion'] = version
+                manifest.write_text(json.dumps(metadata))
+                before = {p: p.read_bytes() for p in self.home.rglob('*') if p.is_file()}
+                with patch.object(self.control, 'job', return_value={'loaded': False, 'owned': False, 'pid': None}):
+                    for action in [self.control.seal, self.control.start]:
+                        with self.assertRaisesRegex(module.ControlError, 'schema is incompatible'):
+                            action()
+                with patch.object(module, 'Controller', return_value=self.control), patch.object(self.control, 'stop') as stop, patch.object(self.control, 'start') as start, contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(module.main(['restart', '--home', str(self.home)]), 1)
+                    stop.assert_not_called()
+                    start.assert_not_called()
+                for path, content in before.items():
+                    self.assertEqual(path.read_bytes(), content, str(path))
+                self.assertFalse((self.data / 'runtime-lock.sqlite').exists())
+
+    def test_compatibility_follows_selected_release_including_historical_and_future_schema(self):
+        for version in [2, 5]:
+            with self.subTest(version=version):
+                (self.release / 'lib/workspace-schema.js').write_text(f'export const SCHEMA_VERSION = {version}\n')
+                git(self.release, 'add', '.')
+                git(self.release, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                    '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'selected release')
+                self.control.config['sha'] = git(self.release, 'rev-parse', 'HEAD')
+                manifest = self.data / 'workspace.json'
+                metadata = json.loads(manifest.read_text())
+                metadata['schemaVersion'] = version
+                manifest.write_text(json.dumps(metadata))
+                before = manifest.read_bytes()
+                self.control.verify_code()
+                self.assertEqual(manifest.read_bytes(), before)
+                self.assertFalse((self.data / 'runtime-lock.sqlite').exists())
+
+    def test_unrecognized_schema_declaration_fails_closed(self):
+        path = self.release / 'lib/workspace-schema.js'
+        for declaration in ['', 'export const SCHEMA_VERSION = 4 + 1',
+                            'export const SCHEMA_VERSION = 4\nexport const SCHEMA_VERSION = 5']:
+            with self.subTest(declaration=declaration):
+                path.write_text(declaration)
+                git(self.release, 'add', '.')
+                git(self.release, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                    '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'schema fixture')
+                self.control.config['sha'] = git(self.release, 'rev-parse', 'HEAD')
+                with self.assertRaisesRegex(module.ControlError, 'Cannot establish release schema'):
+                    self.control.verify_code()
 
     def test_direct_run_cannot_overwrite_launch_metadata(self):
         record = {'pid': 123, 'launch': {'sha': 'earlier'}}

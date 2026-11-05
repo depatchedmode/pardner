@@ -5,6 +5,10 @@ Use the [operations guide](PARDNER-CONTROL-RUNTIME.md) for lifecycle and recover
 Full paths, ownership mappings, credentials, task contents, execution records,
 command transcripts and screenshots remain private, outside disposable checkouts.
 
+This is historical evidence for the schema-2 repair. The
+[2026-11-04 readiness reconciliation](PARDNER-CONTROL-READINESS.md) records a later
+read-only observation, the PR100 candidate and remaining cutover decisions.
+
 ## Revisions and deployment boundary
 
 - App runtime: **`eb66151ad57af45baf686909b1ab19ece58c7bad`**, Node **24.11.1**,

@@ -9,6 +9,8 @@ distinguish locally saved heads from explicit hub persistence acknowledgement.
 ## How to get to it (user POV)
 
 Join a hub with `pardner serve --role replica --hub URL --hub-ws ws://host:port/automerge --hub-token TOKEN`
+after provisioning a separate replica ID/secret and the hub registry as described
+in [the CLI guide](../../../../docs/PARDNER-CLI.md#enroll-another-machine)
 (there is no `enroll` command; without the hub's token the replica fails with
 `AUTH_REQUIRED`), then use its CLI or `/pardner/` browser. Later restarts reuse
 the saved role, hub settings, and ports. Keep that local service reachable while
@@ -31,7 +33,9 @@ browser mutations. Inspect `output/acceptance/<run>/seed-1/report.json`, the int
 manifest, per-replica readback, and browser traces. Those traces and the seed
 report contain disposable credentials; retain them only through
 `verify:sanitize` (SKILL.md, Artifact privacy). Required qualification adds
-the deliberate 20-seed gate only when requested. A new conflict/recovery behavior
+the deliberate 20-seed gate only when requested. The current acceptance contract
+sets local operation acknowledgement to 2,500 ms and local UI visibility to
+2,000 ms; inspect both enforcement and report metadata when either policy changes. A new conflict/recovery behavior
 needs direct coverage even if the existing gate passes. The browser's
 **Resolve status** / **Keep this status** controls are exercised only by
 `scripts/acceptance.js`, not by `test/pardner-ui.test.js`.
@@ -54,3 +58,9 @@ loss—check expected operation intents and receipts. Process kills do not prove
 power-loss durability. Acknowledged heads live in memory only, so a reopened
 replica reports `syncPending: true` until the hub acknowledges again. Follow the
 local-first design skill for transport changes.
+
+`test/native-replica-auth.test.js` checks that ordinary API tokens and UI tickets
+cannot open the raw native writer, even in insecure-local mode, and that enrolled
+tickets are scoped, single-use and expiring. Enrolled replicas remain trusted full
+writers. `test/private-state.test.js` checks private workspace/database/trace modes,
+existing sidecar repair and unsafe final-link rejection under permissive umasks.

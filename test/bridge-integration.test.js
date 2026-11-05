@@ -1,3 +1,4 @@
+import { replicaOptions } from '../support/replica-credentials.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
@@ -26,7 +27,7 @@ for (const mode of ['co-worktree', 'co-host', 'replica']) {
       let local = server, dataDirectory = directory
       if (mode === 'replica') {
         dataDirectory = join(root, 'replica')
-        replica = new AutomergeSyncServer({ directory: dataDirectory, role: 'replica',
+        replica = new AutomergeSyncServer({ ...replicaOptions, directory: dataDirectory, role: 'replica',
           hubUrl: `http://127.0.0.1:${server.httpPort}`, hubWsUrl: `ws://127.0.0.1:${server.wsPort}/automerge`,
           hubToken: 'test-token', apiToken: 'test-token', env: {}, httpPort: 0, wsPort: 0, logger: {} })
         await replica.start(); local = replica
@@ -59,9 +60,14 @@ for (const mode of ['co-worktree', 'co-host', 'replica']) {
       const result = await operation('task.handoff', { taskId, to: 'builder', status: 'in-progress', message: 'Review the bounded task',
         expectedRevisions: { assignee: revisions.assignee, status: revisions.status } })
       assert.equal(result.success, true)
+      assert.notEqual(result.requestId, result.operationId, 'Schema5 receipt distinguishes the retry key from stored revision identity')
       await eventually(() => calls.length === 1, 2000)
       assert.ok(performance.now() - began < 2000)
       assert.equal(inbox.rows()[0].state, 'accepted')
+      assert.equal(inbox.rows()[0].mention.operationId, result.operationId)
+      const delivered = JSON.parse(calls[0].prompt.split('\n\n').at(-1))
+      assert.equal(delivered.context.comments.find(comment => comment.id === delivered.mention.commentId).revisionId, result.operationId)
+      assert.ok(Number.isFinite(inbox.rows()[0].context_persisted_at))
       assert.equal(calls[0].mapping.worktree, await realpath(worktree))
       assert.ok(calls[0].prompt.includes('Review the bounded task'))
       assert.equal((await source.pending('builder')).mentions.length, 0)
@@ -94,6 +100,17 @@ it('configuration and CLI status require explicit authority, and reconciliation 
     lease = await acquireStorageLease(config.inboxDirectory)
     const status = await runBridgeCommand('status', { config: path })
     assert.deepEqual(status.deliveries, [])
+    const approval = { ownerUid: 123, scope: 'fixture-scope', approvedAt: 'fixture-time' }
+    inbox.saveCleanupApproval(approval)
+    inbox.claim('builder')
+    inbox.receive('builder', { mention: { id: 'fixture-delivery', toActorId: 'builder', taskId: 'task-one' } }, config.mappings[0])
+    inbox.clearClaim('builder')
+    inbox.begin('fixture-delivery', 'fixture prompt'); inbox.accept('fixture-delivery', 'fixture-turn')
+    const combined = await runBridgeCommand('status', { config: path })
+    assert.deepEqual(combined.cleanupApproval, approval)
+    assert.ok(Number.isFinite(combined.deliveries[0].contextPersistedAt))
+    inbox.revokeCleanupApproval()
+    assert.equal((await runBridgeCommand('status', { config: path })).cleanupApproval, null)
     await assert.rejects(runBridgeCommand('reconcile', { config: path }), { code: 'STORAGE_IN_USE' })
     for (const modify of [
       c => { c.mappings[0].sessionOwner = 'desktop' },
@@ -118,7 +135,7 @@ it('a task missing from the local replica does not starve later context and disp
     await operation('comment.add', { taskId: second, text: '@builder complete local context' })
     const secondMention = (await context(second)).mentions[0]
     const dataDirectory = join(root, 'replica')
-    replica = new AutomergeSyncServer({ directory: dataDirectory, role: 'replica',
+    replica = new AutomergeSyncServer({ ...replicaOptions, directory: dataDirectory, role: 'replica',
       hubUrl: `http://127.0.0.1:${server.httpPort}`, hubWsUrl: `ws://127.0.0.1:${server.wsPort}/automerge`,
       hubToken: 'test-token', apiToken: 'test-token', env: {}, httpPort: 0, wsPort: 0, logger: {} })
     await replica.start()

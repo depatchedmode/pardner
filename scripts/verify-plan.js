@@ -10,14 +10,14 @@ const names = text => text.trim().split(/\s+/)
 const groups = [
   {
     name: 'persistence', scripts: ['test:qualification', 'test:runtime'], qualification: 'Disk persistence and directory ownership',
-    files: names(`lib/atomic-file.js lib/durable-repo.js lib/nodefs-storage-adapter.js lib/storage-key.js lib/storage-lease.js
+    files: names(`lib/atomic-file.js lib/durable-repo.js lib/nodefs-storage-adapter.js lib/storage-key.js lib/storage-lease.js lib/private-state.js
       support/persistence-process.js`),
   },
   {
     name: 'transport', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'], qualification: 'Offline reopen, authenticated transport, or acknowledgement ordering',
     files: names(`automerge-sync-server.js lib/local-service.js lib/workspace-runtime.js lib/native-peer-client.js
       lib/sync-client.js lib/ticket-network-adapter.js lib/validated-websocket-server-adapter.js
-      support/resources.js support/workspace-service-process.js`),
+      support/resources.js support/workspace-service-process.js support/replica-credentials.js`),
   },
   {
     name: 'delivery', scripts: ['test:runtime', 'test:cli'], qualification: 'Durable delivery, leases, or replay',
@@ -36,7 +36,8 @@ const groups = [
     name: 'bridge', scripts: ['test:runtime', 'test:cli'],
     files: names(`lib/agent-bridge.js lib/codex-bridge-adapter.js lib/bridge-paths.js lib/bridge-retirement.js
       scripts/bridge-approval-rehearsal.js scripts/bridge-codex-smoke.js scripts/bridge-real-rehearsal.js
-      support/bridge-rehearsal.js support/bridge-completion-rehearsal.js`),
+      scripts/bridge-three-agent-rehearsal.js support/bridge-rehearsal.js support/bridge-completion-rehearsal.js
+      support/coordinator-process.js support/three-agent-coordinator.js support/three-agent-review.js`),
   },
   {
     name: 'acceptance-harness', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'],
@@ -61,6 +62,7 @@ const groups = [
   },
   { name: 'cursor-cloud', scripts: ['test:runtime', 'test:ui'], files: names('lib/cursor-cloud-client.js lib/cursor-cloud-execution.js'),
     focused: [{ command: 'node --test test/cursor-cloud.test.js', note: 'Deterministic official API fixtures; no live Cloud runs' }] },
+  { name: 'reliability-tooling', scripts: ['test:runtime'], files: names('support/reliability/baseline.mjs support/reliability/collision-example.mjs support/reliability/compatibility.mjs support/reliability/locked.py support/reliability/profiles.json') },
   { name: 'control-pane', scripts: ['test:runtime', 'test:ui'], files: names('lib/control-pane.js support/fake-t3-server.js') },
   {
     name: 't3-qualification-harness', scripts: [], files: names('scripts/t3-qualification.js support/t3-fake-codex.mjs'),

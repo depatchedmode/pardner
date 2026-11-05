@@ -43,10 +43,21 @@ Required bounds are asserted, not merely printed:
 
 | Observation | Bound |
 | --- | --- |
-| Each measured local operation acknowledgement | 2 seconds |
+| Each measured local operation acknowledgement | 2.5 seconds |
 | Human offline comment visible in the local UI | 2 seconds |
 | Cold restart of an enrolled replica with the hub inaccessible | 5 seconds |
 | All replicas converge after communication is restored | 10 seconds |
+
+On November 5, 2026, the owner explicitly changed only the local operation
+acknowledgement bound from 2,000 to 2,500 ms. This is an acceptance-policy
+decision, not a diagnosed performance repair. The original 2,384.036 ms failure
+and all earlier diagnostics remain historical evidence under their original
+2,000 ms contract; they are not retroactive passes. Deeper timing/root-cause
+work is deferred separately by the owner to [#107](https://github.com/depatchedmode/pardner/issues/107),
+which is not an additional merge gate. Fresh complete qualification under
+this revised contract is required before the scoped implementation can be
+accepted. UI visibility, offline restart, convergence, HTTP timeouts, retries
+and watchdog limits are unchanged. See the [current readiness record](PARDNER-66-READINESS.md).
 
 Seeds vary operation ordering/replica use, the killed replica and point in the
 schedule, reconnect ordering and delay, the number of lost hub acknowledgements,

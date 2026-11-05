@@ -16,3 +16,5 @@
 - [Remote VM test and results](PARDNER-REMOTE-TEST.md)
 
 Product direction and setup are in the root [README.md](../README.md).
+
+- [Three-agent workflow](PARDNER-THREE-AGENT.md), [current #66 readiness](PARDNER-66-READINESS.md), and [historical qualification](PARDNER-66-QUALIFICATION.md).

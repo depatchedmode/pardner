@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "qualificationStatus": "FAILED",
+  "outcome": "V2_1_FIRST_ARM_STOPPED_BY_RETAINED_PAGING_CHECK",
+  "prospectiveDesign": {
+    "version": "2.1",
+    "declaredAt": "2026-11-05T03:00:51.094101+00:00",
+    "originalBudgetStart": "2026-11-05T02:53:00Z",
+    "hardDeadline": "2026-11-05T03:23:00Z",
+    "priorDesignSha256": "80dd617dff3effe4e783d0c5049c11632fa7d83f85f31005c689fa4a446849a9",
+    "change": "Remove ONLY load1 hard veto from post-fixture10-second precondition; retain measured load as covariate.",
+    "preserved": [
+      "Initial global v2 preflight and every global criterion/evidence, including load<=5.",
+      "Post-fixture CPU mean25/p9540/peak60, blocked p95<=2, event-loop p95<=40ms/peak<=150ms, normal memory/no paging growth.",
+      "Continuous two-sample CPU>85%, blocked>2 or event-loop>250ms guard; immediate memory/paging stop.",
+      "Runnable remains v2 recorded covariate.",
+      "Original source, fixture,200CLIupdates,assertions/2000ms acknowledgement limit.",
+      "Original v2 mainquiet prerequisite failure,hash,exit1 and zero scripted updates/workers."
+    ],
+    "rationale": "Post-fixture lagging load contains own fixture setup; current-resource matching supports limited intervention, not perfect isolation or original-cause attribution.",
+    "order": [
+      "main-quiet",
+      "candidate-quiet",
+      "candidate-load",
+      "main-load"
+    ],
+    "optionalRecovery": [
+      "main-recovery",
+      "candidate-recovery"
+    ],
+    "recoveryCondition": "At least8minutes remaining plus watchdog/cleanup reserve.",
+    "workers": {
+      "count": 2,
+      "dutyPercent": 75,
+      "periodMs": 100,
+      "maxDurationSeconds": 90,
+      "start": "immediately before update phase; record actual update coverage and per-thread CPU"
+    },
+    "limits": "One amended batch; no retry if prerequisite/arm fails; no new arm unless300s watchdog plus180s audit fits deadline; no new gate/qualification clearing.",
+    "observerLimitation": "External phase tracing and pressure observation add overhead; comparisons must retain that limitation."
+  },
+  "designSha256": "e35a402c0711aa8ef04cfdb21b8e924c19c4e8ceb770ddc05bb73b82cd4207ce",
+  "designWrittenBeforeMeasurementVerified": true,
+  "controllerChangeVerified": "Only post-fixture load veto removed; all other controller source identical to v2.",
+  "checkedHead": "ef0eec9c3140f7b17dc73ad4bf65cfa5dabe69f2",
+  "base": "e0fee59cbdeac55733aca15de73d45c2e2d14bfb",
+  "implementation": "34abcf98b9204bc1b564774a84554429c20d35c1",
+  "candidateFingerprint": "0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3",
+  "mainFingerprint": "3599ddb1c86f0d695120f6fe221c26044d0fd3fbe1fed7350ea11a23354d22d4",
+  "retainedGlobalPreflight": "V2 passed evidence retained with all global criteria; no new preflight or retrospective reinterpretation.",
+  "firstArm": {
+    "name": "main-quiet",
+    "durationMs": 68866,
+    "exit": 1,
+    "stopReason": "precondition:memory-or-paging",
+    "currentResourceMetrics": {
+      "cpuMeanPercent": 21.07797202041476,
+      "cpuPeakPercent": 27.098078867542974,
+      "load1Range": [
+        5.55322265625,
+        6.20654296875
+      ],
+      "blockedPeak": 1,
+      "eventLoopPeakMs": 19.333119,
+      "memoryPressureLevels": [
+        1
+      ],
+      "pageoutsFirst": 12256,
+      "pageoutsLast": 12258,
+      "pageoutGrowth": 2,
+      "swapoutGrowth": 0,
+      "runnableCounts": [
+        1,
+        2,
+        3,
+        3,
+        5,
+        4,
+        3,
+        2,
+        6,
+        3
+      ]
+    },
+    "partialAudit": {
+      "checkedHead": "ef0eec9c3140f7b17dc73ad4bf65cfa5dabe69f2",
+      "candidateSha256": "0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3",
+      "mainSha256": "3599ddb1c86f0d695120f6fe221c26044d0fd3fbe1fed7350ea11a23354d22d4",
+      "partialIntentCounts": {
+        "actor.register": 4,
+        "task.create": 100,
+        "comment.add": 402
+      },
+      "receiptsChecked": 506,
+      "receiptInclusiveAckMaxMs": 174.60733299999993,
+      "scriptedUpdatesStarted": 0,
+      "workersStarted": 0,
+      "controlStopReason": "precondition:memory-or-paging",
+      "failureHash": "494a751659ae2e13b1ce43d01ab5c0807908e2ccd9a55bba28daa71133ec9b56",
+      "snapshotReverification": "No retained final snapshot for aborted prefix; no complete scenario claim",
+      "qualificationPassed": false
+    },
+    "scenarioPassed": false
+  },
+  "attempts": {
+    "amendedBatch": 1,
+    "quietArmsStarted": 1,
+    "quietArmsCompleted": 0,
+    "candidateArms": 0,
+    "loadArms": 0,
+    "recoveryArms": 0,
+    "loadWorkers": 0,
+    "scriptedUpdates": 0,
+    "fullAcceptanceRuns": 0,
+    "full20SeedGates": 0
+  },
+  "cleanup": {
+    "at": "2026-11-05T03:03:28.763350+00:00",
+    "ownedRootOrGroupSurvivors": [],
+    "armExit": 1,
+    "timeouts": false,
+    "watchdogSurvivors": [],
+    "newScratch": [],
+    "baselineArchiveRemoved": true,
+    "workersStarted": 0,
+    "lockRelease": "wrapper exited 1 reflecting guard-stopped arm; lock released; stable file retained",
+    "lockReleasedAt": "2026-11-05T03:04:14.531635+00:00"
+  },
+  "sourceDigests": {
+    "cpu-control-v2-1.mjs.txt": "58954d37ee2f350a6a0edcce71fc3a3ffd7261b316dd84df6f9e81932c3b22a3",
+    "make-v2-1.py.txt": "7b7d4acce6cf0eaf3c6baddbae5c5dc886fb933b9c36877422fe850b71940089",
+    "v2-1-candidate.mjs.txt": "af1898093534f6b635c7e84160306e4adf717fe8de5bb6c6cd6c5198b5c72c8d",
+    "v2-1-main.mjs.txt": "fb5c2a90af80aa9b06b375aa27d16687ead79b936e3bf4522354c45e12146af1",
+    "phase-v2.mjs.txt": "012a9d132d49c466c8cce35763ca98dac61c197e0b7a0b4fb6e9133210596231"
+  },
+  "digests": {
+    "audit.json": "ce9df60949df81f20b6339ff2497c5f8d81a08214a16bd8a6efb18301ecf96ea",
+    "main-quiet/report/seed-5/cpu-control.json": "a67ff49722cc98da47d58eb9c5872e4d780cca1672dc8dc2e91f2b58f331eaec",
+    "main-quiet/watchdog.json": "4fbc24036fad3815688c72c4a07a4584e7def9386fb0c350c5a77de4f11e0eba",
+    "batch.sh.txt": "c56f8f4acd54ebfc350a69ee3873307fcdf3bfe89d0e2d246bf6ef162e75e95b"
+  },
+  "causalLimits": [
+    "Brittle diagnostic criterion unmet: two Pageouts with normal pressure is not evidence of an environment or product defect.",
+    "Two system page-outs caused the unchanged zero-growth diagnostic guard to stop, with normal memory-pressure level, unchanged swap-outs and passing CPU/blocked/event-loop checks.",
+    "That counter change does not independently prove harmful memory pressure, unrelated saturation or a product defect.",
+    "No scripted task.update phase, worker CPU contribution or threshold crossing was observed; no matched quiet/load effect can be estimated.",
+    "Trace and observer overhead remains a limitation; raw traces stay private and public evidence is allowlisted.",
+    "V1 failures and original v2 load-veto failure remain separately preserved; neither is rewritten as a successful arm.",
+    "No product changes, timing-limit changes, unapproved criteria change, repeated amended arm, unrelated process manipulation, native/paid sessions, deployment, merge, issue closure or downstream handoff."
+  ],
+  "nextDecision": "Stop confirmed by root. Root reviews the experimental design as a whole before any new authorization; no further amendment/arm, automatic retry, gate or downstream handoff."
+}

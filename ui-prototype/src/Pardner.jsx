@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import ActorMarkdown from './ActorMarkdown.jsx'
 import './pardner.css'
 import { createOperationId } from './operation-id.js'
 import { createConnection, loadConfiguration, websocketUrl } from './connection.js'
@@ -891,9 +890,9 @@ function TaskDetail({
       ) : (
         <>
           <div className="markdown">
-            <Markdown remarkPlugins={[remarkGfm]}>
+            <ActorMarkdown>
               {task.description || 'No description yet.'}
-            </Markdown>
+            </ActorMarkdown>
           </div>
           <button
             disabled={!canWrite}
@@ -917,6 +916,18 @@ function TaskDetail({
           </button>
         </>
       )}
+      {(context.integrityConflicts ?? []).map(group => (
+        <section className="conflict integrity-conflict" key={group.requestId} aria-label="Operation integrity conflict">
+          <h3>Unresolved operation ID conflict</h3>
+          <p>Retry key {group.requestId} acknowledged different requests. Both are preserved. Inspection does not replay or repair them.</p>
+          {group.variants.map(variant => (
+            <details key={variant.fingerprint}>
+              <summary>{variant.type} by {variant.actorId} — {variant.fingerprint}</summary>
+              <pre>{JSON.stringify(variant, null, 2)}</pre>
+            </details>
+          ))}
+        </section>
+      ))}
       {Object.entries(conflicts).map(([field, choices]) => (
         <section className="conflict" key={field}>
           <h3>Resolve {field}</h3>
@@ -1038,7 +1049,7 @@ function TaskDetail({
             <strong>{labelActor(actors[comment.actorId])}</strong>
             <time>{new Date(comment.timestamp).toLocaleString()}</time>
             <div className="markdown">
-              <Markdown remarkPlugins={[remarkGfm]}>{comment.content}</Markdown>
+              <ActorMarkdown>{comment.content}</ActorMarkdown>
             </div>
             {comment.conflicts.map((choice) => (
               <div className="conflict" key={choice.operationId}>

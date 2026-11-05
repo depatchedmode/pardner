@@ -1,0 +1,3241 @@
+{
+  "schemaVersion": 1,
+  "kind": "instrumented interleaved diagnostic, not qualification",
+  "verdict": "inconclusive about original cause; qualification FAILED",
+  "budget": {
+    "start": "2026-11-05T03:08:05Z",
+    "deadline": "2026-11-05T03:38:05Z"
+  },
+  "identity": {
+    "head": "822e61803e2d7d81b896f828d05e97c190f5ade5",
+    "base": "e0fee59cbdeac55733aca15de73d45c2e2d14bfb",
+    "implementation": "34abcf98b9204bc1b564774a84554429c20d35c1",
+    "locks": {
+      "package-lock.json": "b40167effb550fd7feb01a85876c273f3fb2eedb76ad3be7dcdd1ee8704d592c",
+      "ui-prototype/package-lock.json": "ad58b07b1d9fbbcf8eb8a18ad5d4658b00442e04922026c813527b5a54a65649"
+    },
+    "installedVersions": {
+      "playwright": "1.62.1",
+      "@automerge/automerge": "3.2.3",
+      "@automerge/automerge-repo": "2.5.1"
+    }
+  },
+  "sourceFingerprint": "0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3",
+  "mainFingerprint": "3599ddb1c86f0d695120f6fe221c26044d0fd3fbe1fed7350ea11a23354d22d4",
+  "node": "24.11.1",
+  "dependencyCheck": [
+    {
+      "folder": ".",
+      "installedLockEntriesChecked": 96
+    },
+    {
+      "folder": "ui-prototype",
+      "installedLockEntriesChecked": 191
+    }
+  ],
+  "frozenAt": "2026-11-05T03:16:18.738410+00:00",
+  "measurementHashes": {
+    "pardner-101-make-diagnostic.py": "3f305800472b49499b5f825cc54b8c00ce6b062fb0b4b99be012ab28b214233e",
+    "pardner-collaboration-lock.py": "214618e1d87472b93101fa9697973eef558a81a5a20796657cd3a51ae2730f54",
+    "pardner-il-control.mjs": "2d1ee6f8bb9aaa2803c08d8deea552590eb425c8517bf6e7df37b455bba58ea4",
+    "pardner-il-fixture-candidate.mjs": "3b24f0c3c50f0203be5dff0d845228fe2fdcbc306d2e548620cdc0d12bf358d0",
+    "pardner-il-fixture-main.mjs": "7ae93f05095fbd397fa15fdb9750b03efeaad0f793e77cfbd27607aef94b3936",
+    "pardner-il-make.py": "dbf2b8432e8afe42b9f87e0a3524178c6e2116b9a53c13cb604a0faf71ee0b7d",
+    "pardner-il-observer.mjs": "f1ade732e91d9c1a810e9f1072731e3425f26eb9bd8cb29e72da000f5510573c",
+    "pardner-il-run.sh": "210e2d42b898f27471617875773c67d02783762dcb6c037d4714ae1abd76f585",
+    "pardner-il-trace.mjs": "b1369e43aee1ed2c72c4dfecb6e16da00e8bc6ce601c059752711240b1671e19",
+    "pardner-il-worker.mjs": "f5b4c465a2f4e07e74fe9ba4b3b7c4f32ca1e1f647c7c9cf254d5d83ab29d75c",
+    "design.md": "4f70261c12499edc39438e2580095623beb09d7f4d84b8f8a6f1016f9e4074f2"
+  },
+  "design": {
+    "fixturesPerSource": 1,
+    "seed": 5,
+    "tasks": 100,
+    "comments": 400,
+    "offlineReplicas": 2,
+    "browserContexts": 2,
+    "updatesPerFixture": 200,
+    "blocksPerFixture": 10,
+    "updatesPerBlock": 20,
+    "loadedBlocksPerFixture": 5,
+    "unloadedBlocksPerFixture": 5,
+    "mainFirstBlock": "unloaded",
+    "candidateFirstBlock": "loaded",
+    "restartAtUpdateIndex": 85,
+    "workersPerFixture": 2,
+    "dutyPercent": 75,
+    "periodMs": 100,
+    "activeCapMs": 90000,
+    "lifetimeCapMs": 180000,
+    "watchdogSeconds": 420,
+    "originalLocalAckLimitMs": 2000
+  },
+  "outcomes": {
+    "main": {
+      "attempted": true,
+      "completed": true,
+      "phaseErrors": [],
+      "partialFailure": null,
+      "guards": [],
+      "updates": 200,
+      "completePhaseChains": 200,
+      "modeGaps": 0,
+      "coverageGaps": 0,
+      "conditions": {
+        "unloaded": {
+          "blocks": 5,
+          "acknowledgementMs": {
+            "count": 100,
+            "min": 101.377,
+            "median": 153.796,
+            "p95": 161.768,
+            "max": 188.485
+          },
+          "blockMediansMs": {
+            "count": 5,
+            "min": 151.322,
+            "median": 153.761,
+            "p95": 154.994,
+            "max": 154.994
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 100,
+              "min": 47.603,
+              "median": 49.043,
+              "p95": 51.909,
+              "max": 56.095
+            },
+            "preloadToRequest": {
+              "count": 100,
+              "min": 20.063,
+              "median": 20.639,
+              "p95": 21.875,
+              "max": 22.604
+            },
+            "requestToAdmission": {
+              "count": 100,
+              "min": 8.269,
+              "median": 8.622,
+              "p95": 9.061,
+              "max": 10.409
+            },
+            "queue": {
+              "count": 100,
+              "min": 0.086,
+              "median": 0.099,
+              "p95": 0.154,
+              "max": 0.241
+            },
+            "prepareAndChange": {
+              "count": 100,
+              "min": 5.91,
+              "median": 47.875,
+              "p95": 52.646,
+              "max": 53.877
+            },
+            "flush": {
+              "count": 100,
+              "min": 6.832,
+              "median": 10.162,
+              "p95": 12.853,
+              "max": 44.307
+            },
+            "serverApply": {
+              "count": 100,
+              "min": 13.689,
+              "median": 58.435,
+              "p95": 64.718,
+              "max": 93.654
+            },
+            "cliCpuMs": {
+              "count": 100,
+              "min": 66.692,
+              "median": 69.102,
+              "p95": 71.014,
+              "max": 74.561
+            }
+          }
+        },
+        "loaded": {
+          "blocks": 5,
+          "acknowledgementMs": {
+            "count": 100,
+            "min": 101.236,
+            "median": 154.062,
+            "p95": 187.538,
+            "max": 261.069
+          },
+          "blockMediansMs": {
+            "count": 5,
+            "min": 132.258,
+            "median": 154.507,
+            "p95": 156.093,
+            "max": 156.093
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 100,
+              "min": 47.58,
+              "median": 49.195,
+              "p95": 50.621,
+              "max": 54.859
+            },
+            "preloadToRequest": {
+              "count": 100,
+              "min": 19.965,
+              "median": 20.871,
+              "p95": 21.85,
+              "max": 22.745
+            },
+            "requestToAdmission": {
+              "count": 100,
+              "min": 8.192,
+              "median": 8.546,
+              "p95": 8.972,
+              "max": 9.572
+            },
+            "queue": {
+              "count": 100,
+              "min": 0.084,
+              "median": 0.1,
+              "p95": 0.221,
+              "max": 0.383
+            },
+            "prepareAndChange": {
+              "count": 100,
+              "min": 5.804,
+              "median": 47.727,
+              "p95": 52.029,
+              "max": 53.231
+            },
+            "flush": {
+              "count": 100,
+              "min": 6.728,
+              "median": 10.293,
+              "p95": 44.989,
+              "max": 119.069
+            },
+            "serverApply": {
+              "count": 100,
+              "min": 12.678,
+              "median": 58.421,
+              "p95": 96.393,
+              "max": 171.549
+            },
+            "cliCpuMs": {
+              "count": 100,
+              "min": 67.339,
+              "median": 69.444,
+              "p95": 71.672,
+              "max": 76.017
+            }
+          }
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "loaded": false,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 150.954,
+            "median": 153.761,
+            "p95": 181.39,
+            "max": 181.39
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.341,
+              "median": 49.386,
+              "p95": 56.095,
+              "max": 56.095
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.063,
+              "median": 20.726,
+              "p95": 22.436,
+              "max": 22.436
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.422,
+              "median": 8.617,
+              "p95": 10.409,
+              "max": 10.409
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.394,
+              "median": 0.453,
+              "p95": 0.649,
+              "max": 0.649
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.095,
+              "median": 0.103,
+              "p95": 0.223,
+              "max": 0.223
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 45.576,
+              "median": 47.078,
+              "p95": 49.331,
+              "max": 49.331
+            },
+            "flush": {
+              "count": 20,
+              "min": 8.796,
+              "median": 11.088,
+              "p95": 41.689,
+              "max": 41.689
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.74,
+              "median": 0.95,
+              "p95": 1.375,
+              "max": 1.375
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.328,
+              "median": 4.719,
+              "p95": 5.081,
+              "max": 5.081
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.86,
+              "median": 0.962,
+              "p95": 1.792,
+              "max": 1.792
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.257,
+              "median": 1.544,
+              "p95": 1.934,
+              "max": 1.934
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 4.222,
+              "median": 6.464,
+              "p95": 11.101,
+              "max": 11.101
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 55.73,
+              "median": 58.489,
+              "p95": 90.557,
+              "max": 90.557
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 68.243,
+              "median": 69.416,
+              "p95": 74.561,
+              "max": 74.561
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 6,
+            "min": 34.5,
+            "median": 36.809,
+            "p95": 59.747,
+            "max": 59.747
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 1,
+          "loaded": true,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 151.044,
+            "median": 153.754,
+            "p95": 179.359,
+            "max": 179.359
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.143,
+              "median": 48.819,
+              "p95": 51.633,
+              "max": 51.633
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.19,
+              "median": 20.831,
+              "p95": 21.378,
+              "max": 21.378
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.334,
+              "median": 8.518,
+              "p95": 8.88,
+              "max": 8.88
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.343,
+              "median": 0.398,
+              "p95": 0.55,
+              "max": 0.55
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.091,
+              "median": 0.101,
+              "p95": 0.383,
+              "max": 0.383
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 45.473,
+              "median": 47.425,
+              "p95": 48.974,
+              "max": 48.974
+            },
+            "flush": {
+              "count": 20,
+              "min": 9.138,
+              "median": 10.572,
+              "p95": 43.139,
+              "max": 43.139
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.734,
+              "median": 0.861,
+              "p95": 1.335,
+              "max": 1.335
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.34,
+              "median": 4.606,
+              "p95": 7.791,
+              "max": 7.791
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.805,
+              "median": 0.909,
+              "p95": 2.639,
+              "max": 2.639
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.219,
+              "median": 1.569,
+              "p95": 4.137,
+              "max": 4.137
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.812,
+              "median": 6.229,
+              "p95": 9.523,
+              "max": 9.523
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 56.737,
+              "median": 58.525,
+              "p95": 88.929,
+              "max": 88.929
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 68.531,
+              "median": 69.645,
+              "p95": 73.626,
+              "max": 73.626
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 6,
+            "min": 44.499,
+            "median": 49.0,
+            "p95": 53.107,
+            "max": 53.107
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 2,
+          "loaded": false,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 148.199,
+            "median": 154.994,
+            "p95": 188.485,
+            "max": 188.485
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.198,
+              "median": 49.079,
+              "p95": 53.049,
+              "max": 53.049
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.175,
+              "median": 20.599,
+              "p95": 21.914,
+              "max": 21.914
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.338,
+              "median": 8.72,
+              "p95": 9.252,
+              "max": 9.252
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.347,
+              "median": 0.401,
+              "p95": 0.626,
+              "max": 0.626
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.087,
+              "median": 0.098,
+              "p95": 0.211,
+              "max": 0.211
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 46.07,
+              "median": 48.2,
+              "p95": 52.999,
+              "max": 52.999
+            },
+            "flush": {
+              "count": 20,
+              "min": 6.832,
+              "median": 10.781,
+              "p95": 44.307,
+              "max": 44.307
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.714,
+              "median": 0.988,
+              "p95": 1.494,
+              "max": 1.494
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.149,
+              "median": 4.529,
+              "p95": 5.29,
+              "max": 5.29
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.862,
+              "median": 0.921,
+              "p95": 2.615,
+              "max": 2.615
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.216,
+              "median": 1.514,
+              "p95": 4.239,
+              "max": 4.239
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 4.411,
+              "median": 6.963,
+              "p95": 12.597,
+              "max": 12.597
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 54.481,
+              "median": 59.338,
+              "p95": 93.654,
+              "max": 93.654
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 68.137,
+              "median": 69.743,
+              "p95": 71.294,
+              "max": 71.294
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 5,
+            "min": 36.576,
+            "median": 38.551,
+            "p95": 46.109,
+            "max": 46.109
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 3,
+          "loaded": true,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 150.232,
+            "median": 154.798,
+            "p95": 162.294,
+            "max": 162.294
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 47.58,
+              "median": 49.434,
+              "p95": 54.859,
+              "max": 54.859
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.016,
+              "median": 20.907,
+              "p95": 22.745,
+              "max": 22.745
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.197,
+              "median": 8.467,
+              "p95": 9.572,
+              "max": 9.572
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.311,
+              "median": 0.392,
+              "p95": 0.534,
+              "max": 0.534
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.085,
+              "median": 0.107,
+              "p95": 0.24,
+              "max": 0.24
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 47.07,
+              "median": 48.686,
+              "p95": 52.084,
+              "max": 52.084
+            },
+            "flush": {
+              "count": 20,
+              "min": 8.301,
+              "median": 10.578,
+              "p95": 12.881,
+              "max": 12.881
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.708,
+              "median": 0.87,
+              "p95": 1.85,
+              "max": 1.85
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.237,
+              "median": 4.582,
+              "p95": 6.007,
+              "max": 6.007
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.832,
+              "median": 0.888,
+              "p95": 1.066,
+              "max": 1.066
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.315,
+              "median": 1.528,
+              "p95": 5.096,
+              "max": 5.096
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 5.071,
+              "median": 7.486,
+              "p95": 12.468,
+              "max": 12.468
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 57.048,
+              "median": 59.33,
+              "p95": 63.101,
+              "max": 63.101
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 68.147,
+              "median": 69.773,
+              "p95": 76.017,
+              "max": 76.017
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 7,
+            "min": 39.961,
+            "median": 48.403,
+            "p95": 56.823,
+            "max": 56.823
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 4,
+          "loaded": false,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 103.52,
+            "median": 153.255,
+            "p95": 158.623,
+            "max": 158.623
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 47.953,
+              "median": 48.684,
+              "p95": 51.204,
+              "max": 51.204
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.078,
+              "median": 20.639,
+              "p95": 21.79,
+              "max": 21.79
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.269,
+              "median": 8.713,
+              "p95": 8.856,
+              "max": 8.856
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.385,
+              "median": 0.413,
+              "p95": 6.697,
+              "max": 6.697
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.094,
+              "median": 0.103,
+              "p95": 0.18,
+              "max": 0.18
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 6.431,
+              "median": 47.831,
+              "p95": 52.357,
+              "max": 52.357
+            },
+            "flush": {
+              "count": 20,
+              "min": 7.513,
+              "median": 10.074,
+              "p95": 13.367,
+              "max": 13.367
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.408,
+              "median": 0.804,
+              "p95": 0.985,
+              "max": 0.985
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.364,
+              "median": 4.557,
+              "p95": 11.092,
+              "max": 11.092
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.754,
+              "median": 0.841,
+              "p95": 1.874,
+              "max": 1.874
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.14,
+              "median": 1.333,
+              "p95": 2.235,
+              "max": 2.235
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.714,
+              "median": 4.875,
+              "p95": 11.598,
+              "max": 11.598
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 14.921,
+              "median": 57.817,
+              "p95": 62.437,
+              "max": 62.437
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 66.692,
+              "median": 68.593,
+              "p95": 71.542,
+              "max": 71.542
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 7,
+            "min": 28.53,
+            "median": 37.975,
+            "p95": 40.86,
+            "max": 40.86
+          },
+          "restartAt85": true
+        },
+        {
+          "block": 5,
+          "loaded": true,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 103.148,
+            "median": 132.258,
+            "p95": 158.79,
+            "max": 158.79
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.121,
+              "median": 49.404,
+              "p95": 51.448,
+              "max": 51.448
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.431,
+              "median": 21.194,
+              "p95": 22.298,
+              "max": 22.298
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.29,
+              "median": 8.651,
+              "p95": 9.017,
+              "max": 9.017
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.357,
+              "median": 0.4,
+              "p95": 0.565,
+              "max": 0.565
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.09,
+              "median": 0.103,
+              "p95": 0.325,
+              "max": 0.325
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 6.118,
+              "median": 26.637,
+              "p95": 48.944,
+              "max": 48.944
+            },
+            "flush": {
+              "count": 20,
+              "min": 7.136,
+              "median": 10.26,
+              "p95": 13.065,
+              "max": 13.065
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.378,
+              "median": 0.727,
+              "p95": 1.749,
+              "max": 1.749
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.319,
+              "median": 4.575,
+              "p95": 4.976,
+              "max": 4.976
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.777,
+              "median": 0.863,
+              "p95": 1.461,
+              "max": 1.461
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.159,
+              "median": 1.316,
+              "p95": 4.28,
+              "max": 4.28
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.532,
+              "median": 5.199,
+              "p95": 9.879,
+              "max": 9.879
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 13.791,
+              "median": 38.322,
+              "p95": 60.854,
+              "max": 60.854
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 67.339,
+              "median": 69.514,
+              "p95": 72.176,
+              "max": 72.176
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 6,
+            "min": 45.72,
+            "median": 49.103,
+            "p95": 60,
+            "max": 60
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 6,
+          "loaded": false,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 101.377,
+            "median": 151.322,
+            "p95": 161.768,
+            "max": 161.768
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 47.832,
+              "median": 48.702,
+              "p95": 51.259,
+              "max": 51.259
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.151,
+              "median": 20.518,
+              "p95": 21.663,
+              "max": 21.663
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.341,
+              "median": 8.537,
+              "p95": 9.168,
+              "max": 9.168
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.362,
+              "median": 0.383,
+              "p95": 0.556,
+              "max": 0.556
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.086,
+              "median": 0.097,
+              "p95": 0.142,
+              "max": 0.142
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 6.088,
+              "median": 48.299,
+              "p95": 53.877,
+              "max": 53.877
+            },
+            "flush": {
+              "count": 20,
+              "min": 7.436,
+              "median": 9.604,
+              "p95": 11.197,
+              "max": 11.197
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.323,
+              "median": 0.793,
+              "p95": 1.251,
+              "max": 1.251
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.345,
+              "median": 4.519,
+              "p95": 4.815,
+              "max": 4.815
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.773,
+              "median": 0.863,
+              "p95": 1.0,
+              "max": 1.0
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.131,
+              "median": 1.319,
+              "p95": 3.715,
+              "max": 3.715
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.64,
+              "median": 6.726,
+              "p95": 11.536,
+              "max": 11.536
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 13.689,
+              "median": 57.4,
+              "p95": 64.718,
+              "max": 64.718
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 67.068,
+              "median": 68.635,
+              "p95": 70.976,
+              "max": 70.976
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 4,
+            "min": 33.885,
+            "median": 36.584,
+            "p95": 39.844,
+            "max": 39.844
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 7,
+          "loaded": true,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 101.361,
+            "median": 154.507,
+            "p95": 190.053,
+            "max": 190.053
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 47.966,
+              "median": 49.209,
+              "p95": 50.169,
+              "max": 50.169
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.042,
+              "median": 20.505,
+              "p95": 21.229,
+              "max": 21.229
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.192,
+              "median": 8.514,
+              "p95": 8.874,
+              "max": 8.874
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.33,
+              "median": 0.401,
+              "p95": 0.52,
+              "max": 0.52
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.088,
+              "median": 0.097,
+              "p95": 0.212,
+              "max": 0.212
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 5.804,
+              "median": 28.421,
+              "p95": 53.231,
+              "max": 53.231
+            },
+            "flush": {
+              "count": 20,
+              "min": 6.728,
+              "median": 9.479,
+              "p95": 94.11,
+              "max": 94.11
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.323,
+              "median": 0.741,
+              "p95": 1.364,
+              "max": 1.364
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.277,
+              "median": 4.591,
+              "p95": 4.775,
+              "max": 4.775
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.771,
+              "median": 0.831,
+              "p95": 1.069,
+              "max": 1.069
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.157,
+              "median": 1.313,
+              "p95": 1.611,
+              "max": 1.611
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.47,
+              "median": 4.136,
+              "p95": 12.75,
+              "max": 12.75
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 12.678,
+              "median": 58.689,
+              "p95": 100.821,
+              "max": 100.821
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 67.47,
+              "median": 68.443,
+              "p95": 69.556,
+              "max": 69.556
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 6,
+            "min": 36.222,
+            "median": 46.351,
+            "p95": 49.611,
+            "max": 49.611
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 8,
+          "loaded": false,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 102.563,
+            "median": 154.507,
+            "p95": 161.972,
+            "max": 161.972
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 47.603,
+              "median": 49.204,
+              "p95": 50.526,
+              "max": 50.526
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.087,
+              "median": 21.026,
+              "p95": 22.604,
+              "max": 22.604
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.311,
+              "median": 8.537,
+              "p95": 9.104,
+              "max": 9.104
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.354,
+              "median": 0.389,
+              "p95": 0.431,
+              "max": 0.431
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.087,
+              "median": 0.094,
+              "p95": 0.241,
+              "max": 0.241
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 5.91,
+              "median": 49.471,
+              "p95": 51.836,
+              "max": 51.836
+            },
+            "flush": {
+              "count": 20,
+              "min": 7.382,
+              "median": 9.35,
+              "p95": 11.621,
+              "max": 11.621
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.351,
+              "median": 0.809,
+              "p95": 0.992,
+              "max": 0.992
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.3,
+              "median": 4.527,
+              "p95": 4.951,
+              "max": 4.951
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.752,
+              "median": 0.859,
+              "p95": 1.005,
+              "max": 1.005
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.152,
+              "median": 1.377,
+              "p95": 4.094,
+              "max": 4.094
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.546,
+              "median": 7.139,
+              "p95": 12.101,
+              "max": 12.101
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 14.337,
+              "median": 58.466,
+              "p95": 62.812,
+              "max": 62.812
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 67.566,
+              "median": 69.514,
+              "p95": 71.122,
+              "max": 71.122
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 5,
+            "min": 33.204,
+            "median": 37.598,
+            "p95": 44.854,
+            "max": 44.854
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 9,
+          "loaded": true,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 101.236,
+            "median": 156.093,
+            "p95": 261.069,
+            "max": 261.069
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.005,
+              "median": 48.52,
+              "p95": 51.961,
+              "max": 51.961
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 19.965,
+              "median": 20.89,
+              "p95": 21.493,
+              "max": 21.493
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.239,
+              "median": 8.573,
+              "p95": 8.988,
+              "max": 8.988
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.333,
+              "median": 0.381,
+              "p95": 0.433,
+              "max": 0.433
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.084,
+              "median": 0.094,
+              "p95": 0.193,
+              "max": 0.193
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 5.875,
+              "median": 50.574,
+              "p95": 52.365,
+              "max": 52.365
+            },
+            "flush": {
+              "count": 20,
+              "min": 7.091,
+              "median": 9.529,
+              "p95": 119.069,
+              "max": 119.069
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.347,
+              "median": 0.784,
+              "p95": 1.163,
+              "max": 1.163
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.224,
+              "median": 4.585,
+              "p95": 9.728,
+              "max": 9.728
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.779,
+              "median": 0.855,
+              "p95": 3.264,
+              "max": 3.264
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.143,
+              "median": 1.424,
+              "p95": 4.21,
+              "max": 4.21
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.478,
+              "median": 4.509,
+              "p95": 11.136,
+              "max": 11.136
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 13.275,
+              "median": 59.241,
+              "p95": 171.549,
+              "max": 171.549
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 67.359,
+              "median": 69.392,
+              "p95": 71.672,
+              "max": 71.672
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 7,
+            "min": 43.555,
+            "median": 45.331,
+            "p95": 48.004,
+            "max": 48.004
+          },
+          "restartAt85": false
+        }
+      ],
+      "workers": [
+        {
+          "worker": 0,
+          "activeMs": 32407.979915999997,
+          "lifetimeMs": 60972.855916,
+          "processCpuMs": 24323.76,
+          "busyIntervalCpuMs": 24157.8,
+          "busyIntervalCount": 323
+        },
+        {
+          "worker": 1,
+          "activeMs": 32481.484043,
+          "lifetimeMs": 60967.368666999995,
+          "processCpuMs": 24388.417,
+          "busyIntervalCpuMs": 24225.287,
+          "busyIntervalCount": 324
+        }
+      ],
+      "children": [
+        {
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "exitCode": 0,
+          "signal": null
+        }
+      ],
+      "driverLoopMs": {
+        "count": 127,
+        "min": 12.05,
+        "median": 12.829,
+        "p95": 16.4,
+        "max": 20.251
+      },
+      "host": {
+        "cpuBusyPercent": {
+          "count": 124,
+          "min": 16.926,
+          "median": 37.889,
+          "p95": 53.021,
+          "max": 60
+        },
+        "runnable": {
+          "count": 124,
+          "min": 3,
+          "median": 7.0,
+          "p95": 10,
+          "max": 15
+        },
+        "blocked": {
+          "count": 124,
+          "min": 0,
+          "median": 0.0,
+          "p95": 1,
+          "max": 2
+        },
+        "memoryPressure": {
+          "count": 124,
+          "min": 1,
+          "median": 1.0,
+          "p95": 1,
+          "max": 1
+        },
+        "memoryFreePercent": {
+          "count": 124,
+          "min": 69,
+          "median": 72.0,
+          "p95": 73,
+          "max": 73
+        },
+        "swapouts": {
+          "count": 124,
+          "min": 851516,
+          "median": 851516.0,
+          "p95": 851516,
+          "max": 851516
+        },
+        "pageouts": {
+          "count": 124,
+          "min": 12322,
+          "median": 12325.0,
+          "p95": 12353,
+          "max": 12353
+        },
+        "eventLoopMaxMs": {
+          "count": 124,
+          "min": 12.05,
+          "median": 12.091,
+          "p95": 14.713,
+          "max": 20.857
+        },
+        "schedulingLagMs": {
+          "count": 124,
+          "min": 0.847,
+          "median": 29.729,
+          "p95": 34.54,
+          "max": 66.712
+        }
+      },
+      "load1": {
+        "count": 124,
+        "min": 3.281,
+        "median": 4.015,
+        "p95": 4.471,
+        "max": 4.513
+      },
+      "timingMaxima": {
+        "local-ack": 261.0693329999922,
+        "offline-start": 2123.8698339999974,
+        "local-ui-visible": 43.00474999999278,
+        "convergence": 163.21762500000477
+      },
+      "replicaAudit": {
+        "verified": [
+          {
+            "operationCount": 504,
+            "snapshotHash": "70cce3d779fdbc5ea4999e25c61672d901845cdef7d24ecc5cac952f9af1945b"
+          },
+          {
+            "operationCount": 597,
+            "snapshotHash": "8a7ade8963ceb7962e8744dec2d4629b371c5e69d23aaf86a688e8410a6934bb"
+          },
+          {
+            "operationCount": 613,
+            "snapshotHash": "5c4b64703da31ccec241bbc07a505d2145ffedd0c2e4598cb239bbf5ff1bfbb5"
+          }
+        ],
+        "intents": 706,
+        "receipts": 706
+      },
+      "watchdog": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 130950,
+        "hungProcesses": [],
+        "survivorsAfterKill": [],
+        "newScratch": []
+      },
+      "allPhaseMaximaMs": {
+        "spawnToPreload": 56.095,
+        "preloadToRequest": 22.745,
+        "requestToAdmission": 10.409,
+        "admissionToExecute": 6.697,
+        "queue": 0.383,
+        "prepareAndChange": 53.877,
+        "flush": 119.069,
+        "flushToResponse": 1.85,
+        "responseToHeaders": 11.092,
+        "headersToBody": 3.264,
+        "bodyToExit": 5.096,
+        "exitToClose": 12.75,
+        "spawnToClose": 260.801,
+        "serverApply": 171.549,
+        "cliCpuMs": 76.017
+      },
+      "slowest": {
+        "operationId": "seed-5-operation-698",
+        "durationMs": {
+          "spawnToPreload": 48.042,
+          "preloadToRequest": 20.329,
+          "requestToAdmission": 8.876,
+          "admissionToExecute": 0.348,
+          "queue": 0.091,
+          "prepareAndChange": 52.305,
+          "flush": 119.069,
+          "flushToResponse": 0.803,
+          "responseToHeaders": 4.698,
+          "headersToBody": 0.836,
+          "bodyToExit": 1.422,
+          "exitToClose": 3.98,
+          "spawnToClose": 260.801,
+          "serverApply": 171.549,
+          "cliCpuMs": 69.353
+        },
+        "mode": "cli",
+        "complete": true
+      },
+      "traceSha256": "23938699d290284109471f5e9b5a22a77aa379d9518f281a7071455a2d7ffecd",
+      "artifactHashes": {
+        "watchdog.json": "52055c220cdb3342dcc180420ffcf1d28e1b8ccb8d438971f2f2a0a14c47f31a",
+        "operation-coverage.json": "7dda8ab6edfd345aee956ab7b56391aa80d6bdca644d2fc802c9ff5f7920802e",
+        "report/candidate.json": "054ac3b8f6a1c70eab5f5a74ba65b15ced526d60873adb5f3c1c2da7777eb600",
+        "report/summary.json": "6b33d9e7a02046062adcae0c2ef12ef47b6e40da55bd239d129176f40947393d",
+        "report/seed-5/diagnostic-report.json": "08127bdaf32cef57d2aa71d0ceb0acb5823e961c190c86b1c162a47768e2c344",
+        "report/seed-5/replica-audit.json": "fca30017dddc21a8e692d80ebd31a648a19262d520b667a015d9fa428778c8db",
+        "report/seed-5/replica-snapshots.json": "51360cc0bca19458052ebd50f30df545c09c6239d3126b40cfaba4486a2e4e35",
+        "report/seed-5/diagnostic-manifest.json": "71ea649d54f0589ba98047b54dad046092fb1f8463d4ea53c3554a7b1ae9cb64",
+        "report/seed-5/interleaved-control.json": "229a120ae8d69a93a0f9660acf436ed3d549f483fc2bc5b8863fdb25a661228d",
+        "report/seed-5/host.jsonl": "b0d63f80488fedea879326fd7f6d2e9e069bd8c489edcb7712aa20abab1f9f77"
+      }
+    },
+    "candidate": {
+      "attempted": true,
+      "completed": true,
+      "phaseErrors": [],
+      "partialFailure": null,
+      "guards": [],
+      "updates": 200,
+      "completePhaseChains": 200,
+      "modeGaps": 0,
+      "coverageGaps": 0,
+      "conditions": {
+        "unloaded": {
+          "blocks": 5,
+          "acknowledgementMs": {
+            "count": 100,
+            "min": 102.026,
+            "median": 154.405,
+            "p95": 188.712,
+            "max": 262.349
+          },
+          "blockMediansMs": {
+            "count": 5,
+            "min": 132.029,
+            "median": 154.62,
+            "p95": 155.663,
+            "max": 155.663
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 100,
+              "min": 48.013,
+              "median": 49.206,
+              "p95": 53.066,
+              "max": 55.082
+            },
+            "preloadToRequest": {
+              "count": 100,
+              "min": 19.895,
+              "median": 20.698,
+              "p95": 22.068,
+              "max": 25.01
+            },
+            "requestToAdmission": {
+              "count": 100,
+              "min": 8.251,
+              "median": 8.64,
+              "p95": 9.106,
+              "max": 10.445
+            },
+            "queue": {
+              "count": 100,
+              "min": 0.086,
+              "median": 0.1,
+              "p95": 0.166,
+              "max": 0.349
+            },
+            "prepareAndChange": {
+              "count": 100,
+              "min": 5.83,
+              "median": 47.84,
+              "p95": 51.594,
+              "max": 54.096
+            },
+            "flush": {
+              "count": 100,
+              "min": 7.03,
+              "median": 10.438,
+              "p95": 43.908,
+              "max": 119.483
+            },
+            "serverApply": {
+              "count": 100,
+              "min": 13.775,
+              "median": 58.352,
+              "p95": 93.578,
+              "max": 170.619
+            },
+            "cliCpuMs": {
+              "count": 100,
+              "min": 66.818,
+              "median": 69.388,
+              "p95": 72.29,
+              "max": 73.234
+            }
+          }
+        },
+        "loaded": {
+          "blocks": 5,
+          "acknowledgementMs": {
+            "count": 100,
+            "min": 103.423,
+            "median": 153.607,
+            "p95": 168.238,
+            "max": 211.554
+          },
+          "blockMediansMs": {
+            "count": 5,
+            "min": 151.355,
+            "median": 154.43,
+            "p95": 155.27,
+            "max": 155.27
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 100,
+              "min": 48.121,
+              "median": 49.364,
+              "p95": 53.112,
+              "max": 63.605
+            },
+            "preloadToRequest": {
+              "count": 100,
+              "min": 19.843,
+              "median": 20.892,
+              "p95": 23.819,
+              "max": 33.947
+            },
+            "requestToAdmission": {
+              "count": 100,
+              "min": 8.194,
+              "median": 8.601,
+              "p95": 9.471,
+              "max": 12.525
+            },
+            "queue": {
+              "count": 100,
+              "min": 0.087,
+              "median": 0.101,
+              "p95": 0.211,
+              "max": 5.881
+            },
+            "prepareAndChange": {
+              "count": 100,
+              "min": 5.802,
+              "median": 47.266,
+              "p95": 51.24,
+              "max": 83.689
+            },
+            "flush": {
+              "count": 100,
+              "min": 7.01,
+              "median": 9.766,
+              "p95": 12.77,
+              "max": 51.375
+            },
+            "serverApply": {
+              "count": 100,
+              "min": 13.924,
+              "median": 57.48,
+              "p95": 63.984,
+              "max": 104.81
+            },
+            "cliCpuMs": {
+              "count": 100,
+              "min": 67.387,
+              "median": 69.77,
+              "p95": 74.869,
+              "max": 89.124
+            }
+          }
+        }
+      },
+      "blocks": [
+        {
+          "block": 0,
+          "loaded": true,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 150.277,
+            "median": 151.355,
+            "p95": 155.375,
+            "max": 155.375
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.121,
+              "median": 49.005,
+              "p95": 50.573,
+              "max": 50.573
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 19.934,
+              "median": 20.79,
+              "p95": 21.442,
+              "max": 21.442
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.293,
+              "median": 8.457,
+              "p95": 8.945,
+              "max": 8.945
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.37,
+              "median": 0.455,
+              "p95": 0.61,
+              "max": 0.61
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.091,
+              "median": 0.102,
+              "p95": 0.24,
+              "max": 0.24
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 45.107,
+              "median": 46.627,
+              "p95": 47.974,
+              "max": 47.974
+            },
+            "flush": {
+              "count": 20,
+              "min": 8.793,
+              "median": 9.927,
+              "p95": 13.034,
+              "max": 13.034
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.725,
+              "median": 0.911,
+              "p95": 1.522,
+              "max": 1.522
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.289,
+              "median": 4.675,
+              "p95": 7.431,
+              "max": 7.431
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.826,
+              "median": 0.909,
+              "p95": 1.634,
+              "max": 1.634
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.198,
+              "median": 1.469,
+              "p95": 6.638,
+              "max": 6.638
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.855,
+              "median": 7.293,
+              "p95": 12.155,
+              "max": 12.155
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 54.872,
+              "median": 56.931,
+              "p95": 60.322,
+              "max": 60.322
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 67.956,
+              "median": 69.624,
+              "p95": 71.016,
+              "max": 71.016
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 6,
+            "min": 46.484,
+            "median": 49.561,
+            "p95": 63.875,
+            "max": 63.875
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 1,
+          "loaded": false,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 149.467,
+            "median": 155.271,
+            "p95": 188.712,
+            "max": 188.712
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.145,
+              "median": 49.537,
+              "p95": 53.425,
+              "max": 53.425
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 19.895,
+              "median": 21.219,
+              "p95": 22.357,
+              "max": 22.357
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.251,
+              "median": 8.722,
+              "p95": 9.042,
+              "max": 9.042
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.388,
+              "median": 0.418,
+              "p95": 0.533,
+              "max": 0.533
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.089,
+              "median": 0.102,
+              "p95": 0.169,
+              "max": 0.169
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 46.096,
+              "median": 47.791,
+              "p95": 52.483,
+              "max": 52.483
+            },
+            "flush": {
+              "count": 20,
+              "min": 9.169,
+              "median": 10.444,
+              "p95": 43.857,
+              "max": 43.857
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.746,
+              "median": 0.94,
+              "p95": 1.23,
+              "max": 1.23
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.289,
+              "median": 4.524,
+              "p95": 5.094,
+              "max": 5.094
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.831,
+              "median": 0.905,
+              "p95": 1.471,
+              "max": 1.471
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.289,
+              "median": 1.447,
+              "p95": 4.092,
+              "max": 4.092
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 4.054,
+              "median": 7.778,
+              "p95": 11.418,
+              "max": 11.418
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 56.379,
+              "median": 58.246,
+              "p95": 93.578,
+              "max": 93.578
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 67.829,
+              "median": 70.129,
+              "p95": 73.234,
+              "max": 73.234
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 5,
+            "min": 35.965,
+            "median": 38.948,
+            "p95": 55.868,
+            "max": 55.868
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 2,
+          "loaded": true,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 150.799,
+            "median": 154.43,
+            "p95": 168.238,
+            "max": 168.238
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.241,
+              "median": 49.651,
+              "p95": 59.188,
+              "max": 59.188
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 19.843,
+              "median": 20.563,
+              "p95": 22.785,
+              "max": 22.785
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.194,
+              "median": 8.437,
+              "p95": 8.994,
+              "max": 8.994
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.351,
+              "median": 0.377,
+              "p95": 0.513,
+              "max": 0.513
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.087,
+              "median": 0.099,
+              "p95": 0.183,
+              "max": 0.183
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 46.502,
+              "median": 47.343,
+              "p95": 50.139,
+              "max": 50.139
+            },
+            "flush": {
+              "count": 20,
+              "min": 7.958,
+              "median": 10.04,
+              "p95": 11.955,
+              "max": 11.955
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.754,
+              "median": 0.903,
+              "p95": 2.26,
+              "max": 2.26
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.256,
+              "median": 4.689,
+              "p95": 6.24,
+              "max": 6.24
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.853,
+              "median": 0.918,
+              "p95": 1.46,
+              "max": 1.46
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.24,
+              "median": 1.541,
+              "p95": 11.499,
+              "max": 11.499
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 5.862,
+              "median": 8.09,
+              "p95": 11.863,
+              "max": 11.863
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 55.613,
+              "median": 57.803,
+              "p95": 59.526,
+              "max": 59.526
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 68.241,
+              "median": 69.845,
+              "p95": 74.869,
+              "max": 74.869
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 6,
+            "min": 41.473,
+            "median": 54.838,
+            "p95": 59.375,
+            "max": 59.375
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 3,
+          "loaded": false,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 151.428,
+            "median": 154.62,
+            "p95": 191.503,
+            "max": 191.503
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.484,
+              "median": 49.406,
+              "p95": 55.082,
+              "max": 55.082
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.332,
+              "median": 21.048,
+              "p95": 25.01,
+              "max": 25.01
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.305,
+              "median": 8.732,
+              "p95": 10.445,
+              "max": 10.445
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.349,
+              "median": 0.395,
+              "p95": 0.496,
+              "max": 0.496
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.092,
+              "median": 0.106,
+              "p95": 0.349,
+              "max": 0.349
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 46.62,
+              "median": 47.899,
+              "p95": 49.852,
+              "max": 49.852
+            },
+            "flush": {
+              "count": 20,
+              "min": 8.57,
+              "median": 11.024,
+              "p95": 43.908,
+              "max": 43.908
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.795,
+              "median": 0.96,
+              "p95": 1.081,
+              "max": 1.081
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.369,
+              "median": 4.726,
+              "p95": 6.004,
+              "max": 6.004
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.843,
+              "median": 0.926,
+              "p95": 1.899,
+              "max": 1.899
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.158,
+              "median": 1.519,
+              "p95": 3.422,
+              "max": 3.422
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 4.105,
+              "median": 7.029,
+              "p95": 10.269,
+              "max": 10.269
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 56.489,
+              "median": 59.46,
+              "p95": 92.415,
+              "max": 92.415
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 68.751,
+              "median": 70.507,
+              "p95": 72.116,
+              "max": 72.116
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 5,
+            "min": 35.214,
+            "median": 35.93,
+            "p95": 45.287,
+            "max": 45.287
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 4,
+          "loaded": true,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 107.225,
+            "median": 154.52,
+            "p95": 211.554,
+            "max": 211.554
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.889,
+              "median": 50.097,
+              "p95": 63.605,
+              "max": 63.605
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.712,
+              "median": 21.453,
+              "p95": 33.947,
+              "max": 33.947
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.334,
+              "median": 8.747,
+              "p95": 12.525,
+              "max": 12.525
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.371,
+              "median": 0.432,
+              "p95": 7.298,
+              "max": 7.298
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.092,
+              "median": 0.114,
+              "p95": 5.881,
+              "max": 5.881
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 6.518,
+              "median": 48.142,
+              "p95": 83.689,
+              "max": 83.689
+            },
+            "flush": {
+              "count": 20,
+              "min": 7.01,
+              "median": 10.035,
+              "p95": 51.375,
+              "max": 51.375
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.412,
+              "median": 0.911,
+              "p95": 1.891,
+              "max": 1.891
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.53,
+              "median": 4.999,
+              "p95": 12.326,
+              "max": 12.326
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.835,
+              "median": 0.928,
+              "p95": 3.904,
+              "max": 3.904
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.217,
+              "median": 1.452,
+              "p95": 6.38,
+              "max": 6.38
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.811,
+              "median": 4.806,
+              "p95": 9.671,
+              "max": 9.671
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 13.977,
+              "median": 57.855,
+              "p95": 104.81,
+              "max": 104.81
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 69.034,
+              "median": 71.586,
+              "p95": 89.124,
+              "max": 89.124
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 9,
+            "min": 39.143,
+            "median": 58.09,
+            "p95": 83.414,
+            "max": 83.414
+          },
+          "restartAt85": true
+        },
+        {
+          "block": 5,
+          "loaded": false,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 104.476,
+            "median": 132.029,
+            "p95": 161.914,
+            "max": 161.914
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.013,
+              "median": 49.489,
+              "p95": 53.706,
+              "max": 53.706
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.032,
+              "median": 20.777,
+              "p95": 23.176,
+              "max": 23.176
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.348,
+              "median": 8.748,
+              "p95": 9.121,
+              "max": 9.121
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.382,
+              "median": 0.42,
+              "p95": 0.564,
+              "max": 0.564
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.087,
+              "median": 0.107,
+              "p95": 0.162,
+              "max": 0.162
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 6.073,
+              "median": 27.434,
+              "p95": 51.49,
+              "max": 51.49
+            },
+            "flush": {
+              "count": 20,
+              "min": 7.081,
+              "median": 10.246,
+              "p95": 12.788,
+              "max": 12.788
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.355,
+              "median": 0.689,
+              "p95": 1.394,
+              "max": 1.394
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.431,
+              "median": 4.712,
+              "p95": 7.101,
+              "max": 7.101
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.771,
+              "median": 0.91,
+              "p95": 1.715,
+              "max": 1.715
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.186,
+              "median": 1.45,
+              "p95": 4.873,
+              "max": 4.873
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.78,
+              "median": 4.271,
+              "p95": 12.48,
+              "max": 12.48
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 14.258,
+              "median": 36.654,
+              "p95": 62.105,
+              "max": 62.105
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 67.693,
+              "median": 69.68,
+              "p95": 72.622,
+              "max": 72.622
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 5,
+            "min": 34.854,
+            "median": 45.029,
+            "p95": 58.423,
+            "max": 58.423
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 6,
+          "loaded": true,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 103.697,
+            "median": 152.428,
+            "p95": 160.324,
+            "max": 160.324
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.349,
+              "median": 49.264,
+              "p95": 54.293,
+              "max": 54.293
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 19.968,
+              "median": 20.789,
+              "p95": 22.372,
+              "max": 22.372
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.226,
+              "median": 8.577,
+              "p95": 9.41,
+              "max": 9.41
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.336,
+              "median": 0.385,
+              "p95": 0.592,
+              "max": 0.592
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.089,
+              "median": 0.101,
+              "p95": 0.233,
+              "max": 0.233
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 6.04,
+              "median": 47.747,
+              "p95": 49.459,
+              "max": 49.459
+            },
+            "flush": {
+              "count": 20,
+              "min": 7.561,
+              "median": 9.426,
+              "p95": 11.634,
+              "max": 11.634
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.359,
+              "median": 0.774,
+              "p95": 1.671,
+              "max": 1.671
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.229,
+              "median": 4.589,
+              "p95": 6.779,
+              "max": 6.779
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.767,
+              "median": 0.875,
+              "p95": 1.451,
+              "max": 1.451
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.148,
+              "median": 1.258,
+              "p95": 4.286,
+              "max": 4.286
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.515,
+              "median": 6.429,
+              "p95": 12.653,
+              "max": 12.653
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 13.924,
+              "median": 57.054,
+              "p95": 61.004,
+              "max": 61.004
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 67.387,
+              "median": 69.386,
+              "p95": 73.861,
+              "max": 73.861
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 6,
+            "min": 35.673,
+            "median": 50.519,
+            "p95": 68.865,
+            "max": 68.865
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 7,
+          "loaded": false,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 102.715,
+            "median": 152.908,
+            "p95": 194.27,
+            "max": 194.27
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.479,
+              "median": 49.07,
+              "p95": 51.531,
+              "max": 51.531
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.12,
+              "median": 20.635,
+              "p95": 22.068,
+              "max": 22.068
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.281,
+              "median": 8.573,
+              "p95": 9.577,
+              "max": 9.577
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.377,
+              "median": 0.403,
+              "p95": 1.318,
+              "max": 1.318
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.087,
+              "median": 0.097,
+              "p95": 0.322,
+              "max": 0.322
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 5.872,
+              "median": 28.345,
+              "p95": 50.829,
+              "max": 50.829
+            },
+            "flush": {
+              "count": 20,
+              "min": 7.482,
+              "median": 10.094,
+              "p95": 95.019,
+              "max": 95.019
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.347,
+              "median": 0.798,
+              "p95": 4.129,
+              "max": 4.129
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.347,
+              "median": 4.592,
+              "p95": 4.98,
+              "max": 4.98
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.774,
+              "median": 0.886,
+              "p95": 1.552,
+              "max": 1.552
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.157,
+              "median": 1.393,
+              "p95": 1.754,
+              "max": 1.754
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.52,
+              "median": 4.827,
+              "p95": 11.674,
+              "max": 11.674
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 14.047,
+              "median": 58.329,
+              "p95": 101.703,
+              "max": 101.703
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 67.415,
+              "median": 68.906,
+              "p95": 71.784,
+              "max": 71.784
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 5,
+            "min": 28.25,
+            "median": 28.96,
+            "p95": 31.712,
+            "max": 31.712
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 8,
+          "loaded": true,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 103.423,
+            "median": 155.27,
+            "p95": 165.774,
+            "max": 165.774
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.443,
+              "median": 49.112,
+              "p95": 54.79,
+              "max": 54.79
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.338,
+              "median": 20.961,
+              "p95": 21.494,
+              "max": 21.494
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.389,
+              "median": 8.699,
+              "p95": 9.047,
+              "max": 9.047
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.315,
+              "median": 0.4,
+              "p95": 0.497,
+              "max": 0.497
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.089,
+              "median": 0.098,
+              "p95": 0.214,
+              "max": 0.214
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 5.802,
+              "median": 49.164,
+              "p95": 56.692,
+              "max": 56.692
+            },
+            "flush": {
+              "count": 20,
+              "min": 7.724,
+              "median": 8.948,
+              "p95": 11.8,
+              "max": 11.8
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.4,
+              "median": 0.752,
+              "p95": 1.03,
+              "max": 1.03
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.242,
+              "median": 4.613,
+              "p95": 4.815,
+              "max": 4.815
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.798,
+              "median": 0.871,
+              "p95": 1.491,
+              "max": 1.491
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.189,
+              "median": 1.405,
+              "p95": 1.875,
+              "max": 1.875
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.673,
+              "median": 7.921,
+              "p95": 13.138,
+              "max": 13.138
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 13.997,
+              "median": 58.505,
+              "p95": 65.166,
+              "max": 65.166
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 67.661,
+              "median": 69.507,
+              "p95": 70.606,
+              "max": 70.606
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 5,
+            "min": 38.132,
+            "median": 42.717,
+            "p95": 44.412,
+            "max": 44.412
+          },
+          "restartAt85": false
+        },
+        {
+          "block": 9,
+          "loaded": false,
+          "updates": 20,
+          "acknowledgementMs": {
+            "count": 20,
+            "min": 102.026,
+            "median": 155.663,
+            "p95": 262.349,
+            "max": 262.349
+          },
+          "phasesMs": {
+            "spawnToPreload": {
+              "count": 20,
+              "min": 48.1,
+              "median": 48.871,
+              "p95": 49.87,
+              "max": 49.87
+            },
+            "preloadToRequest": {
+              "count": 20,
+              "min": 20.069,
+              "median": 20.461,
+              "p95": 21.71,
+              "max": 21.71
+            },
+            "requestToAdmission": {
+              "count": 20,
+              "min": 8.251,
+              "median": 8.458,
+              "p95": 8.804,
+              "max": 8.804
+            },
+            "admissionToExecute": {
+              "count": 20,
+              "min": 0.356,
+              "median": 0.388,
+              "p95": 0.458,
+              "max": 0.458
+            },
+            "queue": {
+              "count": 20,
+              "min": 0.086,
+              "median": 0.091,
+              "p95": 0.106,
+              "max": 0.106
+            },
+            "prepareAndChange": {
+              "count": 20,
+              "min": 5.83,
+              "median": 50.493,
+              "p95": 54.096,
+              "max": 54.096
+            },
+            "flush": {
+              "count": 20,
+              "min": 7.03,
+              "median": 10.155,
+              "p95": 119.483,
+              "max": 119.483
+            },
+            "flushToResponse": {
+              "count": 20,
+              "min": 0.32,
+              "median": 0.738,
+              "p95": 1.389,
+              "max": 1.389
+            },
+            "responseToHeaders": {
+              "count": 20,
+              "min": 4.342,
+              "median": 4.486,
+              "p95": 4.705,
+              "max": 4.705
+            },
+            "headersToBody": {
+              "count": 20,
+              "min": 0.762,
+              "median": 0.848,
+              "p95": 1.087,
+              "max": 1.087
+            },
+            "bodyToExit": {
+              "count": 20,
+              "min": 1.145,
+              "median": 1.486,
+              "p95": 2.088,
+              "max": 2.088
+            },
+            "exitToClose": {
+              "count": 20,
+              "min": 3.493,
+              "median": 4.736,
+              "p95": 12.217,
+              "max": 12.217
+            },
+            "serverApply": {
+              "count": 20,
+              "min": 13.775,
+              "median": 60.027,
+              "p95": 170.619,
+              "max": 170.619
+            },
+            "cliCpuMs": {
+              "count": 20,
+              "min": 66.818,
+              "median": 68.302,
+              "p95": 70.77,
+              "max": 70.77
+            }
+          },
+          "cpuBusyPercent": {
+            "count": 6,
+            "min": 25.146,
+            "median": 29.648,
+            "p95": 41.772,
+            "max": 41.772
+          },
+          "restartAt85": false
+        }
+      ],
+      "workers": [
+        {
+          "worker": 0,
+          "activeMs": 33314.429875,
+          "lifetimeMs": 59777.707916,
+          "processCpuMs": 24857.15,
+          "busyIntervalCpuMs": 24698.547,
+          "busyIntervalCount": 332
+        },
+        {
+          "worker": 1,
+          "activeMs": 33314.285665999996,
+          "lifetimeMs": 59761.742917,
+          "processCpuMs": 24925.582,
+          "busyIntervalCpuMs": 24765.464,
+          "busyIntervalCount": 332
+        }
+      ],
+      "children": [
+        {
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "exitCode": 0,
+          "signal": null
+        }
+      ],
+      "driverLoopMs": {
+        "count": 117,
+        "min": 12.042,
+        "median": 12.64,
+        "p95": 17.908,
+        "max": 24.232
+      },
+      "host": {
+        "cpuBusyPercent": {
+          "count": 114,
+          "min": 20.5,
+          "median": 39.883,
+          "p95": 63.875,
+          "max": 83.414
+        },
+        "runnable": {
+          "count": 114,
+          "min": 2,
+          "median": 7.0,
+          "p95": 11,
+          "max": 17
+        },
+        "blocked": {
+          "count": 114,
+          "min": 0,
+          "median": 0.0,
+          "p95": 2,
+          "max": 4
+        },
+        "memoryPressure": {
+          "count": 114,
+          "min": 1,
+          "median": 1.0,
+          "p95": 1,
+          "max": 1
+        },
+        "memoryFreePercent": {
+          "count": 114,
+          "min": 71,
+          "median": 72.0,
+          "p95": 73,
+          "max": 73
+        },
+        "swapouts": {
+          "count": 114,
+          "min": 851516,
+          "median": 851516.0,
+          "p95": 851516,
+          "max": 851516
+        },
+        "pageouts": {
+          "count": 114,
+          "min": 12353,
+          "median": 12353.0,
+          "p95": 12361,
+          "max": 12361
+        },
+        "eventLoopMaxMs": {
+          "count": 114,
+          "min": 12.05,
+          "median": 12.182,
+          "p95": 17.203,
+          "max": 23.904
+        },
+        "schedulingLagMs": {
+          "count": 114,
+          "min": 1.224,
+          "median": 30.294,
+          "p95": 34.305,
+          "max": 41.698
+        }
+      },
+      "load1": {
+        "count": 114,
+        "min": 4.338,
+        "median": 5.13,
+        "p95": 5.491,
+        "max": 5.577
+      },
+      "timingMaxima": {
+        "local-ack": 262.3494999999966,
+        "offline-start": 2096.113666999998,
+        "local-ui-visible": 43.25429200000508,
+        "convergence": 159.77824999999575
+      },
+      "replicaAudit": {
+        "verified": [
+          {
+            "operationCount": 504,
+            "snapshotHash": "3a1302af20c5213ecced58bd969b6f47b5ce81896b36d18488f4bb8237e76672"
+          },
+          {
+            "operationCount": 597,
+            "snapshotHash": "f0cf94e0984aa34fc411ab8bcab440b367961e667819c7f35e1b3f808a0aae2c"
+          },
+          {
+            "operationCount": 613,
+            "snapshotHash": "fe7580fa5a0e80dcba62f1a3deef505c14e1ddf3914ca7e27660bfa16aabe0d4"
+          }
+        ],
+        "intents": 706,
+        "receipts": 706
+      },
+      "watchdog": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 120666,
+        "hungProcesses": [],
+        "survivorsAfterKill": [],
+        "newScratch": []
+      },
+      "allPhaseMaximaMs": {
+        "spawnToPreload": 63.605,
+        "preloadToRequest": 33.947,
+        "requestToAdmission": 12.525,
+        "admissionToExecute": 7.298,
+        "queue": 5.881,
+        "prepareAndChange": 83.689,
+        "flush": 119.483,
+        "flushToResponse": 4.129,
+        "responseToHeaders": 12.326,
+        "headersToBody": 3.904,
+        "bodyToExit": 11.499,
+        "exitToClose": 13.138,
+        "spawnToClose": 262.057,
+        "serverApply": 170.619,
+        "cliCpuMs": 89.124
+      },
+      "slowest": {
+        "operationId": "seed-5-operation-698",
+        "durationMs": {
+          "spawnToPreload": 48.998,
+          "preloadToRequest": 20.334,
+          "requestToAdmission": 8.442,
+          "admissionToExecute": 0.403,
+          "queue": 0.088,
+          "prepareAndChange": 50.952,
+          "flush": 119.483,
+          "flushToResponse": 1.079,
+          "responseToHeaders": 4.419,
+          "headersToBody": 0.927,
+          "bodyToExit": 1.607,
+          "exitToClose": 5.324,
+          "spawnToClose": 262.057,
+          "serverApply": 170.619,
+          "cliCpuMs": 68.712
+        },
+        "mode": "cli",
+        "complete": true
+      },
+      "traceSha256": "6db4d8724868b9a9f2373c26769ac86db94038635007818b2c69a871fb7cd578",
+      "artifactHashes": {
+        "watchdog.json": "7793fe4dab47be5c8c15324a4a0758e8fc64c43cc4753b247e1fb90d374e2dd8",
+        "operation-coverage.json": "08ef293900977097e56ceb7b17fc9adf1476f46978927ce7a8dc1cdd2838615a",
+        "report/candidate.json": "f4f25217e213d62c93fbf9739ecc7ee66e981d926857b58d8f460face08f655f",
+        "report/summary.json": "d6feab125b538f72eb34726b6b312245e42caedebd8364555bf88cbd6d0dea0a",
+        "report/seed-5/diagnostic-report.json": "0bf2136960cf97edd78a32f23265e79b13ec58aa7c879e6011900ea986800812",
+        "report/seed-5/replica-audit.json": "6ed6ecda99d2f25a84f505de17a8c09e49bc2ea7250f51b819fb464c26673dae",
+        "report/seed-5/replica-snapshots.json": "9aa8ea0af66a1b01be685de748db79c23c3b39af3e341ff560c42f50dd336082",
+        "report/seed-5/diagnostic-manifest.json": "d4adacd2dcaba9e38a0d6d5f02dec38b4e2066eb56fbb15c22f8172ada2c28fa",
+        "report/seed-5/interleaved-control.json": "09d8acd438e092f8bfcea3a1af57507ebb1e726e7467504c4b3f4cec395083c3",
+        "report/seed-5/host.jsonl": "09e9ffdf3633fe6dcd4011390ae0215b993d0bb9389d5a793fb5dbc9ca35a427"
+      }
+    }
+  },
+  "rawArtifactsPrivate": "output/verification/issue-66-interleaved/",
+  "analysisScripts": {
+    "pardner-il-audit.py": "c0389552d348f0a7b06f32656b71cdc4a9903566b0264067ab0981d3b5da6ddc",
+    "pardner-101-summarize-phases.py": "750d75875eebc7ab91c6337b151b39318acc5fcd9318149d12d458e45105c229",
+    "pardner-il-cleanup.py": "c82dbef7e946bd2849a3628ff05505b2cd448c31d1b5ad6777844d3b5139aee4"
+  },
+  "cleanup": {
+    "at": "2026-11-05T03:22:09.261308+00:00",
+    "attributableSurvivors": [],
+    "sourceArchiveRemoved": true,
+    "stableLockExists": true,
+    "stableLockInode": 498846838,
+    "measurementHashesUnchanged": true
+  },
+  "lock": {
+    "at": "2026-11-05T03:22:20.492826+00:00",
+    "wrapperExitCode": 0,
+    "stableLockExists": true,
+    "stableLockInode": 498846838,
+    "released": true,
+    "reacquired": false
+  },
+  "limits": [
+    "One fixture per source; five correlated blocks per condition, not five independent full runs.",
+    "Main ran before candidate; ambient variation, operation order, restart, cache and tracing effects remain confounders.",
+    "Worker CPU intervals overlap each assigned loaded request, but CPU cannot be exactly apportioned to each intersection.",
+    "Worker RPCs outside the original acknowledgement timer can alter operation scheduling.",
+    "Snapshots verify service-visible authoritative state and savedLocally receipts, not power-loss durability.",
+    "No threshold crossing; original failure has no phase trace, so no original-cause identity can be established.",
+    "No new full20seed, native/paid session, human acceptance, product fix, merge or downstream handoff."
+  ],
+  "publicationVerification": {
+    "scope": "documentation only",
+    "unclassifiedPaths": 0,
+    "newQualificationTrigger": false,
+    "checks": [
+      "JSON and outcome invariants",
+      "all local markdown links",
+      "git diff --check",
+      "measurement hashes unchanged",
+      "before/after candidate fingerprints identical"
+    ],
+    "productQualification": "FAILED; original gate failure unresolved"
+  }
+}

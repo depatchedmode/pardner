@@ -6,6 +6,12 @@ Pardner is a secondary working view. The [repair report](PARDNER-CONTROL-RUNTIME
 records the exact app pin and verification. This installation preserves schema 2;
 it does not gain the current checkout's schema-4 features or bridge adapters.
 
+For the current pane's exact candidate, #77 disposition and the proposed fresh
+workspace cutover, see [runtime readiness](PARDNER-CONTROL-READINESS.md).
+That report does not authorize an upgrade of this preserved installation.
+The [controller verification map](../.agents/skills/verify/features/control-runtime.md)
+describes focused regression coverage.
+
 ## Locate the installation
 
 `--home` selects an installation explicitly. Otherwise the controller uses
@@ -86,8 +92,15 @@ IDs must be filename-safe; other existing IDs can use `control cli --actor ID`.
    ```
 
 `seal` refuses an active installation. It checks the exact Git SHA, tracked source
-and untracked additions, Node version, storage identity and role, then records UI
+and untracked additions, Node version, storage identity and role, and the manifest
+schema against the selected release's `lib/workspace-schema.js` declaration, then records UI
 and dependency-lock hashes. Start, run and Actor CLI calls verify that record.
+The schema preflight described here is in the repository controller; the preserved
+installed controller is unchanged until a separately approved tooling deployment.
+Schema preflight reads source and metadata without importing app code or acquiring
+an app storage lease. Unknown declaration syntax fails closed for operator review.
+The app still validates the stored document on open; matching manifest versions
+do not establish complete compatibility or integrity.
 This detects build/dependency-identity drift; it is not a sandbox or a recursive
 tamper monitor for every installed dependency file. Never rebuild, reinstall
 packages, pull, or reset the active release in place.

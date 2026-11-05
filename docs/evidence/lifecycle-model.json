@@ -397,5 +397,61 @@
     "revision": "d849d26a51d27b2788092bdbae0c08a280ab1616",
     "issue": 77,
     "reason": "Control pane opens in start(), adds /pardner/control routes after the admission middleware, and closes after listenersClosed and before store.close(); workspace snapshot adds a read-only issue-link index. No model action, invariant or witness changed."
+  },
+  "operationIntegrityMappingReview": {
+    "recorded": "2026-11-04",
+    "mapping": {
+      "revision": "bd55f246bacae5068b761c999e7b849501e7a5e3",
+      "files": {
+        "automerge-sync-server.js": "53492a21086f3d134470e37aa24bd82a6db36af1b688937a0b443ea8df813576",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "ecbedacaed6740499eda73451b692c4984ef24715569af1aa69c23656569f2f0",
+        "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
+      }
+    },
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "durationMs": 5697,
+    "result": "passed",
+    "review": "Only operation receipt/projection and integrity-error HTTP status changed. Admission, flush barrier and shutdown model actions/anchors unchanged. Prior wider-bound and mutation evidence above is historical, not rerun in this wave."
+  },
+  "securityIntegrationReview": {
+    "recorded": "2026-11-04",
+    "mapping": {
+      "revision": "509a8357a4ef0197825eacf70a5d7a5504fb1795",
+      "files": {
+        "automerge-sync-server.js": "0b8d091ed66cab0cce2d4c0b3e5ecdd37dc0b70a7b5d9491f76dcab3df7cead4",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "db3eb7b8aaf0a3a2360c13e26439b193931e3e9e22ffc61712b9a1d4caae0a31",
+        "lib/workspace.js": "db8d3768446f04bdd3a75493b0f82ed1453adff8e941ce4f1aa2d70fdd9d48ca"
+      }
+    },
+    "node": "v24.11.1",
+    "states": 174614,
+    "transitions": 679456,
+    "durationMs": 4530,
+    "invariants": "all four hold",
+    "progress": "ShutdownCompletes holds under declared weak fairness",
+    "coverage": "all ten witnesses reachable",
+    "reason": "Admission credential narrowing, source-address pairing, synchronous response headers and listener validation preserve modeled ordering. IPv6 query parsing uses a fixed URL base; only query extraction changes. No model action/invariant/witness changes. Prior mutation and wider-bounds records remain historical; not rerun for this candidate."
+  },
+  "reliabilityPostSecurityReview": {
+    "base": "c636854cbf307bc67529e670c6658ff856267535",
+    "mapping": {
+      "revision": "9e8d14b7510a532c5a9dbee503701f8e79e09e7b",
+      "files": {
+        "automerge-sync-server.js": "3f63aa976f995222cb7d23d65d9f85c6556664893860768bc0595c5fc928e259",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "db3eb7b8aaf0a3a2360c13e26439b193931e3e9e22ffc61712b9a1d4caae0a31",
+        "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
+      }
+    },
+    "result": "passed",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "durationMs": 4348,
+    "review": "Retain security credential admission and runtime/schema guard. Relative to main only Workspace receipt/history projection and operationFailure 409 changed among mapped sources. All modeled admission, persistence, acknowledgement and shutdown actions/anchors retain their guard/effect/atomicity. Historical standalone records are preserved; no mutation/wider-bound claim for this combined candidate."
   }
 }
