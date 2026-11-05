@@ -150,9 +150,11 @@ pardner bridge reconcile --config /absolute/path/to/bridge.json \
   --evidence 'Inspected the stopped harness and confirmed no accepted turn'
 ```
 
-Reconciliation requires exclusive inbox ownership. Retry preserves the original
-prompt. This is not universal exactly-once execution: external effects still need
-idempotency, and delivery leases do not lock shared worktrees.
+Reconciliation requires exclusive inbox ownership. An explicitly authorized retry
+keeps the delivery ID and rebuilds the prompt from current task context. Uncertain
+dispatch reconciliation uses the exact stored prompt. This is not universal
+exactly-once execution: external effects still need idempotency, and delivery
+leases do not lock shared worktrees.
 
 ## Completion cleanup
 
@@ -265,3 +267,20 @@ Issue #50 remains the umbrella for these implementation follow-ups:
 - **Real-agent qualification:** measure dispatch separately from inference and
   rehearse the three collaboration modes, including separate machines and restart.
   Keep #50 open until its agreed adapter and qualification scope is satisfied.
+
+## Schema5 integrity and coordination
+
+`receipt.requestId` is the caller's retry key; `receipt.operationId` is the
+content-bound stored identity used by comment revisions and mentions. Never
+substitute the request ID for an observed revision. Queued dispatch retains the
+comment digest, editor and revision binding, and additionally blocks when the
+task context reports unresolved operation-integrity groups. The queued row and
+the full task conflict/provenance evidence remain available for inspection.
+Uncertain dispatch still reconciles only its exact saved prompt.
+
+Unresolved task integrity groups also prevent local cleanup approval and pause
+retirement before the next effect even if approval was granted earlier. Local
+approval/revocation, scope/revision checks, and completion eligibility remain
+separate requirements. The bounded three-agent coordinator rejects affected
+artifacts/review votes and retains structured CLI integrity-error details without
+automatically retrying failed writes or choosing a request variant.

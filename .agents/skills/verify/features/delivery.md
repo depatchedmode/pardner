@@ -52,9 +52,31 @@ for receipt guarantees. Exactly-once fake effects do not establish arbitrary
 external-side-effect idempotency. Preserve the boundary between automated worker
 evidence and the two-machine real-agent rehearsal.
 
+## Bounded three-agent review
+
+[Three-agent runbook](../../../../docs/PARDNER-THREE-AGENT.md) and
+[current readiness](../../../../docs/PARDNER-66-READINESS.md) distinguish the
+PR70 historical native run from current-candidate evidence. Run
+`node --test test/agent-bridge.test.js test/bridge-rehearsal-support.test.js test/three-agent-review.test.js test/three-agent-coordinator.test.js`
+for durable context timing, retry after SQLite capacity failures, separate
+worktrees, exact submission correlation, two-review same-SHA barriers, rejected
+stale/edited/conflicted artifacts, and cancellation/drain containment. These
+fixtures make no model requests. The rehearsal script's `--check` creates and
+archives a disposable native session; do not run it under a no-archival boundary.
+Native `--run` and the separate approval probe require explicit authorization.
+
 Completion cleanup additionally requires local `bridge approve-cleanup` approval
 with the bridge stopped. Shared task closure supplies eligibility, not authority.
 `bridge-retirement`, `bridge-config-retirement`, and `bridge-review-regressions`
 check scope/revision invalidation, revocation between effects, CLI approval and
 interrupted retirement. These use disposable worktrees and fake archival adapters;
 they do not authorize or establish real-thread cleanup.
+
+Schema5 integration coverage checks `receipt.requestId` versus the stored
+`operationId`/comment revision, combined cleanup-approval and context-timing
+status, and preserved native replica credentials (`bridge-integration`).
+`agent-bridge`, `bridge-retirement`, `three-agent-review` and
+`three-agent-coordinator` also reject unresolved operation-integrity contexts
+before dispatch, cleanup effects or accepting review evidence, while retaining
+conflict details/provenance. `operation-integrity` separately exercises real
+HTTP 409 groups, replica convergence/restart and both browser engines.

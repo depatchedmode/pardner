@@ -168,8 +168,9 @@ and details, with diagnostics on stderr. Reads do not implicitly mark comments s
 The measurable automated goal is a complete two-human/two-agent workflow across
 persisted replicas, under partitions, process kills, and acknowledgement loss,
 with no missing or duplicate acknowledged effects. The performance fixture has
-100 tasks, 400 comments, and 200 scripted updates. Required bounds are 2 seconds
-for local save/visibility, 5 seconds for offline opening, and 10 seconds for
+100 tasks, 400 comments, and 200 scripted updates. Required bounds are 2.5 seconds
+for local operation acknowledgement, 2 seconds for local UI visibility,
+5 seconds for offline opening, and 10 seconds for
 convergence. Completion requires 20 successful varied seeds and fresh-checkout
 verification, not just matching final replica states.
 

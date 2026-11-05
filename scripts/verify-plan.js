@@ -36,7 +36,8 @@ const groups = [
     name: 'bridge', scripts: ['test:runtime', 'test:cli'],
     files: names(`lib/agent-bridge.js lib/codex-bridge-adapter.js lib/bridge-paths.js lib/bridge-retirement.js
       scripts/bridge-approval-rehearsal.js scripts/bridge-codex-smoke.js scripts/bridge-real-rehearsal.js
-      support/bridge-rehearsal.js support/bridge-completion-rehearsal.js`),
+      scripts/bridge-three-agent-rehearsal.js support/bridge-rehearsal.js support/bridge-completion-rehearsal.js
+      support/coordinator-process.js support/three-agent-coordinator.js support/three-agent-review.js`),
   },
   {
     name: 'acceptance-harness', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'],
