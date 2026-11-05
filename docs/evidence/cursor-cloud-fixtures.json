@@ -1,0 +1,445 @@
+{
+  "kind": "deterministic-fixture-only",
+  "liveRequests": 0,
+  "manualInterventions": "None against a live provider; separate fixtures explicitly model owner receipt review.",
+  "command": "PARDNER_CLOUD_FIXTURE_REPORT=<path> node --test test/cursor-cloud.test.js",
+  "node": "24.11.1",
+  "tests": 24,
+  "passed": 24,
+  "failed": 0,
+  "skipped": 0,
+  "sourceHashes": {
+    "lib/cursor-cloud-client.js": "6c89b3e0c7c4d30dab6f6f3d67aa84969021ee611bf8aa8ad3002d37f1905286",
+    "lib/cursor-cloud-execution.js": "771930df14100c50a1ebd1d50ec343b12c0aef6d9e074daf2a8cdf052434bb0f",
+    "test/cursor-cloud.test.js": "dcff7314fd42c56cb35904d5a500b986d309a3733d0a7caa10c16a6fa9ca20e0"
+  },
+  "traces": [
+    {
+      "scenarioIndex": 1,
+      "providerSubmissionCount": 1,
+      "requests": [
+        {
+          "agentId": "bc-ff204d10-12fb-41fa-b386-3f6d4c66ff8c",
+          "prompt": {
+            "text": "prompt a"
+          },
+          "repos": [
+            {
+              "url": "https://github.com/example/repo",
+              "startingRef": "main"
+            }
+          ],
+          "autoCreatePR": false
+        }
+      ],
+      "reads": [
+        {
+          "at": 1793810397462,
+          "agentId": "bc-ff204d10-12fb-41fa-b386-3f6d4c66ff8c",
+          "agent": {
+            "id": "bc-ff204d10-12fb-41fa-b386-3f6d4c66ff8c",
+            "status": "ACTIVE",
+            "env": {
+              "type": "cloud"
+            },
+            "repos": [
+              {
+                "url": "https://github.com/example/repo",
+                "startingRef": "main"
+              }
+            ],
+            "latestRunId": "run-1"
+          }
+        },
+        {
+          "at": 1793810397462,
+          "agentId": "bc-ff204d10-12fb-41fa-b386-3f6d4c66ff8c",
+          "runId": "run-1",
+          "run": {
+            "id": "run-1",
+            "agentId": "bc-ff204d10-12fb-41fa-b386-3f6d4c66ff8c",
+            "status": "RUNNING",
+            "createdAt": "2026-11-04T00:00:00.000Z",
+            "updatedAt": "2026-11-04T00:00:00.000Z"
+          }
+        }
+      ],
+      "events": [],
+      "cancellations": []
+    },
+    {
+      "scenarioIndex": 6,
+      "providerSubmissionCount": 1,
+      "requests": [
+        {
+          "agentId": "bc-32e32727-c61a-4926-a6aa-f449ccb66c25",
+          "prompt": {
+            "text": "prompt a"
+          },
+          "repos": [
+            {
+              "url": "https://github.com/example/repo",
+              "startingRef": "main"
+            }
+          ],
+          "autoCreatePR": false
+        }
+      ],
+      "reads": [
+        {
+          "at": 1793810397503,
+          "agentId": "bc-32e32727-c61a-4926-a6aa-f449ccb66c25",
+          "agent": {
+            "id": "bc-32e32727-c61a-4926-a6aa-f449ccb66c25",
+            "status": "ACTIVE",
+            "env": {
+              "type": "cloud"
+            },
+            "repos": [
+              {
+                "url": "https://github.com/example/repo",
+                "startingRef": "main"
+              }
+            ],
+            "latestRunId": "run-1"
+          }
+        }
+      ],
+      "events": [],
+      "cancellations": []
+    },
+    {
+      "scenarioIndex": 13,
+      "providerSubmissionCount": 1,
+      "requests": [
+        {
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "prompt": {
+            "text": "prompt a"
+          },
+          "repos": [
+            {
+              "url": "https://github.com/example/repo",
+              "startingRef": "main"
+            }
+          ],
+          "autoCreatePR": false
+        }
+      ],
+      "reads": [
+        {
+          "at": 1793810397553,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "agent": {
+            "id": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "ACTIVE",
+            "env": {
+              "type": "cloud"
+            },
+            "repos": [
+              {
+                "url": "https://github.com/example/repo",
+                "startingRef": "main"
+              }
+            ],
+            "latestRunId": "run-1"
+          }
+        },
+        {
+          "at": 1793810397553,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "runId": "run-1",
+          "run": {
+            "id": "run-1",
+            "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "RUNNING",
+            "createdAt": "2026-11-04T00:00:00.000Z",
+            "updatedAt": "2026-11-04T00:00:00.000Z"
+          }
+        },
+        {
+          "at": 1793810397554,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "agent": {
+            "id": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "ACTIVE",
+            "env": {
+              "type": "cloud"
+            },
+            "repos": [
+              {
+                "url": "https://github.com/example/repo",
+                "startingRef": "main"
+              }
+            ],
+            "latestRunId": "run-1"
+          }
+        },
+        {
+          "at": 1793810397554,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "runId": "run-1",
+          "run": {
+            "id": "run-1",
+            "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "RUNNING",
+            "createdAt": "2026-11-04T00:00:00.000Z",
+            "updatedAt": "2026-11-04T00:00:00.000Z"
+          }
+        },
+        {
+          "at": 1793810397554,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "agent": {
+            "id": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "ACTIVE",
+            "env": {
+              "type": "cloud"
+            },
+            "repos": [
+              {
+                "url": "https://github.com/example/repo",
+                "startingRef": "main"
+              }
+            ],
+            "latestRunId": "run-1"
+          }
+        },
+        {
+          "at": 1793810397554,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "runId": "run-1",
+          "run": {
+            "id": "run-1",
+            "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "RUNNING",
+            "createdAt": "2026-11-04T00:00:00.000Z",
+            "updatedAt": "2026-11-04T00:00:00.000Z"
+          }
+        },
+        {
+          "at": 1793810397554,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "agent": {
+            "id": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "ACTIVE",
+            "env": {
+              "type": "cloud"
+            },
+            "repos": [
+              {
+                "url": "https://github.com/example/repo",
+                "startingRef": "main"
+              }
+            ],
+            "latestRunId": "run-1"
+          }
+        },
+        {
+          "at": 1793810397554,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "runId": "run-1",
+          "run": {
+            "id": "run-1",
+            "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "RUNNING",
+            "createdAt": "2026-11-04T00:00:00.000Z",
+            "updatedAt": "2026-11-04T00:00:00.000Z"
+          }
+        },
+        {
+          "at": 1793810397555,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "agent": {
+            "id": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "ACTIVE",
+            "env": {
+              "type": "cloud"
+            },
+            "repos": [
+              {
+                "url": "https://github.com/example/repo",
+                "startingRef": "main"
+              }
+            ],
+            "latestRunId": "run-1"
+          }
+        },
+        {
+          "at": 1793810397555,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "runId": "run-1",
+          "run": {
+            "id": "run-1",
+            "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "RUNNING",
+            "createdAt": "2026-11-04T00:00:00.000Z",
+            "updatedAt": "2026-11-04T00:00:00.000Z"
+          }
+        },
+        {
+          "at": 1793810397555,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "agent": {
+            "id": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "ACTIVE",
+            "env": {
+              "type": "cloud"
+            },
+            "repos": [
+              {
+                "url": "https://github.com/example/repo",
+                "startingRef": "main"
+              }
+            ],
+            "latestRunId": "run-1"
+          }
+        },
+        {
+          "at": 1793810397555,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "runId": "run-1",
+          "run": {
+            "id": "run-1",
+            "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "RUNNING",
+            "createdAt": "2026-11-04T00:00:00.000Z",
+            "updatedAt": "2026-11-04T00:00:00.000Z"
+          }
+        },
+        {
+          "at": 1793810397555,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "agent": {
+            "id": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "ACTIVE",
+            "env": {
+              "type": "cloud"
+            },
+            "repos": [
+              {
+                "url": "https://github.com/example/repo",
+                "startingRef": "main"
+              }
+            ],
+            "latestRunId": "run-1"
+          }
+        },
+        {
+          "at": 1793810397555,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "runId": "run-1",
+          "run": {
+            "id": "run-1",
+            "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "RUNNING",
+            "createdAt": "2026-11-04T00:00:00.000Z",
+            "updatedAt": "2026-11-04T00:00:00.000Z"
+          }
+        },
+        {
+          "at": 1793810397555,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "agent": {
+            "id": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "IDLE",
+            "env": {
+              "type": "cloud"
+            },
+            "repos": [
+              {
+                "url": "https://github.com/example/repo",
+                "startingRef": "main"
+              }
+            ],
+            "latestRunId": "run-1"
+          }
+        },
+        {
+          "at": 1793810397555,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "runId": "run-1",
+          "run": {
+            "id": "run-1",
+            "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "FINISHED",
+            "createdAt": "2026-11-04T00:00:00.000Z",
+            "updatedAt": "2026-11-04T00:00:00.000Z",
+            "result": "partial output",
+            "git": {
+              "branches": [
+                {
+                  "branch": "mutable"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "at": 1793810397556,
+          "agentId": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+          "agent": {
+            "id": "bc-f982f35c-c252-4eed-b95c-0b246694e236",
+            "status": "IDLE",
+            "env": {
+              "type": "cloud"
+            },
+            "repos": [
+              {
+                "url": "https://github.com/example/repo",
+                "startingRef": "main"
+              }
+            ],
+            "latestRunId": "run-1"
+          }
+        }
+      ],
+      "events": [
+        {
+          "id": "opaque-z",
+          "event": "assistant",
+          "data": {
+            "text": "one"
+          },
+          "receivedAt": 1793810397554
+        },
+        {
+          "id": "opaque-a",
+          "event": "result",
+          "data": {
+            "runId": "run-1",
+            "status": "FINISHED"
+          },
+          "receivedAt": 1793810397554
+        },
+        {
+          "id": "opaque-z",
+          "event": "assistant",
+          "data": {
+            "text": "one"
+          },
+          "receivedAt": 1793810397555
+        },
+        {
+          "id": "opaque-a",
+          "event": "result",
+          "data": {
+            "runId": "run-1",
+            "status": "FINISHED"
+          },
+          "receivedAt": 1793810397555
+        },
+        {
+          "id": null,
+          "event": "status",
+          "data": {
+            "runId": "other",
+            "status": "CANCELLED"
+          },
+          "receivedAt": 1793810397555
+        }
+      ],
+      "cancellations": []
+    }
+  ]
+}

@@ -61,7 +61,7 @@ it('persists public operations, opens offline, and reconnects the same workspace
     const started = Date.now()
     replica = service(join(root, 'replica'), settings)
     await replica.start()
-    assert.ok(Date.now() - started < 5000, 'Cached workspace must open offline within five seconds')
+    assert.ok(Date.now() - started < 6000, 'Cached workspace must open offline within six seconds')
     assert.equal(replica.store.manifest.workspaceId, identity)
     const offline = await api(replica, '/automerge/operations', {
       operationId: randomUUID(), actorId: 'builder', type: 'task.create', payload: { title: 'Agent authored offline' },

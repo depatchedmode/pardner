@@ -61,9 +61,12 @@ operations are not presented as real Claude participation.
    Create a task for the real Claude Actor on VM B's replica.
 
 CLI operation round trips, including SSH overhead, must be ≤2 seconds. Replica
-opening must be ≤5 seconds, and measured convergence must be ≤10 seconds. Timings
+opening must be ≤6 seconds, and measured convergence must be ≤10 seconds. Timings
 cover CLI visibility, not browser rendering. Assertions fail the run; a failed run
 keeps its evidence. The runner shuts down its test services on error or Ctrl-C.
+The current six-second requirement follows the [November 5 owner policy decision](PARDNER-ACCEPTANCE.md#scenario-and-bounds).
+This legacy runner retains its separate five-second readiness wait and has not
+been requalified here; no remote run is implied by the policy update.
 
 ## Real-agent step
 

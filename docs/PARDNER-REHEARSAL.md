@@ -100,7 +100,7 @@ Keep a short signoff record with:
   and model/harness versions. Never include API tokens.
 - The task ID and final workspace heads from all services.
 - Local operation acknowledgement (≤2.5 seconds), UI visibility (≤2 seconds),
-  offline opening time (≤5 seconds),
+  offline opening time (≤6 seconds),
   and convergence time after reconnection (≤10 seconds).
 - Any confusing wording, duplicate effects, lost drafts, missing context, or
   unexpected synchronization behavior, with screenshots or logs where useful.

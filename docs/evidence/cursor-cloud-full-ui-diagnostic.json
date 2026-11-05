@@ -1,0 +1,738 @@
+{
+  "scope": "One full-UI failure-capture experiment, not qualification",
+  "outcome": "passed instrumented sample; original failure remains unresolved",
+  "decisionReached": "Neither A nor B: no failure reproduced",
+  "predeclared": {
+    "budgetStart": "2026-11-05T05:52:46Z",
+    "budgetDeadline": "2026-11-05T06:12:46Z",
+    "sourceHead": "1c35881afc35b7c3d163c651400955a71622a0f9",
+    "publishedHead": "6dd4ecaddbc88bb0f92a890d30d1779646eb9081",
+    "base": "6d424e5114f51be2186ebb0e3ac2c553fc073d11",
+    "candidate": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "decisionA": "On a reproduced failure, current-document pairing/credential/config-doc-status/ticket/socket/saved state has not completed; localize only the observed incomplete transition.",
+    "decisionB": "On a reproduced failure, saved DOM exists in the current document while goto/locator reports pending navigation or replacement-document waiting.",
+    "otherwise": "Pass, stale/mixed document snapshots, or missing phase evidence stays inconclusive. No second invocation or qualification inference.",
+    "command": [
+      "npm",
+      "run",
+      "test:ui"
+    ],
+    "script": "npm run ui:build && node --test test/pardner-ui.test.js test/pardner-phone.test.js test/pardner-connection-ui.test.js test/pardner-control-ui.test.js test/markdown-privacy.test.js",
+    "observerSha256": "d5c72e2e62bf402c40980a64b3f48ee7bc8f434a7b0e2113e8aa4f131884fc62",
+    "observerSource": "output/verification/cloud-full-ui-diagnostic-20261105/observer.mjs",
+    "instrumentedFile": "test/pardner-connection-ui.test.js",
+    "assertionBehavior": "Original goto and exact saved locator args and promises retained; no awaited observer work inside five-second assertion. Failure handler captures cached state immediately. A separate allowlisted evaluate can delay failure browser cleanup up to1000ms, outside the rejected assertion.",
+    "observerEffects": [
+      "Browser function wrappers and mutation/binding callbacks may perturb scheduling/microtask order.",
+      "Node events are buffered in memory; asynchronous writes occur after browser close, not in request/locator callbacks.",
+      "Failure snapshot is after rejection and can race later state changes; cached state includes timestamps/document identity.",
+      "Only the connection-UI file is instrumented, but all five original files run with unchanged default concurrency."
+    ],
+    "originalFailureLogSha256": "d0e388283e38a04f7814a79cd32953d2fe60ae6a7491867441991120d5e60a07",
+    "historicalEvidenceSha256": "d810559911a8aa98120b362fb454fb6dd22275e63419c25e91a5fa54673f3f20"
+  },
+  "predeclaredSha256": "36e8f1ec9304d81441bffb67f1f61b3ef6054560fcf1f3d2895e9bb050ebaa64",
+  "reportedAt": "2026-11-05T06:02:55.323244+00:00",
+  "fingerprints": {
+    "before": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "after": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d"
+  },
+  "environment": {
+    "node": "v24.11.1",
+    "platform": "darwin",
+    "arch": "arm64",
+    "noNodeOptions": true,
+    "dependencies": [
+      {
+        "prefix": "",
+        "installedPackages": 96,
+        "lockSha256": "b40167effb550fd7feb01a85876c273f3fb2eedb76ad3be7dcdd1ee8704d592c"
+      },
+      {
+        "prefix": "ui-prototype/",
+        "installedPackages": 191,
+        "lockSha256": "ad58b07b1d9fbbcf8eb8a18ad5d4658b00442e04922026c813527b5a54a65649"
+      }
+    ]
+  },
+  "command": [
+    "npm",
+    "run",
+    "test:ui"
+  ],
+  "commandInvocations": 1,
+  "counts": {
+    "tests": 16,
+    "pass": 16,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "watchdog": {
+    "exitCode": 0,
+    "durationMs": 41599,
+    "timeoutSeconds": 900,
+    "survivors": 0,
+    "newScratch": 0,
+    "timedOut": false
+  },
+  "browserLaunches": [
+    {
+      "engine": "chromium",
+      "version": "151.0.7922.34"
+    },
+    {
+      "engine": "webkit",
+      "version": "26.5"
+    },
+    {
+      "engine": "chromium",
+      "version": "151.0.7922.34"
+    },
+    {
+      "engine": "webkit",
+      "version": "26.5"
+    },
+    {
+      "engine": "chromium",
+      "version": "151.0.7922.34"
+    },
+    {
+      "engine": "chromium",
+      "version": "151.0.7922.34"
+    }
+  ],
+  "observationCounts": {
+    "goto-start": 11,
+    "goto-resolved": 11,
+    "goto-rejected": 0,
+    "saved-locator-start": 9,
+    "saved-locator-resolved": 9,
+    "saved-locator-rejected": 0,
+    "failure-browser-snapshot": 0,
+    "failure-browser-snapshot-error": 0,
+    "failure-browser-snapshot-deadline": 0
+  },
+  "finalLocator": {
+    "timeoutMs": 5000,
+    "observedDurationMs": 462,
+    "start": {
+      "frame": {
+        "frameId": 1,
+        "pathname": "/pardner/",
+        "hasPair": true
+      },
+      "pendingGotos": [],
+      "pendingRequests": [
+        {
+          "id": 1,
+          "method": "GET",
+          "pathname": "/pardner/",
+          "navigation": true
+        },
+        {
+          "id": 12,
+          "method": "GET",
+          "pathname": "/pardner/",
+          "navigation": true
+        },
+        {
+          "id": 22,
+          "method": "GET",
+          "pathname": "/pardner/",
+          "navigation": true
+        },
+        {
+          "id": 41,
+          "method": "GET",
+          "pathname": "/pardner/",
+          "navigation": true
+        }
+      ],
+      "browserState": {
+        "phase": "render-state",
+        "browserAt": 90,
+        "documentAt": 1793858273434,
+        "hasPair": false,
+        "credentialPresent": false,
+        "readyState": "complete",
+        "savedVisible": false,
+        "saveStatus": [],
+        "pairInputPresent": true,
+        "pairButtonDisabled": false,
+        "expiredAlertVisible": true,
+        "pathname": "/pardner/pair",
+        "status": 400,
+        "hadPair": true,
+        "errorName": "TypeError",
+        "hasDoc": true,
+        "hasStatus": true,
+        "savedLocally": true,
+        "syncPending": false,
+        "storageError": false,
+        "code": 1005
+      },
+      "lastRender": {
+        "phase": "render-state",
+        "browserAt": 90,
+        "documentAt": 1793858273434,
+        "readyState": "complete",
+        "hasPair": false,
+        "credentialPresent": false,
+        "savedVisible": false,
+        "saveStatus": [],
+        "pairInputPresent": true,
+        "pairButtonDisabled": false,
+        "expiredAlertVisible": true,
+        "receivedAt": 1793858273526
+      },
+      "lastSocket": {
+        "phase": "ws-close",
+        "browserAt": 160,
+        "documentAt": 1793858272908,
+        "code": 1005,
+        "receivedAt": 1793858273071
+      },
+      "lastNavigation": {
+        "at": 1793858273533,
+        "frameId": 1,
+        "pathname": "/pardner/",
+        "hasPair": true
+      },
+      "lastLoad": {
+        "at": 1793858273502,
+        "event": "domcontentloaded",
+        "frameId": 1,
+        "pathname": "/pardner/",
+        "hasPair": true
+      }
+    },
+    "resolved": {
+      "frame": {
+        "frameId": 1,
+        "pathname": "/pardner/",
+        "hasPair": false
+      },
+      "pendingGotos": [],
+      "pendingRequests": [
+        {
+          "id": 1,
+          "method": "GET",
+          "pathname": "/pardner/",
+          "navigation": true
+        },
+        {
+          "id": 12,
+          "method": "GET",
+          "pathname": "/pardner/",
+          "navigation": true
+        },
+        {
+          "id": 22,
+          "method": "GET",
+          "pathname": "/pardner/",
+          "navigation": true
+        },
+        {
+          "id": 41,
+          "method": "GET",
+          "pathname": "/pardner/",
+          "navigation": true
+        },
+        {
+          "id": 52,
+          "method": "GET",
+          "pathname": "/pardner/",
+          "navigation": true
+        }
+      ],
+      "browserState": {
+        "phase": "render-state",
+        "browserAt": 89,
+        "documentAt": 1793858273836,
+        "hasPair": false,
+        "credentialPresent": true,
+        "readyState": "complete",
+        "savedVisible": true,
+        "saveStatus": [
+          "Saved locally \u00b7 synced"
+        ],
+        "pairInputPresent": false,
+        "pairButtonDisabled": false,
+        "expiredAlertVisible": false,
+        "pathname": "/automerge/ws-ticket",
+        "status": 200,
+        "hadPair": true,
+        "errorName": "TypeError",
+        "hasDoc": true,
+        "hasStatus": true,
+        "savedLocally": true,
+        "syncPending": false,
+        "storageError": false,
+        "code": 1005
+      },
+      "lastRender": {
+        "phase": "render-state",
+        "browserAt": 89,
+        "documentAt": 1793858273836,
+        "readyState": "complete",
+        "hasPair": false,
+        "credentialPresent": true,
+        "savedVisible": true,
+        "saveStatus": [
+          "Saved locally \u00b7 synced"
+        ],
+        "pairInputPresent": false,
+        "pairButtonDisabled": false,
+        "expiredAlertVisible": false,
+        "receivedAt": 1793858273926
+      },
+      "lastSocket": {
+        "phase": "ws-message",
+        "browserAt": 89,
+        "documentAt": 1793858273836,
+        "hasDoc": true,
+        "hasStatus": true,
+        "savedLocally": true,
+        "syncPending": false,
+        "storageError": false,
+        "receivedAt": 1793858273926
+      },
+      "lastNavigation": {
+        "at": 1793858273895,
+        "frameId": 1,
+        "pathname": "/pardner/",
+        "hasPair": false
+      },
+      "lastLoad": {
+        "at": 1793858273884,
+        "event": "domcontentloaded",
+        "frameId": 1,
+        "pathname": "/pardner/",
+        "hasPair": true
+      }
+    }
+  },
+  "finalSequence": [
+    {
+      "sequence": 341,
+      "phase": "goto-start",
+      "offsetFromLocatorStartMs": -2
+    },
+    {
+      "sequence": 342,
+      "phase": "navigation",
+      "frameId": 1,
+      "hasPair": true,
+      "offsetFromLocatorStartMs": 0
+    },
+    {
+      "sequence": 343,
+      "phase": "goto-resolved",
+      "offsetFromLocatorStartMs": 0
+    },
+    {
+      "sequence": 344,
+      "phase": "saved-locator-start",
+      "offsetFromLocatorStartMs": 0
+    },
+    {
+      "sequence": 346,
+      "phase": "hashchange",
+      "documentAt": 1793858273434,
+      "hasPair": true,
+      "savedVisible": false,
+      "credentialPresent": false,
+      "saveStatus": [],
+      "offsetFromLocatorStartMs": 2
+    },
+    {
+      "sequence": 347,
+      "phase": "navigation",
+      "frameId": 1,
+      "hasPair": false,
+      "offsetFromLocatorStartMs": 2
+    },
+    {
+      "sequence": 348,
+      "phase": "replace-state",
+      "documentAt": 1793858273434,
+      "hasPair": false,
+      "hadPair": true,
+      "offsetFromLocatorStartMs": 2
+    },
+    {
+      "sequence": 351,
+      "phase": "render-state",
+      "documentAt": 1793858273434,
+      "hasPair": false,
+      "savedVisible": false,
+      "credentialPresent": false,
+      "saveStatus": [],
+      "offsetFromLocatorStartMs": 4
+    },
+    {
+      "sequence": 358,
+      "phase": "render-state",
+      "documentAt": 1793858273434,
+      "hasPair": false,
+      "savedVisible": false,
+      "credentialPresent": true,
+      "saveStatus": [],
+      "offsetFromLocatorStartMs": 6
+    },
+    {
+      "sequence": 374,
+      "phase": "render-state",
+      "documentAt": 1793858273434,
+      "hasPair": false,
+      "savedVisible": false,
+      "credentialPresent": true,
+      "saveStatus": [
+        "Local service disconnected"
+      ],
+      "offsetFromLocatorStartMs": 18
+    },
+    {
+      "sequence": 379,
+      "phase": "ws-open",
+      "documentAt": 1793858273434,
+      "offsetFromLocatorStartMs": 36
+    },
+    {
+      "sequence": 380,
+      "phase": "render-state",
+      "documentAt": 1793858273434,
+      "hasPair": false,
+      "savedVisible": true,
+      "credentialPresent": true,
+      "saveStatus": [
+        "Saved locally \u00b7 synced"
+      ],
+      "offsetFromLocatorStartMs": 37
+    },
+    {
+      "sequence": 381,
+      "phase": "ws-message",
+      "documentAt": 1793858273434,
+      "hasDoc": true,
+      "hasStatus": true,
+      "savedLocally": true,
+      "syncPending": false,
+      "storageError": false,
+      "offsetFromLocatorStartMs": 38
+    },
+    {
+      "sequence": 382,
+      "phase": "observer-reentry",
+      "documentAt": 1793858273434,
+      "offsetFromLocatorStartMs": 52
+    },
+    {
+      "sequence": 384,
+      "phase": "observer-reentry",
+      "documentAt": 1793858273434,
+      "offsetFromLocatorStartMs": 294
+    },
+    {
+      "sequence": 387,
+      "phase": "navigation",
+      "frameId": 1,
+      "hasPair": true,
+      "offsetFromLocatorStartMs": 310
+    },
+    {
+      "sequence": 388,
+      "phase": "document-entry",
+      "documentAt": 1793858273836,
+      "hasPair": true,
+      "credentialPresent": true,
+      "offsetFromLocatorStartMs": 311
+    },
+    {
+      "sequence": 389,
+      "phase": "render-state",
+      "documentAt": 1793858273836,
+      "hasPair": true,
+      "savedVisible": false,
+      "credentialPresent": true,
+      "saveStatus": [],
+      "offsetFromLocatorStartMs": 315
+    },
+    {
+      "sequence": 397,
+      "phase": "render-state",
+      "documentAt": 1793858273836,
+      "hasPair": true,
+      "savedVisible": false,
+      "credentialPresent": true,
+      "saveStatus": [],
+      "offsetFromLocatorStartMs": 321
+    },
+    {
+      "sequence": 399,
+      "phase": "load",
+      "documentAt": 1793858273836,
+      "hasPair": true,
+      "savedVisible": false,
+      "credentialPresent": true,
+      "saveStatus": [],
+      "offsetFromLocatorStartMs": 350
+    },
+    {
+      "sequence": 400,
+      "phase": "load",
+      "frameId": 1,
+      "hasPair": true,
+      "offsetFromLocatorStartMs": 350
+    },
+    {
+      "sequence": 401,
+      "phase": "pageshow",
+      "documentAt": 1793858273836,
+      "hasPair": true,
+      "savedVisible": false,
+      "credentialPresent": true,
+      "saveStatus": [],
+      "offsetFromLocatorStartMs": 351
+    },
+    {
+      "sequence": 402,
+      "phase": "domcontentloaded",
+      "frameId": 1,
+      "hasPair": true,
+      "offsetFromLocatorStartMs": 351
+    },
+    {
+      "sequence": 405,
+      "phase": "render-state",
+      "documentAt": 1793858273836,
+      "hasPair": true,
+      "savedVisible": false,
+      "credentialPresent": true,
+      "saveStatus": [],
+      "offsetFromLocatorStartMs": 357
+    },
+    {
+      "sequence": 409,
+      "phase": "navigation",
+      "frameId": 1,
+      "hasPair": false,
+      "offsetFromLocatorStartMs": 362
+    },
+    {
+      "sequence": 410,
+      "phase": "replace-state",
+      "documentAt": 1793858273836,
+      "hasPair": false,
+      "hadPair": true,
+      "offsetFromLocatorStartMs": 362
+    },
+    {
+      "sequence": 413,
+      "phase": "render-state",
+      "documentAt": 1793858273836,
+      "hasPair": false,
+      "savedVisible": false,
+      "credentialPresent": true,
+      "saveStatus": [],
+      "offsetFromLocatorStartMs": 364
+    },
+    {
+      "sequence": 419,
+      "phase": "render-state",
+      "documentAt": 1793858273836,
+      "hasPair": false,
+      "savedVisible": false,
+      "credentialPresent": true,
+      "saveStatus": [],
+      "offsetFromLocatorStartMs": 370
+    },
+    {
+      "sequence": 435,
+      "phase": "render-state",
+      "documentAt": 1793858273836,
+      "hasPair": false,
+      "savedVisible": false,
+      "credentialPresent": true,
+      "saveStatus": [
+        "Local service disconnected"
+      ],
+      "offsetFromLocatorStartMs": 384
+    },
+    {
+      "sequence": 440,
+      "phase": "ws-open",
+      "documentAt": 1793858273836,
+      "offsetFromLocatorStartMs": 392
+    },
+    {
+      "sequence": 441,
+      "phase": "ws-message",
+      "documentAt": 1793858273836,
+      "hasDoc": true,
+      "hasStatus": true,
+      "savedLocally": true,
+      "syncPending": false,
+      "storageError": false,
+      "offsetFromLocatorStartMs": 393
+    },
+    {
+      "sequence": 442,
+      "phase": "render-state",
+      "documentAt": 1793858273836,
+      "hasPair": false,
+      "savedVisible": true,
+      "credentialPresent": true,
+      "saveStatus": [
+        "Saved locally \u00b7 synced"
+      ],
+      "offsetFromLocatorStartMs": 393
+    },
+    {
+      "sequence": 443,
+      "phase": "saved-locator-resolved",
+      "offsetFromLocatorStartMs": 462
+    }
+  ],
+  "finalSequenceHTTP": [
+    {
+      "phase": "response",
+      "pathname": "/pardner/pair",
+      "status": 200,
+      "offsetFromLocatorStartMs": 5
+    },
+    {
+      "phase": "response",
+      "pathname": "/pardner/config",
+      "status": 200,
+      "offsetFromLocatorStartMs": 9
+    },
+    {
+      "phase": "response",
+      "pathname": "/automerge/doc",
+      "status": 200,
+      "offsetFromLocatorStartMs": 14
+    },
+    {
+      "phase": "response",
+      "pathname": "/automerge/status",
+      "status": 200,
+      "offsetFromLocatorStartMs": 16
+    },
+    {
+      "phase": "response",
+      "pathname": "/automerge/ws-ticket",
+      "status": 200,
+      "offsetFromLocatorStartMs": 23
+    },
+    {
+      "phase": "response",
+      "pathname": "/pardner/",
+      "status": 200,
+      "offsetFromLocatorStartMs": 308
+    },
+    {
+      "phase": "response",
+      "pathname": "/pardner/assets/index-9bce7a2d.css",
+      "status": 200,
+      "offsetFromLocatorStartMs": 319
+    },
+    {
+      "phase": "response",
+      "pathname": "/pardner/assets/index-9d7a70d4.js",
+      "status": 200,
+      "offsetFromLocatorStartMs": 319
+    },
+    {
+      "phase": "response",
+      "pathname": "/pardner/config",
+      "status": 200,
+      "offsetFromLocatorStartMs": 358
+    },
+    {
+      "phase": "response",
+      "pathname": "/automerge/status",
+      "status": 200,
+      "offsetFromLocatorStartMs": 367
+    },
+    {
+      "phase": "response",
+      "pathname": "/pardner/config",
+      "status": 200,
+      "offsetFromLocatorStartMs": 373
+    },
+    {
+      "phase": "response",
+      "pathname": "/automerge/doc",
+      "status": 200,
+      "offsetFromLocatorStartMs": 381
+    },
+    {
+      "phase": "response",
+      "pathname": "/automerge/status",
+      "status": 200,
+      "offsetFromLocatorStartMs": 382
+    },
+    {
+      "phase": "response",
+      "pathname": "/automerge/ws-ticket",
+      "status": 200,
+      "offsetFromLocatorStartMs": 385
+    }
+  ],
+  "traceFiles": [
+    {
+      "name": "observer-43935.json",
+      "sha256": "0a1f536ef11957cb0931877da01266023e5fe11f877f196734cdf711e66a4e52",
+      "events": 661
+    }
+  ],
+  "logSha256": "d427b3b66c615d32ed35365c4863a27ecee8a73b280befe479d4e221c6d5de45",
+  "watchdogSha256": "12055caf9b23e54f35211e81e7a7cb6204176000fe894ea9914b14283d449f69",
+  "observer": {
+    "sha256": "d5c72e2e62bf402c40980a64b3f48ee7bc8f434a7b0e2113e8aa4f131884fc62",
+    "source": "import { createRequire } from 'node:module'\nimport { writeFile } from 'node:fs/promises'\nif (process.argv.some(arg=>arg.endsWith('test/pardner-connection-ui.test.js'))) await observe()\nasync function observe(){\n const require=createRequire(process.cwd()+'/package.json')\n const {chromium,webkit}=require('playwright')\n const records=[];let sequence=0,browserId=0,pageId=0,flushQueue=Promise.resolve()\n const target=process.env.PARDNER_FULL_UI_TRACE_DIRECTORY+'/observer-'+process.pid+'.json'\n const emit=event=>records.push({sequence:++sequence,at:Date.now(),...event})\n const flush=()=>{const snapshot=records.slice();flushQueue=flushQueue.then(()=>writeFile(target,JSON.stringify(snapshot),{mode:0o600})).catch(()=>{});return flushQueue}\n const safeUrl=url=>{try{const u=new URL(url);return {pathname:u.pathname,hasPair:new URLSearchParams(u.hash.slice(1)).has('pair')}}catch{return {pathname:'unavailable',hasPair:false}}}\n process.once('beforeExit',()=>{void flush()})\n for(const engine of [chromium,webkit]){\n  const launch=engine.launch.bind(engine)\n  engine.launch=async (...args)=>{\n   const browser=await launch(...args),bid=++browserId\n   emit({phase:'browser-launched',browserId:bid,engine:engine.name(),version:browser.version()})\n   if(engine!==webkit)return browser\n   const pendingCaptures=new Set(),newContext=browser.newContext.bind(browser)\n   browser.newContext=async (...args)=>{\n    const context=await newContext(...args)\n    const pages=new WeakMap()\n    await context.exposeBinding('__pardnerFullPairDiagnostic',({page},event)=>{\n     const p=pages.get(page);if(!p)return\n     p.browserState={...p.browserState,...event};if(event.phase==='render-state'||event.phase==='hashchange')p.lastRender={...event,receivedAt:Date.now()}\n     if(event.phase.startsWith('ws-'))p.lastSocket={...event,receivedAt:Date.now()}\n     emit({source:'page',browserId:bid,pageId:p.id,...event})\n    })\n    await context.addInitScript(()=>{\n   const send=(phase,data={})=>{void window.__pardnerFullPairDiagnostic({phase,browserAt:performance.now(),documentAt:performance.timeOrigin,...data}).catch(()=>{})}\n   if(window.__pardnerFullPairObserver){send('observer-reentry');return}\n   const hasPair=()=>new URLSearchParams(location.hash.slice(1)).has('pair')\n   const credentialPresent=()=>{try{return Object.keys(localStorage).filter(k=>k.endsWith(':credential')).some(k=>Boolean(localStorage.getItem(k)))}catch{return null}}\n   const state=()=>({documentAt:performance.timeOrigin,readyState:document.readyState,hasPair:hasPair(),credentialPresent:credentialPresent(),savedVisible:Array.from(document.querySelectorAll('.save-status')).some(e=>e.textContent==='Saved locally \u00b7 synced'),saveStatus:Array.from(document.querySelectorAll('.save-status')).map(e=>['Connecting to local service','Saving locally\u2026','Local service disconnected','Local save failed','Saved locally \u00b7 waiting for hub','Saved locally \u00b7 synced'].includes(e.textContent)?e.textContent:'other'),pairInputPresent:Boolean(document.querySelector('input[autocomplete=\"one-time-code\"]')),pairButtonDisabled:Array.from(document.querySelectorAll('button')).some(b=>b.textContent==='Connecting\u2026' && b.disabled),expiredAlertVisible:document.body?.textContent.includes('The pairing code is incorrect or expired. Generate a new code on the desktop.')??false})\n   window.__pardnerFullPairObserver={snapshot:state}\n   for(const name of ['load','pageshow','pagehide','popstate'])window.addEventListener(name,()=>send(name,state()))\n   send('document-entry',{hasPair:hasPair(),credentialPresent:credentialPresent()})\n   window.addEventListener('hashchange',()=>send('hashchange',state()))\n   const replace=history.replaceState.bind(history)\n   history.replaceState=(...args)=>{const before=hasPair();const result=replace(...args);send('replace-state',{hadPair:before,hasPair:hasPair()});return result}\n   for(const name of ['setItem','removeItem']){\n    const original=Storage.prototype[name]\n    Storage.prototype[name]=function(key,...args){const result=original.call(this,key,...args);if(String(key).endsWith(':credential'))send('credential-'+name,{credentialPresent:credentialPresent()});return result}\n   }\n   const fetcher=window.fetch.bind(window)\n   window.fetch=async (...args)=>{\n    let pathname='unknown';try{pathname=new URL(typeof args[0]==='string'?args[0]:args[0].url,location.href).pathname}catch{}\n    send('fetch-start',{pathname})\n    try{const result=await fetcher(...args);send('fetch-response',{pathname,status:result.status});return result}\n    catch(error){send('fetch-error',{pathname,errorName:error.name});throw error}\n   }\n   const Original=window.WebSocket\n   window.WebSocket=class extends Original{\n    constructor(...args){super(...args);send('ws-created');this.addEventListener('open',()=>send('ws-open'));this.addEventListener('close',event=>send('ws-close',{code:event.code}));this.addEventListener('error',()=>send('ws-error'));this.addEventListener('message',event=>{try{const m=JSON.parse(event.data);send('ws-message',{hasDoc:Boolean(m.doc),hasStatus:Boolean(m.status),savedLocally:m.status?.savedLocally??null,syncPending:m.status?.syncPending??null,storageError:Boolean(m.status?.storageError)})}catch{send('ws-non-json')}})}\n   }\n   let previous=''\n   const observe=()=>{const next=state(),key=JSON.stringify(next);if(key!==previous){previous=key;send('render-state',next)}}\n   new MutationObserver(observe).observe(document,{subtree:true,childList:true,attributes:true,characterData:true})\n   window.addEventListener('DOMContentLoaded',()=>{send('dom-content-loaded');observe()})\n   window.addEventListener('beforeunload',()=>send('before-unload',state()))\n    })\n    context.on('page',page=>{\n     const p={id:++pageId,requests:new Map(),gotos:new Map(),browserState:null,lastRender:null,lastSocket:null,lastNavigation:null,lastLoad:null};pages.set(page,p)\n     let requestId=0,gotoId=0,waitId=0,frameId=0;const requests=new WeakMap(),frames=new WeakMap()\n     const frame=()=>{const f=page.mainFrame();if(!frames.has(f))frames.set(f,++frameId);return {frameId:frames.get(f),...safeUrl(f.url())}}\n     const current=()=>({frame:frame(),pendingGotos:[...p.gotos.values()],pendingRequests:[...p.requests.values()],browserState:p.browserState,lastRender:p.lastRender,lastSocket:p.lastSocket,lastNavigation:p.lastNavigation,lastLoad:p.lastLoad})\n     const log=event=>emit({source:'driver',browserId:bid,pageId:p.id,...event})\n     const goto=page.goto.bind(page)\n     page.goto=(...args)=>{\n      const id=++gotoId;p.gotos.set(id,{id,...safeUrl(args[0])});log({phase:'goto-start',id,target:safeUrl(args[0]),frame:frame()})\n      const promise=goto(...args)\n      void promise.then(()=>{p.gotos.delete(id);log({phase:'goto-resolved',id,frame:frame()})},error=>{p.gotos.delete(id);log({phase:'goto-rejected',id,errorName:error.name,frame:frame()})}).catch(()=>{})\n      return promise\n     }\n     const getByText=page.getByText.bind(page)\n     page.getByText=(...args)=>{\n      const locator=getByText(...args)\n      if(args[0]!=='Saved locally \u00b7 synced'||args[1]?.exact!==true)return locator\n      const waitFor=locator.waitFor.bind(locator)\n      locator.waitFor=(...options)=>{\n       const id=++waitId,timeout=options[0]?.timeout??null;log({phase:'saved-locator-start',id,timeout,state:current()})\n       const promise=waitFor(...options)\n       void promise.then(()=>log({phase:'saved-locator-resolved',id,timeout,state:current()}),error=>{\n        log({phase:'saved-locator-rejected',id,timeout,errorName:error.name,navigationWaitReported:String(error.message).includes('navigation to finish'),state:current()})\n        let timer\n        const capture=Promise.race([\n         page.evaluate(()=>window.__pardnerFullPairObserver?.snapshot()??{observerPresent:false}).then(state=>log({phase:'failure-browser-snapshot',id,state}),error=>log({phase:'failure-browser-snapshot-error',id,errorName:error.name})),\n         new Promise(resolve=>{timer=setTimeout(()=>{log({phase:'failure-browser-snapshot-deadline',id});resolve()},1000)})\n        ]).finally(()=>{clearTimeout(timer);pendingCaptures.delete(capture)})\n        pendingCaptures.add(capture)\n       }).catch(()=>{})\n       return promise\n      }\n      return locator\n     }\n     page.on('request',req=>{const id=++requestId;requests.set(req,id);const r={id,method:req.method(),...safeUrl(req.url()),navigation:req.isNavigationRequest()};delete r.hasPair;p.requests.set(id,r);log({phase:'request',...r})})\n     page.on('response',res=>log({phase:'response',id:requests.get(res.request()),pathname:safeUrl(res.url()).pathname,status:res.status()}))\n     page.on('requestfinished',req=>{const id=requests.get(req);p.requests.delete(id);log({phase:'request-finished',id,pathname:safeUrl(req.url()).pathname})})\n     page.on('requestfailed',req=>{const id=requests.get(req);p.requests.delete(id);log({phase:'request-failed',id,pathname:safeUrl(req.url()).pathname})})\n     page.on('framenavigated',f=>{if(f!==page.mainFrame())return;p.lastNavigation={at:Date.now(),...frame()};log({phase:'navigation',...p.lastNavigation})})\n     for(const name of ['domcontentloaded','load'])page.on(name,()=>{p.lastLoad={at:Date.now(),event:name,...frame()};log({phase:name,...p.lastLoad})})\n     page.on('pageerror',error=>log({phase:'page-error',errorName:error.name}))\n    })\n    return context\n   }\n   const close=browser.close.bind(browser)\n   browser.close=(...args)=>{\n    const finish=promise=>{void promise.then(()=>flush(),()=>flush());return promise}\n    // Snapshot capture only delays failure cleanup, never the original locator promise.\n    if(pendingCaptures.size)return finish(Promise.allSettled([...pendingCaptures]).then(()=>close(...args)))\n    return finish(close(...args))\n   }\n   return browser\n  }\n }\n}\n"
+  },
+  "driver": {
+    "sha256": "7973b4c2aeb845f1b7a27d73199596cf615a368424e7eaadc95a0e7bd09cc0c8",
+    "source": "import pathlib,subprocess,os,json,hashlib,sys,datetime\nroot=pathlib.Path.cwd();out=root/'output/verification/cloud-full-ui-diagnostic-20261105'\nmeta=json.load(open(out/'predeclared.json'));assert hashlib.sha256((out/'observer.mjs').read_bytes()).hexdigest()==meta['observerSha256']\nassert json.loads((root/'package.json').read_text())['scripts']['test:ui']==meta['script']\nsubprocess.run(['node',str(out/'environment.mjs')],check=True)\ncode=\"import {candidateFingerprint} from './support/acceptance/candidate.js';import {writeFile} from 'node:fs/promises';const c=await candidateFingerprint();await writeFile(process.argv[1],JSON.stringify(c,null,2));console.log(c.sha256)\"\nactual=subprocess.check_output(['node','--input-type=module','-e',code,str(out/'candidate.before.json')],text=True).strip();assert actual==meta['candidate']\nenv=os.environ.copy();assert not env.get('NODE_OPTIONS');env['NODE_OPTIONS']='--import='+str(out/'observer.mjs');env['PARDNER_FULL_UI_TRACE_DIRECTORY']=str(out)\nprint('START_SINGLE_ORIGINAL_UI_SUITE '+datetime.datetime.now(datetime.timezone.utc).isoformat(),flush=True)\nresult=subprocess.run(['node','scripts/verify-watchdog.js','--timeout','900','--log',str(out/'ui.log'),'--record',str(out/'ui.watchdog.json'),'--','npm','run','test:ui'],env=env)\nprint('SINGLE_UI_SUITE_EXIT '+str(result.returncode),flush=True);sys.exit(result.returncode)\n"
+  },
+  "cleanup": {
+    "at": "2026-11-05T06:01:11.315683+00:00",
+    "supervisorPid": 43624,
+    "fingerprint": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "ownedRemainingChildren": [],
+    "watchdogs": {
+      "ui.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      }
+    },
+    "scratchRemovalNeeded": false,
+    "scope": "owned test processes only; no unrelated process termination",
+    "lockReleaseObserved": true,
+    "wrapperExitCode": 0,
+    "stableLockFileRetained": true
+  },
+  "limits": [
+    "No failure reproduced; cannot explain the original timeout or estimate its rate.",
+    "Observer callbacks/wrappers can alter scheduling and event order despite buffered asynchronous Node writes.",
+    "savedVisible means matching DOM text presence in this observer, not a computed visibility check; only the original locator establishes visibility on resolution.",
+    "Failure-time snapshot/cleanup branch was not exercised.",
+    "No direct internal Playwright navigation-barrier event was available on this pass; goto/locator promises and frame/load events were captured."
+  ],
+  "repair": null,
+  "furtherExperiments": 0,
+  "fullVerifyRun": false,
+  "acceptanceGateRun": false,
+  "qualificationDisposition": "draft/needs-qualification unchanged; prior routine failure unresolved",
+  "privacy": "Only allowlisted fields published; no URLs/fragments/codes/tokens/headers/bodies/arbitrary DOM. No private screenshots or browser trace published.",
+  "artifactPreservation": {
+    "priorFailureLogAndPublishedEvidence": "digests verified unchanged",
+    "committedHistoricalScreenshots": "all four published SHA256 values verified unchanged",
+    "sharedScreenshotOutputLimitation": "The original UI command refreshes fixed screenshot paths under output/playwright and output/verification/cloud-ui. Unpublished prior versions at those shared paths were not separately archived before this invocation; do not claim they were preserved."
+  }
+}
