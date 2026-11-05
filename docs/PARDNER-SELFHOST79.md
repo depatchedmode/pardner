@@ -1,7 +1,8 @@
 # Issue #79: frozen qualification package
 
 This is preparation for [#79](https://github.com/depatchedmode/pardner/issues/79),
-not milestone completion. No provider attempt, real approval, runtime cutover or
+not milestone completion. [Integrated automated qualification](PARDNER-SELFHOST79-QUALIFICATION.md)
+records the scoped checker/Cloud binding and full-regression results. No provider attempt, real approval, runtime cutover or
 human artifact acceptance was performed by this package. Six planned attempts and
 two separately budgeted T3 crash probes start `not-run` in
 [the proposed fixture](../support/selfhost79/fixture.json).

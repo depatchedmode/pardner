@@ -1,0 +1,115 @@
+{
+  "kind": "offline-automated-qualification-only",
+  "source": "3117fcda5e4d353f2a166f642f49c00180229b9b",
+  "base": "0e62bf7b4651d0e04f616d33344ae811e5043a94",
+  "originalPRHead": "9abaafd4fad328ebdde295e2e17d754fdf8090eb",
+  "mergeCommit": "8cab47e8c13ae2fc7d4062f4709a123191830b39",
+  "candidateBeforeSha256": "8ca60d08e1ed49e97e5a32da14f9c724b40f70ea6df5bfc91e7b0b46ac0f599d",
+  "candidateAfterSha256": "8ca60d08e1ed49e97e5a32da14f9c724b40f70ea6df5bfc91e7b0b46ac0f599d",
+  "node": "v24.11.1",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "commands": [
+    {
+      "command": "npm run ui:build",
+      "exit": 0,
+      "testPassCount": null,
+      "skips": 0,
+      "watchdogSeconds": 900,
+      "durationMs": 1656
+    },
+    {
+      "command": "Pinned Chromium and WebKit launch/close",
+      "exit": 0,
+      "testPassCount": null,
+      "skips": 0,
+      "watchdogSeconds": 900,
+      "durationMs": 991
+    },
+    {
+      "command": "node --test test/selfhost79.test.js test/selfhost79-cloud.test.js test/cursor-cloud.test.js",
+      "exit": 0,
+      "testPassCount": 39,
+      "skips": 0,
+      "watchdogSeconds": 900,
+      "durationMs": 12914
+    },
+    {
+      "command": "npm run test:verification",
+      "exit": 0,
+      "testPassCount": 39,
+      "skips": 0,
+      "watchdogSeconds": 900,
+      "durationMs": 13411
+    },
+    {
+      "command": "npm run test:runtime",
+      "exit": 0,
+      "testPassCount": 120,
+      "skips": 0,
+      "watchdogSeconds": 900,
+      "durationMs": 16316
+    },
+    {
+      "command": "npm run verify",
+      "exit": 0,
+      "testPassCount": 565,
+      "skips": 0,
+      "watchdogSeconds": 900,
+      "durationMs": 187968
+    }
+  ],
+  "fullVerifyPythonTests": 17,
+  "acceptanceSeeds": 1,
+  "acceptanceAudit": {
+    "schemaVersion": 5,
+    "operationCount": 719,
+    "snapshotHash": "efded3a90d30fe7205660399d63dbfaabc81e9d1eb7d5ba5b860d795b6b0614a",
+    "receiptCount": 719,
+    "distinctRequestAndStoredIds": true
+  },
+  "acceptanceMaximaMs": {
+    "agent-effect-ack": 162.99549999999,
+    "convergence": 3225.1794999999984,
+    "local-ack": 251.19495800000732,
+    "local-ui-visible": 45.081749999997555,
+    "offline-start": 2042.366458000004
+  },
+  "limitsMs": {
+    "ack": 2500,
+    "ui": 2000,
+    "offline": 6000,
+    "convergence": 10000,
+    "pairingLocator": 5000,
+    "helperStartup": 15000
+  },
+  "lock": {
+    "acquisitions": 1,
+    "nonblocking": true,
+    "heldAcrossChildren": true,
+    "released": true,
+    "stableFileUnlinked": false
+  },
+  "cleanup": {
+    "ownedParentPidsRemaining": 0,
+    "watchdogSurvivors": 0,
+    "newScratch": 0
+  },
+  "qualification": {
+    "repeat20Required": false,
+    "reason": "Scoped diff changes no storage/sync/delivery semantics or existing measurement; external offline evidence binding only."
+  },
+  "live": {
+    "sixAttempts": "not-run",
+    "twoT3CrashProbes": "not-run",
+    "humanApproval": "not-recorded",
+    "humanAcceptance": "not-recorded",
+    "spending": "proposal-only"
+  },
+  "historicalOwnerDeferrals": [
+    "https://github.com/depatchedmode/pardner/issues/107",
+    "https://github.com/depatchedmode/pardner/issues/108"
+  ],
+  "newFailures": [],
+  "checkerSealSha256": "be8ba6e4ffb316ac210a8d8c6a6eacf09fc213cb39f628f1000ffb120bf593f0"
+}
