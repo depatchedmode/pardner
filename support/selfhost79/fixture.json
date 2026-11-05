@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "Pardner task summary qualification fixture",
+  "candidatePath": "lib/selfhost79-task-summary.mjs",
+  "B": "Add named export summarizeTasks(tasks), a pure function returning exactly {total, closed, open}. Each input task has a status string. completed, dead-end and abandoned are closed; every other status is open. Empty input returns zeros. Do not mutate input or change any other file. Commit the change. This is an isolated proposed Pardner utility, not wired into production behavior.",
+  "C": "Fresh follow-up, disclosed only after B evidence is frozen: tasks with deleted === true must be excluded from all three counts. Preserve B behavior for all other tasks. Use the same context, a new run, and commit only the same utility file.",
+  "A": "Begin the same bounded utility work in an isolated candidate clone. The operator will interrupt while active; partial changes are evidence only. Never queue work in the provider. The operator keeps a separate follow-up held in Pardner.",
+  "timeoutsSeconds": {"acceptance": 60, "activeObservation": 120, "controllerRecovery": 60, "cancelConfirmation": 60, "attempt": 900, "nativeHumanDecision": 300, "t3CrashObservation": 120, "artifactCheck": 30, "candidateProbe": 5},
+  "proposedBudget": {"currency": "USD", "plannedAttempts": 6, "t3CrashProbes": 2, "maxReplacementAttempts": 2, "maxReplacementPerRoute": 1, "perAttempt": 10, "totalIncludingCrashProbesAndReplacements": 100, "approved": false},
+  "stopConditions": ["wrong route or duplicate submission", "ambiguous acceptance", "unexpected provider resume", "checker or historical evidence integrity mismatch", "missing real human decision", "unconfirmed cancellation", "deadline or spend cap", "runtime/schema/credential mismatch", "cannot attribute subprocess ownership", "missing provider cost accounting"],
+  "readiness": {"runtime": "not-established", "compatibleWorkspace": "not-selected", "cloudAdapter": "not-qualified", "credentials": "not-authorized", "spending": "not-authorized", "humanApproval": "not-scheduled", "checkerIsolation": "not-established"},
+  "attempts": [
+    {"id": "t3-A", "disposition": "not-run"}, {"id": "t3-B", "disposition": "not-run"}, {"id": "t3-C", "disposition": "not-run"},
+    {"id": "cloud-A", "disposition": "not-run"}, {"id": "cloud-B", "disposition": "not-run"}, {"id": "cloud-C", "disposition": "not-run"}
+  ],
+  "t3Crashes": [{"kind": "active", "disposition": "not-run"}, {"kind": "approval-blocked", "disposition": "not-run"}],
+  "replacements": [],
+  "humanVerdict": "not-recorded"
+}
