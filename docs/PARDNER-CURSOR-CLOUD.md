@@ -173,22 +173,31 @@ fixtures do not establish power-loss durability.
 
 ## Qualification and remaining decisions
 
-Deterministic tests model the documented API, not a real Cursor account. Service
-and Chromium/WebKit checks verify pane integration against disposable data, including simulated active cancellation, evidence capture and separate verdicts.
-The initial integrated routine suite passed, but its 20-seed qualification failed
-on seed 8: offline restart 5,380.912667 ms exceeded the then-current 5,000 ms limit.
-The [historical verification report](PARDNER-CURSOR-CLOUD-VERIFICATION.md) preserves
-that candidate, failure and diagnostic limits. The owner subsequently authorized
-a six-second offline acceptance policy; see the [current contract](PARDNER-ACCEPTANCE.md#scenario-and-bounds).
-The [revised-policy verification run](PARDNER-CURSOR-CLOUD-OFFLINE6000-QUALIFICATION.md)
-stopped at a WebKit pairing-readiness failure in routine UI checks; full verify
-and the fresh 20-seed gate did not run. The draft remains `needs-qualification`;
-the original offline failure is not retroactively passed.
-A [bounded WebKit pairing investigation](PARDNER-CURSOR-CLOUD-PAIRING-DIAGNOSTIC.md)
-passed one isolated instrumented candidate/main comparison without localizing
-the new UI failure. The original routine failure remains unresolved.
-A subsequent [single full-UI failure capture](PARDNER-CURSOR-CLOUD-FULL-UI-DIAGNOSTIC.md)
-also passed without reproducing the failure; it supplies no repair or final qualification.
+The [final automated qualification](PARDNER-CURSOR-CLOUD-FINAL-QUALIFICATION.md)
+passed for source `1c35881afc35b7c3d163c651400955a71622a0f9` and fingerprint
+`cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d`:
+fresh UI 16/16, full verify (552 Node tests, 17 Python tests and one acceptance
+seed), and one complete 20-seed gate. Applicable routine/model results reused
+from that exact candidate are identified separately. The audit checked all 21
+fresh reports, schema5 receipts, intended effects, snapshot hashes and current
+limits. Live dispatch remains disabled by default.
+
+The owner explicitly deferred the original unreproduced WebKit replacement-pairing
+occurrence to [#108](https://github.com/depatchedmode/pardner/issues/108) and
+authorized proceeding with qualification/merge. Its test and 5,000 ms locator wait
+remain unchanged. The [original UI failure](PARDNER-CURSOR-CLOUD-OFFLINE6000-QUALIFICATION.md),
+[isolated comparison](PARDNER-CURSOR-CLOUD-PAIRING-DIAGNOSTIC.md), and
+[full-UI diagnostic](PARDNER-CURSOR-CLOUD-FULL-UI-DIAGNOSTIC.md) remain historical
+records; no repair, attribution or retroactive pass is claimed.
+
+The [original offline failure](PARDNER-CURSOR-CLOUD-VERIFICATION.md) also remains
+unchanged: 5,380.912667 ms exceeded its former 5,000 ms bound. Explicit owner
+policy decisions set local acknowledgement to 2,500 ms and offline restart to
+6,000 ms; these are not performance repairs. UI visibility stays 2,000 ms and
+convergence 10,000 ms. See the [current contract](PARDNER-ACCEPTANCE.md#scenario-and-bounds).
+Profiling/failure-capture [#107](https://github.com/depatchedmode/pardner/issues/107)
+and pairing #108 remain open. Automated qualification is separate from native
+Cloud, independent checker and human acceptance.
 
 Before live qualification authorize a specific account/repository/key scope,
 reviewed runtime/workspace, six-attempt plan and replacement/spending budget
