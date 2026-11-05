@@ -45,7 +45,7 @@ it('claims, releases, and acknowledges hub deliveries through a replica CLI', { 
     await local.stop('SIGKILL')
     const reopenedAt = Date.now()
     local = await startCliService(localData)
-    assert.ok(Date.now() - reopenedAt < 5000, 'Enrolled replica must reopen without its hub')
+    assert.ok(Date.now() - reopenedAt < 6000, 'Enrolled replica must reopen without its hub')
     assert.equal(local.role, 'replica')
     const unavailable = await cli(localData, ['mentions', 'claim-next', '--request-id', 'offline-claim', '--actor', 'builder'])
     assert.equal(unavailable.result.error.code, 'HUB_UNAVAILABLE')

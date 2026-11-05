@@ -1,0 +1,567 @@
+{
+  "subject": "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-reliability-baseline",
+  "receipts": [
+    {
+      "operationId": "op-0bd016a4162880866a005d7c0b0b1c3667b086e4afbc9d59c60191ffa9b0aa4c",
+      "requestId": "same-key",
+      "actorId": "alice",
+      "replicaId": "left",
+      "result": {
+        "taskId": "task-21b0195a91c5f7e656cc334b"
+      },
+      "replayed": false,
+      "savedLocally": true,
+      "heads": [
+        "926293e34223249cf4371609221a684e08be9a8ff6389e9fa737530d61e461fb"
+      ]
+    },
+    {
+      "operationId": "op-b5b646243c791649243e4927053e3795a2ad29a44d7b51567a32f361db901655",
+      "requestId": "same-key",
+      "actorId": "alice",
+      "replicaId": "right",
+      "result": {
+        "taskId": "task-4c4fee7f638c09a6bb9a8713"
+      },
+      "replayed": false,
+      "savedLocally": true,
+      "heads": [
+        "f1d50cca593694bcbe361a491e854d20e08086754d7b076816c42db7fcd9f9b1"
+      ]
+    }
+  ],
+  "taskCount": 2,
+  "historyCount": 2,
+  "contexts": [
+    {
+      "task": {
+        "id": "task-21b0195a91c5f7e656cc334b",
+        "title": "First acknowledged request",
+        "description": "",
+        "status": "backlog",
+        "priority": "p2",
+        "assignee": null,
+        "tags": [],
+        "order": 1793810546101,
+        "type": "task",
+        "created_at": "2026-11-04T16:42:26.101Z",
+        "updated_at": "2026-11-04T16:42:26.101Z",
+        "created_by": "alice"
+      },
+      "revisions": {
+        "title": [
+          "op-0bd016a4162880866a005d7c0b0b1c3667b086e4afbc9d59c60191ffa9b0aa4c"
+        ],
+        "description": [
+          "op-0bd016a4162880866a005d7c0b0b1c3667b086e4afbc9d59c60191ffa9b0aa4c"
+        ],
+        "status": [
+          "op-0bd016a4162880866a005d7c0b0b1c3667b086e4afbc9d59c60191ffa9b0aa4c"
+        ],
+        "priority": [
+          "op-0bd016a4162880866a005d7c0b0b1c3667b086e4afbc9d59c60191ffa9b0aa4c"
+        ],
+        "assignee": [
+          "op-0bd016a4162880866a005d7c0b0b1c3667b086e4afbc9d59c60191ffa9b0aa4c"
+        ],
+        "tags": [
+          "op-0bd016a4162880866a005d7c0b0b1c3667b086e4afbc9d59c60191ffa9b0aa4c"
+        ],
+        "order": [
+          "op-0bd016a4162880866a005d7c0b0b1c3667b086e4afbc9d59c60191ffa9b0aa4c"
+        ],
+        "type": [
+          "op-0bd016a4162880866a005d7c0b0b1c3667b086e4afbc9d59c60191ffa9b0aa4c"
+        ]
+      },
+      "conflicts": {},
+      "comments": [],
+      "history": [
+        {
+          "operationId": "op-0bd016a4162880866a005d7c0b0b1c3667b086e4afbc9d59c60191ffa9b0aa4c",
+          "requestId": "same-key",
+          "type": "task.create",
+          "actorId": "alice",
+          "replicaId": "left",
+          "timestamp": "2026-11-04T16:42:26.101Z",
+          "fingerprint": "0a964735780c6727d64484bed96bbdd41562fbee31e82070f8970f548c380778",
+          "payload": {
+            "title": "First acknowledged request"
+          },
+          "taskId": "task-21b0195a91c5f7e656cc334b",
+          "recordIds": [
+            "task-21b0195a91c5f7e656cc334b"
+          ],
+          "changes": [
+            {
+              "field": "description",
+              "old": null,
+              "new": ""
+            },
+            {
+              "field": "priority",
+              "old": null,
+              "new": "p2"
+            },
+            {
+              "field": "status",
+              "old": null,
+              "new": "backlog"
+            },
+            {
+              "field": "assignee",
+              "old": null,
+              "new": null
+            },
+            {
+              "field": "tags",
+              "old": null,
+              "new": []
+            },
+            {
+              "field": "order",
+              "old": null,
+              "new": 1793810546101
+            },
+            {
+              "field": "type",
+              "old": null,
+              "new": "task"
+            },
+            {
+              "field": "title",
+              "old": null,
+              "new": "First acknowledged request"
+            }
+          ],
+          "result": {
+            "taskId": "task-21b0195a91c5f7e656cc334b"
+          },
+          "origins": [
+            {
+              "replicaId": "left",
+              "timestamp": "2026-11-04T16:42:26.101Z"
+            }
+          ]
+        }
+      ],
+      "veins": [],
+      "integrityConflicts": [
+        {
+          "requestId": "same-key",
+          "status": "unresolved",
+          "variants": [
+            {
+              "operationId": "op-0bd016a4162880866a005d7c0b0b1c3667b086e4afbc9d59c60191ffa9b0aa4c",
+              "requestId": "same-key",
+              "type": "task.create",
+              "actorId": "alice",
+              "replicaId": "left",
+              "timestamp": "2026-11-04T16:42:26.101Z",
+              "fingerprint": "0a964735780c6727d64484bed96bbdd41562fbee31e82070f8970f548c380778",
+              "payload": {
+                "title": "First acknowledged request"
+              },
+              "taskId": "task-21b0195a91c5f7e656cc334b",
+              "recordIds": [
+                "task-21b0195a91c5f7e656cc334b"
+              ],
+              "changes": [
+                {
+                  "field": "description",
+                  "old": null,
+                  "new": ""
+                },
+                {
+                  "field": "priority",
+                  "old": null,
+                  "new": "p2"
+                },
+                {
+                  "field": "status",
+                  "old": null,
+                  "new": "backlog"
+                },
+                {
+                  "field": "assignee",
+                  "old": null,
+                  "new": null
+                },
+                {
+                  "field": "tags",
+                  "old": null,
+                  "new": []
+                },
+                {
+                  "field": "order",
+                  "old": null,
+                  "new": 1793810546101
+                },
+                {
+                  "field": "type",
+                  "old": null,
+                  "new": "task"
+                },
+                {
+                  "field": "title",
+                  "old": null,
+                  "new": "First acknowledged request"
+                }
+              ],
+              "result": {
+                "taskId": "task-21b0195a91c5f7e656cc334b"
+              },
+              "origins": [
+                {
+                  "replicaId": "left",
+                  "timestamp": "2026-11-04T16:42:26.101Z"
+                }
+              ]
+            },
+            {
+              "actorId": "alice",
+              "changes": [
+                {
+                  "field": "description",
+                  "new": "",
+                  "old": null
+                },
+                {
+                  "field": "priority",
+                  "new": "p2",
+                  "old": null
+                },
+                {
+                  "field": "status",
+                  "new": "backlog",
+                  "old": null
+                },
+                {
+                  "field": "assignee",
+                  "new": null,
+                  "old": null
+                },
+                {
+                  "field": "tags",
+                  "new": [],
+                  "old": null
+                },
+                {
+                  "field": "order",
+                  "new": 1793810546160,
+                  "old": null
+                },
+                {
+                  "field": "type",
+                  "new": "task",
+                  "old": null
+                },
+                {
+                  "field": "title",
+                  "new": "Second acknowledged request",
+                  "old": null
+                }
+              ],
+              "fingerprint": "4a070866a745e2e20e0682576810052d22b625279f138ed044d2d1dd15fa01b3",
+              "operationId": "op-b5b646243c791649243e4927053e3795a2ad29a44d7b51567a32f361db901655",
+              "payload": {
+                "title": "Second acknowledged request"
+              },
+              "recordIds": [
+                "task-4c4fee7f638c09a6bb9a8713"
+              ],
+              "replicaId": "right",
+              "requestId": "same-key",
+              "result": {
+                "taskId": "task-4c4fee7f638c09a6bb9a8713"
+              },
+              "taskId": "task-4c4fee7f638c09a6bb9a8713",
+              "timestamp": "2026-11-04T16:42:26.160Z",
+              "type": "task.create",
+              "origins": [
+                {
+                  "replicaId": "right",
+                  "timestamp": "2026-11-04T16:42:26.160Z"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "issues": [],
+      "mentions": [],
+      "evidence": [],
+      "unreadCount": 0,
+      "workspaceId": "b00a4c63-10c0-47fe-b14f-49a5a440162f",
+      "heads": [
+        "926293e34223249cf4371609221a684e08be9a8ff6389e9fa737530d61e461fb",
+        "f1d50cca593694bcbe361a491e854d20e08086754d7b076816c42db7fcd9f9b1"
+      ]
+    },
+    {
+      "task": {
+        "id": "task-4c4fee7f638c09a6bb9a8713",
+        "title": "Second acknowledged request",
+        "description": "",
+        "status": "backlog",
+        "priority": "p2",
+        "assignee": null,
+        "tags": [],
+        "order": 1793810546160,
+        "type": "task",
+        "created_at": "2026-11-04T16:42:26.160Z",
+        "updated_at": "2026-11-04T16:42:26.160Z",
+        "created_by": "alice"
+      },
+      "revisions": {
+        "title": [
+          "op-b5b646243c791649243e4927053e3795a2ad29a44d7b51567a32f361db901655"
+        ],
+        "description": [
+          "op-b5b646243c791649243e4927053e3795a2ad29a44d7b51567a32f361db901655"
+        ],
+        "status": [
+          "op-b5b646243c791649243e4927053e3795a2ad29a44d7b51567a32f361db901655"
+        ],
+        "priority": [
+          "op-b5b646243c791649243e4927053e3795a2ad29a44d7b51567a32f361db901655"
+        ],
+        "assignee": [
+          "op-b5b646243c791649243e4927053e3795a2ad29a44d7b51567a32f361db901655"
+        ],
+        "tags": [
+          "op-b5b646243c791649243e4927053e3795a2ad29a44d7b51567a32f361db901655"
+        ],
+        "order": [
+          "op-b5b646243c791649243e4927053e3795a2ad29a44d7b51567a32f361db901655"
+        ],
+        "type": [
+          "op-b5b646243c791649243e4927053e3795a2ad29a44d7b51567a32f361db901655"
+        ]
+      },
+      "conflicts": {},
+      "comments": [],
+      "history": [
+        {
+          "actorId": "alice",
+          "changes": [
+            {
+              "field": "description",
+              "new": "",
+              "old": null
+            },
+            {
+              "field": "priority",
+              "new": "p2",
+              "old": null
+            },
+            {
+              "field": "status",
+              "new": "backlog",
+              "old": null
+            },
+            {
+              "field": "assignee",
+              "new": null,
+              "old": null
+            },
+            {
+              "field": "tags",
+              "new": [],
+              "old": null
+            },
+            {
+              "field": "order",
+              "new": 1793810546160,
+              "old": null
+            },
+            {
+              "field": "type",
+              "new": "task",
+              "old": null
+            },
+            {
+              "field": "title",
+              "new": "Second acknowledged request",
+              "old": null
+            }
+          ],
+          "fingerprint": "4a070866a745e2e20e0682576810052d22b625279f138ed044d2d1dd15fa01b3",
+          "operationId": "op-b5b646243c791649243e4927053e3795a2ad29a44d7b51567a32f361db901655",
+          "payload": {
+            "title": "Second acknowledged request"
+          },
+          "recordIds": [
+            "task-4c4fee7f638c09a6bb9a8713"
+          ],
+          "replicaId": "right",
+          "requestId": "same-key",
+          "result": {
+            "taskId": "task-4c4fee7f638c09a6bb9a8713"
+          },
+          "taskId": "task-4c4fee7f638c09a6bb9a8713",
+          "timestamp": "2026-11-04T16:42:26.160Z",
+          "type": "task.create",
+          "origins": [
+            {
+              "replicaId": "right",
+              "timestamp": "2026-11-04T16:42:26.160Z"
+            }
+          ]
+        }
+      ],
+      "veins": [],
+      "integrityConflicts": [
+        {
+          "requestId": "same-key",
+          "status": "unresolved",
+          "variants": [
+            {
+              "operationId": "op-0bd016a4162880866a005d7c0b0b1c3667b086e4afbc9d59c60191ffa9b0aa4c",
+              "requestId": "same-key",
+              "type": "task.create",
+              "actorId": "alice",
+              "replicaId": "left",
+              "timestamp": "2026-11-04T16:42:26.101Z",
+              "fingerprint": "0a964735780c6727d64484bed96bbdd41562fbee31e82070f8970f548c380778",
+              "payload": {
+                "title": "First acknowledged request"
+              },
+              "taskId": "task-21b0195a91c5f7e656cc334b",
+              "recordIds": [
+                "task-21b0195a91c5f7e656cc334b"
+              ],
+              "changes": [
+                {
+                  "field": "description",
+                  "old": null,
+                  "new": ""
+                },
+                {
+                  "field": "priority",
+                  "old": null,
+                  "new": "p2"
+                },
+                {
+                  "field": "status",
+                  "old": null,
+                  "new": "backlog"
+                },
+                {
+                  "field": "assignee",
+                  "old": null,
+                  "new": null
+                },
+                {
+                  "field": "tags",
+                  "old": null,
+                  "new": []
+                },
+                {
+                  "field": "order",
+                  "old": null,
+                  "new": 1793810546101
+                },
+                {
+                  "field": "type",
+                  "old": null,
+                  "new": "task"
+                },
+                {
+                  "field": "title",
+                  "old": null,
+                  "new": "First acknowledged request"
+                }
+              ],
+              "result": {
+                "taskId": "task-21b0195a91c5f7e656cc334b"
+              },
+              "origins": [
+                {
+                  "replicaId": "left",
+                  "timestamp": "2026-11-04T16:42:26.101Z"
+                }
+              ]
+            },
+            {
+              "actorId": "alice",
+              "changes": [
+                {
+                  "field": "description",
+                  "new": "",
+                  "old": null
+                },
+                {
+                  "field": "priority",
+                  "new": "p2",
+                  "old": null
+                },
+                {
+                  "field": "status",
+                  "new": "backlog",
+                  "old": null
+                },
+                {
+                  "field": "assignee",
+                  "new": null,
+                  "old": null
+                },
+                {
+                  "field": "tags",
+                  "new": [],
+                  "old": null
+                },
+                {
+                  "field": "order",
+                  "new": 1793810546160,
+                  "old": null
+                },
+                {
+                  "field": "type",
+                  "new": "task",
+                  "old": null
+                },
+                {
+                  "field": "title",
+                  "new": "Second acknowledged request",
+                  "old": null
+                }
+              ],
+              "fingerprint": "4a070866a745e2e20e0682576810052d22b625279f138ed044d2d1dd15fa01b3",
+              "operationId": "op-b5b646243c791649243e4927053e3795a2ad29a44d7b51567a32f361db901655",
+              "payload": {
+                "title": "Second acknowledged request"
+              },
+              "recordIds": [
+                "task-4c4fee7f638c09a6bb9a8713"
+              ],
+              "replicaId": "right",
+              "requestId": "same-key",
+              "result": {
+                "taskId": "task-4c4fee7f638c09a6bb9a8713"
+              },
+              "taskId": "task-4c4fee7f638c09a6bb9a8713",
+              "timestamp": "2026-11-04T16:42:26.160Z",
+              "type": "task.create",
+              "origins": [
+                {
+                  "replicaId": "right",
+                  "timestamp": "2026-11-04T16:42:26.160Z"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "issues": [],
+      "mentions": [],
+      "evidence": [],
+      "unreadCount": 0,
+      "workspaceId": "b00a4c63-10c0-47fe-b14f-49a5a440162f",
+      "heads": [
+        "926293e34223249cf4371609221a684e08be9a8ff6389e9fa737530d61e461fb",
+        "f1d50cca593694bcbe361a491e854d20e08086754d7b076816c42db7fcd9f9b1"
+      ]
+    }
+  ]
+}

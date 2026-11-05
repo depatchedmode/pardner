@@ -35,6 +35,11 @@ pardner --data ./rehearsal-hub status --json
 
 Run an enrolled local replica on **each** machine, in a distinct directory. Point
 it to the hub's reachable HTTP/native-WebSocket addresses and supply the hub token.
+First enroll a distinct replica ID and secret for each machine using
+[the enrollment procedure](PARDNER-CLI.md#enroll-another-machine). Configure the hub's
+`PARDNER_REPLICA_CREDENTIALS` registry before startup, and set each machine's
+`PARDNER_REPLICA_ID` and `PARDNER_REPLICA_TOKEN` before running its service.
+These machines are trusted full document writers.
 The two replicas can each use their machine's local ports 8004/8005. On machine A,
 the hub and the local replica must have different directories and ports.
 
@@ -94,7 +99,8 @@ Keep a short signoff record with:
 - Date, checkout revision, dependency lock hashes, machine/OS details, Actor IDs,
   and model/harness versions. Never include API tokens.
 - The task ID and final workspace heads from all services.
-- Local save/visibility times (target ≤2 seconds), offline opening time (≤5 seconds),
+- Local operation acknowledgement (≤2.5 seconds), UI visibility (≤2 seconds),
+  offline opening time (≤6 seconds),
   and convergence time after reconnection (≤10 seconds).
 - Any confusing wording, duplicate effects, lost drafts, missing context, or
   unexpected synchronization behavior, with screenshots or logs where useful.

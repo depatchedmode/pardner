@@ -1,0 +1,18 @@
+[
+  {
+    "operationId": "same-key",
+    "type": "task.create",
+    "actorId": "alice",
+    "payload": {
+      "title": "First acknowledged request"
+    }
+  },
+  {
+    "operationId": "same-key",
+    "type": "task.create",
+    "actorId": "alice",
+    "payload": {
+      "title": "Second acknowledged request"
+    }
+  }
+]

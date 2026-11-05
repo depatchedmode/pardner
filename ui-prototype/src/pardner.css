@@ -626,3 +626,14 @@ code {
 .issue-links {
   padding-left: 18px;
 }
+
+.integrity-conflict summary {
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.integrity-conflict pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 20rem;
+  overflow: auto;
+}

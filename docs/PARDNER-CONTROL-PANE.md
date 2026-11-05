@@ -8,7 +8,7 @@ is published to GitHub and no status moves in either direction.
 
 Execution goes through T3 Code, using the contract qualified in
 [the T3 qualification report](PARDNER-T3-QUALIFICATION.md). Cursor Cloud
-([#78](https://github.com/depatchedmode/pardner/issues/78)) is not implemented here.
+now has a separate [Cloud adapter](PARDNER-CURSOR-CLOUD.md) with live dispatch disabled by default.
 
 ## Use it
 
@@ -239,7 +239,7 @@ exercised, and no person was involved. That proof remains with
   20,000 characters. Treat it as evidence, not a transcript.
 - **Worktree threads were not qualified** and are labeled so. Child threads are
   refused. Paging through very long threads was not qualified.
-- **One provider.** Only T3 is implemented. One controller owns each thread, and the
+- **Provider boundaries.** T3 and the separate Cloud adapter have independent ledgers; live Cloud qualification is pending. One controller owns each thread, and the
   pane cannot stop a person or another tool from sending to it. It can only hold
   the thread once their run appears.
 - **Approvals and input look the same.** Both show as blocked and point to T3.

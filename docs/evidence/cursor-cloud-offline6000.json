@@ -1,0 +1,461 @@
+{
+  "scope": "PR105 revised offline acceptance policy; routine FAILED, deliberate qualification required and NOT RUN",
+  "base": "6d424e5114f51be2186ebb0e3ac2c553fc073d11",
+  "priorHead": "b7c17775eaab245d8a84fb0d0144edc9ad7eb965",
+  "testedSourceHead": "1c35881afc35b7c3d163c651400955a71622a0f9",
+  "fingerprints": {
+    "before": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "after": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "current": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d"
+  },
+  "environment": {
+    "node": "v24.11.1",
+    "platform": "darwin",
+    "arch": "arm64",
+    "noNodeOptions": true,
+    "dependencies": [
+      {
+        "prefix": "",
+        "installedPackages": 96,
+        "lockSha256": "b40167effb550fd7feb01a85876c273f3fb2eedb76ad3be7dcdd1ee8704d592c"
+      },
+      {
+        "prefix": "ui-prototype/",
+        "installedPackages": 191,
+        "lockSha256": "ad58b07b1d9fbbcf8eb8a18ad5d4658b00442e04922026c813527b5a54a65649"
+      }
+    ]
+  },
+  "policy": {
+    "outcome": "passed",
+    "priorHead": "b7c17775eaab245d8a84fb0d0144edc9ad7eb965",
+    "executableChanges": [
+      "scripts/acceptance.js",
+      "test/workspace-runtime.test.js",
+      "test/pardner-cli-mentions.test.js",
+      "test/sync-use-cases.test.js"
+    ],
+    "unchangedReviewedFiles": [
+      "support/cli-resources.js",
+      "support/reliability/profiles.json",
+      "scripts/remote/rehearse.py",
+      "automerge-sync-server.js",
+      "lib/workspace.js",
+      "lib/workspace-runtime.js",
+      "lib/durable-repo.js",
+      "lib/control-pane.js",
+      "lib/cursor-cloud-execution.js",
+      "lib/cursor-cloud-client.js",
+      "formal/lifecycle/mapping.json",
+      "docs/PARDNER-CURSOR-CLOUD-VERIFICATION.md",
+      "docs/evidence/cursor-cloud-integrated.json"
+    ],
+    "normativePaths": [
+      "README.md",
+      "docs/PARDNER-ACCEPTANCE.md",
+      "docs/PARDNER-COLLABORATION-MODES.md",
+      "docs/PARDNER-REHEARSAL.md",
+      "docs/PARDNER-REMOTE-TEST.md",
+      ".agents/skills/verify/features/offline-sync.md"
+    ],
+    "limits": {
+      "localAckMs": 2500,
+      "localVisibleMs": 2000,
+      "offlineStartMs": 6000,
+      "convergenceMs": 10000
+    },
+    "helperStartupTimeoutMs": 15000,
+    "independentReliabilityProfileOfflineMs": 5000,
+    "remoteReadinessHelperSeconds": 5,
+    "policy": "Explicit owner decision; no performance repair or retroactive pass"
+  },
+  "tiers": {
+    "routine": {
+      "scripts": [
+        "test:verification",
+        "test:qualification",
+        "test:runtime",
+        "test:cli",
+        "test:ui"
+      ],
+      "focusedCommands": [
+        "npm run verify:model",
+        "node --test test/cursor-cloud.test.js"
+      ],
+      "verify": "npm run verify",
+      "note": "`test:qualification` is a focused regression suite that belongs to routine verification; it is not the deliberate qualification tier."
+    },
+    "deliberate": {
+      "command": "npm run test:acceptance -- --repeat 20 --seed 1",
+      "required": true,
+      "note": "Run only when qualification is explicitly requested; a trigger records the obligation, it does not run the gate."
+    }
+  },
+  "commands": [
+    {
+      "name": "environment",
+      "command": [
+        "node",
+        "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-cursor-cloud/output/verification/cloud-offline6000-20261105/environment.mjs"
+      ],
+      "exitCode": 0,
+      "durationMs": 339,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {},
+      "logSha256": "60d76c72d235ab6b3c4eb8b805866222365397d9d472fef29a9cf390a0f2fc6a",
+      "watchdogSha256": "acea81dda7d8d9d199e69250743c71a38d436659765b04f7fa19d882e089489e",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "policy",
+      "command": [
+        "python3",
+        "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-cursor-cloud/output/verification/cloud-offline6000-20261105/policy-check.py"
+      ],
+      "exitCode": 0,
+      "durationMs": 537,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {},
+      "logSha256": "0a8cdad842dc13c333dc677b570753145b788f274082877b08fb84f7e716442d",
+      "watchdogSha256": "a0276d623720117ea8704635470f020e909f9697d688a9f201d3817f79b99959",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "build",
+      "command": [
+        "npm",
+        "run",
+        "ui:build"
+      ],
+      "exitCode": 0,
+      "durationMs": 1927,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {},
+      "logSha256": "a2580b549765a30b512df6db08777277233d7b3d430fce26da026515abcd0ea9",
+      "watchdogSha256": "9cc432760232df78071d449838168285fab1c4f929f4c26ddef1cf07b9beaee9",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "browser-launch",
+      "command": [
+        "node",
+        "--input-type=module",
+        "-e",
+        "import {chromium,webkit} from 'playwright'; for (const engine of [chromium,webkit]) { const b=await engine.launch({headless:true}); console.log(engine.name(),b.version()); await b.close() }"
+      ],
+      "exitCode": 0,
+      "durationMs": 1924,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {},
+      "logSha256": "0eb2b2a9ca07d0fedd25135541d1be30c5d8cff05836f62464b4686e323f6b33",
+      "watchdogSha256": "ab6d0db16df947892f4a4185b47b8fb3f28229ba4c4fb477bba7e3a18e21ff11",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "model",
+      "command": [
+        "npm",
+        "run",
+        "verify:model"
+      ],
+      "exitCode": 0,
+      "durationMs": 4939,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {},
+      "logSha256": "f201f8037a27177f63cc1b2a15e233d92036a1d419b63c22743c28310ae5b0f3",
+      "watchdogSha256": "e7417c2e716db2af1ac7c8c06029d917f67a4b67df5205ec3333d1d8b0231d19",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "offline-policy",
+      "command": [
+        "node",
+        "--test",
+        "test/workspace-runtime.test.js",
+        "test/pardner-cli-mentions.test.js",
+        "test/sync-use-cases.test.js"
+      ],
+      "exitCode": 0,
+      "durationMs": 7710,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 15,
+        "pass": 15,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "a4513714a74580e51993790415e9c1277bf9afa7cdb3f0b5440b2adbe881c908",
+      "watchdogSha256": "2998076ce22b5de01a6d268be28b78216e597bb9a3771bc72c51c5119ac2b461",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "cloud",
+      "command": [
+        "node",
+        "--test",
+        "test/cursor-cloud.test.js"
+      ],
+      "exitCode": 0,
+      "durationMs": 571,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 26,
+        "pass": 26,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "6f1573982e1c7318746495acb03bdc40becb80ab7de550ca61869be5bd00a34e",
+      "watchdogSha256": "39fe84320847720061a25c1ed7a05e49759260b42e1e395efc31f6a82e4cdfd7",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "test:verification",
+      "command": [
+        "npm",
+        "run",
+        "test:verification"
+      ],
+      "exitCode": 0,
+      "durationMs": 15024,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 39,
+        "pass": 39,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "28e20c50257ec7fc8762d2ce760f63f267059738e2bf60a285464b75411f51fa",
+      "watchdogSha256": "95f2cbb6ab8c7bdde5f8f359c28f27b1e520eecfeb1d49c419e893c9b2b88fc5",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "test:qualification",
+      "command": [
+        "npm",
+        "run",
+        "test:qualification"
+      ],
+      "exitCode": 0,
+      "durationMs": 2185,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "4ca4315fcd84bb52841eca6ce359239af426bc5dfbfc3950bdad76246604c75f",
+      "watchdogSha256": "db7e99e0d31bd517a9f4d3ede54b1fd8d5fd340c4cfffa567359ba59033df378",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "test:runtime",
+      "command": [
+        "npm",
+        "run",
+        "test:runtime"
+      ],
+      "exitCode": 0,
+      "durationMs": 24708,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 120,
+        "pass": 120,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "7a321e398481c8ef07ad93569b62b6f60f6ade1becdb255cee93815f15fcdaa2",
+      "watchdogSha256": "a9a03245c26a2d4b1e809e385f3a2a7d35b82357b29a5de0dee355dc299a8c51",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "test:cli",
+      "command": [
+        "npm",
+        "run",
+        "test:cli"
+      ],
+      "exitCode": 0,
+      "durationMs": 8858,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "88db48ac9f09aaf5593896728ed7c93f8e3cdd1dd5c6c561ad28c51bd080da58",
+      "watchdogSha256": "56d518645fffaf6e960584f72f82a70e933f38adaf53e3011897a290e141e147",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "test:ui",
+      "command": [
+        "npm",
+        "run",
+        "test:ui"
+      ],
+      "exitCode": 1,
+      "durationMs": 91643,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 16,
+        "pass": 15,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "d0e388283e38a04f7814a79cd32953d2fe60ae6a7491867441991120d5e60a07",
+      "watchdogSha256": "f5528857032f65f3c2cb7231623a2bdbedb26c9b93a942879eb668a3a054a7da",
+      "survivors": 0,
+      "newScratch": 0
+    }
+  ],
+  "routineOutcome": "failed",
+  "qualificationOutcome": "required, not run",
+  "failure": {
+    "test": "recovers pairing after network failure, credential rotation, and replacement links in webkit",
+    "location": "test/pardner-connection-ui.test.js:86",
+    "message": "locator.waitFor: Timeout 5000ms exceeded waiting for exact Saved locally \u00b7 synced after replacement pairing navigation",
+    "timingKind": "independent UI readiness wait; not offline restart acceptance",
+    "cause": "unknown; no diagnosis or retry authorized in this wave",
+    "rawLogPrivacy": "contains disposable pairing material; private source retained, only digest published"
+  },
+  "notRun": [
+    "npm run verify",
+    "npm run test:acceptance -- --repeat 20 --seed 1"
+  ],
+  "cleanup": {
+    "at": "2026-11-05T05:36:04.628803+00:00",
+    "supervisorPid": 46368,
+    "fingerprint": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "ownedRemainingChildren": [],
+    "watchdogs": {
+      "test:verification.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "build.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "test:ui.watchdog.json": {
+        "exitCode": 1,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "test:cli.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "cloud.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "environment.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "model.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "offline-policy.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "browser-launch.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "test:runtime.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "test:qualification.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "policy.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      }
+    },
+    "scratchRemovalNeeded": false,
+    "scope": "owned test processes only; no unrelated process termination",
+    "lockReleaseObserved": true,
+    "wrapperExitCode": 0,
+    "stableLockFileRetained": true
+  },
+  "history": {
+    "failureReport": "docs/PARDNER-CURSOR-CLOUD-VERIFICATION.md",
+    "failureEvidence": "docs/evidence/cursor-cloud-integrated.json",
+    "failureEvidenceSha256": "e30e6a722a6c1108f27b2033a07883911ad707b5a0391f022e9b7e6d0d2a5cc8",
+    "originalOfflineMs": 5380.912666999968,
+    "originalLimitMs": 5000,
+    "originalOutcome": "failed, unchanged",
+    "diagnosticArms": "both retained unchanged in original evidence, not counted as new qualification",
+    "ownerDecision": "6,000ms offline requirement, not a repair; startup cause deferred until profiling #107"
+  },
+  "liveRequests": 0,
+  "noNodeOptions": true,
+  "artifactDigests": {
+    "plan.json": "756e5f433a025728f9d842e5e183fb4b72aaa973051b46d73b4d24aee79041dc",
+    "policy-check.py": "d6a6c13d552a46eab8e60573e2b8ae0321ba954d57e51d81548fc7c0af3e37ec",
+    "policy-check.json": "d6583938dd50effab3d293fb20b191fae2fd2e0a90ec613546366657ea6bc6d3",
+    "routine.py": "5e783ffefc8359c3b6e51c28562343fe0dbc3968bb756f01f8e53ec9d6ebf617",
+    "environment.mjs": "2b9564ffe7e20bd45a2670bee2205f4802647c839ff8841cb6afa953bec53114",
+    "fixture-traces-cloud.json": "48483a3b06b19f8056759acf4260b891c1c76acbecf64d197011689eaa39e455",
+    "cleanup.json": "8aa97b2b7e9c81b9b332ddfd8ee74b7e8356b54a2113abdee51c0391ace4b6da"
+  },
+  "browserLaunches": {
+    "chromium": "151.0.7922.34",
+    "webkit": "26.5"
+  },
+  "model": {
+    "states": 174614,
+    "transitions": 679456,
+    "scope": "bounded lifecycle model and mapping; no Cloud API proof"
+  },
+  "publicationClassification": "Existing four synthetic PNGs retain the explicit manual evidence-only disposition; no new PNG or planner change."
+}

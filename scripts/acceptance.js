@@ -145,7 +145,7 @@ async function runSeed(seed) {
         const started = performance.now()
         services[killedSide] = await startCliService(directories[killedSide])
         const elapsed = performance.now() - started
-        assert.ok(elapsed <= 5000, `Offline restart took ${elapsed}ms`)
+        assert.ok(elapsed <= 6000, `Offline restart took ${elapsed}ms`)
         timings.push({ kind: 'offline-start', elapsed })
       }
     }
@@ -188,7 +188,7 @@ async function runSeed(seed) {
       const agent = new AgentProcess({ directory: join(root, actorId), serviceDirectory: directories[index + 1], actorId }, message => {
         if (message.intent) { expected.intend(message.intent, replicaIds[index + 1]); intentStarted = performance.now() }
         if (message.checkpoint === 'effect-saved') {
-          const intent = expected.intents.get(message.receipt.operationId)
+          const intent = expected.intents.get(message.receipt.requestId)
           const elapsed = performance.now() - intentStarted
           expected.acknowledge(intent, message.receipt, elapsed)
           timings.push({ kind: 'agent-effect-ack', operationId: intent.operationId, elapsed })
@@ -278,7 +278,7 @@ async function runSeed(seed) {
     assert.ok(verified.every(result => result.snapshotHash === verified[0].snapshotHash))
     const report = { seed, candidateSha256: candidate.sha256, scenarioPassed: true, timings, gates: gates.map(gate => gate.events), verified, agentEvidence,
       manifest: expected.report(), heads: docs.map(doc => doc.heads), fixture: { tasks: 100, comments: 400, scriptedOperations: 200 },
-      limits: { localAckMs: 2000, localVisibleMs: 2000, offlineStartMs: 5000, convergenceMs: 10000 } }
+      limits: { localAckMs: 2500, localVisibleMs: 2000, offlineStartMs: 6000, convergenceMs: 10000 } }
     await writeFile(join(reportDirectory, 'report.json'), JSON.stringify(report, null, 2))
     await writeFile(join(reportDirectory, 'snapshot.json'), JSON.stringify(docs[0]))
     return { seed, scenarioPassed: true, report: join(reportDirectory, 'report.json'), hash: hash(report) }

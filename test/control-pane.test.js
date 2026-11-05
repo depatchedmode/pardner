@@ -8,6 +8,7 @@ import { request as httpRequest } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import AutomergeSyncServer from '../automerge-sync-server.js'
 import { ACTORS } from '../support/workspace-test.js'
+import { FakeCursorCloud } from '../support/fake-cursor-cloud.js'
 import { FakeT3 } from '../support/fake-t3-server.js'
 
 const THREAD = 'thread-pardner'
@@ -17,7 +18,7 @@ const THREAD = 'thread-pardner'
  * a scripted T3. Polling is manual (`/pardner/control/poll`) so each step is
  * deterministic; restarts reopen the same data directory as a new process would.
  */
-async function withControl(run, { version, pollMs = 60_000, staleAfterMs = 60_000 } = {}) {
+async function withControl(run, { version, pollMs = 60_000, staleAfterMs = 60_000, cloud = {} } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-control-'))
   const t3 = await new FakeT3({ version }).start()
   t3.thread(THREAD)
@@ -25,7 +26,7 @@ async function withControl(run, { version, pollMs = 60_000, staleAfterMs = 60_00
   let server
   const open = async () => {
     server = new AutomergeSyncServer({ directory, actors: ACTORS, env: {}, apiToken: 'test-token', httpPort: 0, wsPort: 0, logger: {},
-      control: { pollMs, staleAfterMs, clock: () => Date.now() + time.offset } })
+      control: { cloud, pollMs, staleAfterMs, clock: () => Date.now() + time.offset } })
     await server.start()
   }
   const api = async (path, body, headers = {}) => {
@@ -374,3 +375,51 @@ it('defers startup recovery, rather than skipping it, while T3 is unreachable at
   assert.deepEqual([(await execution('during-outage')).state, (await execution('during-outage')).runId], ['running', runId])
   assert.equal(t3.sends.length, 1)
 }))
+
+it('Cloud API reserves a separate provider context, authorizes intent, and never enables dispatch implicitly', async () => withControl(async f => {
+  const taskId = await f.setup()
+  const mapping = { contextId: 'cloud', projectId: 'pardner', actorId: 'reviewer', allowedTaskIds: [taskId], allowedFromActorIds: ['alice'], repository: 'https://github.com/depatchedmode/pardner', startingRef: 'main' }
+  const context = await f.ok('/pardner/control/cloud/contexts', mapping)
+  assert.match(context.agentId, /^bc-/)
+  const intent = { executionId: 'cloud-a', contextId: 'cloud', actorId: 'reviewer', taskId, fromActorId: 'alice', text: 'Review' }
+  const rejected = await f.api('/pardner/control/cloud/executions', { ...intent, taskId: 'wrong' })
+  assert.equal(rejected.httpStatus, 403)
+  await f.ok('/pardner/control/cloud/executions', intent)
+  let snapshot = await f.poll()
+  assert.equal(snapshot.cloud.dispatchEnabled, false); assert.equal(snapshot.cloud.executions[0].submissions, 0)
+  assert.equal(snapshot.cloud.contexts[0].location.kind, 'cloud'); assert.equal('worktreePath' in snapshot.cloud.contexts[0].location, false)
+  assert.equal((await f.api('/pardner/control/cloud/executions/cancel', { ...intent, fromActorId: 'bob' })).httpStatus, 403)
+  await f.restart(); snapshot = await f.poll()
+  assert.equal(snapshot.cloud.executions[0].state, 'queued'); assert.equal(snapshot.cloud.executions[0].runId, null)
+  await f.ok('/pardner/control/cloud/executions/cancel', intent)
+  snapshot = await f.poll(); assert.equal(snapshot.cloud.executions[0].outcome, 'WITHDRAWN')
+  assert.equal(snapshot.cloud.executions[0].submissions, 0)
+}))
+
+it('Cloud service freezes exact cancelled evidence before the next run, with separate authorized verdicts', async () => {
+  const transport = new FakeCursorCloud()
+  await withControl(async f => {
+    const taskId = await f.setup()
+    await f.ok('/pardner/control/cloud/contexts', { contextId: 'cloud', projectId: 'pardner', actorId: 'reviewer', allowedTaskIds: [taskId], allowedFromActorIds: ['alice'], repository: 'https://github.com/depatchedmode/pardner', startingRef: 'main' })
+    const authority = { actorId: 'reviewer', taskId, fromActorId: 'alice' }
+    const intent = { executionId: 'a', contextId: 'cloud', ...authority, text: 'Review' }
+    await f.ok('/pardner/control/cloud/executions', intent); await f.poll()
+    await f.ok('/pardner/control/cloud/executions', { ...intent, executionId: 'b', text: 'Follow up' }); await f.poll()
+    assert.equal(transport.submissions.length, 1)
+    await f.ok('/pardner/control/cloud/executions/cancel', { executionId: 'a', ...authority })
+    await f.restart(); let snapshot = await f.poll()
+    assert.equal(snapshot.cloud.executions[0].outcome, 'CANCELLED'); assert.equal(snapshot.cloud.executions[1].state, 'queued')
+    const frozen = await f.ok('/pardner/control/cloud/executions/freeze', { executionId: 'a', ...authority, commit: 'a'.repeat(40), diff: 'fixture diff', tests: 'fixture checker: passed' })
+    assert.equal(frozen.runId, 'run-1')
+    const verdict = { executionId: 'a', kind: 'checker', verdict: 'accepted', actorId: 'reviewer', evidence: 'same Actor' }
+    assert.equal((await f.api('/pardner/control/cloud/executions/verdicts', verdict)).httpStatus, 403)
+    await f.ok('/pardner/control/cloud/executions/verdicts', { ...verdict, actorId: 'builder', evidence: 'independent fixture check' })
+    await f.ok('/pardner/control/cloud/executions/verdicts', { ...verdict, kind: 'human', actorId: 'alice', evidence: 'simulated human record; no real human acceptance' })
+    await f.ok('/pardner/control/cloud/contexts/release', { contextId: 'cloud', evidence: 'reviewed partial effects' }); await f.poll()
+    snapshot = await f.poll()
+    assert.equal(snapshot.cloud.executions[1].runId, 'run-2')
+    assert.equal(snapshot.cloud.executions[0].evidence.sha256, frozen.sha256)
+    assert.deepEqual(snapshot.cloud.executions[0].verdicts.map(v => v.kind), ['checker', 'human'])
+    assert.equal(transport.submissions.length, 2)
+  }, { cloud: { transport, dispatchEnabled: true } })
+})

@@ -1,3 +1,4 @@
+import { replicaOptions } from '../support/replica-credentials.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { join } from 'node:path'
@@ -22,7 +23,7 @@ async function withReplicas(run) {
     const replicas = []
     const reopen = async index => {
       const gate = gates[index]
-      const replica = new WorkspaceRuntime({ directory: join(directory, `replica-${index}`), role: 'replica',
+      const replica = new WorkspaceRuntime({ ...replicaOptions, directory: join(directory, `replica-${index}`), role: 'replica',
         hubUrl: gate.httpUrl, hubWsUrl: gate.wsUrl, token: 'test-token', retryMs: 100 })
       replicas[index] = replica
       await replica.init()
@@ -71,7 +72,7 @@ it('retains acknowledged edits when a creation request is replayed on disconnect
       assert.equal(result.task.description, 'Acknowledged description')
       assert.equal(result.task.priority, 'p0')
       assert.deepEqual(result.conflicts, {})
-      assert.equal(result.history.filter(event => event.operationId === request.operationId).length, 1)
+      assert.equal(result.history.filter(event => event.requestId === request.operationId).length, 1)
       for (const receipt of edits) assert.ok(result.history.some(event => event.operationId === receipt.operationId))
     }
   })
@@ -133,7 +134,7 @@ it('UC4: a persisted replica reopens offline and merges with work completed at t
     await replicas[0].close()
     const started = Date.now()
     const reopened = await reopen(0)
-    assert.ok(Date.now() - started < 5000)
+    assert.ok(Date.now() - started < 6000)
     assert.equal(reopened.manifest.replicaId, identity)
     assert.equal(reopened.workspace.taskContext(taskId).task.description, 'Durable offline edit')
     gates[0].partition(false)

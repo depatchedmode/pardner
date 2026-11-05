@@ -1,0 +1,657 @@
+{
+  "scope": "FAILED integrated PR105 qualification; completed routine evidence only; no live Cloud/provider or human acceptance",
+  "base": "6d424e5114f51be2186ebb0e3ac2c553fc073d11",
+  "testedSourceHead": "8415612454145de6831393b76d10c43b536e9523",
+  "fingerprint": "f0b8d0b5e5794715086a55f6ed2f146a683bb12af7a94a5da73315631ec24b1f",
+  "node": "24.11.1",
+  "platform": "darwin",
+  "tiers": {
+    "routine": {
+      "scripts": [
+        "test:verification",
+        "test:qualification",
+        "test:runtime",
+        "test:cli",
+        "test:ui"
+      ],
+      "focusedCommands": [
+        "npm run verify:model",
+        "node --test test/cursor-cloud.test.js"
+      ],
+      "verify": "npm run verify",
+      "note": "`test:qualification` is a focused regression suite that belongs to routine verification; it is not the deliberate qualification tier."
+    },
+    "deliberate": {
+      "command": "npm run test:acceptance -- --repeat 20 --seed 1",
+      "required": true,
+      "note": "Run only when qualification is explicitly requested; a trigger records the obligation, it does not run the gate."
+    }
+  },
+  "qualificationPassed": false,
+  "commands": [
+    {
+      "name": "build",
+      "command": [
+        "npm",
+        "run",
+        "ui:build"
+      ],
+      "exitCode": 0,
+      "durationMs": 1598,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {},
+      "logSha256": "52c4de9e8f169c496adc9e138669ba6b4bbd38cbd42974dc0cd08fae5d3e65da",
+      "watchdogSha256": "b3af50a9314c4d20d65a9fa8a41433e676f2315f0fb76dd6ed9175277e9df102",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "model",
+      "command": [
+        "npm",
+        "run",
+        "verify:model"
+      ],
+      "exitCode": 0,
+      "durationMs": 4871,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {},
+      "logSha256": "dac6f776dc25ba1dc090d4d7c6735d84002ae3b4c087e8a23be9d3ceac2be085",
+      "watchdogSha256": "daf504292427dc8aab0139f65d4cab761f41aa5181b08eb300714d68e8310766",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "cloud",
+      "command": [
+        "node",
+        "--test",
+        "test/cursor-cloud.test.js"
+      ],
+      "exitCode": 0,
+      "durationMs": 517,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 26,
+        "pass": 26,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "2ae7dde9cb81a52a2bb7ce650fa34a39e7f9cb1dd39262d95c1f1ff6bab88c45",
+      "watchdogSha256": "50ddc7cb3ece2f8389b3e36735b4b755545f55eaa922532de93c7a44bfee5b7e",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "test:verification",
+      "command": [
+        "npm",
+        "run",
+        "test:verification"
+      ],
+      "exitCode": 0,
+      "durationMs": 13754,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 39,
+        "pass": 39,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "104eb4333d57b39dc90155e30d6ca77e6eb081e28c0e97814e579a63445e3ab7",
+      "watchdogSha256": "5b89d53cacea001e858175446b6d1034f4b5819203f3d53a741730685e488236",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "test:qualification",
+      "command": [
+        "npm",
+        "run",
+        "test:qualification"
+      ],
+      "exitCode": 0,
+      "durationMs": 2020,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "415f9a7dc7c5780d2dde164e2318f3b89e4bfce401085e441b1dae510692041c",
+      "watchdogSha256": "a72bc164756a05074f816409abcc8a1d319c8974dfcb140b401c0bbdfd08d42e",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "test:runtime",
+      "command": [
+        "npm",
+        "run",
+        "test:runtime"
+      ],
+      "exitCode": 0,
+      "durationMs": 16971,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 120,
+        "pass": 120,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "ac819fd6b996acf6296a5a5915a75bac950864375a54c2b2c40574db730db491",
+      "watchdogSha256": "92f8a357a66a8ceedcc93e271517b048580bc5496539afaa57948634557489b9",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "test:cli",
+      "command": [
+        "npm",
+        "run",
+        "test:cli"
+      ],
+      "exitCode": 0,
+      "durationMs": 4455,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "398c7be865ada3d380d057df5f5733116f4dc5aebabacca5f607bdbf8b2ca1f5",
+      "watchdogSha256": "6a00ad8b000728eecda5b8c3db8a5076f9ebc7e075188d1f06af75a09dd00dbd",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "test:ui",
+      "command": [
+        "npm",
+        "run",
+        "test:ui"
+      ],
+      "exitCode": 0,
+      "durationMs": 42099,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 16,
+        "pass": 16,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "a0a5f884ba5f86adf3ef85e0dc1cef474d309cb827ed0297588450a4b44bbb40",
+      "watchdogSha256": "9cc4ed9f19f4320c093dbe10319d752e51707e8003e47ab6520512fb57858058",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "verify",
+      "command": [
+        "npm",
+        "run",
+        "verify"
+      ],
+      "exitCode": 0,
+      "durationMs": 185888,
+      "watchdogTimeoutSeconds": 900,
+      "counts": {
+        "tests": 552,
+        "pass": 552,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "f00526f9ad8c2be101a8039263af552e0ef7a3d72849aa25a2435da215f2b6fd",
+      "watchdogSha256": "96c9e4845c804662ca7eca94f9acc1525d4aca73e930f5a88b14b628be08557c",
+      "survivors": 0,
+      "newScratch": 0
+    },
+    {
+      "name": "qualification",
+      "command": [
+        "npm",
+        "run",
+        "test:acceptance",
+        "--",
+        "--repeat",
+        "20",
+        "--seed",
+        "1"
+      ],
+      "exitCode": 1,
+      "durationMs": 1060926,
+      "watchdogTimeoutSeconds": 3600,
+      "counts": {},
+      "logSha256": "813f79a306be76d49ba66e7c6c660e1e18afc859c32bec0196294e365a40dac2",
+      "watchdogSha256": "625c6c508aafbeff3c8d02e777de7ef0e9630a3a24876a145241cd8752ba373d",
+      "survivors": 0,
+      "newScratch": 0
+    }
+  ],
+  "acceptance": [
+    {
+      "log": "verify.log",
+      "output": "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-cursor-cloud/output/acceptance/2026-11-05T04-42-04.971Z",
+      "count": 1,
+      "seeds": [
+        {
+          "seed": 1,
+          "reportHash": "20cb266c80eb55bc1abef78e5adf550cfec015ccd5f044aec574936e63757fd6",
+          "snapshotHash": "103645b9d7d324b4a0427520822c42f14e149f5a2e53b01242efe839ab0d56db",
+          "operationCount": 719,
+          "receiptMaxMs": 252.9429580000142,
+          "maxima": {
+            "local-ack": 252.9429580000142,
+            "convergence": 3071.923416999998,
+            "local-ui-visible": 42.96958299999824,
+            "offline-start": 1993.2918749999953,
+            "agent-effect-ack": 169.31154199999582
+          }
+        }
+      ]
+    },
+    {
+      "log": "qualification.log",
+      "output": "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-cursor-cloud/output/acceptance/2026-11-05T04-44-09.155Z",
+      "count": 7,
+      "seeds": [
+        {
+          "seed": 1,
+          "reportHash": "d0389e324dc7f9df0673e894a1c82f7fc868a286998bc228dd9bd6bb8f880d02",
+          "snapshotHash": "92f5dd31d84959e9cd030f14707ab3eacf329ce3b4166c32254a6e1549e8446d",
+          "operationCount": 719,
+          "receiptMaxMs": 257.0084999999963,
+          "maxima": {
+            "local-ack": 257.0084999999963,
+            "convergence": 3057.166916000002,
+            "local-ui-visible": 59.74275000000489,
+            "offline-start": 2048.921082999994,
+            "agent-effect-ack": 162.99595799999952
+          }
+        },
+        {
+          "seed": 2,
+          "reportHash": "3e1cae62093df20ac81a2bf9acddbb9d4e26a08aa39f697c5c9d41b2d957c878",
+          "snapshotHash": "f331917918025517aa8e5845ba09c65da03f583da586ae57315f297cfdd3fb76",
+          "operationCount": 719,
+          "receiptMaxMs": 253.73733399997582,
+          "maxima": {
+            "local-ack": 253.73733399997582,
+            "convergence": 2329.4104170000064,
+            "local-ui-visible": 66.81637499999488,
+            "offline-start": 1986.210374999995,
+            "agent-effect-ack": 175.26008300000103
+          }
+        },
+        {
+          "seed": 3,
+          "reportHash": "17ec4ec7bee5dd6458c81c3e82f7c06d76538734823da178c104d6c58aa36c6c",
+          "snapshotHash": "38b8746bb301ce75bb49708d1353408cf3fb95f1a2e9bfbe5f8c5827467c4ebf",
+          "operationCount": 719,
+          "receiptMaxMs": 255.20008300000336,
+          "maxima": {
+            "local-ack": 255.20008300000336,
+            "convergence": 2749.782917000004,
+            "local-ui-visible": 58.42691600002581,
+            "offline-start": 2011.5195419999654,
+            "agent-effect-ack": 162.58733299997402
+          }
+        },
+        {
+          "seed": 4,
+          "reportHash": "352295803cc57e2a7c59ce3c7d9bd37b1f741ca157632dd3b45dcfc2f56ff0fb",
+          "snapshotHash": "631702688b887fed57561dc60fab25ec7a50c9e986e3a9511bef3ca4aee69db8",
+          "operationCount": 719,
+          "receiptMaxMs": 269.5482079999638,
+          "maxima": {
+            "local-ack": 269.5482079999638,
+            "convergence": 1977.123499999987,
+            "local-ui-visible": 62.53833399998257,
+            "offline-start": 1992.8244159999886,
+            "agent-effect-ack": 169.41029199998593
+          }
+        },
+        {
+          "seed": 5,
+          "reportHash": "a0a7e4123954719fca2aef2d8a35e62dd13553b2127eef44b3a802bfdd42cb35",
+          "snapshotHash": "eaa64aa2e6e8132448e009482ff982676fb430b89684b8534d3e1abb79eb37c0",
+          "operationCount": 719,
+          "receiptMaxMs": 253.9409170000581,
+          "maxima": {
+            "local-ack": 253.9409170000581,
+            "convergence": 2134.4884999999776,
+            "local-ui-visible": 47.925417000078596,
+            "offline-start": 2067.983125000028,
+            "agent-effect-ack": 161.07158400001936
+          }
+        },
+        {
+          "seed": 6,
+          "reportHash": "f7ee24363ba9b2a414a234323c6a64562da8858a2fa96657368b2cfb1e29c531",
+          "snapshotHash": "69b8270b523270130ea902de94d26d1b95b300b8c732eea71c88c818fd6e5ca3",
+          "operationCount": 719,
+          "receiptMaxMs": 410.8217500000028,
+          "maxima": {
+            "local-ack": 410.8217500000028,
+            "convergence": 2945.354333000025,
+            "local-ui-visible": 95.13950000004843,
+            "offline-start": 2925.46170799993,
+            "agent-effect-ack": 211.3825829999987
+          }
+        },
+        {
+          "seed": 7,
+          "reportHash": "6069633b8fde76445c3242b825c0051879974885769bd9d50e5efbf2795ee908",
+          "snapshotHash": "9d572a4b8c0f5ab5d9aafb1cae0774aa23e6231639566eae1c27e7013bc14732",
+          "operationCount": 719,
+          "receiptMaxMs": 311.8085420000134,
+          "maxima": {
+            "local-ack": 311.8085420000134,
+            "convergence": 3108.193290999974,
+            "local-ui-visible": 80.2570419999538,
+            "offline-start": 2001.5202919999138,
+            "agent-effect-ack": 166.7702499999432
+          }
+        }
+      ]
+    }
+  ],
+  "qualificationFailure": {
+    "seed": 8,
+    "error": "Offline restart took 5380.912666999968ms",
+    "offlineStartMs": 5380.912666999968,
+    "limitMs": 5000,
+    "failureFileSha256": "f9a768695aed4944f65b593f52984e9e9c7a10f240489842e7c42478f943f3d2",
+    "receiptCount": 595,
+    "receiptMaxMs": 714.6463750000112,
+    "effectsVerified": false
+  },
+  "priorFailures": [
+    {
+      "log": "cloud.log",
+      "cause": "Test assumed SQLite retains the repaired journal pathname; corrected to assert the still-open inode mode.",
+      "sha256": "9b53c762c88038cfc0839f5a1e07c6bf8e7d51499252d09b4795c94cb818f9e8"
+    },
+    {
+      "log": "cloud-2.log",
+      "cause": "Shared-fixture extraction moved test authority and altered child import; restored; 21 exact owned scratch directories removed.",
+      "sha256": "343357bb22a927c1a1dffc483b85568c2be6640556282a8f3cadcba9cd24aad0"
+    },
+    {
+      "log": "cloud-ui-3.log",
+      "cause": "Cloud labels made older pane selectors ambiguous; exact Project ID and Agent Actor selectors preserve expectations.",
+      "sha256": "bf59ebbdc63fc51a8c22e70cac6ec61df692b2bc8e56c78d9009bdd652455d65"
+    }
+  ],
+  "sourceHashes": {
+    "lib/cursor-cloud-client.js": "6c89b3e0c7c4d30dab6f6f3d67aa84969021ee611bf8aa8ad3002d37f1905286",
+    "lib/cursor-cloud-execution.js": "a3f1fe2f62da910dc2cab76d940d93b623185af8f527991468df7861420164e0",
+    "lib/control-pane.js": "bc8ff2e744218c09d4aa00137ab73b0f95de590764305dbceb08c5d6764fbae5",
+    "support/fake-cursor-cloud.js": "f05dac2aaef7844405b836d10edaf66908c2dc24a8e8226331576d5dc5552d33",
+    "test/cursor-cloud.test.js": "92c342fe7e3a9ddde411f8f1ce03976f81267fc6ca0bc74159102eadb75da80b",
+    "test/control-pane.test.js": "a0965dbd63a495a86dabc1919194dc2271b2dd6f28459ac0730dc7f72434429d",
+    "test/pardner-control-ui.test.js": "1db1d7726585ac9e71baa489e57acf1a8bd1abbf1b207721bc6b5bf409512520",
+    "automerge-sync-server.js": "8cd603a75d94393937dd9ad613c6a73250089999ce92e05943cc222c273d9f84",
+    "formal/lifecycle/mapping.json": "8d4b16f533a22815d65d0539187406f9968efe46ad9ee03e5d4ebbcda341dd83"
+  },
+  "completedReportMaxima": {
+    "receiptInclusiveAckMs": 410.8217500000028,
+    "local-ack": 410.8217500000028,
+    "convergence": 3108.193290999974,
+    "local-ui-visible": 95.13950000004843,
+    "offline-start": 2925.46170799993,
+    "agent-effect-ack": 211.3825829999987
+  },
+  "diagnostics": {
+    "kind": "instrumented diagnostic comparison, not qualification",
+    "budget": "Original maximum 30 minutes including setup; no reset or extension",
+    "order": [
+      "candidate-seed8",
+      "baseline-seed8"
+    ],
+    "runsPerCondition": 1,
+    "originalFailure": "Uninstrumented sustained gate failed offline restart in seed 8 after seeds 1\u20137.",
+    "instrumentation": "External NODE_OPTIONS --import preload, unchanged for both arms; async wrappers append phase durations. No candidate source or timer change. Preload imports server dependencies in CLI children and adds synchronous file appends, so timings are instrumented observations.",
+    "matching": {
+      "node": "24.11.1",
+      "rootAndUILocks": "identical between source heads; baseline uses candidate node_modules symlinks",
+      "ui": "Each source tree has its own freshly built UI",
+      "fixture": {
+        "tasks": 100,
+        "comments": 400,
+        "scriptedOperations": 200
+      },
+      "seed": 8,
+      "restartOperationIndex": 88,
+      "killedSide": 1,
+      "concurrency": "one arm at a time under same exclusive lock; no synthetic load or unrelated process changes"
+    },
+    "gaps": [
+      "No spawn-to-entry phase",
+      "No separate Cloud constructor/SQLite phase; control.open includes T3 and Cloud",
+      "No separate listener-ready/connection-file phase; server.start includes listener setup",
+      "No parent stdout completion phase separate from original end-to-end timer",
+      "Both isolated seed8 arms omit preceding seeds1\u20137 from the original sustained failure",
+      "No trace of the original failed restart; one sample per condition cannot establish rates or attribution"
+    ],
+    "scripts": {
+      "pardner-cloud-diagnostic.py": "796d2c739354f130d25a9700eb7b45489ccaab22c7d9188a7bd13a3f403913b9",
+      "pardner-cloud-startup-trace.mjs": "2161b214f92808fde11ec2d7b0d0cc416e65a8c662c7e4c428afc1660ecb3f04"
+    },
+    "arms": [
+      {
+        "name": "candidate-seed8",
+        "sourceHead": "8415612454145de6831393b76d10c43b536e9523",
+        "candidate": "f0b8d0b5e5794715086a55f6ed2f146a683bb12af7a94a5da73315631ec24b1f",
+        "exitCode": 0,
+        "durationMs": 217016,
+        "offlineStartMs": 2024.4624579999945,
+        "restartPhases": [
+          {
+            "pid": 52075,
+            "at": 1793855170279,
+            "phase": "runtime.init",
+            "elapsedMs": 1834.3222079999998
+          },
+          {
+            "pid": 52075,
+            "at": 1793855170288,
+            "phase": "control.open",
+            "elapsedMs": 8.402958000000126
+          },
+          {
+            "pid": 52075,
+            "at": 1793855170296,
+            "phase": "server.start",
+            "elapsedMs": 1851.729666
+          }
+        ],
+        "startupRepoFind": [
+          {
+            "pid": 52075,
+            "at": 1793855170252,
+            "phase": "repo.find",
+            "elapsedMs": 1794.6038330000001
+          }
+        ],
+        "endToEndOutsideServerStartMs": 172.73279199999456,
+        "initialStartups": [
+          {
+            "pid": 38475,
+            "at": 1793855020754,
+            "phase": "server.start",
+            "elapsedMs": 90.217791
+          },
+          {
+            "pid": 38553,
+            "at": 1793855021905,
+            "phase": "server.start",
+            "elapsedMs": 145.089125
+          },
+          {
+            "pid": 38572,
+            "at": 1793855022212,
+            "phase": "server.start",
+            "elapsedMs": 135.25250000000003
+          }
+        ],
+        "logSha256": "d54c00e81cf7bc66f94d7590ae45fe89fd23d259636d7d406ab069d861cce93e",
+        "watchdogSha256": "5ebfff15dbe89f18fce839f278d9fc1eb51aef83abd74f145eab09f6f45bb1b4",
+        "traceSha256": "1517f856cab7aef7a3eb6e621b168641a7a9ab8e5d1cf3c83fc866002e36fc56",
+        "reportFileSha256": "b1e373a4b2df223ff4f3a48e902c3b4285ff8a622c395a1dca0a1dd9949c0398",
+        "snapshotFileSha256": "b045548ba8b5137bbc95a0bace3e0ac7fdfac1e9702844db06929238f4393eab",
+        "survivors": 0,
+        "newScratch": 0
+      },
+      {
+        "name": "baseline-seed8",
+        "sourceHead": "6d424e5114f51be2186ebb0e3ac2c553fc073d11",
+        "candidate": "a531e2fd1853185a33de61d51bce88d0fcc4b8a4e7c875ef7141dce1038dd459",
+        "exitCode": 0,
+        "durationMs": 265395,
+        "offlineStartMs": 2704.667125000007,
+        "restartPhases": [
+          {
+            "pid": 72138,
+            "at": 1793855392300,
+            "phase": "runtime.init",
+            "elapsedMs": 2448.0105
+          },
+          {
+            "pid": 72138,
+            "at": 1793855392310,
+            "phase": "control.open",
+            "elapsedMs": 8.59229200000027
+          },
+          {
+            "pid": 72138,
+            "at": 1793855392320,
+            "phase": "server.start",
+            "elapsedMs": 2467.591708
+          }
+        ],
+        "startupRepoFind": [
+          {
+            "pid": 72138,
+            "at": 1793855392272,
+            "phase": "repo.find",
+            "elapsedMs": 2404.9745000000003
+          }
+        ],
+        "endToEndOutsideServerStartMs": 237.0754170000073,
+        "initialStartups": [
+          {
+            "pid": 58587,
+            "at": 1793855237960,
+            "phase": "server.start",
+            "elapsedMs": 96.547834
+          },
+          {
+            "pid": 58667,
+            "at": 1793855239038,
+            "phase": "server.start",
+            "elapsedMs": 134.452458
+          },
+          {
+            "pid": 58687,
+            "at": 1793855239333,
+            "phase": "server.start",
+            "elapsedMs": 122.09420899999998
+          }
+        ],
+        "logSha256": "421a915f38314c07b4d56d6a3d7fd06c642dadf514efc72e43cfbc32c767079e",
+        "watchdogSha256": "e7e5dc3c657c9ae89101267ae8d85fac2b79d7953e08c939be589996a170a348",
+        "traceSha256": "96e8628db7e0d784a523a0fb5ffd2569fb07dcbdbec25c72fd685f4c792e71df",
+        "reportFileSha256": "10cabf5f5ce6051ec9e2e1ae2a9d8404cb8c1e0e4c8b65d5db876f91d73b92e8",
+        "snapshotFileSha256": "8a991e660542f2250235ced8768a4d741e4c18796f6049c0d7a230e77bc95100",
+        "survivors": 0,
+        "newScratch": 0
+      }
+    ],
+    "conclusion": "Both instrumented isolated arms passed; original failure remains unexplained. No causal localization or repair, no full-gate retry. Stopped after this one paired comparison.",
+    "nextFalsifiableQuestion": "Under the original preceding seed1\u20137 history, does a slow restart accumulate delay in spawn/import, runtime/store initialization, Cloud/T3 initialization, listener/connection readiness, or parent stdout handling? Capture all boundaries before choosing a targeted intervention.",
+    "completedAt": "2026-11-05T05:11:59.997246+00:00"
+  },
+  "fingerprints": {
+    "before": "f0b8d0b5e5794715086a55f6ed2f146a683bb12af7a94a5da73315631ec24b1f",
+    "after": "f0b8d0b5e5794715086a55f6ed2f146a683bb12af7a94a5da73315631ec24b1f"
+  },
+  "model": {
+    "states": 174614,
+    "transitions": 679456,
+    "scope": "bounded lifecycle model, not Cloud API proof"
+  },
+  "fixtureTraceSha256": "e1f74e84850589f1aad975bba247374acb353be83e63a549519dbfd55a40b217",
+  "candidateManifestSha256": "a64c161aeeb8eb6c2bc8bd72b6dfb10bd7f60f4c5572226d0788ebd934048ef9",
+  "screenshots": [
+    {
+      "path": "docs/evidence/cursor-cloud-chromium-active.png",
+      "sha256": "f44f0136e3e9b7b59b1ba2e2c1ae707ab5fbbff5b3e877821c7f6c4820941ad1",
+      "inspection": "Inspected with matching DOM/API assertions on frozen UI; synthetic fixture data only."
+    },
+    {
+      "path": "docs/evidence/cursor-cloud-webkit-active.png",
+      "sha256": "4d452c70a3c3b9150da3c2076a8fe76bdd4aeff784a7bd0c0b54b7dc7ba8d6a8",
+      "inspection": "Inspected with matching DOM/API assertions on frozen UI; synthetic fixture data only."
+    },
+    {
+      "path": "docs/evidence/cursor-cloud-chromium.png",
+      "sha256": "92c4234886768d4860807cda7b6ea53fe99f07c12e5275caeefdefbfe9bd9106",
+      "inspection": "Inspected with matching DOM/API assertions on frozen UI; synthetic fixture data only."
+    },
+    {
+      "path": "docs/evidence/cursor-cloud-webkit.png",
+      "sha256": "32330f55d2f8c75443fb2075e9b1a3d5ae01e88aca07b30658a90f3e6fb4ce7a",
+      "inspection": "Inspected with matching DOM/API assertions on frozen UI; synthetic fixture data only."
+    }
+  ],
+  "cleanup": {
+    "at": "2026-11-05T05:12:41.778694+00:00",
+    "supervisorPid": 21451,
+    "ownedRemainingChildren": [],
+    "removedScratchArchive": "/tmp/pardner-cloud-baseline-ldylto1l",
+    "fingerprints": {
+      "candidate": "f0b8d0b5e5794715086a55f6ed2f146a683bb12af7a94a5da73315631ec24b1f",
+      "baseline": "a531e2fd1853185a33de61d51bce88d0fcc4b8a4e7c875ef7141dce1038dd459"
+    },
+    "watchdogScratchAndSurvivors": {
+      "baseline-build": {
+        "survivors": [],
+        "newScratch": []
+      },
+      "candidate-seed8": {
+        "survivors": [],
+        "newScratch": []
+      },
+      "baseline-seed8": {
+        "survivors": [],
+        "newScratch": []
+      }
+    },
+    "lockReleaseObserved": true,
+    "wrapperExitCode": 0,
+    "stableLockFileRetained": true
+  },
+  "diagnosticEffectAuditSha256": "a4eb08f8cdac6b25e445fc9290ac8a9e1631677484303ee856995efc1b908ca4",
+  "auditToolCorrection": "The first supplemental diagnostic audit incorrectly compared baseline report identity to the subject fingerprint; corrected to compare each report with its own recorded candidate and summary. No product test or timing assertion changed.",
+  "publicationPlanner": {
+    "sha256": "8f924caca50abf6557fab70939acee875186b0d667958875a3a7fee9dbf6476e",
+    "mechanicallyUnclassified": [
+      "docs/evidence/cursor-cloud-chromium-active.png",
+      "docs/evidence/cursor-cloud-chromium.png",
+      "docs/evidence/cursor-cloud-webkit-active.png",
+      "docs/evidence/cursor-cloud-webkit.png"
+    ],
+    "warnings": [],
+    "manualDisposition": "Synthetic PNG evidence artifacts; all four reviewed and digests checked. Planner recognizes only Markdown/JSON guidance. No source/harness change or qualification waiver. Supplemental zero-unclassified assertion failed and is retained."
+  }
+}

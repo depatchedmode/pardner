@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -13,11 +14,13 @@ export default defineConfig({
   plugins: [react()],
   base: '/pardner/',
   server: {
-    host: '0.0.0.0',
+    host: '127.0.0.1',
     port: 5174,
     allowedHosts,
     fs: {
-      allow: ['..']
+      strict: true,
+      allow: [fileURLToPath(new URL('.', import.meta.url))],
+      deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.pardner/**', '**/.mission-control/**', '**/.agent-trace/**']
     },
     proxy: {
       '/pardner/config': { target: `http://${apiHost}:${apiHttpPort}` },

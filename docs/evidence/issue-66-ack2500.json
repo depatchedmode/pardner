@@ -1,0 +1,444 @@
+{
+  "schemaVersion": 1,
+  "scope": "PR101 automated implementation qualification; not #66 native/human acceptance",
+  "policy": {
+    "ownerAuthorized": true,
+    "localAckMs": 2500,
+    "previousLocalAckMs": 2000,
+    "otherLimits": {
+      "localVisibleMs": 2000,
+      "offlineStartMs": 5000,
+      "convergenceMs": 10000
+    },
+    "performanceRepair": false,
+    "historicalFailure": {
+      "observedAckMs": 2384.036,
+      "thenLimitMs": 2000,
+      "verdict": "failed, preserved unchanged",
+      "cause": "unexplained; deferred by owner"
+    },
+    "deferredFollowUp": "https://github.com/depatchedmode/pardner/issues/107",
+    "followUpIsMergeGate": false
+  },
+  "candidate": {
+    "testedHead": "03c92167c2f38a0c5c6cad7b73715aec2f7afbd8",
+    "base": "e0fee59cbdeac55733aca15de73d45c2e2d14bfb",
+    "sha256": "a531e2fd1853185a33de61d51bce88d0fcc4b8a4e7c875ef7141dce1038dd459",
+    "unchangedBeforeAfter": true
+  },
+  "environment": {
+    "node": "v24.11.1",
+    "logicalCpus": 10,
+    "lanIPv4Available": true,
+    "browsers": [
+      {
+        "engine": "chromium",
+        "version": "151.0.7922.34",
+        "pageOpened": true,
+        "executableRevision": "chromium-1234"
+      },
+      {
+        "engine": "webkit",
+        "version": "26.5",
+        "pageOpened": true,
+        "executableRevision": "webkit-2336"
+      }
+    ],
+    "dependencies": [
+      {
+        "root": ".",
+        "installedEntries": 96,
+        "lockSha256": "b40167effb550fd7feb01a85876c273f3fb2eedb76ad3be7dcdd1ee8704d592c"
+      },
+      {
+        "root": "ui-prototype",
+        "installedEntries": 191,
+        "lockSha256": "ad58b07b1d9fbbcf8eb8a18ad5d4658b00442e04922026c813527b5a54a65649"
+      }
+    ]
+  },
+  "policyBoundaryChecks": {
+    "checks": 11,
+    "acceptedMs": [
+      2001,
+      2499.999,
+      2500
+    ],
+    "rejectedMs": 2500.001,
+    "savedLocallyGuard": true,
+    "originatingReplicaGuard": true,
+    "limits": {
+      "localAckMs": 2500,
+      "localVisibleMs": 2000,
+      "offlineStartMs": 5000,
+      "convergenceMs": 10000
+    },
+    "httpSnapshotTimeoutMs": 2000
+  },
+  "routine": {
+    "commands": {
+      "focused": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 23484,
+        "testCounts": {
+          "tests": 145,
+          "pass": 145,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "e9d8435d3732d884d1bc3cc12d3fdb07cf55c7e58269352fed590d18db143462",
+        "noSurvivorsOrNewScratch": true
+      },
+      "preparation": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 2090,
+        "testCounts": {},
+        "logSha256": "d94d826640c4d6c3c8b73f979e6438399b9e86bc5f009dda128504158f0ac074",
+        "noSurvivorsOrNewScratch": true
+      },
+      "test-cli": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 5380,
+        "testCounts": {
+          "tests": 12,
+          "pass": 12,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "1258205672a68cf97f64295771364a1e1371487b200bda18e2610a07017ac2b0",
+        "noSurvivorsOrNewScratch": true
+      },
+      "test-qualification": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 2081,
+        "testCounts": {
+          "tests": 12,
+          "pass": 12,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "9adeb11d1305ddc1c41ac0c44a3b08ee5651fc79ecacf19489dca0e045b31691",
+        "noSurvivorsOrNewScratch": true
+      },
+      "test-runtime": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 17022,
+        "testCounts": {
+          "tests": 118,
+          "pass": 118,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "1847a28706ea4ac27f0d31ffd9cb8bf1f5b9b1a28a312feaf84c76b27b185f56",
+        "noSurvivorsOrNewScratch": true
+      },
+      "test-ui": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 29175,
+        "testCounts": {
+          "tests": 14,
+          "pass": 14,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "d07fa147acd7c8fb85975a532907efe599986dbff8e675c437fb2dd3b2de54b9",
+        "noSurvivorsOrNewScratch": true
+      },
+      "test-verification": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 13436,
+        "testCounts": {
+          "tests": 39,
+          "pass": 39,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "ce61624796dc3ad926bb3f49a3a18e0f0ccca16ad95d058003b3eb0b324d0446",
+        "noSurvivorsOrNewScratch": true
+      },
+      "verify-model": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 4855,
+        "testCounts": {},
+        "logSha256": "55a6ab27af7d54894d283306aad7ac43e20e475d1a78868792824982de921324",
+        "noSurvivorsOrNewScratch": true
+      },
+      "verify": {
+        "outcome": "completed",
+        "exitCode": 0,
+        "timedOut": false,
+        "durationMs": 217324,
+        "testCounts": {
+          "tests": 522,
+          "pass": 522,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "d2f52db36962915cd7ec8da392402faefe2ecaf69046ec21d1916ffdfb88ac9e",
+        "noSurvivorsOrNewScratch": true
+      }
+    },
+    "pythonTests": 17,
+    "singleSeedAudit": {
+      "candidateSha256": "a531e2fd1853185a33de61d51bce88d0fcc4b8a4e7c875ef7141dce1038dd459",
+      "node": "v24.11.1",
+      "seedCount": 1,
+      "operations": 719,
+      "replicaVerifications": 3,
+      "maxima": {
+        "receiptInclusiveAckMs": 351.05983299999207,
+        "localAckMs": 340.1628750000018,
+        "agentEffectAckMs": 170.44624999997905,
+        "localVisibleMs": 54.66270800000348,
+        "offlineStartMs": 3020.6414159999986,
+        "convergenceMs": 3014.6595830000006
+      },
+      "records": [
+        {
+          "seed": 1,
+          "operationCount": 719,
+          "replicaVerifications": 3,
+          "reportSha256": "7850d2d2a9d3ab35b932a8d9be460575f48474d46b90f3a33501019df2f9e28a",
+          "snapshotSha256": "b578d2e6ad8460ec6322fca38ba6a4ad6c829bf405d98d27f4a8e15f9194dd14"
+        }
+      ],
+      "limitations": [
+        "Only the first snapshot per seed is retained for offline re-verification; other replicas have recorded live verification results.",
+        "Deterministic workers do not establish native sessions, human acceptance, or arbitrary external-effect idempotency."
+      ]
+    },
+    "model": {
+      "states": 174614,
+      "transitions": 679456,
+      "mappingAndAllPropertiesPassed": true,
+      "declaredBoundsOnly": true
+    }
+  },
+  "qualification": {
+    "command": "npm run test:acceptance -- --repeat 20 --seed 1",
+    "attempts": 1,
+    "outcome": "passed",
+    "limits": {
+      "localAckMs": 2500,
+      "localVisibleMs": 2000,
+      "offlineStartMs": 5000,
+      "convergenceMs": 10000
+    },
+    "candidateSha256": "a531e2fd1853185a33de61d51bce88d0fcc4b8a4e7c875ef7141dce1038dd459",
+    "node": "v24.11.1",
+    "seedCount": 20,
+    "operations": 14380,
+    "replicaVerifications": 60,
+    "maxima": {
+      "receiptInclusiveAckMs": 688.6649579999503,
+      "localAckMs": 688.6649579999503,
+      "agentEffectAckMs": 266.547125000041,
+      "localVisibleMs": 87.25479199999972,
+      "offlineStartMs": 2158.833625000203,
+      "convergenceMs": 4480.8724169998895
+    },
+    "records": [
+      {
+        "seed": 1,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "db6bf78752b8325f97e4d033ef252c2e517cb54b7c092bd88bdf867b0b14b811",
+        "snapshotSha256": "873c5cf53c70b497c37138eaa67a759404cbe074a7b7ff09c41ca862b332e0c4"
+      },
+      {
+        "seed": 2,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "2e9ca08da9b5e3bcd41fae114ce700fa2bc836531a4bd721d2095cba68278b49",
+        "snapshotSha256": "45637a8d55b47402dbcf1966c5feb59c26f37ad19d961df4cf867ca91797edbf"
+      },
+      {
+        "seed": 3,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "9403adb6d5a742c607beac7af022c0ac86175ed125f3260d6a580ee099e60f31",
+        "snapshotSha256": "55306b9f73ab8158646bd22ab439b41c4987723086fb24dd3fe34b57b29ede16"
+      },
+      {
+        "seed": 4,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "711c0d7cf2214b9d2bedbad90f5be3f4b8f2ceff6b7deafa31dd8fa336c56322",
+        "snapshotSha256": "cd2d11507afb120c86c86d4e5336834ad3f34b4f4c90e6a8c09e2b21a0241e72"
+      },
+      {
+        "seed": 5,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "2e872cc2084b6e8bcbe3d2721df2cde138fc4ff58ed38392eb9a2cd71be76950",
+        "snapshotSha256": "e4182f8d63e72029a4ceaa6649720295ab0bd48e2798998a4896322e2543347d"
+      },
+      {
+        "seed": 6,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "e3bcd664635a2dcaf0f4af42ecbf85c755323d2c50a8d79378ce1cd01558aa9a",
+        "snapshotSha256": "74a4169e88924fb4a3caa12d878fa0895f5fe3f22a6ad7a5f836956db358fb31"
+      },
+      {
+        "seed": 7,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "98cd8e804c03b98858182a3e36de692fd6fb9de7257e9a60e8cc0717f82325ce",
+        "snapshotSha256": "07a3a3fc8e8eb6a0f0980a90ccd3b1223b9f9dac697886ec32afd46fe148b170"
+      },
+      {
+        "seed": 8,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "019ea799d20559dc6a98d270f3306f322e45b281e632d0dd515673dcd605828d",
+        "snapshotSha256": "f9f7fcd57f51e380df69d171c9b1910a83e86a5139b5ef698a1dc4404fa82a0f"
+      },
+      {
+        "seed": 9,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "782afaec45f987cbd2b7ba3e9545d97a8114edced2021bedd19c37625a8d866b",
+        "snapshotSha256": "b23964e2251a033531b97aa5cddfb25f9ddb88eaaa2b7fb58bb39d232c2bff63"
+      },
+      {
+        "seed": 10,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "458cd1029f8c624469f2dd39d734f9ba0267e0a510779e9d3ab9c638e0883099",
+        "snapshotSha256": "d5af789daaf9cac3b5168fce2c68dc98db1e84f4ec9aa7685f134eb5d2e001fe"
+      },
+      {
+        "seed": 11,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "415899fa8cdc89f321327ae7b9d2339724002821e5031c46a803efbf3ed371ae",
+        "snapshotSha256": "cca49fd3ee220e24df7e1b5ffde81d3e8f3e1f6fadaa30976b6dd8c86077621e"
+      },
+      {
+        "seed": 12,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "3b388e3edcb2a3c63e8579480511adeb68161edfa34673daa5953f9d53d9f8be",
+        "snapshotSha256": "e1ec9510b424de83cf1361c96ce40714379d9d9d537a8789c287e1b1670bcde1"
+      },
+      {
+        "seed": 13,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "b15f9444723381524df934e5919cff0c8cae887b8f0ea1daeb7ad3071f567488",
+        "snapshotSha256": "4e5b32c5f569854a6fba600527a7402d870c67ce85453e78b13466f34d0e3be8"
+      },
+      {
+        "seed": 14,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "0638426a8eee327c590e39fa2fe233ce546c5ab8decbdb62defac9019a260a71",
+        "snapshotSha256": "910597f8de4d6723cd333cecd98d6d2f964212fdf9338deca9940f20a1933f5d"
+      },
+      {
+        "seed": 15,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "c623c774c48a6c425cc6ada8c5ecaa46b2843934ab36ace649fc27c7609cc3b7",
+        "snapshotSha256": "43d14270c24458c23852bf0d409f0f070c1953c80a0658536d3a7875b82484ea"
+      },
+      {
+        "seed": 16,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "44d3f5d3c77d6720abd6f7d11ac0576659a3fee6f84c15fec7b6dba53cb851a3",
+        "snapshotSha256": "81fea0dc0acea3e685fd5684b21625865e341a8f09b40608bf775838448ef609"
+      },
+      {
+        "seed": 17,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "596442b8b8f5411aa01b4351ab4191105fc6fa1b1b41749d4b23b0ff6df27d62",
+        "snapshotSha256": "195e21375658351e8be9f347075c6b11b2ddd3d42b22bcbb59a0c0c7290546cf"
+      },
+      {
+        "seed": 18,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "04b8edf956840cc7295e1a84c27bf0cf02ab7642983e5439d461f1ff88a7a964",
+        "snapshotSha256": "229bff9a466115782fc3c2e0d63fec2df80f2ff61b1fed74c6bb8961454dc7f8"
+      },
+      {
+        "seed": 19,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "76fb1b157cd973b4ec6eafdb01ad918c15076cf18a33e25023891e6e3ceafa38",
+        "snapshotSha256": "dd9a25f6733a18a65338dc42de17ecfdcc434810bf8407143c5fae69250c6877"
+      },
+      {
+        "seed": 20,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "d184bf874e02421c6e8ececa2399d849e9be854b2a3f3400c2db3b5afc3b097b",
+        "snapshotSha256": "efeb809764426e581d0e2c3e0f36fb860c719cbce93ac67e0934a08455df94ad"
+      }
+    ],
+    "limitations": [
+      "Only the first snapshot per seed is retained for offline re-verification; other replicas have recorded live verification results.",
+      "Deterministic workers do not establish native sessions, human acceptance, or arbitrary external-effect idempotency."
+    ],
+    "watchdog": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "timedOut": false,
+      "durationMs": 2498689,
+      "testCounts": {},
+      "logSha256": "6341d34f9452b7124a5308c06f36454a2b1bf39386a0000619def2c7e0771505",
+      "noSurvivorsOrNewScratch": true
+    }
+  },
+  "cleanup": {
+    "at": "2026-11-05T04:28:37.127586+00:00",
+    "watchdogsAudited": 10,
+    "attributableSurvivors": [],
+    "allWatchdogsNoTimeoutHungSurvivorOrNewScratch": true,
+    "stableLockExists": true,
+    "stableLockInode": 498846838,
+    "unrelatedProcessesManipulated": false
+  },
+  "lockRelease": {
+    "at": "2026-11-05T04:28:49.297750+00:00",
+    "released": true,
+    "wrapperExitCode": 0,
+    "stableLockExists": true,
+    "stableLockInode": 498846838,
+    "unlinked": false,
+    "reacquired": false,
+    "downstreamHandoff": false
+  },
+  "limitations": [
+    "Only the first snapshot per seed is retained for offline re-verification; the other two replicas have recorded live verification results.",
+    "Native/paid provider sessions, human acceptance, physical-device checks and power-loss durability are separate.",
+    "No #105/#104 union, deployment, production-data change or migration is included.",
+    "Historical failure and diagnostics are not retroactively passed; monitoring/design work in #107 starts no new gate."
+  ]
+}

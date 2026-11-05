@@ -1,0 +1,177 @@
+{
+  "date": "2026-11-04",
+  "base": "e0fee59cbdeac55733aca15de73d45c2e2d14bfb",
+  "implementation": "34abcf98b9204bc1b564774a84554429c20d35c1",
+  "candidateSha256": "0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3",
+  "node": "v24.11.1",
+  "routineOutcome": "passed",
+  "overallOutcome": "failed",
+  "qualificationPassed": false,
+  "model": {
+    "states": 174614,
+    "transitions": 679456,
+    "driftCheckPassed": true,
+    "propertiesPassedWithinBounds": true
+  },
+  "routineSeedAudit": {
+    "candidateSha256": "0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3",
+    "node": "v24.11.1",
+    "seedCount": 1,
+    "operations": 719,
+    "replicaVerifications": 3,
+    "maxima": {
+      "receiptInclusiveAckMs": 322.5952910000051,
+      "localAckMs": 302.3948339999988,
+      "agentEffectAckMs": 210.3512919999921,
+      "localVisibleMs": 77.60175000000163,
+      "offlineStartMs": 2048.6371669999935,
+      "convergenceMs": 2647.1127080000006
+    },
+    "records": [
+      {
+        "seed": 1,
+        "operationCount": 719,
+        "replicaVerifications": 3,
+        "reportSha256": "d95c7574e25cdb03521cba66a526f7db74f230a5bc2dbece9dc79ed9f496af8d",
+        "snapshotSha256": "1b213189b2e032d41b3795b30c6ec275e0999fd4255c979bbee89972561c5f6b"
+      }
+    ],
+    "limitations": [
+      "Only the first snapshot per seed is retained for offline re-verification; other replicas have recorded live verification results.",
+      "Deterministic workers do not establish native sessions, human acceptance, or arbitrary external-effect idempotency."
+    ]
+  },
+  "failedGateAudit": {
+    "candidateSha256": "0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3",
+    "outcome": "failed",
+    "completedSeeds": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "failedSeed": 5,
+    "unrunSeeds": [
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20
+    ],
+    "failure": {
+      "kind": "local-ack",
+      "measuredMs": 2384.036167000071,
+      "limitMs": 2000,
+      "operationId": "seed-5-operation-661",
+      "operationType": "task.update",
+      "intents": 663,
+      "receipts": 662
+    },
+    "records": [
+      {
+        "seed": 1,
+        "operations": 719,
+        "replicaVerifications": 3,
+        "computedReportSha256": "901bf079313e9a5a20f558c2d9d5396e17fc63ce76fd2ef83610a65d1eacca4b",
+        "snapshotSha256": "1e7351b1461d8353e3f0ff9560bc6c09e296df7cbf0eafc164750a9adbfc0fb0",
+        "receiptInclusiveAckMs": 305.1906250000029
+      },
+      {
+        "seed": 2,
+        "operations": 719,
+        "replicaVerifications": 3,
+        "computedReportSha256": "660552a8de62df299d1144fdf1cee0d67b39ab0b359be3816b424b210c61fdd6",
+        "snapshotSha256": "71f8555fd30fca3676c66f45b0608f01bceab95144576ccaff3c394711c7736b",
+        "receiptInclusiveAckMs": 272.3965830000234
+      },
+      {
+        "seed": 3,
+        "operations": 719,
+        "replicaVerifications": 3,
+        "computedReportSha256": "f24850fbadb32359cd2f857385b7233dff53c17c5b2e02ad154769935ad73200",
+        "snapshotSha256": "c05de13b43c2178f418d2ddaa1bf3b998685ddfa9dbedc51cc334b3b081ce2c5",
+        "receiptInclusiveAckMs": 266.16433300002245
+      },
+      {
+        "seed": 4,
+        "operations": 719,
+        "replicaVerifications": 3,
+        "computedReportSha256": "cc037d703577f299b57ccb5070e00d511412cead5b7a211386c52897d9371550",
+        "snapshotSha256": "515e0f245751a441ce9ed92b0897670aac61c2c223262cb60d9d0d1a71bd5455",
+        "receiptInclusiveAckMs": 276.1985829999903
+      }
+    ],
+    "qualificationPassed": false,
+    "note": "No summary exists; partial report hashes are computed during audit, not compared to a gate summary. No partial or diagnostic seeds may be combined into a pass."
+  },
+  "diagnosticAudit": {
+    "runs": [
+      {
+        "condition": "base",
+        "seed": 5,
+        "passed": true,
+        "candidateSha256": "3599ddb1c86f0d695120f6fe221c26044d0fd3fbe1fed7350ea11a23354d22d4",
+        "operations": 719,
+        "replicaVerifications": 3,
+        "receiptInclusiveAckMs": 336.0086250000022,
+        "reportSha256": "fd5c534f686987b768d045097fb0eee741798b74763923179b1f207970443784",
+        "snapshotSha256": "e953ae4e19d3432ece13e2c9a2ef7ce23bea9fd4a7d963a8fb1b764e3fea3860"
+      },
+      {
+        "condition": "subject",
+        "seed": 5,
+        "passed": true,
+        "candidateSha256": "0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3",
+        "operations": 719,
+        "replicaVerifications": 3,
+        "receiptInclusiveAckMs": 258.38175000000047,
+        "reportSha256": "0c225dd121161f771db81f1a2109874aa990a49a97160935cf759423010d54b0",
+        "snapshotSha256": "77f0ab00a284970234cea3f083adbb6f41355372a9dbb5b72012bc8df7facc97"
+      }
+    ],
+    "conclusion": "One matched seed5 diagnostic per condition passed. The original latency failure remains unexplained; these are not replacement qualification seeds.",
+    "hostLoadObservation": {
+      "afterFailure": [
+        215.19,
+        142.51,
+        65.08
+      ],
+      "later": [
+        39.25,
+        99.08,
+        57.97
+      ],
+      "causalProof": false
+    },
+    "diagnosticBudgetMinutes": 30,
+    "qualificationPassed": false
+  },
+  "lockReleased": true,
+  "ownedCleanupPassed": true,
+  "nativeSessionsRun": false,
+  "humanAcceptanceRun": false,
+  "mergeRecommended": false,
+  "routineCounts": {
+    "targetedUnion": 142,
+    "verificationTooling": 39,
+    "runtime": 118,
+    "cli": 12,
+    "storageQualification": 12,
+    "ui": 14,
+    "fullPython": 17,
+    "fullNode": 522,
+    "failures": 0,
+    "skips": 0,
+    "cancellations": 0
+  }
+}

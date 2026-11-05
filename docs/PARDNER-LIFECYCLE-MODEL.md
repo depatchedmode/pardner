@@ -46,7 +46,7 @@ invariants become `INVARIANT`s and the progress property becomes
 
 ## Mapping to the implementation
 
-The mapping was recorded against source revision `d849d26a51d27b2788092bdbae0c08a280ab1616`. That review, for
+The earlier mapping was recorded against source revision `d849d26a51d27b2788092bdbae0c08a280ab1616`. That review, for
 [#77](https://github.com/depatchedmode/pardner/issues/77), confirmed that the control pane's routes sit behind the same
 admission middleware and that it closes after `listenersClosed` and before `store.close()`; no action changed.
 `formal/lifecycle/mapping.json` holds that revision and the SHA-256 of each
@@ -186,6 +186,17 @@ change was never acknowledged, the replica keeps it with `syncPending`, and the
 acknowledgement protocol re-persists it after restart. No listed property is
 violated; the behavior is now explicit.
 
+## Operation-integrity mapping review (2026-11-04)
+
+The #61 integration refreshes hashes for `lib/workspace.js` (request identity in
+receipts and conflict-aware snapshot projection) and `automerge-sync-server.js`
+(the integrity error's HTTP 409 mapping). Admission, persistence barriers and
+shutdown ordering are unchanged; model actions and mutation anchors remain
+applicable. The default check passed again: 174,614 states, 679,456 transitions,
+all invariants, progress and coverage witnesses. See `operationIntegrityMappingReview`
+in the evidence JSON for exact hashes. The wider-bound and mutation runs above
+remain historical evidence, not fresh runs for this candidate.
+
 ## What the model assumes about Node boundaries
 
 The model keeps these facts as assumptions and relies on the real Node tests
@@ -253,3 +264,21 @@ for them:
 - Update the results in this document and in `docs/evidence/lifecycle-model.json`
   when the mapping revision, bounds or outcomes change. Those files are guidance;
   the routine command is the live result.
+
+## Security integration mapping review (2026-11-04)
+
+The current mapping records source revision `509a8357a4ef0197825eacf70a5d7a5504fb1795`.
+The security integration narrows native admission to enrolled credentials, validates
+loopback-only insecure listeners, partitions pairing budgets and installs framing
+headers synchronously before the stopping guard. Query credential parsing now uses
+a fixed URL base so IPv6 binds work. Persistence/acknowledgement barriers, head
+guards, idle reclamation and listener-before-store shutdown order are unchanged.
+No model action, invariant, witness or mutation anchor needed modification.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The model assumes
+an enrolled replica and excludes credential/ticket internals. Prior wider-bound
+and mutation evidence above is historical, not freshly rerun for this candidate.
+The security review record in `docs/evidence/lifecycle-model.json` retains the new
+mapping and observed duration; implementation checks are reported separately in
+`SECURITY-INTEGRATION.md`.

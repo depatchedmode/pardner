@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "qualificationStatus": "FAILED",
+  "investigationOutcome": "ENVIRONMENT_PREREQUISITE_NOT_MET",
+  "head": "fca977c00e17f7d4972c7ea80f4b061b2246edda",
+  "base": "e0fee59cbdeac55733aca15de73d45c2e2d14bfb",
+  "implementationHead": "34abcf98b9204bc1b564774a84554429c20d35c1",
+  "candidateFingerprint": "0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3",
+  "node": "v24.11.1",
+  "design": {
+    "startedAt": "2026-11-04T22:22:22Z",
+    "deadline": "2026-11-04T22:52:22Z",
+    "preflightDeadline": "2026-11-04T22:27:22Z",
+    "predeclaredOrder": [
+      "main-quiet",
+      "candidate-quiet",
+      "candidate-load",
+      "main-load",
+      "main-recovery",
+      "candidate-recovery"
+    ],
+    "fixture": "Original seed5 prefix:100 tasks,400 comments,200 CLI task updates,two offline replicas,browser contexts,kill/restart at index85; original assertions/limits.",
+    "cpuIntervention": {
+      "workers": 2,
+      "dutyPercent": 75,
+      "periodMs": 100,
+      "maximumDurationSeconds": 90,
+      "noRamp": true
+    },
+    "pressureStop": "Stop owned load/arm if memory pressure nonnormal, swap/pageout growth, responsiveness loss or sustained CPU>85%, runnable>8 or blocked>2. Require matched per-arm quiet precondition; otherwise stop experiment.",
+    "recovery": "Run recovery pair only if loaded arms complete and at least8 minutes remain.",
+    "candidateFrozen": true,
+    "qualificationCleared": false
+  },
+  "preflightLimits": {
+    "windowSeconds": 60,
+    "cpuMeanMaxPercent": 25,
+    "cpuP95MaxPercent": 40,
+    "cpuPeakMaxPercent": 60,
+    "runnableP95Max": 3,
+    "runnablePeakMax": 5,
+    "blockedP95Max": 2,
+    "load1Max": 5,
+    "eventLoopP95MaxMs": 40,
+    "eventLoopPeakMaxMs": 150,
+    "memoryPressureLevel": 1,
+    "memoryFreeMinPercent": 15,
+    "swapoutAndPageoutGrowthMax": 0
+  },
+  "preflight": {
+    "samples": 116,
+    "evaluatedWindows": 87,
+    "qualifyingWindows": 0,
+    "reasonWindowCounts": {
+      "cpu-mean": 34,
+      "cpu-spikes": 87,
+      "load": 84,
+      "paging": 21,
+      "runnable": 87
+    },
+    "allSamples": {
+      "cpuBusyPercent": {
+        "mean": 25.368145211806745,
+        "p95": 59.80343980343981,
+        "max": 76.3520157325467
+      },
+      "runnable": {
+        "p95": 24,
+        "max": 46
+      },
+      "load1Range": [
+        2.54541015625,
+        13.8623046875
+      ],
+      "memoryPressureLevels": [
+        1
+      ],
+      "memoryFreePercentRange": [
+        60,
+        69
+      ],
+      "pageoutGrowth": 18,
+      "swapoutGrowth": 0,
+      "eventLoopMaxMs": 21.413887
+    },
+    "finalWindow": {
+      "quiet": false,
+      "reasons": [
+        "cpu-spikes",
+        "runnable"
+      ],
+      "windowStart": "2026-11-04T22:26:21.385Z",
+      "windowEnd": "2026-11-04T22:27:22.501Z",
+      "cpuMeanPercent": 19.072058222263273,
+      "cpuP95Percent": 40.48323471400395,
+      "cpuPeakPercent": 59.76272862086011,
+      "runnableP95": 6,
+      "runnablePeak": 19,
+      "eventLoopP95Ms": 13.983743,
+      "eventLoopPeakMs": 15.196159
+    }
+  },
+  "watchdog": {
+    "startedAt": "2026-11-04T22:23:25.997Z",
+    "durationMs": 236585,
+    "timeoutSeconds": 275,
+    "outcome": "completed",
+    "exitCode": 2,
+    "timedOut": false,
+    "hungProcesses": [],
+    "survivorsAfterKill": [],
+    "newScratch": []
+  },
+  "attempts": {
+    "preflight": 1,
+    "fixtureArms": 0,
+    "cpuLoadWorkers": 0,
+    "fullAcceptanceRuns": 0,
+    "full20SeedGates": 0
+  },
+  "cleanup": {
+    "at": "2026-11-04T22:28:02.213642+00:00",
+    "ownedPreflightProcesses": [],
+    "watchdogOutcome": "completed",
+    "preflightExit": 2,
+    "watchdogTimedOut": false,
+    "orphans": [],
+    "survivors": [],
+    "newScratch": [],
+    "fixtureArmsStarted": 0,
+    "cpuWorkersStarted": 0,
+    "lockRelease": "wrapper exited 2 reflecting non-quiet result; advisory lock released; stable file retained",
+    "lockReleasedAt": "2026-11-04T22:28:39.174321+00:00"
+  },
+  "digests": {
+    "preflight.json": "521c98313c61aafd2f3bf5640832a39cff85cb84cc0e654b14ea633bb0e872d9",
+    "preflight-audit.json": "4354f97f31a3d673f8a0278efd63603d05deb5829387c43b6ff9626595182378",
+    "design.json": "570dc6d9f2ab44f519b824f4d75227c7dc8ae78b8a656991a0e3f0c2379b770d",
+    "pardner-101-quiet-preflight.mjs.txt": "03af3715d072c757cde63d4bfa0162ad69f9f09b96faa5b99aab436c769d9922",
+    "pardner-101-quiet-preflight.sh.txt": "636e51bacc77c32748bc57c03c44a95edb81b1f820dce3c51410602db1688785"
+  },
+  "limits": [
+    "No sustained window met all predeclared criteria; thresholds were not loosened after observation.",
+    "Low mean CPU and normal memory pressure do not establish a controlled quiet baseline when runnable/CPU bursts persist.",
+    "Thresholds are this experiment's conservative control criteria, not product acceptance limits.",
+    "No controlled-load comparison occurred; no new evidence about original failure causality or a product repair.",
+    "No application/dependency/build qualification was rerun; fingerprint was checked unchanged.",
+    "Only aggregate counters and observer results are published; no process identities, credentials or request bodies.",
+    "No unrelated process/app/settings changes, synthetic load, native/paid session, production data change, deployment, merge, issue closure or downstream handoff."
+  ],
+  "nextDecision": "A sustained controlled window on this machine remains missing. Coordinator owns any new window or revised predeclared design; no automatic retry or gate rerun."
+}

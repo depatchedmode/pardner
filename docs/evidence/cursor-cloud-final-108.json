@@ -1,0 +1,2144 @@
+{
+  "scope": "Final automated qualification for Cloud PR105 under explicit owner historical-failure disposition",
+  "routineOutcome": "passed",
+  "overallScopedAutomatedOutcome": "passed",
+  "qualification": "passed for cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+  "startingPublicationHead": "d06fceea7734947dc84df88f2136fdbb3710c4ba",
+  "executableSourceHead": "1c35881afc35b7c3d163c651400955a71622a0f9",
+  "base": "6d424e5114f51be2186ebb0e3ac2c553fc073d11",
+  "reportedAt": "2026-11-05T07:20:23.899224+00:00",
+  "fingerprints": {
+    "before": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "after-ui": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "after-routine": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "before-gate": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "after": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "current": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "publication": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d"
+  },
+  "environment": {
+    "node": "v24.11.1",
+    "platform": "darwin",
+    "arch": "arm64",
+    "noNodeOptions": true,
+    "dependencies": [
+      {
+        "prefix": "",
+        "installedPackages": 96,
+        "lockSha256": "b40167effb550fd7feb01a85876c273f3fb2eedb76ad3be7dcdd1ee8704d592c"
+      },
+      {
+        "prefix": "ui-prototype/",
+        "installedPackages": 191,
+        "lockSha256": "ad58b07b1d9fbbcf8eb8a18ad5d4658b00442e04922026c813527b5a54a65649"
+      }
+    ]
+  },
+  "browserLaunches": [
+    {
+      "engine": "chromium",
+      "version": "151.0.7922.34"
+    },
+    {
+      "engine": "webkit",
+      "version": "26.5"
+    }
+  ],
+  "policyConsistency": {
+    "outcome": "passed",
+    "priorHead": "b7c17775eaab245d8a84fb0d0144edc9ad7eb965",
+    "executableChanges": [
+      "scripts/acceptance.js",
+      "test/workspace-runtime.test.js",
+      "test/pardner-cli-mentions.test.js",
+      "test/sync-use-cases.test.js"
+    ],
+    "unchangedReviewedFiles": [
+      "support/cli-resources.js",
+      "support/reliability/profiles.json",
+      "scripts/remote/rehearse.py",
+      "automerge-sync-server.js",
+      "lib/workspace.js",
+      "lib/workspace-runtime.js",
+      "lib/durable-repo.js",
+      "lib/control-pane.js",
+      "lib/cursor-cloud-execution.js",
+      "lib/cursor-cloud-client.js",
+      "formal/lifecycle/mapping.json",
+      "docs/PARDNER-CURSOR-CLOUD-VERIFICATION.md",
+      "docs/evidence/cursor-cloud-integrated.json"
+    ],
+    "normativePaths": [
+      "README.md",
+      "docs/PARDNER-ACCEPTANCE.md",
+      "docs/PARDNER-COLLABORATION-MODES.md",
+      "docs/PARDNER-REHEARSAL.md",
+      "docs/PARDNER-REMOTE-TEST.md",
+      ".agents/skills/verify/features/offline-sync.md"
+    ],
+    "limits": {
+      "localAckMs": 2500,
+      "localVisibleMs": 2000,
+      "offlineStartMs": 6000,
+      "convergenceMs": 10000
+    },
+    "helperStartupTimeoutMs": 15000,
+    "independentReliabilityProfileOfflineMs": 5000,
+    "remoteReadinessHelperSeconds": 5,
+    "policy": "Explicit owner decision; no performance repair or retroactive pass"
+  },
+  "freshCommands": [
+    {
+      "name": "environment",
+      "evidenceKind": "fresh uninstrumented",
+      "command": [
+        "node",
+        "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-cursor-cloud/output/verification/cloud-final-108-20261105/environment.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {},
+      "startedAt": "2026-11-05T06:30:22.919Z",
+      "durationMs": 244,
+      "watchdogTimeoutSeconds": 900,
+      "log": "output/verification/cloud-final-108-20261105/environment.log",
+      "logSha256": "60d76c72d235ab6b3c4eb8b805866222365397d9d472fef29a9cf390a0f2fc6a",
+      "watchdogSha256": "a333b342f8803a0d8625ce2b44ec4bfc33d170a15d01e2e88dba91301a8544a5",
+      "survivors": 0,
+      "newScratch": 0,
+      "timedOut": false
+    },
+    {
+      "name": "policy",
+      "evidenceKind": "fresh uninstrumented",
+      "command": [
+        "python3",
+        "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-cursor-cloud/output/verification/cloud-final-108-20261105/policy-check.py"
+      ],
+      "exitCode": 0,
+      "counts": {},
+      "startedAt": "2026-11-05T06:30:23.210Z",
+      "durationMs": 459,
+      "watchdogTimeoutSeconds": 900,
+      "log": "output/verification/cloud-final-108-20261105/policy.log",
+      "logSha256": "0a8cdad842dc13c333dc677b570753145b788f274082877b08fb84f7e716442d",
+      "watchdogSha256": "d1b4ca6091d2faf7a2efbeb79c1ebe63eb8a338d9b6a49b22145bfa3cdc1fed3",
+      "survivors": 0,
+      "newScratch": 0,
+      "timedOut": false
+    },
+    {
+      "name": "build",
+      "evidenceKind": "fresh uninstrumented",
+      "command": [
+        "npm",
+        "run",
+        "ui:build"
+      ],
+      "exitCode": 0,
+      "counts": {},
+      "startedAt": "2026-11-05T06:30:23.716Z",
+      "durationMs": 1682,
+      "watchdogTimeoutSeconds": 900,
+      "log": "output/verification/cloud-final-108-20261105/build.log",
+      "logSha256": "ca54934e56e20b65098829d244bc0bb9546d7f0da04504b58abb86cac1827199",
+      "watchdogSha256": "6d11c550a501b2c15e0162f314a115fbc97dbb1db1ca5c649afa35466d454c24",
+      "survivors": 0,
+      "newScratch": 0,
+      "timedOut": false
+    },
+    {
+      "name": "browser-launch",
+      "evidenceKind": "fresh uninstrumented",
+      "command": [
+        "node",
+        "--input-type=module",
+        "-e",
+        "import {chromium,webkit} from 'playwright'; for(const engine of [chromium,webkit]){const b=await engine.launch({headless:true});console.log(engine.name(),b.version());await b.close()}"
+      ],
+      "exitCode": 0,
+      "counts": {},
+      "startedAt": "2026-11-05T06:30:25.507Z",
+      "durationMs": 1085,
+      "watchdogTimeoutSeconds": 900,
+      "log": "output/verification/cloud-final-108-20261105/browser-launch.log",
+      "logSha256": "0eb2b2a9ca07d0fedd25135541d1be30c5d8cff05836f62464b4686e323f6b33",
+      "watchdogSha256": "7ef24f4cbe87cc6452b4e488e16a460c8b3454b387341f9c03a121e1663a4e68",
+      "survivors": 0,
+      "newScratch": 0,
+      "timedOut": false
+    },
+    {
+      "name": "ui",
+      "evidenceKind": "fresh uninstrumented",
+      "command": [
+        "npm",
+        "run",
+        "test:ui"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": 16,
+        "pass": 16,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "startedAt": "2026-11-05T06:30:26.639Z",
+      "durationMs": 40068,
+      "watchdogTimeoutSeconds": 900,
+      "log": "output/verification/cloud-final-108-20261105/ui.log",
+      "logSha256": "88f55f591bd3b38acc076b8de6deeccfb8d7d71432dc8419379f4c1ae2c831ff",
+      "watchdogSha256": "467dc3da20b3a93572c5d457be8028b596ac1587a868e4884a2ff352b5515b11",
+      "survivors": 0,
+      "newScratch": 0,
+      "timedOut": false
+    },
+    {
+      "name": "verify",
+      "evidenceKind": "fresh uninstrumented",
+      "command": [
+        "npm",
+        "run",
+        "verify"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": 552,
+        "pass": 552,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "pythonPassed": 17,
+        "acceptanceSeeds": 1
+      },
+      "startedAt": "2026-11-05T06:31:06.820Z",
+      "durationMs": 187738,
+      "watchdogTimeoutSeconds": 900,
+      "log": "output/verification/cloud-final-108-20261105/verify.log",
+      "logSha256": "304a29878b1bc1179aa91789389ad7920b804655b35136e4575984af5ff88fab",
+      "watchdogSha256": "30fe0056d8410b187d321ae985c05c5323d3c91ae87867cdb7c67bcf206f1335",
+      "survivors": 0,
+      "newScratch": 0,
+      "timedOut": false
+    },
+    {
+      "name": "qualification",
+      "evidenceKind": "fresh uninstrumented",
+      "command": [
+        "npm",
+        "run",
+        "test:acceptance",
+        "--",
+        "--repeat",
+        "20",
+        "--seed",
+        "1"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "acceptanceSeeds": 20
+      },
+      "startedAt": "2026-11-05T06:35:19.986Z",
+      "durationMs": 2550556,
+      "watchdogTimeoutSeconds": 3600,
+      "log": "output/verification/cloud-final-108-20261105/qualification.log",
+      "logSha256": "746e061e005865641c1d3d16176aa3de2564972e6796dc4025be7c2e83cef345",
+      "watchdogSha256": "86d3af26e1ea4c7382af72966e250bdfc3b7621f91933b9cbab6a4cff6d6ceb2",
+      "survivors": 0,
+      "newScratch": 0,
+      "timedOut": false
+    }
+  ],
+  "reusedChecks": {
+    "fingerprint": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "sourceHead": "1c35881afc35b7c3d163c651400955a71622a0f9",
+    "mappingUnchanged": true,
+    "checks": [
+      {
+        "name": "model",
+        "command": [
+          "npm",
+          "run",
+          "verify:model"
+        ],
+        "exitCode": 0,
+        "durationMs": 4939,
+        "watchdogTimeoutSeconds": 900,
+        "counts": {},
+        "logSha256": "f201f8037a27177f63cc1b2a15e233d92036a1d419b63c22743c28310ae5b0f3",
+        "watchdogSha256": "e7417c2e716db2af1ac7c8c06029d917f67a4b67df5205ec3333d1d8b0231d19",
+        "survivors": 0,
+        "newScratch": 0,
+        "evidenceKind": "reused unchanged candidate",
+        "originalRun": "output/verification/cloud-offline6000-20261105",
+        "retainedCopy": "output/verification/cloud-final-108-20261105/reused/model.log"
+      },
+      {
+        "name": "offline-policy",
+        "command": [
+          "node",
+          "--test",
+          "test/workspace-runtime.test.js",
+          "test/pardner-cli-mentions.test.js",
+          "test/sync-use-cases.test.js"
+        ],
+        "exitCode": 0,
+        "durationMs": 7710,
+        "watchdogTimeoutSeconds": 900,
+        "counts": {
+          "tests": 15,
+          "pass": 15,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "a4513714a74580e51993790415e9c1277bf9afa7cdb3f0b5440b2adbe881c908",
+        "watchdogSha256": "2998076ce22b5de01a6d268be28b78216e597bb9a3771bc72c51c5119ac2b461",
+        "survivors": 0,
+        "newScratch": 0,
+        "evidenceKind": "reused unchanged candidate",
+        "originalRun": "output/verification/cloud-offline6000-20261105",
+        "retainedCopy": "output/verification/cloud-final-108-20261105/reused/offline-policy.log"
+      },
+      {
+        "name": "cloud",
+        "command": [
+          "node",
+          "--test",
+          "test/cursor-cloud.test.js"
+        ],
+        "exitCode": 0,
+        "durationMs": 571,
+        "watchdogTimeoutSeconds": 900,
+        "counts": {
+          "tests": 26,
+          "pass": 26,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "6f1573982e1c7318746495acb03bdc40becb80ab7de550ca61869be5bd00a34e",
+        "watchdogSha256": "39fe84320847720061a25c1ed7a05e49759260b42e1e395efc31f6a82e4cdfd7",
+        "survivors": 0,
+        "newScratch": 0,
+        "evidenceKind": "reused unchanged candidate",
+        "originalRun": "output/verification/cloud-offline6000-20261105",
+        "retainedCopy": "output/verification/cloud-final-108-20261105/reused/cloud.log"
+      },
+      {
+        "name": "test:verification",
+        "command": [
+          "npm",
+          "run",
+          "test:verification"
+        ],
+        "exitCode": 0,
+        "durationMs": 15024,
+        "watchdogTimeoutSeconds": 900,
+        "counts": {
+          "tests": 39,
+          "pass": 39,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "28e20c50257ec7fc8762d2ce760f63f267059738e2bf60a285464b75411f51fa",
+        "watchdogSha256": "95f2cbb6ab8c7bdde5f8f359c28f27b1e520eecfeb1d49c419e893c9b2b88fc5",
+        "survivors": 0,
+        "newScratch": 0,
+        "evidenceKind": "reused unchanged candidate",
+        "originalRun": "output/verification/cloud-offline6000-20261105",
+        "retainedCopy": "output/verification/cloud-final-108-20261105/reused/test:verification.log"
+      },
+      {
+        "name": "test:qualification",
+        "command": [
+          "npm",
+          "run",
+          "test:qualification"
+        ],
+        "exitCode": 0,
+        "durationMs": 2185,
+        "watchdogTimeoutSeconds": 900,
+        "counts": {
+          "tests": 12,
+          "pass": 12,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "4ca4315fcd84bb52841eca6ce359239af426bc5dfbfc3950bdad76246604c75f",
+        "watchdogSha256": "db7e99e0d31bd517a9f4d3ede54b1fd8d5fd340c4cfffa567359ba59033df378",
+        "survivors": 0,
+        "newScratch": 0,
+        "evidenceKind": "reused unchanged candidate",
+        "originalRun": "output/verification/cloud-offline6000-20261105",
+        "retainedCopy": "output/verification/cloud-final-108-20261105/reused/test:qualification.log"
+      },
+      {
+        "name": "test:runtime",
+        "command": [
+          "npm",
+          "run",
+          "test:runtime"
+        ],
+        "exitCode": 0,
+        "durationMs": 24708,
+        "watchdogTimeoutSeconds": 900,
+        "counts": {
+          "tests": 120,
+          "pass": 120,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "7a321e398481c8ef07ad93569b62b6f60f6ade1becdb255cee93815f15fcdaa2",
+        "watchdogSha256": "a9a03245c26a2d4b1e809e385f3a2a7d35b82357b29a5de0dee355dc299a8c51",
+        "survivors": 0,
+        "newScratch": 0,
+        "evidenceKind": "reused unchanged candidate",
+        "originalRun": "output/verification/cloud-offline6000-20261105",
+        "retainedCopy": "output/verification/cloud-final-108-20261105/reused/test:runtime.log"
+      },
+      {
+        "name": "test:cli",
+        "command": [
+          "npm",
+          "run",
+          "test:cli"
+        ],
+        "exitCode": 0,
+        "durationMs": 8858,
+        "watchdogTimeoutSeconds": 900,
+        "counts": {
+          "tests": 12,
+          "pass": 12,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "88db48ac9f09aaf5593896728ed7c93f8e3cdd1dd5c6c561ad28c51bd080da58",
+        "watchdogSha256": "56d518645fffaf6e960584f72f82a70e933f38adaf53e3011897a290e141e147",
+        "survivors": 0,
+        "newScratch": 0,
+        "evidenceKind": "reused unchanged candidate",
+        "originalRun": "output/verification/cloud-offline6000-20261105",
+        "retainedCopy": "output/verification/cloud-final-108-20261105/reused/test:cli.log"
+      }
+    ]
+  },
+  "acceptanceAudit": {
+    "candidate": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "node": "v24.11.1",
+    "results": [
+      {
+        "log": "verify.log",
+        "output": "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-cursor-cloud/output/acceptance/2026-11-05T06-32-11.656Z",
+        "count": 1,
+        "seeds": [
+          {
+            "seed": 1,
+            "reportHash": "ba0da97c041d33080ce63f1fae8a87c5df23978b47eb7339ae244c73a0a65ba7",
+            "reportFileSha256": "c24b9d17d6d3f29f04429dc50c2a715c0faf84dfece64835277e5f02e2d185b8",
+            "snapshotFileSha256": "aaa46a0cb6a4137e921337649be3e2c3c2b1a9a5f74f9c895f08a25818a00a30",
+            "snapshotHash": "3d5d3f6d72d19874f4c56b838771ea5a76c82a2364c71e7f223d82837fda1fe4",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 256.2386250000127,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 4
+            },
+            "maxima": {
+              "local-ack": 256.2386250000127,
+              "convergence": 3007.1536249999917,
+              "local-ui-visible": 65.76812500000233,
+              "offline-start": 1989.9631250000093,
+              "agent-effect-ack": 165.91245800000615
+            }
+          }
+        ]
+      },
+      {
+        "log": "qualification.log",
+        "output": "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-cursor-cloud/output/acceptance/2026-11-05T06-35-20.486Z",
+        "count": 20,
+        "seeds": [
+          {
+            "seed": 1,
+            "reportHash": "d8761550be478510f20269dc61eca77c702f59f9249e502fe1e35b06f4704860",
+            "reportFileSha256": "86d9814697c27d7543ab4f179729bfadf5473efadb29232a88bc7925b1e872ed",
+            "snapshotFileSha256": "f7fd8e389c548b82d070d2fd7608f5a9cbbebb2a166520d1bb2e7c7181f011bc",
+            "snapshotHash": "28df77153983697d6ea8fcde69516c9e297f03d776b015538d3e29e47df05321",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 259.9593339999992,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 4
+            },
+            "maxima": {
+              "local-ack": 259.9593339999992,
+              "convergence": 2863.2213330000086,
+              "local-ui-visible": 49.73137499999575,
+              "offline-start": 2048.131625000009,
+              "agent-effect-ack": 160.10762499998964
+            }
+          },
+          {
+            "seed": 2,
+            "reportHash": "1782043f2e20eb86a05dbee92629e9a1c6298d33208344193a27c776436a2936",
+            "reportFileSha256": "a639c35bdd5093093773e16b6a084aa6c76fe839f6f2c6a55343cef20cc368ca",
+            "snapshotFileSha256": "21a1d5b088bb8c06c45653ddd2b52a9a972e27623f503a30d0d0bd1affd6f815",
+            "snapshotHash": "a718b0a9b7622ca30c9c5f8b5d9be7d69a0fd7fdec47ad008c6b65fab93b2d19",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 261.65399999998044,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 3
+            },
+            "maxima": {
+              "local-ack": 261.65399999998044,
+              "convergence": 2342.9838330000057,
+              "local-ui-visible": 64.41341700000339,
+              "offline-start": 1986.2833329999994,
+              "agent-effect-ack": 167.4421250000014
+            }
+          },
+          {
+            "seed": 3,
+            "reportHash": "5568a5d4924c77ef4d450e24c76dbae897787b9ed2afbd7b64f0f1bf232e63a5",
+            "reportFileSha256": "ffe08c778076e78457e6421a561625b1d8ab02ca927256aa1de4454fb041dd6e",
+            "snapshotFileSha256": "651959994c414f611abe1bbbbbb536232b75f0ef629839668acf6047b8fd2726",
+            "snapshotHash": "e24fa3033f8f1d1b173af8522738bb64180a101ca27a185e0aa73e4c6d5a8886",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 267.9285830000299,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 4
+            },
+            "maxima": {
+              "local-ack": 267.9285830000299,
+              "convergence": 2737.104958000011,
+              "local-ui-visible": 61.96879099996295,
+              "offline-start": 2049.0214169999817,
+              "agent-effect-ack": 170.75558300002012
+            }
+          },
+          {
+            "seed": 4,
+            "reportHash": "71153ad45b2b4e6670f70f664e0f56b1e8a36ad1018cc83f6ce8697aa460b886",
+            "reportFileSha256": "2fee52dc178b600a0262a0c1c59fb0ce5b1ef9e207163a4c4748ce8ae5b3e4cc",
+            "snapshotFileSha256": "b07827038f7f1e9e6912395fad30690d874b2e469d0f34b79529b9dd16246968",
+            "snapshotHash": "f9ba474e2da3c364dc0c2b8e7e93ec1d4179fdab692c12ee3a110579015aa010",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 339.3012919999892,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 3
+            },
+            "maxima": {
+              "local-ack": 339.3012919999892,
+              "convergence": 2176.7070420000236,
+              "local-ui-visible": 50.62075000000186,
+              "offline-start": 2052.8558329999796,
+              "agent-effect-ack": 236.52858300000662
+            }
+          },
+          {
+            "seed": 5,
+            "reportHash": "b0543cdae02848a9fdfd6865ff1c679b64e69fe04f103069c766cbdc229881ff",
+            "reportFileSha256": "0b16ca62e1a3ce1bbb4aab14e21966568332ca963e5720de361fd755f14fccb8",
+            "snapshotFileSha256": "7ae381f0b07a53008585e44509673f703fdd2874ead99faab007d912031ff192",
+            "snapshotHash": "2bd33041a36419770851e6505371c5d8cb65d1908eece21f8554e8bb748de860",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 255.18504100001883,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 4
+            },
+            "maxima": {
+              "local-ack": 255.18504100001883,
+              "convergence": 2610.501042000018,
+              "local-ui-visible": 49.749458999955095,
+              "offline-start": 2014.1029170000693,
+              "agent-effect-ack": 162.8137080000015
+            }
+          },
+          {
+            "seed": 6,
+            "reportHash": "310be22ca643cbd567d314d107bfce4561b26810bba4fbbc1952b428de12cd1e",
+            "reportFileSha256": "98cac29f4eb216101b2b639077da2851ca81a2930f919f264eb5c7451d8af260",
+            "snapshotFileSha256": "b040d5a0d19c19cf4da3fe8dcfb5ca959458b2a65b053f54e82c792c7df70b7f",
+            "snapshotHash": "06b5ba518fb4979a14e2ef0d9668e79e351407a02b3d122e11fd52b94bfe1f02",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 281.7353749999311,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 3
+            },
+            "maxima": {
+              "local-ack": 281.7353749999311,
+              "convergence": 2137.0707909999182,
+              "local-ui-visible": 61.64212500001304,
+              "offline-start": 2008.0304160000524,
+              "agent-effect-ack": 165.17849999992177
+            }
+          },
+          {
+            "seed": 7,
+            "reportHash": "cbda50eca48c0f599afeaf8ec83f1b0b84b45cba942c06ad10d365576589726d",
+            "reportFileSha256": "dc234e65b11a6843e1cfd0a9bdd2e087be4a820055929f83854e77b8e07050c1",
+            "snapshotFileSha256": "ac9b8b4e0520c26dd370922bf7401bfceb650ebfd2f956e424529d2250b0c486",
+            "snapshotHash": "7a8d5a01752ae78bf5a48b04fa71d12e43252be51c3ba7a6eb5d1f984c408915",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 274.0262910000747,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 4
+            },
+            "maxima": {
+              "local-ack": 274.0262910000747,
+              "convergence": 3541.8556249999674,
+              "local-ui-visible": 48.57166700006928,
+              "offline-start": 2101.4288330000127,
+              "agent-effect-ack": 163.64333300001454
+            }
+          },
+          {
+            "seed": 8,
+            "reportHash": "3e42ce14609e288b3d25d897475674e2907886ee529f02ed4ff3627d628a85b4",
+            "reportFileSha256": "404fa10c887d611d89b8b5df877aa31280d3ca2f7a0b377fdb42b5243356f14f",
+            "snapshotFileSha256": "827910e85e18efb164a97e849e79bfadaac60ee743015f48f9a1ca5c21c9fb11",
+            "snapshotHash": "a4abe407409a70a835d490d22e9f5212385677a2e890aa2ee7ecc8631fa3be12",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 257.86458399996627,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 3
+            },
+            "maxima": {
+              "local-ack": 257.86458399996627,
+              "convergence": 1896.5238749999553,
+              "local-ui-visible": 66.58183299994562,
+              "offline-start": 2022.9184160000877,
+              "agent-effect-ack": 166.5641670000041
+            }
+          },
+          {
+            "seed": 9,
+            "reportHash": "55f3a6aa1a57ca44e6d916db5a81631833aa9626ad6da3241eb1efaa39fd542b",
+            "reportFileSha256": "561244ae46f0172bf5e81546a801cba7359c337d803e8077752ff19c6fe3ee2a",
+            "snapshotFileSha256": "a1a4c5ea0951f6d3adb5c3e01092a81c3a3fdc3c1ab9473152811417c6f3ce48",
+            "snapshotHash": "d01c8350ed11f1608caaa02d29367368a816707c97dd248685cb8ed2ae6cf771",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 270.20812499988824,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 4
+            },
+            "maxima": {
+              "local-ack": 186.91391600016505,
+              "convergence": 2705.7934159999713,
+              "local-ui-visible": 71.22158400015905,
+              "offline-start": 1998.5277909999713,
+              "agent-effect-ack": 178.70712499995716
+            }
+          },
+          {
+            "seed": 10,
+            "reportHash": "7327ac310cad2132c6a2653fa8b2911b8abdfe329467c01c0998729123e3ba2c",
+            "reportFileSha256": "03dbc11aaec0d15e129768a114847cbeedff0fa387bad9eb169e5ac13b58f5c9",
+            "snapshotFileSha256": "c9f5bb0e763de6a638c9a52c223d81262cafd053defc4047a1e8789dfc69bfe8",
+            "snapshotHash": "97580c52b937e955722ae738321b4751caf05dcab9b1ef80205589a6307a160f",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 262.67841699998826,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 3
+            },
+            "maxima": {
+              "local-ack": 262.67841699998826,
+              "convergence": 2350.0990830000956,
+              "local-ui-visible": 58.20041700010188,
+              "offline-start": 2037.6519160000607,
+              "agent-effect-ack": 168.04237499996088
+            }
+          },
+          {
+            "seed": 11,
+            "reportHash": "b79899e6306da47752cbdbea9ecb0fc2211c7f408a31eb1c986f9407c7d433bc",
+            "reportFileSha256": "ff3991212b21203b19fcaffc4fdd14f7b802d647bd12c688264dbf9655490f2c",
+            "snapshotFileSha256": "55ecd378b1d831ebb78a9de4b62b7ca429e533e9a496a8a11344a26f5e8854a7",
+            "snapshotHash": "87e8e0667f0891b5860816f62fa6f4b106536eb6847af98ed505623ee761fe0a",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 252.56316599994898,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 4
+            },
+            "maxima": {
+              "local-ack": 252.56316599994898,
+              "convergence": 2792.5712919998914,
+              "local-ui-visible": 63.20808400004171,
+              "offline-start": 2029.9287499999627,
+              "agent-effect-ack": 162.3418749999255
+            }
+          },
+          {
+            "seed": 12,
+            "reportHash": "1f86744ffd794d0d0ccac891b0560b94f08a1593e7d5aeeaae90ea890f002e39",
+            "reportFileSha256": "6176f6d7304b1e40d82ddd6742cecbf75a90f61d13c5c8f13d4a7f60756290e8",
+            "snapshotFileSha256": "ba081c2e084f10d58b732fdd07b98f95bf57ef9b024b1eb9870e4c936a9c52d5",
+            "snapshotHash": "d00ed5b60adbfaeeef12792a3b4f8e098da2d00670a3ef35016e3bfe920115d2",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 341.71033300017007,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 3
+            },
+            "maxima": {
+              "local-ack": 341.71033300017007,
+              "convergence": 4039.597958999919,
+              "local-ui-visible": 61.10666699986905,
+              "offline-start": 2099.845541999908,
+              "agent-effect-ack": 310.66379200015217
+            }
+          },
+          {
+            "seed": 13,
+            "reportHash": "7d6d1f9f71752519c66393021eaf51e29ac7fc4805b2dd116d37f1f8196c35f5",
+            "reportFileSha256": "bd25a0123dd74c49d547b98a0e2a2339d77ae35f8a47df7eea90c0251ae9de53",
+            "snapshotFileSha256": "00d7d4bd79f07b628dfba3dccee2d76f72eed524d5bec1bc764a147ef57bd0ce",
+            "snapshotHash": "88e7c25e5db0213275d26d388ea1fe0358ba4cbcbcca3d392f9620ad31672b09",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 287.2300829999149,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 4
+            },
+            "maxima": {
+              "local-ack": 287.2300829999149,
+              "convergence": 3283.3212500000373,
+              "local-ui-visible": 65.8056669998914,
+              "offline-start": 2145.0088750000577,
+              "agent-effect-ack": 179.87979099992663
+            }
+          },
+          {
+            "seed": 14,
+            "reportHash": "36eb9157b0843ec83307842c82aa82364138375e93050563914eb5df503b43bd",
+            "reportFileSha256": "d99ab9c6a8cb24a9c6344f2c3252dfdef7389b92ffba35565e3eb17c9c8be2b9",
+            "snapshotFileSha256": "f915162f9765772ca3296dc78dc63092444ea234ed0accd4236c1c3f4850ae7e",
+            "snapshotHash": "71b49bc67d7bc49167a452f8d4f0d7e0c1236c63f6c2c1e30fc962f502d3cb57",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 303.2913750000298,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 3
+            },
+            "maxima": {
+              "local-ack": 303.2913750000298,
+              "convergence": 2838.8709580001887,
+              "local-ui-visible": 85.43679199996404,
+              "offline-start": 2111.0033750000875,
+              "agent-effect-ack": 173.41066699987277
+            }
+          },
+          {
+            "seed": 15,
+            "reportHash": "21c7078ab7becfe3e7ab34ebe2e43312a71fc0c1fbf7ceca82b476fc8b23ea45",
+            "reportFileSha256": "ce2b307e5ae130b4f034c8af1b5cd56c56953a141e65d70a18fabea08378bae1",
+            "snapshotFileSha256": "adafcb3112f2aa02df072719d3d86bf4467f2be526a7fae8049731ed92515b46",
+            "snapshotHash": "a2305c50b4e68c46f3f9d30c342bf5f0923ed2085312963752381986b9d0880e",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 268.02854199986905,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 4
+            },
+            "maxima": {
+              "local-ack": 268.02854199986905,
+              "convergence": 2639.7675420001615,
+              "local-ui-visible": 49.92550000012852,
+              "offline-start": 2054.2495830000844,
+              "agent-effect-ack": 168.39716599998064
+            }
+          },
+          {
+            "seed": 16,
+            "reportHash": "1fd166e05d5ea35f73e49d6f31b3888507830f1f8e8f89cad9ce10fb6fd180ca",
+            "reportFileSha256": "bd46d123b406d97eade4f4da27c15abe5fbb5148f030bb243081b452d067d524",
+            "snapshotFileSha256": "66f5199552e663bfdf4e7c9733d20f3a5b7da30cc05f1e692e3be615487d68a9",
+            "snapshotHash": "7363684c00e64834db053b16944a36362db5873a90b8f6c795a60705295415a9",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 262.34620799985714,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 3
+            },
+            "maxima": {
+              "local-ack": 262.34620799985714,
+              "convergence": 2037.2307080000173,
+              "local-ui-visible": 57.064833000069484,
+              "offline-start": 2001.1410000000615,
+              "agent-effect-ack": 163.43245800002478
+            }
+          },
+          {
+            "seed": 17,
+            "reportHash": "af00fb4275bfbc3e498d8fab445b1b4df18bcb9c738714f932e5ffc61d1dd3e4",
+            "reportFileSha256": "070338c4be1516b9c44c6db2f75e4365cd39c65d03b50b936228dcfa0a0f03c5",
+            "snapshotFileSha256": "821bc5104c7540a02c4f099581695cdc665f34ffcd642df8029bc74da3961efe",
+            "snapshotHash": "d6567ccfc45c3912b96aa4de686ef1cf5e4c58619f3c8b604b66a4c9329b7504",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 258.08554100012407,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 4
+            },
+            "maxima": {
+              "local-ack": 258.08554100012407,
+              "convergence": 2666.943874999881,
+              "local-ui-visible": 55.78058300027624,
+              "offline-start": 1983.2098749997094,
+              "agent-effect-ack": 163.19695799984038
+            }
+          },
+          {
+            "seed": 18,
+            "reportHash": "71bbaaa45e6e95cc9dad92d5176903cd6528c7b3cd43d483657a56fbb42b929c",
+            "reportFileSha256": "009df924bf2fbcc1772d8e9df8297bd2d6b64e42c386256f8ea1155adc175795",
+            "snapshotFileSha256": "a0752e20eb56593d02ad898b758d9034f1bd1df6477a236bcfc2823e49ac33af",
+            "snapshotHash": "f12cf9e611596b67872125cbc9728267a3700a685b8a6f4da9db08cfa8ab259b",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 257.71166600007564,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 3
+            },
+            "maxima": {
+              "local-ack": 257.71166600007564,
+              "convergence": 2144.668209000025,
+              "local-ui-visible": 52.463999999687076,
+              "offline-start": 2078.5057919998653,
+              "agent-effect-ack": 170.28600000031292
+            }
+          },
+          {
+            "seed": 19,
+            "reportHash": "f8b5bdf841d8c76996ed6b4a928ad82131a981b43c95a404ceccfc55cfb7a39d",
+            "reportFileSha256": "d1f2f1b609377c55424dbdd9dfb2578d4d01ae5dd1371eec503ab0be3f4609e0",
+            "snapshotFileSha256": "f2e9342c9fdc7272994d3d68d8248dfb3f9203ceaf99ffc3d077da3fe20e1042",
+            "snapshotHash": "5f954565140b1879485b821cd71f6c1167f45408907b5cbc814d11aeede5d75f",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 256.164124999661,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 4
+            },
+            "maxima": {
+              "local-ack": 256.164124999661,
+              "convergence": 2496.2484579999,
+              "local-ui-visible": 54.06520800013095,
+              "offline-start": 2011.4127919999883,
+              "agent-effect-ack": 163.89937500003725
+            }
+          },
+          {
+            "seed": 20,
+            "reportHash": "8c7588740b95650314c6111f592296b8a62790dac3f59b436af5a8b9a3a0ab5c",
+            "reportFileSha256": "3a2c5c7e81588085ab956c3fc9b4c20ce62fbb5b64af951ecb5980887da9e417",
+            "snapshotFileSha256": "24eb0bf9a132f7b32ae3d0e955e5236dc19d5cb3e115b66326187b98465039c8",
+            "snapshotHash": "19b84a06a15591f1496dec0e8a00322e92849861a60c93f23c809ecb861157a2",
+            "schemaVersion": 5,
+            "intendedOperationCount": 719,
+            "operationCount": 719,
+            "receiptMaxMs": 254.3597079999745,
+            "timingSampleCounts": {
+              "local-ack": 711,
+              "convergence": 10,
+              "local-ui-visible": 2,
+              "offline-start": 1,
+              "agent-effect-ack": 3
+            },
+            "maxima": {
+              "local-ack": 254.3597079999745,
+              "convergence": 2507.1763340001926,
+              "local-ui-visible": 53.13808299973607,
+              "offline-start": 2060.0610830001533,
+              "agent-effect-ack": 162.1239160001278
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "all21ReceiptCount": 15099,
+  "all21MaximaMs": {
+    "local-ack": 341.71033300017007,
+    "convergence": 4039.597958999919,
+    "local-ui-visible": 85.43679199996404,
+    "offline-start": 2145.0088750000577,
+    "agent-effect-ack": 310.66379200015217,
+    "receipt-inclusive-local-ack": 341.71033300017007
+  },
+  "gate20MaximaMs": {
+    "local-ack": 341.71033300017007,
+    "convergence": 4039.597958999919,
+    "local-ui-visible": 85.43679199996404,
+    "offline-start": 2145.0088750000577,
+    "agent-effect-ack": 310.66379200015217,
+    "receipt-inclusive-local-ack": 341.71033300017007
+  },
+  "artifactManifests": [
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/after-browser-launch.json",
+      "sha256": "2d0140259c7f8fba5db64a028a637c2eefcf89d693bdd0b9666d77ee59d2d397",
+      "capturedAt": "2026-11-05T06:30:26.600931+00:00",
+      "label": "after-browser-launch",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de",
+          "bytes": 55458,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4",
+          "bytes": 40531,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772",
+          "bytes": 39985,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053",
+          "bytes": 110915,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833",
+          "bytes": 87346,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024",
+          "bytes": 138160,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635",
+          "bytes": 125446,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/after-build.json",
+      "sha256": "2264154ce651910f47f49c55a85b51b1739c9244e9491a7a5c516f4d99c0365d",
+      "capturedAt": "2026-11-05T06:30:25.406754+00:00",
+      "label": "after-build",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de",
+          "bytes": 55458,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4",
+          "bytes": 40531,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772",
+          "bytes": 39985,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053",
+          "bytes": 110915,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833",
+          "bytes": 87346,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024",
+          "bytes": 138160,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635",
+          "bytes": 125446,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/after-environment.json",
+      "sha256": "469981f46f59408d5fa8f97f200f4f87429fb41af8df3939867bea896bfb40c5",
+      "capturedAt": "2026-11-05T06:30:23.172290+00:00",
+      "label": "after-environment",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de",
+          "bytes": 55458,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4",
+          "bytes": 40531,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772",
+          "bytes": 39985,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053",
+          "bytes": 110915,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833",
+          "bytes": 87346,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024",
+          "bytes": 138160,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635",
+          "bytes": 125446,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/after-policy.json",
+      "sha256": "0303eb291e70fcdbcd6631204b352c1f28ab1e723f1ab60edd7c9cc49cdeb3dc",
+      "capturedAt": "2026-11-05T06:30:23.677677+00:00",
+      "label": "after-policy",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de",
+          "bytes": 55458,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4",
+          "bytes": 40531,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772",
+          "bytes": 39985,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053",
+          "bytes": 110915,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833",
+          "bytes": 87346,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024",
+          "bytes": 138160,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635",
+          "bytes": 125446,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/after-qualification.json",
+      "sha256": "1012940cfc604c1a0792c8ad98de6523f490b52099793f9d51ca1b7e752d15a9",
+      "capturedAt": "2026-11-05T07:17:50.727068+00:00",
+      "label": "after-qualification",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "388291b3b027b34480df5e925444d78d9a1ea2f939d72886ec314e37cd57a8b0",
+          "bytes": 55448,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/388291b3b027b34480df5e925444d78d9a1ea2f939d72886ec314e37cd57a8b0.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "afdeea863b8cb30bc64b401305a5f224f888c697f8ec299d4c760e2e6b0a1323",
+          "bytes": 40524,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/afdeea863b8cb30bc64b401305a5f224f888c697f8ec299d4c760e2e6b0a1323.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "dd77fb9a12ee1507df9dd41c5440ee900ce1dd33001aefcdefe6316033def842",
+          "bytes": 39992,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/dd77fb9a12ee1507df9dd41c5440ee900ce1dd33001aefcdefe6316033def842.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "3b39587035d2c99a8f5ea5a786fc421d4859c91eb470ce51753e196501361cde",
+          "bytes": 112043,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3b39587035d2c99a8f5ea5a786fc421d4859c91eb470ce51753e196501361cde.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "af537458a316467ab0d9399383f5f5f1b1ad51e5ac34b58771a473a34f33f2c9",
+          "bytes": 85870,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/af537458a316467ab0d9399383f5f5f1b1ad51e5ac34b58771a473a34f33f2c9.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "a5f2ad46cbd6be870adf8299924f7c138108edc80ba3231317128f82515af83b",
+          "bytes": 139026,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/a5f2ad46cbd6be870adf8299924f7c138108edc80ba3231317128f82515af83b.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "2089c5a7971f7e40f4e7864d6c6c04cdab35d96bd3f7a17fd655a0bc5e9f05ac",
+          "bytes": 123970,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/2089c5a7971f7e40f4e7864d6c6c04cdab35d96bd3f7a17fd655a0bc5e9f05ac.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/after-ui.json",
+      "sha256": "8ab5857a4f9680e047b9ed836eda41995bc5f27c3f41566e5ecb01ac6c54d083",
+      "capturedAt": "2026-11-05T06:31:06.718646+00:00",
+      "label": "after-ui",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "8c4d704fb41606c0e34035627528b09faa4569a79b70ba2907fe9364a22dee00",
+          "bytes": 55460,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/8c4d704fb41606c0e34035627528b09faa4569a79b70ba2907fe9364a22dee00.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "3881a67b39b4f2d5cebc635338e251ffcc9409b0fa1f1860aeb46938bef4d331",
+          "bytes": 40494,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3881a67b39b4f2d5cebc635338e251ffcc9409b0fa1f1860aeb46938bef4d331.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772",
+          "bytes": 39985,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "cb78925d2e3e03c4579a9ba013fd3029eff8ebad4734eeb0d6782e6d9c0ac904",
+          "bytes": 111758,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/cb78925d2e3e03c4579a9ba013fd3029eff8ebad4734eeb0d6782e6d9c0ac904.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "f65f5663d139e6aaf916d67c2e171804b95cd90496fc13a79216d40fe69a8329",
+          "bytes": 84909,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/f65f5663d139e6aaf916d67c2e171804b95cd90496fc13a79216d40fe69a8329.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "2583a7b0c4415693861aa337d8f6282d909473933e91ac486dc4b72075e3da77",
+          "bytes": 138299,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/2583a7b0c4415693861aa337d8f6282d909473933e91ac486dc4b72075e3da77.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "be0bce5d70f52aaa8c01cf5a140417f820f32fc0356b06e77b8150e562952100",
+          "bytes": 124775,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/be0bce5d70f52aaa8c01cf5a140417f820f32fc0356b06e77b8150e562952100.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/after-verify.json",
+      "sha256": "5cd8e07b50c379e50e46fbd4f4f0487154b1e17bac52d7e542ae6c79c8937560",
+      "capturedAt": "2026-11-05T06:34:14.578001+00:00",
+      "label": "after-verify",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "388291b3b027b34480df5e925444d78d9a1ea2f939d72886ec314e37cd57a8b0",
+          "bytes": 55448,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/388291b3b027b34480df5e925444d78d9a1ea2f939d72886ec314e37cd57a8b0.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "afdeea863b8cb30bc64b401305a5f224f888c697f8ec299d4c760e2e6b0a1323",
+          "bytes": 40524,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/afdeea863b8cb30bc64b401305a5f224f888c697f8ec299d4c760e2e6b0a1323.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "dd77fb9a12ee1507df9dd41c5440ee900ce1dd33001aefcdefe6316033def842",
+          "bytes": 39992,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/dd77fb9a12ee1507df9dd41c5440ee900ce1dd33001aefcdefe6316033def842.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "3b39587035d2c99a8f5ea5a786fc421d4859c91eb470ce51753e196501361cde",
+          "bytes": 112043,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3b39587035d2c99a8f5ea5a786fc421d4859c91eb470ce51753e196501361cde.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "af537458a316467ab0d9399383f5f5f1b1ad51e5ac34b58771a473a34f33f2c9",
+          "bytes": 85870,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/af537458a316467ab0d9399383f5f5f1b1ad51e5ac34b58771a473a34f33f2c9.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "a5f2ad46cbd6be870adf8299924f7c138108edc80ba3231317128f82515af83b",
+          "bytes": 139026,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/a5f2ad46cbd6be870adf8299924f7c138108edc80ba3231317128f82515af83b.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "2089c5a7971f7e40f4e7864d6c6c04cdab35d96bd3f7a17fd655a0bc5e9f05ac",
+          "bytes": 123970,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/2089c5a7971f7e40f4e7864d6c6c04cdab35d96bd3f7a17fd655a0bc5e9f05ac.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/before-browser-launch.json",
+      "sha256": "13e1196f21e45e544f70ac0af1c3dd18cd86caa956f1f6d84db3ae9d6472b68f",
+      "capturedAt": "2026-11-05T06:30:25.471243+00:00",
+      "label": "before-browser-launch",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de",
+          "bytes": 55458,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4",
+          "bytes": 40531,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772",
+          "bytes": 39985,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053",
+          "bytes": 110915,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833",
+          "bytes": 87346,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024",
+          "bytes": 138160,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635",
+          "bytes": 125446,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/before-build.json",
+      "sha256": "6d69e49c992799d448884436e238bec101c12f43a29f90b327a21119cc6f9493",
+      "capturedAt": "2026-11-05T06:30:23.680466+00:00",
+      "label": "before-build",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de",
+          "bytes": 55458,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4",
+          "bytes": 40531,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772",
+          "bytes": 39985,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053",
+          "bytes": 110915,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833",
+          "bytes": 87346,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024",
+          "bytes": 138160,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635",
+          "bytes": 125446,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/before-environment.json",
+      "sha256": "58652a92507186bae6a5b120c0600cc02f464711d6dc78dcbe4d494a3139952f",
+      "capturedAt": "2026-11-05T06:30:22.882288+00:00",
+      "label": "before-environment",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de",
+          "bytes": 55458,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4",
+          "bytes": 40531,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772",
+          "bytes": 39985,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053",
+          "bytes": 110915,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833",
+          "bytes": 87346,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024",
+          "bytes": 138160,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635",
+          "bytes": 125446,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/before-policy.json",
+      "sha256": "24204fdaa7e0667d7bdeb3910aee0270f5f1ca37ac8adb1e9d4922c616ad14ee",
+      "capturedAt": "2026-11-05T06:30:23.175027+00:00",
+      "label": "before-policy",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de",
+          "bytes": 55458,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4",
+          "bytes": 40531,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772",
+          "bytes": 39985,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053",
+          "bytes": 110915,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833",
+          "bytes": 87346,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024",
+          "bytes": 138160,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635",
+          "bytes": 125446,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/before-qualification.json",
+      "sha256": "38cbdbe0e1d8fba76a6d89a7235773be9e98ac6aab5964752e747b9d851f6707",
+      "capturedAt": "2026-11-05T06:35:19.949521+00:00",
+      "label": "before-qualification",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "388291b3b027b34480df5e925444d78d9a1ea2f939d72886ec314e37cd57a8b0",
+          "bytes": 55448,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/388291b3b027b34480df5e925444d78d9a1ea2f939d72886ec314e37cd57a8b0.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "afdeea863b8cb30bc64b401305a5f224f888c697f8ec299d4c760e2e6b0a1323",
+          "bytes": 40524,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/afdeea863b8cb30bc64b401305a5f224f888c697f8ec299d4c760e2e6b0a1323.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "dd77fb9a12ee1507df9dd41c5440ee900ce1dd33001aefcdefe6316033def842",
+          "bytes": 39992,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/dd77fb9a12ee1507df9dd41c5440ee900ce1dd33001aefcdefe6316033def842.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "3b39587035d2c99a8f5ea5a786fc421d4859c91eb470ce51753e196501361cde",
+          "bytes": 112043,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3b39587035d2c99a8f5ea5a786fc421d4859c91eb470ce51753e196501361cde.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "af537458a316467ab0d9399383f5f5f1b1ad51e5ac34b58771a473a34f33f2c9",
+          "bytes": 85870,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/af537458a316467ab0d9399383f5f5f1b1ad51e5ac34b58771a473a34f33f2c9.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "a5f2ad46cbd6be870adf8299924f7c138108edc80ba3231317128f82515af83b",
+          "bytes": 139026,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/a5f2ad46cbd6be870adf8299924f7c138108edc80ba3231317128f82515af83b.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "2089c5a7971f7e40f4e7864d6c6c04cdab35d96bd3f7a17fd655a0bc5e9f05ac",
+          "bytes": 123970,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/2089c5a7971f7e40f4e7864d6c6c04cdab35d96bd3f7a17fd655a0bc5e9f05ac.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/before-ui.json",
+      "sha256": "fe58b363127371516585b867f46d2994625a69284ce163298fcbf1f54fd1f28b",
+      "capturedAt": "2026-11-05T06:30:26.603608+00:00",
+      "label": "before-ui",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de",
+          "bytes": 55458,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4",
+          "bytes": 40531,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772",
+          "bytes": 39985,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053",
+          "bytes": 110915,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833",
+          "bytes": 87346,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024",
+          "bytes": 138160,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635",
+          "bytes": 125446,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/before-verify.json",
+      "sha256": "406405a2d6f6f7ed8e24d51cbe96411c07629b94224f38598bbba939651bb8d1",
+      "capturedAt": "2026-11-05T06:31:06.784112+00:00",
+      "label": "before-verify",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "8c4d704fb41606c0e34035627528b09faa4569a79b70ba2907fe9364a22dee00",
+          "bytes": 55460,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/8c4d704fb41606c0e34035627528b09faa4569a79b70ba2907fe9364a22dee00.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "3881a67b39b4f2d5cebc635338e251ffcc9409b0fa1f1860aeb46938bef4d331",
+          "bytes": 40494,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3881a67b39b4f2d5cebc635338e251ffcc9409b0fa1f1860aeb46938bef4d331.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772",
+          "bytes": 39985,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "cb78925d2e3e03c4579a9ba013fd3029eff8ebad4734eeb0d6782e6d9c0ac904",
+          "bytes": 111758,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/cb78925d2e3e03c4579a9ba013fd3029eff8ebad4734eeb0d6782e6d9c0ac904.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "f65f5663d139e6aaf916d67c2e171804b95cd90496fc13a79216d40fe69a8329",
+          "bytes": 84909,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/f65f5663d139e6aaf916d67c2e171804b95cd90496fc13a79216d40fe69a8329.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "2583a7b0c4415693861aa337d8f6282d909473933e91ac486dc4b72075e3da77",
+          "bytes": 138299,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/2583a7b0c4415693861aa337d8f6282d909473933e91ac486dc4b72075e3da77.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "be0bce5d70f52aaa8c01cf5a140417f820f32fc0356b06e77b8150e562952100",
+          "bytes": 124775,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/be0bce5d70f52aaa8c01cf5a140417f820f32fc0356b06e77b8150e562952100.png"
+        }
+      ]
+    },
+    {
+      "path": "output/verification/cloud-final-108-20261105/artifacts/initial.json",
+      "sha256": "0a2063f2329255acc8af022225bcdd113e28462ad6f985896e79b14d44dc7727",
+      "capturedAt": "2026-11-05T06:30:22.879656+00:00",
+      "label": "initial",
+      "files": [
+        {
+          "source": "output/playwright/pardner-desktop.png",
+          "sha256": "f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de",
+          "bytes": 55458,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/f3db1dedbc6a6bda9179b03a8b5de38ff0339ecc8cc90e6b7b0e5d8a4325f8de.png"
+        },
+        {
+          "source": "output/playwright/pardner-goals.png",
+          "sha256": "b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4",
+          "bytes": 40531,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/b47e8321d0ea597b2de13646a6b670881929bf9ae0b7884a3757e0e6e2b95fb4.png"
+        },
+        {
+          "source": "output/playwright/pardner-mobile.png",
+          "sha256": "e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772",
+          "bytes": 39985,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/e42670a8e3c49ae3a7c825a5bf9c5c501f0bccd158d51f6ad8a7d00b9567f772.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-chromium.png",
+          "sha256": "82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139",
+          "bytes": 33666,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/82a8efbd0b56e0505aedc7aa7e986a41baceeddd7b90ba5c20fa46884af3c139.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-reviews-webkit.png",
+          "sha256": "3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265",
+          "bytes": 46210,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/3f666f50a05a2a460d9865e9d99978f16153311ad6a5bb68a1d9b2cc8ffc5265.png"
+        },
+        {
+          "source": "output/playwright/pardner-phone-setup.png",
+          "sha256": "0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1",
+          "bytes": 43634,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/0c28642b93edce133526bef32d8d09598256f017be00534c42a9a855c42061d1.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium-active.png",
+          "sha256": "4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053",
+          "bytes": 110915,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/4634d553d2f6c0d32c43c052ab52eec587e5a978d96b0bb73c1687b48fa6c053.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/chromium.png",
+          "sha256": "cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833",
+          "bytes": 87346,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/cffc42c635a1e53f7d7b173078f41b8d84b53e422513c8db016c17cdfdb12833.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit-active.png",
+          "sha256": "fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024",
+          "bytes": 138160,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/fea0d74522771f01ec84c7395a0a5f6d7baee8a893d348e8ffc631841b5b6024.png"
+        },
+        {
+          "source": "output/verification/cloud-ui/webkit.png",
+          "sha256": "d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635",
+          "bytes": 125446,
+          "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/d406229679a40fa1e65aaca3188fdbe8c17cea90b26c8d9df18a1424466ca635.png"
+        }
+      ]
+    }
+  ],
+  "visuallyInspected": [
+    {
+      "source": "output/verification/cloud-ui/chromium-active.png",
+      "sha256": "cb78925d2e3e03c4579a9ba013fd3029eff8ebad4734eeb0d6782e6d9c0ac904",
+      "bytes": 111758,
+      "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/cb78925d2e3e03c4579a9ba013fd3029eff8ebad4734eeb0d6782e6d9c0ac904.png",
+      "inspection": "Readable exact run/cancelled outcome, held zero-submission queue, immutable evidence and explicitly simulated human verdict; no clipping in captured pane. Paired with browser/service assertions; not live approval."
+    },
+    {
+      "source": "output/verification/cloud-ui/webkit-active.png",
+      "sha256": "2583a7b0c4415693861aa337d8f6282d909473933e91ac486dc4b72075e3da77",
+      "bytes": 138299,
+      "blob": "output/verification/cloud-final-108-20261105/artifacts/blobs/2583a7b0c4415693861aa337d8f6282d909473933e91ac486dc4b72075e3da77.png",
+      "inspection": "Readable exact run/cancelled outcome, held zero-submission queue, immutable evidence and explicitly simulated human verdict; no clipping in captured pane. Paired with browser/service assertions; not live approval."
+    }
+  ],
+  "fixtureTraces": {
+    "privatePath": "output/verification/cloud-final-108-20261105/fixture-traces-verify.json",
+    "sha256": "9ca076366c4664c8238295497d3eb5089ca01f6308781cd53ff3564f5f43b0c8",
+    "kind": "deterministic-fixture-only",
+    "liveRequests": 0,
+    "traceCount": 22
+  },
+  "plan": {
+    "path": "output/verification/cloud-final-108-20261105/plan.json",
+    "sha256": "2e01a6f7bd2628d1be5b2a129be2259c998b3e162cea0c7dc2be6959e1c16250",
+    "publicationPath": "output/verification/cloud-final-108-20261105/plan.publication.json",
+    "publicationSha256": "caeb5f5a55958939da9417b51c054b117e64e19df5d704e4c75c837c78d9238b",
+    "publicationSelectionUnchanged": true,
+    "manualClassification": "four previously published evidence-only PNGs; no planner rewrite"
+  },
+  "auditDriver": {
+    "sha256": "d8afa9e3ef7c57162c2236a0e15a67641fef4c23647aa0008f4512e2c51c5a14",
+    "source": "import assert from 'node:assert/strict'\nimport { readFile, writeFile, access } from 'node:fs/promises'\nimport { join } from 'node:path'\nimport { createHash } from 'node:crypto'\nconst root = '/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-cursor-cloud'\nconst { ExpectedOperations, hash } = await import(root + '/support/acceptance/expected-operations.js')\nconst { candidateFingerprint } = await import(root + '/support/acceptance/candidate.js')\nconst read = async path => JSON.parse(await readFile(path, 'utf8'))\nconst final = join(root, 'output/verification/cloud-final-108-20261105')\nconst before = await read(join(final, 'candidate.before.json'))\nconst after = await read(join(final, 'candidate.after.json'))\nconst current = await candidateFingerprint(root)\nassert.equal(before.sha256, after.sha256); assert.equal(before.sha256, current.sha256)\nconst results = []\nfor (const [log, count] of [['verify.log', 1], ['qualification.log', 20]]) {\n  const output = (await readFile(join(final, log), 'utf8')).match(/Acceptance scenario reports: (.+)/)?.[1].trim()\n  assert.ok(output, `No acceptance result in ${log}`)\n  const summary = await read(join(output, 'summary.json')), candidate = await read(join(output, 'candidate.json'))\n  assert.equal(candidate.sha256, current.sha256); assert.equal(summary.candidateSha256, current.sha256)\n  assert.equal(summary.scenarioPassed, true); assert.equal(summary.repeat, count); assert.equal(summary.reports.length, count)\n  const seeds = []\n  for (let i = 0; i < count; i++) {\n    const item = summary.reports[i], directory = join(output, `seed-${i+1}`)\n    const report = await read(join(directory, 'report.json')), snapshot = await read(join(directory, 'snapshot.json'))\n    assert.equal(item.seed, i+1); assert.equal(report.seed, i+1); assert.equal(item.hash, hash(report))\n    assert.equal(report.scenarioPassed, true); assert.equal(report.candidateSha256, current.sha256)\n    assert.equal(snapshot.schemaVersion, 5)\n    assert.equal(report.manifest.intents.length, Object.keys(report.manifest.receipts).length)\n    assert.deepEqual(report.fixture, {tasks:100, comments:400, scriptedOperations:200})\n    assert.deepEqual(report.limits, {localAckMs:2500, localVisibleMs:2000, offlineStartMs:6000, convergenceMs:10000})\n    const expected = new ExpectedOperations()\n    for (const intent of report.manifest.intents) expected.intend(intent, report.manifest.expectedReplicas[intent.operationId])\n    let receiptMax = 0\n    for (const [id, {receipt, elapsedMs}] of Object.entries(report.manifest.receipts)) {\n      const intent = expected.intents.get(id)\n      assert.ok(intent); assert.equal(receipt.requestId, id)\n      assert.equal(receipt.operationId, `op-${hash([id, hash({ type:intent.type, actorId:intent.actorId, payload:intent.payload })])}`)\n      expected.acknowledge(intent, receipt, elapsedMs); receiptMax = Math.max(receiptMax, elapsedMs)\n    }\n    const verified = expected.verify(snapshot)\n    assert.equal(report.verified.length, 3)\n    assert.equal(report.heads.length, 3)\n    for (const heads of report.heads) assert.deepEqual(heads, snapshot.heads)\n    for (const result of report.verified) assert.deepEqual(result, verified)\n    const maxima = {}\n    for (const timing of report.timings) maxima[timing.kind] = Math.max(maxima[timing.kind] ?? 0, timing.elapsed)\n    assert.ok(maxima['agent-effect-ack']<=2500); assert.ok(receiptMax<=2500); assert.ok(maxima['local-ack']<=2500); assert.ok(maxima['local-ui-visible']<=2000)\n    assert.ok(maxima['offline-start']<=6000); assert.ok(maxima.convergence<=10000)\n    assert.equal(report.agentEvidence.length, 2)\n    for (const agent of report.agentEvidence) {\n      assert.equal(agent.inbox.length, 1); assert.equal(agent.inbox[0].acknowledged, 1); assert.equal(agent.inbox[0].complete, 1); assert.equal(agent.effects.length, 1)\n      assert.ok(agent.events.some(event => event.checkpoint === 'context-read' && event.descriptionLength>500 && event.commentCount>=4 && event.historyCount>=5))\n    }\n    for (const file of ['failure.json', 'cleanup-errors.json']) await assert.rejects(access(join(directory,file)), {code:'ENOENT'})\n    seeds.push({seed:report.seed, reportHash:item.hash, reportFileSha256:createHash('sha256').update(await readFile(join(directory,'report.json'))).digest('hex'), snapshotFileSha256:createHash('sha256').update(await readFile(join(directory,'snapshot.json'))).digest('hex'), snapshotHash:verified.snapshotHash, schemaVersion:snapshot.schemaVersion, intendedOperationCount:report.manifest.intents.length, operationCount:verified.operationCount, receiptMaxMs:receiptMax, timingSampleCounts:Object.fromEntries([...new Set(report.timings.map(t=>t.kind))].map(kind=>[kind,report.timings.filter(t=>t.kind===kind).length])), maxima})\n  }\n  results.push({log, output, count, seeds})\n}\nawait writeFile(join(final,'audit.json'),JSON.stringify({candidate:current.sha256,node:process.version,results},null,2))\nconsole.log('AUDIT_PASSED '+current.sha256+' reports=21')\n"
+  },
+  "batchDriver": {
+    "sha256": "56b0e62752f73566fbe97ea4f4a4cbfe370e8c766ba2ecf11258d639c65c6c89",
+    "source": "import pathlib,subprocess,os,sys,json,hashlib,datetime\nroot=pathlib.Path.cwd();out=root/'output/verification/cloud-final-108-20261105'\nexpected='cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d'\nnow=lambda:datetime.datetime.now(datetime.timezone.utc).isoformat()\ndef archive(label):\n folder=out/'artifacts';folder.mkdir(mode=0o700,exist_ok=True);blobs=folder/'blobs';blobs.mkdir(mode=0o700,exist_ok=True)\n target=folder/(label+'.json');assert not target.exists(),label\n files=[]\n for relative in ['output/playwright','output/verification/cloud-ui']:\n  directory=root/relative\n  if not directory.exists():continue\n  for path in sorted(directory.rglob('*')):\n   assert not path.is_symlink(),str(path)\n   if not path.is_file():continue\n   data=path.read_bytes();digest=hashlib.sha256(data).hexdigest();blob=blobs/(digest+path.suffix)\n   if not blob.exists():\n    with blob.open('xb') as handle:handle.write(data)\n    blob.chmod(0o400)\n   else:assert hashlib.sha256(blob.read_bytes()).hexdigest()==digest\n   files.append({'source':str(path.relative_to(root)),'sha256':digest,'bytes':len(data),'blob':str(blob.relative_to(root))})\n target.write_text(json.dumps({'capturedAt':now(),'label':label,'files':files},indent=2)+'\\n');target.chmod(0o400)\n print('ARTIFACTS_ARCHIVED '+label+' '+str(len(files)),flush=True)\ndef fingerprint(label):\n target=out/('candidate.'+label+'.json');assert not target.exists()\n code=\"import {candidateFingerprint} from './support/acceptance/candidate.js';import {writeFile} from 'node:fs/promises';const c=await candidateFingerprint();await writeFile(process.argv[1],JSON.stringify(c,null,2));console.log(c.sha256)\"\n actual=subprocess.check_output(['node','--input-type=module','-e',code,str(target)],text=True).strip();assert actual==expected,(label,actual);target.chmod(0o400)\n print('FINGERPRINT '+label+' '+actual,flush=True)\ndef execute(name,args,timeout=900):\n assert not os.environ.get('NODE_OPTIONS')\n assert not (out/(name+'.log')).exists() and not (out/(name+'.watchdog.json')).exists(),name\n archive('before-'+name)\n env=os.environ.copy()\n if name=='verify':env['PARDNER_CLOUD_FIXTURE_REPORT']=str(out/'fixture-traces-verify.json')\n print('START '+name+' '+now(),flush=True)\n result=subprocess.run(['node','scripts/verify-watchdog.js','--timeout',str(timeout),'--log',str(out/(name+'.log')),'--record',str(out/(name+'.watchdog.json')),'--',*args],env=env)\n archive('after-'+name)\n record=json.load(open(out/(name+'.watchdog.json')))\n for suffix in ['.log','.watchdog.json']:(out/(name+suffix)).chmod(0o400)\n print('END '+name+' '+str(result.returncode)+' '+now(),flush=True)\n if result.returncode:sys.exit(result.returncode)\n assert not record['survivorsAfterKill'] and not record['newScratch'] and not record['timedOut'],name\nif sys.argv[1]=='routine':\n archive('initial')\n execute('environment',['node',str(out/'environment.mjs')])\n execute('policy',['python3',str(out/'policy-check.py')])\n execute('build',['npm','run','ui:build'])\n fingerprint('before')\n execute('browser-launch',['node','--input-type=module','-e',\"import {chromium,webkit} from 'playwright'; for(const engine of [chromium,webkit]){const b=await engine.launch({headless:true});console.log(engine.name(),b.version());await b.close()}\"])\n execute('ui',['npm','run','test:ui']);fingerprint('after-ui')\n execute('verify',['npm','run','verify']);fingerprint('after-routine')\n print('FRESH_ROUTINE_COMPLETE',flush=True)\nelif sys.argv[1]=='gate':\n fingerprint('before-gate')\n execute('qualification',['npm','run','test:acceptance','--','--repeat','20','--seed','1'],3600)\n fingerprint('after');print('GATE_COMPLETE',flush=True)\nelse:raise ValueError('Unknown batch')\n"
+  },
+  "historicalDigests": {
+    "docs/PARDNER-CURSOR-CLOUD-VERIFICATION.md": "d4a80bc03c79472ebfab0b767a8e7c04e01f569ad5420a6ff68e65de31cb57d2",
+    "docs/evidence/cursor-cloud-integrated.json": "e30e6a722a6c1108f27b2033a07883911ad707b5a0391f022e9b7e6d0d2a5cc8",
+    "docs/evidence/cursor-cloud-candidate.json": "a64c161aeeb8eb6c2bc8bd72b6dfb10bd7f60f4c5572226d0788ebd934048ef9",
+    "docs/PARDNER-CURSOR-CLOUD-OFFLINE6000-QUALIFICATION.md": "20efd00736659489189290855d2481adc0389d9c4c4210b24aabcc4f8a431345",
+    "docs/evidence/cursor-cloud-offline6000.json": "d810559911a8aa98120b362fb454fb6dd22275e63419c25e91a5fa54673f3f20",
+    "docs/evidence/cursor-cloud-offline6000-candidate.json": "d4f518f7264e030f5886f7db06972b9aa020387f0c482ddd0df268513ba4b20b",
+    "docs/PARDNER-CURSOR-CLOUD-PAIRING-DIAGNOSTIC.md": "d083c7e6da555d070285162a9ab716e6381e711ece55d67ebfbf3f649648ca67",
+    "docs/evidence/cursor-cloud-pairing-diagnostic.json": "f7801bb50d9b0b90d12121f9e86874811fbb1ad2408049001bb17ee149e28bb7",
+    "docs/PARDNER-CURSOR-CLOUD-FULL-UI-DIAGNOSTIC.md": "b9fe17d05197fa85c980a6420ff4123147e5c10dd3d5ab75a47d3f65a6485c79",
+    "docs/evidence/cursor-cloud-full-ui-diagnostic.json": "39e8581618da3d6ce0798bc5b664cff91b6f2d87adae3ea252b84ea74fb15303",
+    "output/verification/cloud-offline6000-20261105/test:ui.log": "d0e388283e38a04f7814a79cd32953d2fe60ae6a7491867441991120d5e60a07"
+  },
+  "ownerDispositions": {
+    "policy": "November 5: local acknowledgement 2500ms and offline startup/restart 6000ms are acceptance-policy decisions, not performance repairs. Original misses remain historical failures. Profiling issue107 remains open.",
+    "pairing": "Original unreproduced WebKit replacement-pairing occurrence deferred by explicit owner decision to issue108. No repair, attribution or retroactive pass; original test and 5000ms locator wait unchanged. Fresh failure was not waived.",
+    "issue107": "https://github.com/depatchedmode/pardner/issues/107",
+    "issue108": "https://github.com/depatchedmode/pardner/issues/108"
+  },
+  "cleanup": {
+    "at": "2026-11-05T07:18:35.937096+00:00",
+    "supervisorPid": 60197,
+    "fingerprint": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+    "ownedRemainingChildren": [],
+    "watchdogs": {
+      "build.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "verify.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "environment.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "browser-launch.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "qualification.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "policy.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "ui.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      }
+    },
+    "retainedArtifactManifestEntries": 150,
+    "scratchRemovalNeeded": false,
+    "scope": "owned test processes only; no unrelated process termination",
+    "lockReleaseObserved": true,
+    "wrapperExitCode": 0,
+    "stableLockFileRetained": true
+  },
+  "lock": {
+    "pid": 60197,
+    "path": "/tmp/pardner-selfhost-heavy-tests.lock",
+    "acquiredAt": "2026-11-05T06:29:19.449107+00:00",
+    "acquisition": "single nonblocking",
+    "released": true,
+    "releasedAt": "2026-11-05T07:18:46.595285+00:00",
+    "stableFileRetained": true
+  },
+  "privacy": "Raw acceptance/browser logs, receipts and traces remain private. Only allowlisted digests, counts, maxima, reviewed screenshot references and synthetic fixture outcomes are published.",
+  "remainingScope": [
+    "Live Cloud account/repository permissions and actual native provider recovery/cancellation/SSE retention are unqualified.",
+    "Independent artifact checker and human acceptance are separate; deterministic acceptance workers are not real-agent rehearsal.",
+    "No physical device or power-loss durability claim. No milestone/issue completion claim.",
+    "No live dispatch, credentials, paid/native execution, production data/schema migration, deployment, human approvals, issue closure, merge or downstream handoff."
+  ]
+}
