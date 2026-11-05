@@ -187,6 +187,8 @@ the original offline failure is not retroactively passed.
 A [bounded WebKit pairing investigation](PARDNER-CURSOR-CLOUD-PAIRING-DIAGNOSTIC.md)
 passed one isolated instrumented candidate/main comparison without localizing
 the new UI failure. The original routine failure remains unresolved.
+A subsequent [single full-UI failure capture](PARDNER-CURSOR-CLOUD-FULL-UI-DIAGNOSTIC.md)
+also passed without reproducing the failure; it supplies no repair or final qualification.
 
 Before live qualification authorize a specific account/repository/key scope,
 reviewed runtime/workspace, six-attempt plan and replacement/spending budget
