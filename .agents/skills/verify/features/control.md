@@ -52,6 +52,6 @@ queueing, exact cancellation races, SSE replay/stale state and immutable artifac
 gates. These tests do not qualify account permissions or a live paid run.
 `test/control-pane.test.js` also checks the Cloud HTTP routes, disabled dispatch
 and restart. `test/pardner-control-ui.test.js` registers a Cloud context, saves
-intent and withdraws it in both Chromium and WebKit; screenshots are saved to
+intent and withdraws it, and drives simulated active cancellation/freeze/verdict/queue release in both Chromium and WebKit; screenshots are saved to
 `output/verification/cloud-ui/` for inspection. Live dispatch must remain disabled
 until separately authorized.

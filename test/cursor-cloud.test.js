@@ -1,50 +1,22 @@
 import { it, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile, symlink, readFile, stat, open as openFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
+import { FakeCursorCloud } from '../support/fake-cursor-cloud.js'
 import { CursorCloudExecution } from '../lib/cursor-cloud-execution.js'
 import { CursorCloudClient, CloudError, parseCloudSSE } from '../lib/cursor-cloud-client.js'
 
+const authority = { actorId: 'builder', taskId: 'task', fromActorId: 'alice' }
 const evidence = []
 after(async () => {
   if (process.env.PARDNER_CLOUD_FIXTURE_REPORT) await writeFile(process.env.PARDNER_CLOUD_FIXTURE_REPORT, JSON.stringify({ kind: 'deterministic-fixture-only', liveRequests: 0, traces: evidence }, null, 2))
 })
 
-const stamp = '2026-11-04T00:00:00.000Z'
-const authority = { actorId: 'builder', taskId: 'task', fromActorId: 'alice' }
-class Fixture {
-  constructor() { this.reads = []; this.submissions = []; this.records = []; this.cancels = []; this.events = []; this.eventTrace = []; this.downloads = new Map([['patch.txt', Buffer.from('original')]]) }
-  async create(body) {
-    this.submissions.push(body)
-    this.identity = { id: body.agentId, status: 'ACTIVE', env: { type: 'cloud' }, repos: body.repos }
-    return { agent: { ...this.identity }, run: this.newRun() }
-  }
-  newRun() {
-    const run = { id: `run-${this.records.length + 1}`, agentId: this.identity.id, status: 'RUNNING', createdAt: stamp, updatedAt: stamp }
-    this.records.push(run); this.identity.latestRunId = run.id; this.identity.status = 'ACTIVE'
-    return { ...run }
-  }
-  async followUp(id, body) { assert.equal(id, this.identity.id); this.submissions.push(body); return { run: this.newRun() } }
-  async agent(id) { assert.equal(id, this.identity.id); this.reads.push({ at: Date.now(), agentId: id, agent: structuredClone(this.identity) }); return structuredClone(this.identity) }
-  async run(id, runId) { assert.equal(id, this.identity.id); this.reads.push({ at: Date.now(), agentId: id, runId, run: structuredClone(this.records.find(row => row.id === runId)) }); return structuredClone(this.records.find(row => row.id === runId)) }
-  async runs() { return structuredClone(this.records) }
-  end(status = 'FINISHED') { Object.assign(this.records.at(-1), { status, result: 'partial output', git: { branches: [{ branch: 'mutable' }] } }); this.identity.status = 'IDLE' }
-  async cancel(id, runId) {
-    this.cancels.push({ id, runId })
-    const row = this.records.find(row => row.id === runId)
-    if (row.status === 'FINISHED') throw new CloudError(409, 'run_not_cancellable')
-    row.status = 'CANCELLED'; row.result = 'partial output'; this.identity.status = 'IDLE'
-    return { id: runId }
-  }
-  async artifacts() { return { items: [...this.downloads].map(([path, bytes]) => ({ path, sizeBytes: bytes.length, updatedAt: stamp })) } }
-  async download(id, path) { return this.downloads.get(path) }
-  async *stream(id, runId, options) { this.resume = options.lastEventId; for (const event of this.events) { this.eventTrace.push({ ...structuredClone(event), receivedAt: Date.now() }); yield event } }
-}
 async function fixture(work, options = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-cloud-'))
-  const transport = new Fixture(), path = join(directory, 'cloud.sqlite')
+  const transport = new FakeCursorCloud(), path = join(directory, 'cloud.sqlite')
   const config = { path, ownerId: 'replica', transport, dispatchEnabled: true, ...options }
   let controller = new CursorCloudExecution(config)
   const context = controller.register({ contextId: 'context', projectId: 'project', ...authority, allowedTaskIds: ['task'], allowedFromActorIds: ['alice'], repository: 'https://github.com/example/repo', startingRef: 'main' })
@@ -262,4 +234,36 @@ it('expired stream switches to reads and is not reopened by the poller', async (
   await f.c.stream('a'); await f.c.poll(); await f.c.poll()
   assert.equal(streams, 1); assert.equal(f.c.attempt('a').streamExpired, true)
   f.transport.end(); await f.c.poll(); assert.equal(f.c.attempt('a').outcome, 'FINISHED')
+}))
+
+it('Cloud private databases reject symlinked state and repair existing sidecar modes', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-cloud-private-'))
+  const path = join(directory, 'cloud.sqlite'), target = join(directory, 'untouched')
+  let c
+  try {
+    await writeFile(target, 'preserve', { mode: 0o644 })
+    for (const suffix of ['', '-wal', '.controller']) {
+      await symlink(target, path + suffix)
+      assert.throws(() => new CursorCloudExecution({ path, ownerId: 'test' }))
+      assert.equal(await readFile(target, 'utf8'), 'preserve')
+      assert.equal((await stat(target)).mode & 0o777, 0o644)
+      await rm(path + suffix)
+    }
+    await writeFile(path + '-journal', '', { mode: 0o666 })
+    const sidecar = await openFile(path + '-journal', 'r')
+    try {
+      c = new CursorCloudExecution({ path, ownerId: 'test' })
+      assert.equal((await stat(path)).mode & 0o777, 0o600)
+      // SQLite can remove the repaired journal on open; the handle retains its inode.
+      assert.equal((await sidecar.stat()).mode & 0o777, 0o600)
+    } finally { await sidecar.close() }
+  } finally { await c?.close(); await rm(directory, { recursive: true, force: true }) }
+})
+
+it('freeze reads terminal evidence afresh when final output arrives after terminal observation', async () => fixture(async f => {
+  f.enqueue('a'); await f.pump(); f.transport.end(); await f.c.observe('context')
+  f.transport.records[0].result = 'late final reply'
+  f.transport.records[0].git = { branches: [{ branch: 'final-pushed-branch' }] }
+  const receipt = await f.freeze()
+  assert.equal(receipt.result, 'late final reply'); assert.equal(receipt.git.branches[0].branch, 'final-pushed-branch')
 }))

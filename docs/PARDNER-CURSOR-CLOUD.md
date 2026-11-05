@@ -38,7 +38,7 @@ fail closed.
 ## Stored state and execution
 
 `cursor-cloud.sqlite` is a host-local SQLite ledger (`WAL`, `synchronous=FULL`,
-mode 0600). It stores contexts, explicit task/Actor/sender authorization, immutable
+mode 0600). It uses the shared private-state helper to reject symlinked or linked files and repair existing sidecar modes. It stores contexts, explicit task/Actor/sender authorization, immutable
 intent, acceptance receipt, exact agent/run identities, transitions, send counts,
 fresh read timestamps, event cursor/deduplication records, output, owner
 interventions, evidence and verdicts. It does not use workspace operation IDs or
@@ -83,7 +83,7 @@ they do not claim synchronized clocks or a complete transcript.
 A later run cannot start until each earlier terminal attempt with a run ID has a
 freeze receipt. `freeze` requires a full commit hash, diff bytes (empty is valid),
 and nonempty test command/results supplied by an authorized Actor. It captures
-terminal run output, mutable Git metadata and downloaded artifact bytes with
+fresh exact-terminal run output (including a late final reply), mutable Git metadata and downloaded artifact bytes with
 SHA-256. The agent must still identify that exact run as latest before and after
 capture. Failed reads, changed context, size mismatch or potentially truncated
 listing leave no receipt and keep the queue held. Limits are 16 MiB per artifact
@@ -174,7 +174,7 @@ fixtures do not establish power-loss durability.
 ## Qualification and remaining decisions
 
 Deterministic tests model the documented API, not a real Cursor account. Service
-and Chromium/WebKit checks verify pane integration against disposable data.
+and Chromium/WebKit checks verify pane integration against disposable data, including simulated active cancellation, evidence capture and separate verdicts.
 The project-wide routine suite and 20-seed qualification gate remain required;
 see the candidate's verification report/PR for actual execution results.
 
