@@ -124,13 +124,20 @@ phase: first on lagging load, then on two Pageouts with normal memory pressure.
 These are unmet diagnostic criteria, not demonstrated environment/product
 defects. No controlled updates or workers ran; qualification remains **FAILED**.
 
-All watchdogs completed and recorded no hung processes, survivors or leftover
-scratch. Owned test processes were absent after diagnosis, the disposable baseline
-archive was removed, and the lock wrapper exited 0, releasing the stable lock
-without unlinking it. No downstream track was handed the slot automatically.
-The next investigation must distinguish CLI spawn/scheduling, request/service
-handling and persistence time under recorded pressure, or use an explicitly
-controlled host/time window; then rerun the entire 20-seed gate unchanged.
+The next separately authorized [interleaved CPU diagnostic](PARDNER-66-INTERLEAVED-DIAGNOSTIC.md)
+completed one original seed-5 prefix on main and one on this unchanged candidate:
+400 updates, 400 complete phase chains, verified load overlap and 1,412 intended
+operations reconciled against local replicas. No threshold crossing occurred;
+maximum acknowledgement was 262.349 ms in an unloaded candidate block. Loaded
+and unloaded medians differed by less than one millisecond in opposite directions,
+with larger block variation. The fixed intervention supplies no consistent slowdown
+or explanation of the original miss. Qualification remains **FAILED**.
+
+Each investigation retains its own exit and cleanup evidence. The interleaved
+watchdogs and all owned observers/workers exited 0 without survivors or scratch;
+its disposable baseline was removed and its lock explicitly released without
+unlinking. No downstream handoff occurred. No further experiment, full gate or
+repair is automatic: root reviews the causal limits before the next decision.
 
 The routine seed's evidence remains a separate single-seed result. The routine seed's maximum measured
 receipt-inclusive acknowledgement was **322.595 ms** (2,000 ms limit), UI visibility
