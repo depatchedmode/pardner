@@ -180,8 +180,10 @@ on seed 8: offline restart 5,380.912667 ms exceeded the then-current 5,000 ms li
 The [historical verification report](PARDNER-CURSOR-CLOUD-VERIFICATION.md) preserves
 that candidate, failure and diagnostic limits. The owner subsequently authorized
 a six-second offline acceptance policy; see the [current contract](PARDNER-ACCEPTANCE.md#scenario-and-bounds).
-Fresh complete qualification is required for the revised candidate; the original
-failure is not retroactively passed.
+The [revised-policy verification run](PARDNER-CURSOR-CLOUD-OFFLINE6000-QUALIFICATION.md)
+stopped at a WebKit pairing-readiness failure in routine UI checks; full verify
+and the fresh 20-seed gate did not run. The draft remains `needs-qualification`;
+the original offline failure is not retroactively passed.
 
 Before live qualification authorize a specific account/repository/key scope,
 reviewed runtime/workspace, six-attempt plan and replacement/spending budget
