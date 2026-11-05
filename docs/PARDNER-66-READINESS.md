@@ -5,13 +5,15 @@ through [PR101](https://github.com/depatchedmode/pardner/pull/101), for
 [#66](https://github.com/depatchedmode/pardner/issues/66) under
 [#50](https://github.com/depatchedmode/pardner/issues/50). It assesses an automated
 implementation candidate, not the remaining native/human acceptance of #66.
-**The owner approved a 2,500 ms local acknowledgement bound on November 5.
-Fresh qualification under that revised contract is pending.** The original
+**Routine verification and fresh 20-seed qualification passed under the
+owner-approved 2,500 ms local acknowledgement contract.** The original
 2,384.036 ms failure remains failed historical evidence under its 2,000 ms
-contract. Deeper timing/root-cause work is explicitly deferred; this policy
-change is not a diagnosed repair. The historical miss is no longer an
-unconditional merge blocker by owner decision, but a fresh complete gate is
-required. Every other limit and persistence/authority guarantee is unchanged.
+contract. Its cause remains unexplained and is explicitly deferred to
+[#107](https://github.com/depatchedmode/pardner/issues/107), a separate monitoring/design
+investigation, not an additional merge gate. This is an acceptance-policy
+decision, not a performance repair. The owner removed the historical miss as an
+unconditional blocker after fresh revised-contract qualification. Every other
+limit and persistence/authority guarantee is unchanged.
 It does not implement or close #67. The coordinator owns the merge decision.
 
 Integrated main: `e0fee59cbdeac55733aca15de73d45c2e2d14bfb`, including #103 runtime,
@@ -21,6 +23,33 @@ Source/test/lockfile/built-UI fingerprint:
 `0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3`.
 Guidance-only evidence commits can follow this implementation without altering
 that fingerprint. No #105/#104 union is included or qualified here.
+
+## Current automated qualification
+
+Policy commit `03c92167c2f38a0c5c6cad7b73715aec2f7afbd8` contains the only new
+executable changes: local acknowledgement enforcement and report metadata become
+2,500 ms. The frozen source/test/lock/build fingerprint is
+`a531e2fd1853185a33de61d51bce88d0fcc4b8a4e7c875ef7141dce1038dd459`.
+Node 24.11.1, matching dependencies/build and actual pinned Chromium/WebKit launches
+were prepared before checking it. No #105/#104 union was added.
+
+The targeted union passed 145 checks; tooling/storage/runtime/CLI/UI passed
+39/12/118/12/14. Lifecycle mapping/model passed within its declared bounds.
+Full verify passed 17 Python + 522 Node tests and one complete acceptance seed.
+One fresh `npm run test:acceptance -- --repeat 20 --seed 1` then completed all
+20 seeds, 14,380 operations and 60 recorded live replica verifications. No skips,
+cancellations, retries or failures supplied this pass. Every report declares
+local acknowledgement 2,500 ms, UI visibility 2,000 ms, offline restart 5,000 ms
+and convergence 10,000 ms. Maximum receipt-inclusive acknowledgement was
+688.665 ms. Before/after fingerprints match; all reports, receipt identities,
+intended effects, timing bounds and digests were audited.
+
+The [current qualification report](PARDNER-66-ACK2500-QUALIFICATION.md) and
+[allowlisted evidence](evidence/issue-66-ack2500.json) retain full results and
+cleanup. All owned children drained; the stable lock was explicitly released
+without unlinking or downstream handoff. Root owns the head-guarded merge.
+Historical results below retain their original candidates, contracts and verdicts;
+they are not combined into this pass. Native/human issue acceptance remains separate.
 
 ## Reconciliation and behavior
 
@@ -61,7 +90,7 @@ private-state, browser/privacy, LAN and controller safeguards remain present.
 Tests use disposable data and fake archival adapters; no live controller data,
 credentials, native sessions, worktrees or approval prompts were operated on.
 
-## Fresh automated evidence
+## Historical pre-policy automated evidence
 
 Node **24.11.1**, both locked installs and current UI build on macOS arm64.
 Pinned Chromium **151.0.7922.34** and WebKit **26.5** actually launched.
@@ -194,7 +223,7 @@ seeds are combined into current qualification.
 | Input blocking without answering | Preserved adapter regressions and separate probe | Native probe; human approval/resume remains unqualified |
 | Durable receipt, queued retry, lost reply and recovery | Fresh context, SQLite capacity, restart, precise saved-prompt and cancellation tests | No universal exactly-once external-effect guarantee |
 | Bounds/idle | Unchanged 2s dispatch, 45s startup, 30s context, 20min model workflow; deterministic idle ticks | Native timing and real one-hour idle unqualified |
-| Repository verification | Fresh integrated routine passes; deliberate gate failed as above | Actual human accept/reject remains separate |
+| Repository verification | Fresh revised-contract routine and 20-seed gate passed; historical 2-second miss preserved and deferred to #107 | Actual human accept/reject remains separate |
 | Preserve data/credentials/privacy | Disposable automated fixtures; merged security checks retained | No live deployment/migration or archival authorized |
 
 Keep #50 and #66 open. #67 waits for its separately qualified native/human

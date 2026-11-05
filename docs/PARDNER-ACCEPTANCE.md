@@ -53,7 +53,8 @@ acknowledgement bound from 2,000 to 2,500 ms. This is an acceptance-policy
 decision, not a diagnosed performance repair. The original 2,384.036 ms failure
 and all earlier diagnostics remain historical evidence under their original
 2,000 ms contract; they are not retroactive passes. Deeper timing/root-cause
-work is deferred separately by the owner. Fresh complete qualification under
+work is deferred separately by the owner to [#107](https://github.com/depatchedmode/pardner/issues/107),
+which is not an additional merge gate. Fresh complete qualification under
 this revised contract is required before the scoped implementation can be
 accepted. UI visibility, offline restart, convergence, HTTP timeouts, retries
 and watchdog limits are unchanged. See the [current readiness record](PARDNER-66-READINESS.md).
