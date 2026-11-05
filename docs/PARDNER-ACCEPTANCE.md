@@ -45,7 +45,7 @@ Required bounds are asserted, not merely printed:
 | --- | --- |
 | Each measured local operation acknowledgement | 2.5 seconds |
 | Human offline comment visible in the local UI | 2 seconds |
-| Cold restart of an enrolled replica with the hub inaccessible | 5 seconds |
+| Cold restart of an enrolled replica with the hub inaccessible | 6 seconds |
 | All replicas converge after communication is restored | 10 seconds |
 
 On November 5, 2026, the owner explicitly changed only the local operation
@@ -56,8 +56,20 @@ and all earlier diagnostics remain historical evidence under their original
 work is deferred separately by the owner to [#107](https://github.com/depatchedmode/pardner/issues/107),
 which is not an additional merge gate. Fresh complete qualification under
 this revised contract is required before the scoped implementation can be
-accepted. UI visibility, offline restart, convergence, HTTP timeouts, retries
-and watchdog limits are unchanged. See the [current readiness record](PARDNER-66-READINESS.md).
+accepted. That decision left UI visibility, offline restart, convergence, HTTP
+timeouts, retries and watchdog limits unchanged. See its [readiness record](PARDNER-66-READINESS.md).
+
+Later on November 5, 2026, after reviewing an offline restart of 5,380.913 ms,
+the owner explicitly changed the offline startup/restart acceptance bound from
+5,000 to 6,000 ms. This is a second acceptance-policy decision, not a performance
+repair. The [original failed gate and two diagnostic arms](PARDNER-CURSOR-CLOUD-VERIFICATION.md)
+remain historical evidence under their original 5,000 ms contract; they are not
+retroactive passes. The unexplained startup cause is deferred until profiling
+infrastructure in [#107](https://github.com/depatchedmode/pardner/issues/107) is available.
+Fresh complete qualification under the six-second policy is required. Local
+acknowledgement stays 2,500 ms, UI visibility 2,000 ms and convergence 10,000 ms.
+The helper startup timeout stays 15,000 ms; HTTP, retry, watchdog, dispatch and
+independent benchmark limits are unchanged.
 
 Seeds vary operation ordering/replica use, the killed replica and point in the
 schedule, reconnect ordering and delay, the number of lost hub acknowledgements,

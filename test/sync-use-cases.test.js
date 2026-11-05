@@ -134,7 +134,7 @@ it('UC4: a persisted replica reopens offline and merges with work completed at t
     await replicas[0].close()
     const started = Date.now()
     const reopened = await reopen(0)
-    assert.ok(Date.now() - started < 5000)
+    assert.ok(Date.now() - started < 6000)
     assert.equal(reopened.manifest.replicaId, identity)
     assert.equal(reopened.workspace.taskContext(taskId).task.description, 'Durable offline edit')
     gates[0].partition(false)
