@@ -1,0 +1,1356 @@
+{
+  "scope": "Bounded WebKit replacement-pairing diagnosis only; not qualification",
+  "outcome": "inconclusive; original routine failure remains unresolved",
+  "startedAt": "2026-11-05T05:40:42Z",
+  "deadline": "2026-11-05T06:10:42Z",
+  "reportedAt": "2026-11-05T05:47:26.721996+00:00",
+  "subjectHead": "4fe917545a1c009e4a941fd1379dc7cc5cc4876d",
+  "sourceHead": "1c35881afc35b7c3d163c651400955a71622a0f9",
+  "base": "6d424e5114f51be2186ebb0e3ac2c553fc073d11",
+  "fetchDrift": false,
+  "node": "24.11.1",
+  "webkit": "26.5",
+  "matched": [
+    "identical root/UI dependency locks and installed dependencies",
+    "byte-identical original test file and unchanged sequence/assertions",
+    "each source independently built its own UI",
+    "same external observer and exact name filter",
+    "sequential arms under one advisory lock"
+  ],
+  "originalFailure": {
+    "record": "docs/PARDNER-CURSOR-CLOUD-OFFLINE6000-QUALIFICATION.md",
+    "evidenceSha256": "d810559911a8aa98120b362fb454fb6dd22275e63419c25e91a5fa54673f3f20",
+    "privateLogSha256": "d0e388283e38a04f7814a79cd32953d2fe60ae6a7491867441991120d5e60a07",
+    "message": "WebKit replacement pairing wait for exact Saved locally \u00b7 synced timed out after 5000ms at test/pardner-connection-ui.test.js:86",
+    "outcome": "failed, unchanged"
+  },
+  "observerEffects": [
+    "Browser fetch/history/storage/WebSocket wrappers and MutationObserver can alter event/microtask ordering.",
+    "Playwright binding messages and synchronous Node file writes add work to the process hosting the test service.",
+    "Driver timestamps reflect delivery; browserAt is local to each documentAt. These are instrumented observations, not latency qualification."
+  ],
+  "gaps": [
+    "No phase trace or DOM snapshot of the original failed wait.",
+    "Isolated name-filtered arms omit original concurrent UI-suite conditions.",
+    "One sample per condition cannot estimate failure rates or attribute causation.",
+    "Observer did not record Playwright goto invocation/resolution or locator navigation-wait internals.",
+    "Additional baseline document navigation passed; no evidence proves it caused the original timeout."
+  ],
+  "nextFalsifiableQuestion": "During a failing original-scope readiness wait, is the saved DOM already present while a replacement document navigation remains pending, or has the pairing/credential/read/socket chain not completed? Capture goto completion alongside phase/render state before selecting a repair.",
+  "intervention": null,
+  "repair": null,
+  "fullVerifyRun": false,
+  "acceptanceGateRun": false,
+  "cleanup": {
+    "at": "2026-11-05T05:46:04.741330+00:00",
+    "supervisorPid": 16885,
+    "fingerprints": {
+      "candidate": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+      "baseline": "a531e2fd1853185a33de61d51bce88d0fcc4b8a4e7c875ef7141dce1038dd459"
+    },
+    "ownedRemainingChildren": [],
+    "watchdogs": {
+      "baseline.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "candidate-build.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "baseline-build.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      },
+      "candidate.watchdog.json": {
+        "exitCode": 0,
+        "survivors": 0,
+        "newScratch": 0,
+        "timedOut": false
+      }
+    },
+    "removedOwnedArchive": "/tmp/pardner-cloud-pairing-base-031i6rzf",
+    "unrelatedProcessesChanged": false,
+    "lockReleaseObserved": true,
+    "wrapperExitCode": 0,
+    "stableLockFileRetained": true
+  },
+  "arms": [
+    {
+      "name": "candidate",
+      "fingerprint": "cfe39179b8635a11a8b805ff127e9cc230a35e21296ba4996be4e7ce363df93d",
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0,
+      "durationMs": 3702,
+      "command": [
+        "node",
+        "--import",
+        "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-cursor-cloud/output/verification/cloud-pairing-diagnostic-20261105/trace.mjs",
+        "--test",
+        "--test-name-pattern",
+        "^recovers pairing after network failure, credential rotation, and replacement links in webkit$",
+        "test/pardner-connection-ui.test.js"
+      ],
+      "watchdogTimeoutSeconds": 900,
+      "traceEventCount": 264,
+      "pairRequests": 5,
+      "pairResponseStatuses": [
+        200,
+        200,
+        400,
+        200
+      ],
+      "firstPairRequestAbortedAsRequired": true,
+      "replacementSameDocument": true,
+      "freshCycle": [
+        {
+          "sequence": 231,
+          "at": 1793857403291,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 53,
+          "documentAt": 1793857403236,
+          "pathname": "/pardner/pair",
+          "status": 400
+        },
+        {
+          "sequence": 232,
+          "at": 1793857403294,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 57,
+          "documentAt": 1793857403236,
+          "hasPair": false,
+          "credentialPresent": false,
+          "savedVisible": false,
+          "saveStatus": [],
+          "pairInputPresent": true,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": true
+        },
+        {
+          "sequence": 233,
+          "at": 1793857403317,
+          "source": "driver",
+          "phase": "navigation",
+          "pathname": "/pardner/",
+          "hasPair": true
+        },
+        {
+          "sequence": 234,
+          "at": 1793857403318,
+          "source": "page",
+          "phase": "hashchange",
+          "browserAt": 80,
+          "documentAt": 1793857403236,
+          "hasPair": true,
+          "credentialPresent": false,
+          "savedVisible": false,
+          "saveStatus": [],
+          "pairInputPresent": true,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": true
+        },
+        {
+          "sequence": 235,
+          "at": 1793857403319,
+          "source": "driver",
+          "phase": "navigation",
+          "pathname": "/pardner/",
+          "hasPair": false
+        },
+        {
+          "sequence": 236,
+          "at": 1793857403319,
+          "source": "page",
+          "phase": "replace-state",
+          "browserAt": 80,
+          "documentAt": 1793857403236,
+          "hadPair": true,
+          "hasPair": false
+        },
+        {
+          "sequence": 237,
+          "at": 1793857403320,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 80,
+          "documentAt": 1793857403236,
+          "pathname": "/pardner/pair"
+        },
+        {
+          "sequence": 238,
+          "at": 1793857403320,
+          "source": "driver",
+          "phase": "request",
+          "id": 47,
+          "method": "POST",
+          "pathname": "/pardner/pair"
+        },
+        {
+          "sequence": 239,
+          "at": 1793857403321,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 81,
+          "documentAt": 1793857403236,
+          "hasPair": false,
+          "credentialPresent": false,
+          "savedVisible": false,
+          "saveStatus": [],
+          "pairInputPresent": true,
+          "pairButtonDisabled": true,
+          "expiredAlertVisible": false
+        },
+        {
+          "sequence": 240,
+          "at": 1793857403321,
+          "source": "driver",
+          "phase": "response",
+          "id": 47,
+          "pathname": "/pardner/pair",
+          "status": 200
+        },
+        {
+          "sequence": 241,
+          "at": 1793857403322,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 83,
+          "documentAt": 1793857403236,
+          "pathname": "/pardner/pair",
+          "status": 200
+        },
+        {
+          "sequence": 242,
+          "at": 1793857403322,
+          "source": "page",
+          "phase": "credential-setItem",
+          "browserAt": 84,
+          "documentAt": 1793857403236,
+          "credentialPresent": true
+        },
+        {
+          "sequence": 243,
+          "at": 1793857403323,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 84,
+          "documentAt": 1793857403236,
+          "pathname": "/pardner/config"
+        },
+        {
+          "sequence": 244,
+          "at": 1793857403323,
+          "source": "driver",
+          "phase": "request",
+          "id": 48,
+          "method": "GET",
+          "pathname": "/pardner/config"
+        },
+        {
+          "sequence": 245,
+          "at": 1793857403323,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 85,
+          "documentAt": 1793857403236,
+          "hasPair": false,
+          "credentialPresent": true,
+          "savedVisible": false,
+          "saveStatus": [],
+          "pairInputPresent": false,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": false
+        },
+        {
+          "sequence": 246,
+          "at": 1793857403325,
+          "source": "driver",
+          "phase": "response",
+          "id": 48,
+          "pathname": "/pardner/config",
+          "status": 200
+        },
+        {
+          "sequence": 247,
+          "at": 1793857403325,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 87,
+          "documentAt": 1793857403236,
+          "pathname": "/pardner/config",
+          "status": 200
+        },
+        {
+          "sequence": 248,
+          "at": 1793857403325,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 88,
+          "documentAt": 1793857403236,
+          "pathname": "/automerge/doc"
+        },
+        {
+          "sequence": 249,
+          "at": 1793857403326,
+          "source": "driver",
+          "phase": "request",
+          "id": 49,
+          "method": "GET",
+          "pathname": "/automerge/doc"
+        },
+        {
+          "sequence": 250,
+          "at": 1793857403326,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 88,
+          "documentAt": 1793857403236,
+          "pathname": "/automerge/status"
+        },
+        {
+          "sequence": 251,
+          "at": 1793857403326,
+          "source": "driver",
+          "phase": "request",
+          "id": 50,
+          "method": "GET",
+          "pathname": "/automerge/status"
+        },
+        {
+          "sequence": 252,
+          "at": 1793857403328,
+          "source": "driver",
+          "phase": "response",
+          "id": 49,
+          "pathname": "/automerge/doc",
+          "status": 200
+        },
+        {
+          "sequence": 253,
+          "at": 1793857403328,
+          "source": "driver",
+          "phase": "response",
+          "id": 50,
+          "pathname": "/automerge/status",
+          "status": 200
+        },
+        {
+          "sequence": 254,
+          "at": 1793857403328,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 91,
+          "documentAt": 1793857403236,
+          "pathname": "/automerge/doc",
+          "status": 200
+        },
+        {
+          "sequence": 255,
+          "at": 1793857403329,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 91,
+          "documentAt": 1793857403236,
+          "pathname": "/automerge/status",
+          "status": 200
+        },
+        {
+          "sequence": 256,
+          "at": 1793857403330,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 91,
+          "documentAt": 1793857403236,
+          "pathname": "/automerge/ws-ticket"
+        },
+        {
+          "sequence": 257,
+          "at": 1793857403331,
+          "source": "driver",
+          "phase": "request",
+          "id": 51,
+          "method": "POST",
+          "pathname": "/automerge/ws-ticket"
+        },
+        {
+          "sequence": 258,
+          "at": 1793857403331,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 93,
+          "documentAt": 1793857403236,
+          "hasPair": false,
+          "credentialPresent": true,
+          "savedVisible": false,
+          "saveStatus": [
+            "Local service disconnected"
+          ],
+          "pairInputPresent": false,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": false
+        },
+        {
+          "sequence": 259,
+          "at": 1793857403332,
+          "source": "driver",
+          "phase": "response",
+          "id": 51,
+          "pathname": "/automerge/ws-ticket",
+          "status": 200
+        },
+        {
+          "sequence": 260,
+          "at": 1793857403332,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 94,
+          "documentAt": 1793857403236,
+          "pathname": "/automerge/ws-ticket",
+          "status": 200
+        },
+        {
+          "sequence": 261,
+          "at": 1793857403335,
+          "source": "page",
+          "phase": "ws-created",
+          "browserAt": 98,
+          "documentAt": 1793857403236
+        },
+        {
+          "sequence": 262,
+          "at": 1793857403341,
+          "source": "page",
+          "phase": "ws-open",
+          "browserAt": 104,
+          "documentAt": 1793857403236
+        },
+        {
+          "sequence": 263,
+          "at": 1793857403342,
+          "source": "page",
+          "phase": "ws-message",
+          "browserAt": 104,
+          "documentAt": 1793857403236,
+          "hasDoc": true,
+          "hasStatus": true,
+          "savedLocally": true,
+          "syncPending": false,
+          "storageError": false
+        },
+        {
+          "sequence": 264,
+          "at": 1793857403342,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 105,
+          "documentAt": 1793857403236,
+          "hasPair": false,
+          "credentialPresent": true,
+          "savedVisible": true,
+          "saveStatus": [
+            "Saved locally \u00b7 synced"
+          ],
+          "pairInputPresent": false,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": false
+        }
+      ],
+      "logSha256": "42da165d589b0a68dbe42a7ed79cc1a7064dcfe97696dd0cbedb11a357c4058d",
+      "watchdogSha256": "646aeb2efe3539588d688859c261bf5a2821244f9b100cd11bb3ec305e9e3d5e",
+      "traceSha256": "18118d02ba6ba1be8c595abd6373537f2f67e2c1af627f5eba83770a0c41fc84",
+      "beforeManifestSha256": "d4f518f7264e030f5886f7db06972b9aa020387f0c482ddd0df268513ba4b20b",
+      "afterManifestSha256": "d4f518f7264e030f5886f7db06972b9aa020387f0c482ddd0df268513ba4b20b"
+    },
+    {
+      "name": "baseline",
+      "fingerprint": "a531e2fd1853185a33de61d51bce88d0fcc4b8a4e7c875ef7141dce1038dd459",
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0,
+      "durationMs": 4092,
+      "command": [
+        "node",
+        "--import",
+        "/Users/ryanbetts/.t3/worktrees/pardner/t3-selfhost-cursor-cloud/output/verification/cloud-pairing-diagnostic-20261105/trace.mjs",
+        "--test",
+        "--test-name-pattern",
+        "^recovers pairing after network failure, credential rotation, and replacement links in webkit$",
+        "test/pardner-connection-ui.test.js"
+      ],
+      "watchdogTimeoutSeconds": 900,
+      "traceEventCount": 310,
+      "pairRequests": 5,
+      "pairResponseStatuses": [
+        200,
+        200,
+        400,
+        200
+      ],
+      "firstPairRequestAbortedAsRequired": true,
+      "replacementSameDocument": true,
+      "freshCycle": [
+        {
+          "sequence": 231,
+          "at": 1793857407081,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 56,
+          "documentAt": 1793857407024,
+          "pathname": "/pardner/pair",
+          "status": 400
+        },
+        {
+          "sequence": 232,
+          "at": 1793857407082,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 57,
+          "documentAt": 1793857407024,
+          "hasPair": false,
+          "credentialPresent": false,
+          "savedVisible": false,
+          "saveStatus": [],
+          "pairInputPresent": true,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": true
+        },
+        {
+          "sequence": 233,
+          "at": 1793857407102,
+          "source": "driver",
+          "phase": "navigation",
+          "pathname": "/pardner/",
+          "hasPair": true
+        },
+        {
+          "sequence": 234,
+          "at": 1793857407103,
+          "source": "page",
+          "phase": "hashchange",
+          "browserAt": 77,
+          "documentAt": 1793857407024,
+          "hasPair": true,
+          "credentialPresent": false,
+          "savedVisible": false,
+          "saveStatus": [],
+          "pairInputPresent": true,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": true
+        },
+        {
+          "sequence": 235,
+          "at": 1793857407104,
+          "source": "driver",
+          "phase": "navigation",
+          "pathname": "/pardner/",
+          "hasPair": false
+        },
+        {
+          "sequence": 236,
+          "at": 1793857407104,
+          "source": "page",
+          "phase": "replace-state",
+          "browserAt": 77,
+          "documentAt": 1793857407024,
+          "hadPair": true,
+          "hasPair": false
+        },
+        {
+          "sequence": 237,
+          "at": 1793857407104,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 77,
+          "documentAt": 1793857407024,
+          "pathname": "/pardner/pair"
+        },
+        {
+          "sequence": 238,
+          "at": 1793857407105,
+          "source": "driver",
+          "phase": "request",
+          "id": 47,
+          "method": "POST",
+          "pathname": "/pardner/pair"
+        },
+        {
+          "sequence": 239,
+          "at": 1793857407106,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 78,
+          "documentAt": 1793857407024,
+          "hasPair": false,
+          "credentialPresent": false,
+          "savedVisible": false,
+          "saveStatus": [],
+          "pairInputPresent": true,
+          "pairButtonDisabled": true,
+          "expiredAlertVisible": false
+        },
+        {
+          "sequence": 240,
+          "at": 1793857407106,
+          "source": "driver",
+          "phase": "response",
+          "id": 47,
+          "pathname": "/pardner/pair",
+          "status": 200
+        },
+        {
+          "sequence": 241,
+          "at": 1793857407107,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 82,
+          "documentAt": 1793857407024,
+          "pathname": "/pardner/pair",
+          "status": 200
+        },
+        {
+          "sequence": 242,
+          "at": 1793857407107,
+          "source": "page",
+          "phase": "credential-setItem",
+          "browserAt": 82,
+          "documentAt": 1793857407024,
+          "credentialPresent": true
+        },
+        {
+          "sequence": 243,
+          "at": 1793857407107,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 82,
+          "documentAt": 1793857407024,
+          "pathname": "/pardner/config"
+        },
+        {
+          "sequence": 244,
+          "at": 1793857407108,
+          "source": "driver",
+          "phase": "request",
+          "id": 48,
+          "method": "GET",
+          "pathname": "/pardner/config"
+        },
+        {
+          "sequence": 245,
+          "at": 1793857407108,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 83,
+          "documentAt": 1793857407024,
+          "hasPair": false,
+          "credentialPresent": true,
+          "savedVisible": false,
+          "saveStatus": [],
+          "pairInputPresent": false,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": false
+        },
+        {
+          "sequence": 246,
+          "at": 1793857407109,
+          "source": "driver",
+          "phase": "response",
+          "id": 48,
+          "pathname": "/pardner/config",
+          "status": 200
+        },
+        {
+          "sequence": 247,
+          "at": 1793857407110,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 85,
+          "documentAt": 1793857407024,
+          "pathname": "/pardner/config",
+          "status": 200
+        },
+        {
+          "sequence": 248,
+          "at": 1793857407110,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 85,
+          "documentAt": 1793857407024,
+          "pathname": "/automerge/doc"
+        },
+        {
+          "sequence": 249,
+          "at": 1793857407111,
+          "source": "driver",
+          "phase": "request",
+          "id": 49,
+          "method": "GET",
+          "pathname": "/automerge/doc"
+        },
+        {
+          "sequence": 250,
+          "at": 1793857407111,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 85,
+          "documentAt": 1793857407024,
+          "pathname": "/automerge/status"
+        },
+        {
+          "sequence": 251,
+          "at": 1793857407111,
+          "source": "driver",
+          "phase": "request",
+          "id": 50,
+          "method": "GET",
+          "pathname": "/automerge/status"
+        },
+        {
+          "sequence": 252,
+          "at": 1793857407112,
+          "source": "driver",
+          "phase": "response",
+          "id": 49,
+          "pathname": "/automerge/doc",
+          "status": 200
+        },
+        {
+          "sequence": 253,
+          "at": 1793857407112,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 87,
+          "documentAt": 1793857407024,
+          "pathname": "/automerge/doc",
+          "status": 200
+        },
+        {
+          "sequence": 254,
+          "at": 1793857407113,
+          "source": "driver",
+          "phase": "response",
+          "id": 50,
+          "pathname": "/automerge/status",
+          "status": 200
+        },
+        {
+          "sequence": 255,
+          "at": 1793857407113,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 88,
+          "documentAt": 1793857407024,
+          "pathname": "/automerge/status",
+          "status": 200
+        },
+        {
+          "sequence": 256,
+          "at": 1793857407114,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 88,
+          "documentAt": 1793857407024,
+          "pathname": "/automerge/ws-ticket"
+        },
+        {
+          "sequence": 257,
+          "at": 1793857407114,
+          "source": "driver",
+          "phase": "request",
+          "id": 51,
+          "method": "POST",
+          "pathname": "/automerge/ws-ticket"
+        },
+        {
+          "sequence": 258,
+          "at": 1793857407115,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 90,
+          "documentAt": 1793857407024,
+          "hasPair": false,
+          "credentialPresent": true,
+          "savedVisible": false,
+          "saveStatus": [
+            "Local service disconnected"
+          ],
+          "pairInputPresent": false,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": false
+        },
+        {
+          "sequence": 259,
+          "at": 1793857407118,
+          "source": "driver",
+          "phase": "response",
+          "id": 51,
+          "pathname": "/automerge/ws-ticket",
+          "status": 200
+        },
+        {
+          "sequence": 260,
+          "at": 1793857407119,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 94,
+          "documentAt": 1793857407024,
+          "pathname": "/automerge/ws-ticket",
+          "status": 200
+        },
+        {
+          "sequence": 261,
+          "at": 1793857407119,
+          "source": "page",
+          "phase": "ws-created",
+          "browserAt": 94,
+          "documentAt": 1793857407024
+        },
+        {
+          "sequence": 262,
+          "at": 1793857407128,
+          "source": "page",
+          "phase": "ws-open",
+          "browserAt": 104,
+          "documentAt": 1793857407024
+        },
+        {
+          "sequence": 263,
+          "at": 1793857407129,
+          "source": "page",
+          "phase": "ws-message",
+          "browserAt": 104,
+          "documentAt": 1793857407024,
+          "hasDoc": true,
+          "hasStatus": true,
+          "savedLocally": true,
+          "syncPending": false,
+          "storageError": false
+        },
+        {
+          "sequence": 264,
+          "at": 1793857407129,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 105,
+          "documentAt": 1793857407024,
+          "hasPair": false,
+          "credentialPresent": true,
+          "savedVisible": true,
+          "saveStatus": [
+            "Saved locally \u00b7 synced"
+          ],
+          "pairInputPresent": false,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": false
+        },
+        {
+          "sequence": 265,
+          "at": 1793857407150,
+          "source": "page",
+          "phase": "document-entry",
+          "browserAt": 125,
+          "documentAt": 1793857407024,
+          "hasPair": false,
+          "credentialPresent": true
+        },
+        {
+          "sequence": 266,
+          "at": 1793857407156,
+          "source": "driver",
+          "phase": "request",
+          "id": 52,
+          "method": "GET",
+          "pathname": "/pardner/"
+        },
+        {
+          "sequence": 267,
+          "at": 1793857407372,
+          "source": "page",
+          "phase": "document-entry",
+          "browserAt": 347,
+          "documentAt": 1793857407024,
+          "hasPair": false,
+          "credentialPresent": true
+        },
+        {
+          "sequence": 268,
+          "at": 1793857407380,
+          "source": "driver",
+          "phase": "request",
+          "id": 53,
+          "method": "GET",
+          "pathname": "/pardner/"
+        },
+        {
+          "sequence": 269,
+          "at": 1793857407383,
+          "source": "driver",
+          "phase": "response",
+          "id": 53,
+          "pathname": "/pardner/",
+          "status": 200
+        },
+        {
+          "sequence": 270,
+          "at": 1793857407385,
+          "source": "driver",
+          "phase": "navigation",
+          "pathname": "/pardner/",
+          "hasPair": true
+        },
+        {
+          "sequence": 271,
+          "at": 1793857407387,
+          "source": "page",
+          "phase": "document-entry",
+          "browserAt": 6,
+          "documentAt": 1793857407379,
+          "hasPair": true,
+          "credentialPresent": true
+        },
+        {
+          "sequence": 272,
+          "at": 1793857407390,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 8,
+          "documentAt": 1793857407379,
+          "hasPair": true,
+          "credentialPresent": true,
+          "savedVisible": false,
+          "saveStatus": [],
+          "pairInputPresent": false,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": false
+        },
+        {
+          "sequence": 273,
+          "at": 1793857407390,
+          "source": "driver",
+          "phase": "request",
+          "id": 54,
+          "method": "GET",
+          "pathname": "/pardner/assets/index-e43db02e.js"
+        },
+        {
+          "sequence": 274,
+          "at": 1793857407390,
+          "source": "driver",
+          "phase": "request",
+          "id": 55,
+          "method": "GET",
+          "pathname": "/pardner/assets/index-9bce7a2d.css"
+        },
+        {
+          "sequence": 275,
+          "at": 1793857407395,
+          "source": "driver",
+          "phase": "response",
+          "id": 54,
+          "pathname": "/pardner/assets/index-e43db02e.js",
+          "status": 200
+        },
+        {
+          "sequence": 276,
+          "at": 1793857407395,
+          "source": "driver",
+          "phase": "response",
+          "id": 55,
+          "pathname": "/pardner/assets/index-9bce7a2d.css",
+          "status": 200
+        },
+        {
+          "sequence": 277,
+          "at": 1793857407419,
+          "source": "page",
+          "phase": "dom-content-loaded",
+          "browserAt": 39,
+          "documentAt": 1793857407379
+        },
+        {
+          "sequence": 278,
+          "at": 1793857407428,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 47,
+          "documentAt": 1793857407379,
+          "pathname": "/pardner/config"
+        },
+        {
+          "sequence": 279,
+          "at": 1793857407428,
+          "source": "driver",
+          "phase": "request",
+          "id": 56,
+          "method": "GET",
+          "pathname": "/pardner/config"
+        },
+        {
+          "sequence": 280,
+          "at": 1793857407429,
+          "source": "driver",
+          "phase": "response",
+          "id": 56,
+          "pathname": "/pardner/config",
+          "status": 200
+        },
+        {
+          "sequence": 281,
+          "at": 1793857407430,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 49,
+          "documentAt": 1793857407379,
+          "pathname": "/pardner/config",
+          "status": 200
+        },
+        {
+          "sequence": 282,
+          "at": 1793857407432,
+          "source": "driver",
+          "phase": "navigation",
+          "pathname": "/pardner/",
+          "hasPair": false
+        },
+        {
+          "sequence": 283,
+          "at": 1793857407433,
+          "source": "page",
+          "phase": "replace-state",
+          "browserAt": 52,
+          "documentAt": 1793857407379,
+          "hadPair": true,
+          "hasPair": false
+        },
+        {
+          "sequence": 284,
+          "at": 1793857407433,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 53,
+          "documentAt": 1793857407379,
+          "pathname": "/automerge/status"
+        },
+        {
+          "sequence": 285,
+          "at": 1793857407433,
+          "source": "driver",
+          "phase": "request",
+          "id": 57,
+          "method": "GET",
+          "pathname": "/automerge/status"
+        },
+        {
+          "sequence": 286,
+          "at": 1793857407434,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 54,
+          "documentAt": 1793857407379,
+          "hasPair": false,
+          "credentialPresent": true,
+          "savedVisible": false,
+          "saveStatus": [],
+          "pairInputPresent": true,
+          "pairButtonDisabled": true,
+          "expiredAlertVisible": false
+        },
+        {
+          "sequence": 287,
+          "at": 1793857407437,
+          "source": "driver",
+          "phase": "response",
+          "id": 57,
+          "pathname": "/automerge/status",
+          "status": 200
+        },
+        {
+          "sequence": 288,
+          "at": 1793857407437,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 57,
+          "documentAt": 1793857407379,
+          "pathname": "/automerge/status",
+          "status": 200
+        },
+        {
+          "sequence": 289,
+          "at": 1793857407438,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 58,
+          "documentAt": 1793857407379,
+          "pathname": "/pardner/config"
+        },
+        {
+          "sequence": 290,
+          "at": 1793857407439,
+          "source": "driver",
+          "phase": "request",
+          "id": 58,
+          "method": "GET",
+          "pathname": "/pardner/config"
+        },
+        {
+          "sequence": 291,
+          "at": 1793857407439,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 58,
+          "documentAt": 1793857407379,
+          "hasPair": false,
+          "credentialPresent": true,
+          "savedVisible": false,
+          "saveStatus": [],
+          "pairInputPresent": false,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": false
+        },
+        {
+          "sequence": 292,
+          "at": 1793857407440,
+          "source": "driver",
+          "phase": "response",
+          "id": 58,
+          "pathname": "/pardner/config",
+          "status": 200
+        },
+        {
+          "sequence": 293,
+          "at": 1793857407440,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 60,
+          "documentAt": 1793857407379,
+          "pathname": "/pardner/config",
+          "status": 200
+        },
+        {
+          "sequence": 294,
+          "at": 1793857407441,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 60,
+          "documentAt": 1793857407379,
+          "pathname": "/automerge/doc"
+        },
+        {
+          "sequence": 295,
+          "at": 1793857407441,
+          "source": "driver",
+          "phase": "request",
+          "id": 59,
+          "method": "GET",
+          "pathname": "/automerge/doc"
+        },
+        {
+          "sequence": 296,
+          "at": 1793857407441,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 60,
+          "documentAt": 1793857407379,
+          "pathname": "/automerge/status"
+        },
+        {
+          "sequence": 297,
+          "at": 1793857407442,
+          "source": "driver",
+          "phase": "request",
+          "id": 60,
+          "method": "GET",
+          "pathname": "/automerge/status"
+        },
+        {
+          "sequence": 298,
+          "at": 1793857407443,
+          "source": "driver",
+          "phase": "response",
+          "id": 59,
+          "pathname": "/automerge/doc",
+          "status": 200
+        },
+        {
+          "sequence": 299,
+          "at": 1793857407443,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 63,
+          "documentAt": 1793857407379,
+          "pathname": "/automerge/doc",
+          "status": 200
+        },
+        {
+          "sequence": 300,
+          "at": 1793857407443,
+          "source": "driver",
+          "phase": "response",
+          "id": 60,
+          "pathname": "/automerge/status",
+          "status": 200
+        },
+        {
+          "sequence": 301,
+          "at": 1793857407444,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 63,
+          "documentAt": 1793857407379,
+          "pathname": "/automerge/status",
+          "status": 200
+        },
+        {
+          "sequence": 302,
+          "at": 1793857407444,
+          "source": "page",
+          "phase": "fetch-start",
+          "browserAt": 63,
+          "documentAt": 1793857407379,
+          "pathname": "/automerge/ws-ticket"
+        },
+        {
+          "sequence": 303,
+          "at": 1793857407444,
+          "source": "driver",
+          "phase": "request",
+          "id": 61,
+          "method": "POST",
+          "pathname": "/automerge/ws-ticket"
+        },
+        {
+          "sequence": 304,
+          "at": 1793857407445,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 65,
+          "documentAt": 1793857407379,
+          "hasPair": false,
+          "credentialPresent": true,
+          "savedVisible": false,
+          "saveStatus": [
+            "Local service disconnected"
+          ],
+          "pairInputPresent": false,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": false
+        },
+        {
+          "sequence": 305,
+          "at": 1793857407449,
+          "source": "driver",
+          "phase": "response",
+          "id": 61,
+          "pathname": "/automerge/ws-ticket",
+          "status": 200
+        },
+        {
+          "sequence": 306,
+          "at": 1793857407449,
+          "source": "page",
+          "phase": "fetch-response",
+          "browserAt": 69,
+          "documentAt": 1793857407379,
+          "pathname": "/automerge/ws-ticket",
+          "status": 200
+        },
+        {
+          "sequence": 307,
+          "at": 1793857407449,
+          "source": "page",
+          "phase": "ws-created",
+          "browserAt": 69,
+          "documentAt": 1793857407379
+        },
+        {
+          "sequence": 308,
+          "at": 1793857407469,
+          "source": "page",
+          "phase": "ws-open",
+          "browserAt": 89,
+          "documentAt": 1793857407379
+        },
+        {
+          "sequence": 309,
+          "at": 1793857407469,
+          "source": "page",
+          "phase": "ws-message",
+          "browserAt": 89,
+          "documentAt": 1793857407379,
+          "hasDoc": true,
+          "hasStatus": true,
+          "savedLocally": true,
+          "syncPending": false,
+          "storageError": false
+        },
+        {
+          "sequence": 310,
+          "at": 1793857407470,
+          "source": "page",
+          "phase": "render-state",
+          "browserAt": 90,
+          "documentAt": 1793857407379,
+          "hasPair": false,
+          "credentialPresent": true,
+          "savedVisible": true,
+          "saveStatus": [
+            "Saved locally \u00b7 synced"
+          ],
+          "pairInputPresent": false,
+          "pairButtonDisabled": false,
+          "expiredAlertVisible": false
+        }
+      ],
+      "logSha256": "2d26537277e8f3b7d7f4f63f71ea7695dd8906883b0cc5c849d129e3b48aac2b",
+      "watchdogSha256": "8880d2833f8c35f37d32919661e76a353cf1ea7dbcb6d25cded33b07b0f57c77",
+      "traceSha256": "dc55ec89df7ed628e7dafea8fae0f500c0615db379285b3b9ca7bbcf965045b1",
+      "beforeManifestSha256": "3374683c4e3c9841eef601ff1dff0115a52b89a519d948a2d18b222404a45d55",
+      "afterManifestSha256": "3374683c4e3c9841eef601ff1dff0115a52b89a519d948a2d18b222404a45d55"
+    }
+  ],
+  "setup": [
+    {
+      "name": "baseline-build",
+      "exitCode": 0,
+      "durationMs": 1683,
+      "logSha256": "a5b9598b6cc1389e5627a7d97429cfe039a52c1e729b0da4adf4bc5b085eb896",
+      "watchdogSha256": "abf9395014f4c2a5b55f4e280ce10657284c7e65cf49520cbc123a8fd475d105"
+    },
+    {
+      "name": "candidate-build",
+      "exitCode": 0,
+      "durationMs": 1601,
+      "logSha256": "ea977c6f99dc5d1b6350afa7f27ae89aa6a10bd6fb6969993d9c3325c3b85c32",
+      "watchdogSha256": "041d991b6deb9dd8ff176c87389bbde465882682f0690f72d05fdc11514e0fd9"
+    }
+  ],
+  "artifacts": {
+    "trace.mjs": {
+      "sha256": "35a33dffdbe9e133c2471668d2948039de42caad8ff4b0ac46d2773db0b9bb72",
+      "source": "import { createRequire } from 'node:module'\nimport { appendFileSync } from 'node:fs'\nconst root=process.env.PARDNER_PAIR_DIAG_ROOT\nconst target=process.env.PARDNER_PAIR_DIAG_OUTPUT\nconst require=createRequire(root+'/package.json')\nconst {webkit}=require('playwright')\nlet sequence=0\nfunction emit(event){appendFileSync(target,JSON.stringify({sequence:++sequence,at:Date.now(),...event})+'\\n',{mode:0o600})}\nconst path=url=>{try{return new URL(url).pathname}catch{return 'non-http'}}\nconst launch=webkit.launch.bind(webkit)\nwebkit.launch=async options=>{\n const browser=await launch(options)\n emit({source:'driver',phase:'browser-launched',version:browser.version()})\n const newContext=browser.newContext.bind(browser)\n browser.newContext=async options=>{\n  const context=await newContext(options)\n  await context.exposeBinding('__pardnerPairDiagnostic',(_source,event)=>emit({source:'page',...event}))\n  await context.addInitScript(()=>{\n   const send=(phase,data={})=>{void window.__pardnerPairDiagnostic({phase,browserAt:performance.now(),documentAt:performance.timeOrigin,...data}).catch(()=>{})}\n   const hasPair=()=>new URLSearchParams(location.hash.slice(1)).has('pair')\n   const credentialPresent=()=>{try{return Object.keys(localStorage).filter(k=>k.endsWith(':credential')).some(k=>Boolean(localStorage.getItem(k)))}catch{return null}}\n   const state=()=>({hasPair:hasPair(),credentialPresent:credentialPresent(),savedVisible:Array.from(document.querySelectorAll('.save-status')).some(e=>e.textContent==='Saved locally \u00b7 synced'),saveStatus:Array.from(document.querySelectorAll('.save-status')).map(e=>['Connecting to local service','Saving locally\u2026','Local service disconnected','Local save failed','Saved locally \u00b7 waiting for hub','Saved locally \u00b7 synced'].includes(e.textContent)?e.textContent:'other'),pairInputPresent:Boolean(document.querySelector('input[autocomplete=\"one-time-code\"]')),pairButtonDisabled:Array.from(document.querySelectorAll('button')).some(b=>b.textContent==='Connecting\u2026' && b.disabled),expiredAlertVisible:document.body?.textContent.includes('The pairing code is incorrect or expired. Generate a new code on the desktop.')??false})\n   send('document-entry',{hasPair:hasPair(),credentialPresent:credentialPresent()})\n   window.addEventListener('hashchange',()=>send('hashchange',state()))\n   const replace=history.replaceState.bind(history)\n   history.replaceState=(...args)=>{const before=hasPair();const result=replace(...args);send('replace-state',{hadPair:before,hasPair:hasPair()});return result}\n   for(const name of ['setItem','removeItem']){\n    const original=Storage.prototype[name]\n    Storage.prototype[name]=function(key,...args){const result=original.call(this,key,...args);if(String(key).endsWith(':credential'))send('credential-'+name,{credentialPresent:credentialPresent()});return result}\n   }\n   const fetcher=window.fetch.bind(window)\n   window.fetch=async (...args)=>{\n    let pathname='unknown';try{pathname=new URL(typeof args[0]==='string'?args[0]:args[0].url,location.href).pathname}catch{}\n    send('fetch-start',{pathname})\n    try{const result=await fetcher(...args);send('fetch-response',{pathname,status:result.status});return result}\n    catch(error){send('fetch-error',{pathname,errorName:error.name});throw error}\n   }\n   const Original=window.WebSocket\n   window.WebSocket=class extends Original{\n    constructor(...args){super(...args);send('ws-created');this.addEventListener('open',()=>send('ws-open'));this.addEventListener('close',event=>send('ws-close',{code:event.code}));this.addEventListener('error',()=>send('ws-error'));this.addEventListener('message',event=>{try{const m=JSON.parse(event.data);send('ws-message',{hasDoc:Boolean(m.doc),hasStatus:Boolean(m.status),savedLocally:m.status?.savedLocally??null,syncPending:m.status?.syncPending??null,storageError:Boolean(m.status?.storageError)})}catch{send('ws-non-json')}})}\n   }\n   let previous=''\n   const observe=()=>{const next=state(),key=JSON.stringify(next);if(key!==previous){previous=key;send('render-state',next)}}\n   new MutationObserver(observe).observe(document,{subtree:true,childList:true,attributes:true,characterData:true})\n   window.addEventListener('DOMContentLoaded',()=>{send('dom-content-loaded');observe()})\n   window.addEventListener('beforeunload',()=>send('before-unload',state()))\n  })\n  context.on('page',page=>{\n   let id=0;const ids=new WeakMap()\n   page.on('request',req=>{ids.set(req,++id);emit({source:'driver',phase:'request',id,method:req.method(),pathname:path(req.url())})})\n   page.on('response',res=>emit({source:'driver',phase:'response',id:ids.get(res.request()),pathname:path(res.url()),status:res.status()}))\n   page.on('requestfailed',req=>emit({source:'driver',phase:'request-failed',id:ids.get(req),pathname:path(req.url())}))\n   page.on('framenavigated',frame=>{if(frame===page.mainFrame())emit({source:'driver',phase:'navigation',pathname:path(frame.url()),hasPair:new URL(frame.url()).hash.startsWith('#pair=')})})\n   page.on('pageerror',error=>emit({source:'driver',phase:'page-error',errorName:error.name}))\n  })\n  return context\n }\n return browser\n}\n"
+    },
+    "compare.py": {
+      "sha256": "8cb0f35252be5da47d6dc88a8a64dc1e74e6593b6821baf1959bc6236a3a6ba8",
+      "source": "import pathlib,subprocess,sys,os,json,hashlib,datetime\nroot=pathlib.Path.cwd();out=root/'output/verification/cloud-pairing-diagnostic-20261105';base=pathlib.Path((out/'baseline-path.txt').read_text())\nassert datetime.datetime.now(datetime.timezone.utc)<datetime.datetime(2026,11,5,6,10,42,tzinfo=datetime.timezone.utc)\nfor rel in ['package-lock.json','ui-prototype/package-lock.json','test/pardner-connection-ui.test.js']:\n assert (root/rel).read_bytes()==(base/rel).read_bytes(),rel\ncommands=[('baseline-build',base,['npm','run','ui:build']),('candidate-build',root,['npm','run','ui:build'])]\npattern='^recovers pairing after network failure, credential rotation, and replacement links in webkit$'\nfor name,cwd,args in commands+[(name,cwd,['node','--import',str(out/'trace.mjs'),'--test','--test-name-pattern',pattern,'test/pardner-connection-ui.test.js']) for name,cwd in [('candidate',root),('baseline',base)]]:\n env=os.environ.copy()\n if name in ['candidate','baseline']:\n  code=\"const {candidateFingerprint}=await import(process.argv[1]);const {writeFile}=await import('node:fs/promises');const c=await candidateFingerprint(process.argv[2]);await writeFile(process.argv[3],JSON.stringify(c,null,2));console.log('FINGERPRINT '+c.sha256)\"\n  subprocess.run(['node','--input-type=module','-e',code,(root/'support/acceptance/candidate.js').as_uri(),str(cwd),str(out/(name+'.before.json'))],check=True)\n  env['PARDNER_PAIR_DIAG_ROOT']=str(cwd);env['PARDNER_PAIR_DIAG_OUTPUT']=str(out/(name+'.trace.jsonl'))\n print('START '+name,flush=True)\n result=subprocess.run(['node',str(root/'scripts/verify-watchdog.js'),'--timeout','900','--log',str(out/(name+'.log')),'--record',str(out/(name+'.watchdog.json')),'--',*args],cwd=cwd,env=env)\n print('END '+name+' '+str(result.returncode),flush=True)\n if 'build' in name and result.returncode:sys.exit(result.returncode)\nprint('COMPARISON_COMPLETE',flush=True)\n"
+    }
+  },
+  "conclusion": "Both instrumented isolated arms passed. Fresh hashchange consumed the fragment; fresh pairing returned200, credential presence became true, configuration/doc/status/ticket requests succeeded, socket opened and saved state rendered. Baseline also recorded a later new document navigation and another successful authenticated connection. This does not demonstrate a Cloud defect, test defect or pre-existing failure. Stopped after the allowed pair without a justified intervention; original failure remains unexplained."
+}

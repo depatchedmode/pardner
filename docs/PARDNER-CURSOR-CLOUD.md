@@ -184,6 +184,9 @@ The [revised-policy verification run](PARDNER-CURSOR-CLOUD-OFFLINE6000-QUALIFICA
 stopped at a WebKit pairing-readiness failure in routine UI checks; full verify
 and the fresh 20-seed gate did not run. The draft remains `needs-qualification`;
 the original offline failure is not retroactively passed.
+A [bounded WebKit pairing investigation](PARDNER-CURSOR-CLOUD-PAIRING-DIAGNOSTIC.md)
+passed one isolated instrumented candidate/main comparison without localizing
+the new UI failure. The original routine failure remains unresolved.
 
 Before live qualification authorize a specific account/repository/key scope,
 reviewed runtime/workspace, six-attempt plan and replacement/spending budget
