@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "qualificationStatus": "FAILED",
+  "outcome": "V2_PREFLIGHT_PASSED_FIRST_ARM_STOPPED_BY_RETAINED_LOAD_CHECK",
+  "prospectiveDesign": {
+    "startedAt": "2026-11-05T02:53:00Z",
+    "deadline": "2026-11-05T03:23:00Z",
+    "preflightDeadline": "2026-11-05T02:58:00Z",
+    "predeclaredOrder": [
+      "main-quiet",
+      "candidate-quiet",
+      "candidate-load",
+      "main-load",
+      "main-recovery",
+      "candidate-recovery"
+    ],
+    "fixture": "Original seed5 prefix:100 tasks,400 comments,200 CLI task updates,two offline replicas,browser contexts,kill/restart at index85; original assertions/limits.",
+    "cpuIntervention": {
+      "workers": 2,
+      "dutyPercent": 75,
+      "periodMs": 100,
+      "maximumDurationSeconds": 90,
+      "noRamp": true
+    },
+    "pressureStop": "Two consecutive one-second samples of CPU>85%, blocked>2 or event-loop delay>250ms; immediate nonnormal memory pressure or paging growth. Runnable remains recorded only.",
+    "recovery": "Run recovery pair only if loaded arms complete and at least8 minutes remain.",
+    "candidateFrozen": true,
+    "qualificationCleared": false,
+    "armDetails": {
+      "precondition": "Same10-second idle-fixture check, except runnable veto removed; not a substitute for global sustained preflight.",
+      "pressureGuard": "Two consecutive one-second samples of CPU>85%, blocked>2 or event-loop delay>250ms; immediate nonnormal memory pressure or paging growth. Runnable remains recorded only.",
+      "watchdogs": "300s per arm; no new arm unless it can finish by03:19Z; cleanup/publication reserved before03:23Z.",
+      "noisyArm": "preserve evidence; stop batch, no controlled-comparison claim"
+    },
+    "version": 2,
+    "prospectiveChanges": [
+      "Remove ps state R runnable-count p95<=3/peak<=5 as preflight and idle-fixture veto. Continue recording and publishing runnable counts.",
+      "Remove runnable>8 load-stop analog only. Preserve CPU>85%, blocked-process, memory/paging and responsiveness stop guards."
+    ],
+    "rationale": "Process-state R count is not capacity-grounded CPU contention or per-operation queue delay on this10-logical-CPU host. Prospective CPU headroom/responsiveness permits paired intervention, not proof of isolation or original cause.",
+    "preservedPreflight": {
+      "windowSeconds": 60,
+      "maximumSeconds": 300,
+      "cpuMeanMaxPercent": 25,
+      "cpuP95MaxPercent": 40,
+      "cpuPeakMaxPercent": 60,
+      "blockedP95Max": 2,
+      "load1Max": 5,
+      "eventLoopP95MaxMs": 40,
+      "eventLoopPeakMaxMs": 150,
+      "memoryPressureLevel": 1,
+      "memoryFreeMinPercent": 15,
+      "swapoutAndPageoutGrowthMax": 0
+    },
+    "coverage": "Workers start only after fixture creation, browser partition and idle-fixture check, immediately before200 update loop. Record thread CPU, start/stop timestamps and per-update coverage. No load during fixture setup.",
+    "history": "V1 results preserved as failures of V1, never relabelled as V2 passes."
+  },
+  "designSha256": "80dd617dff3effe4e783d0c5049c11632fa7d83f85f31005c689fa4a446849a9",
+  "designWrittenBeforePreflightVerified": true,
+  "v1Results": "Preserved as failures of v1; not reinterpreted as v2 passes.",
+  "checkedHead": "ef0eec9c3140f7b17dc73ad4bf65cfa5dabe69f2",
+  "base": "e0fee59cbdeac55733aca15de73d45c2e2d14bfb",
+  "implementation": "34abcf98b9204bc1b564774a84554429c20d35c1",
+  "candidateFingerprint": "0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3",
+  "mainFingerprint": "3599ddb1c86f0d695120f6fe221c26044d0fd3fbe1fed7350ea11a23354d22d4",
+  "environment": {
+    "node": "v24.11.1",
+    "lockfiles": {
+      "package-lock.json": "b40167effb550fd7feb01a85876c273f3fb2eedb76ad3be7dcdd1ee8704d592c",
+      "ui-prototype/package-lock.json": "ad58b07b1d9fbbcf8eb8a18ad5d4658b00442e04922026c813527b5a54a65649"
+    },
+    "installs": "Installed versions/integrities matched both locks; main dependency symlinks and identical copied UI build."
+  },
+  "preflight": {
+    "limits": {
+      "windowSeconds": 60,
+      "cpuMeanMaxPercent": 25,
+      "cpuP95MaxPercent": 40,
+      "cpuPeakMaxPercent": 60,
+      "blockedP95Max": 2,
+      "load1Max": 5,
+      "eventLoopP95MaxMs": 40,
+      "eventLoopPeakMaxMs": 150,
+      "memoryPressureLevel": 1,
+      "memoryFreeMinPercent": 15,
+      "swapoutAndPageoutGrowthMax": 0
+    },
+    "decision": {
+      "quiet": true,
+      "reasons": [],
+      "windowStart": "2026-11-05T02:53:51.553Z",
+      "windowEnd": "2026-11-05T02:54:50.595Z",
+      "cpuMeanPercent": 17.51380475005591,
+      "cpuP95Percent": 27.627035027133694,
+      "cpuPeakPercent": 28.88122227698373,
+      "runnableP95": 7,
+      "runnablePeak": 10,
+      "eventLoopP95Ms": 13.582335,
+      "eventLoopPeakMs": 14.614527
+    },
+    "samples": 30,
+    "watchdogExit": 0,
+    "durationMs": 61286
+  },
+  "firstArm": {
+    "name": "main-quiet",
+    "durationMs": 69005,
+    "exit": 1,
+    "stopReason": "precondition:load",
+    "phaseMetrics": {
+      "samples": 10,
+      "cpuMeanPercent": 16.984347176621256,
+      "cpuPeakPercent": 23.493975903614462,
+      "load1Range": [
+        5.5947265625,
+        5.947265625
+      ],
+      "blockedPeak": 1,
+      "eventLoopPeakMs": 19.480575,
+      "memoryPressureLevels": [
+        1
+      ],
+      "swapoutGrowth": 0,
+      "pageoutGrowth": 0,
+      "runnableCounts": [
+        4,
+        5,
+        2,
+        2,
+        6,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    "partialAudit": {
+      "checkedHead": "ef0eec9c3140f7b17dc73ad4bf65cfa5dabe69f2",
+      "candidateSha256": "0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3",
+      "mainSha256": "3599ddb1c86f0d695120f6fe221c26044d0fd3fbe1fed7350ea11a23354d22d4",
+      "preflightPassed": true,
+      "remainingPreflightLimitsUnchanged": true,
+      "partialIntentCounts": {
+        "actor.register": 4,
+        "task.create": 100,
+        "comment.add": 402
+      },
+      "receiptsChecked": 506,
+      "receiptInclusiveAckMaxMs": 172.71316600000137,
+      "scriptedUpdatesStarted": 0,
+      "workersStarted": 0,
+      "controlStopReason": "precondition:load",
+      "failureHash": "e204b8c2362cf2536542929a7f8c76a693b218a8dccb3c1c6beba2491e873f88",
+      "snapshotReverification": "not available: aborted prefix has no retained final snapshot; no complete scenario claim",
+      "qualificationPassed": false
+    },
+    "fixture": "100tasks/400comments,2replicas/browsercontexts created; two offline browser comments acknowledged; stopped before200 CLI task updates/restart85.",
+    "scenarioPassed": false,
+    "workersStarted": 0
+  },
+  "attempts": {
+    "preflight": 1,
+    "quietArmsStarted": 1,
+    "quietArmsCompleted": 0,
+    "candidateArms": 0,
+    "loadArms": 0,
+    "recoveryArms": 0,
+    "loadWorkers": 0,
+    "scriptedUpdates": 0,
+    "fullAcceptanceRuns": 0,
+    "full20SeedGates": 0
+  },
+  "cleanup": {
+    "at": "2026-11-05T02:59:13.914302+00:00",
+    "ownedRootOrGroupSurvivors": [],
+    "preflightExit": 0,
+    "firstArmExit": 1,
+    "timeouts": false,
+    "watchdogSurvivors": [],
+    "newScratch": [],
+    "baselineArchiveRemoved": true,
+    "workersStarted": 0,
+    "lockRelease": "wrapper exited 1 reflecting guard-stopped arm; lock released, stable file retained",
+    "lockReleasedAt": "2026-11-05T03:00:12.881015+00:00"
+  },
+  "sourceDigests": {
+    "v2-candidate.mjs.txt": "6e1fbb9926bd8f614588b876bba4c631ec5ae1b43336bcf43fdcd7c8fc28b3c0",
+    "v2-main.mjs.txt": "6a4814475cd9c64a53d82db7f3f0b43015465ed7e6ace8a36e49d9ea5090db87",
+    "make-v2.py.txt": "a9de847a66a091d282de2e8c25489d1ccb2d46bc074225e36a2c9c26cde0ed6c",
+    "cpu-control-v2.mjs.txt": "91e00d41ee8c1046728389f8793d29c6b97b14c99afe61c1bf3c3d538f271e8a",
+    "quiet-v2.mjs.txt": "540aa0548a0cec6237318ccdd49554b3afc24e4ab0a705726d636a8cedf2a7c0",
+    "phase-v2.mjs.txt": "012a9d132d49c466c8cce35763ca98dac61c197e0b7a0b4fb6e9133210596231"
+  },
+  "additionalDigests": {
+    "audit.json": "f596c31c39f923d640a7d94b246c4161f3ef5ce83aeb3775458fc6b2d80262a3",
+    "main-quiet/report/seed-5/cpu-control.json": "2c3ecfcbbd5dedc3ca2e5d5d22592cd6cbad79f21549c31beedab9095af15dc9",
+    "main-quiet/watchdog.json": "e0213b936a2fa89f4687c12982f535c334f20d2eb2818edc9a4115b2706d801a",
+    "batch.sh.txt": "1c5e7c5f019cd4051e59daa5a8ff373902873f458c158f47ec4162bff8151bf1"
+  },
+  "causalLimits": [
+    "The global prospective v2 preflight passed with runnable counts as covariates.",
+    "The retained idle-fixture load1<=5 check then stopped execution despite low current CPU, normal memory and responsive event loop.",
+    "Lagging load average may include the original fixture setup itself; these observations do not establish unrelated saturation or a product defect.",
+    "No controlled task-update phase or CPU intervention occurred; no matched main/candidate or quiet/load effect can be estimated.",
+    "Setup receipts were checked, but no final snapshot exists for this aborted prefix; no complete scenario/qualification pass is claimed.",
+    "No remaining criterion was silently removed, no rerun/ramp, no product change/rebase, no original assertions or timing-limit changes.",
+    "Raw browser/service traces remain private; no credentials/request bodies are in public evidence."
+  ],
+  "nextDecision": "Coordinator review of the retained idle-fixture load veto is needed before any further experiment. No automatic retry, gate rerun, merge or downstream handoff."
+}

@@ -117,6 +117,13 @@ also stopped before any fixture or load arm: CPU/memory checks passed, but the
 predeclared runnable-process bounds did not. This supplies no new causal
 comparison and leaves qualification **FAILED**.
 
+Prospective [v2 and v2.1 designs](PARDNER-66-CPU-V2.md) then retained the global
+preflight and original product limits while amending diagnostic vetoes explicitly.
+Global v2 preflight passed, but two first-arm attempts stopped before the update
+phase: first on lagging load, then on two Pageouts with normal memory pressure.
+These are unmet diagnostic criteria, not demonstrated environment/product
+defects. No controlled updates or workers ran; qualification remains **FAILED**.
+
 All watchdogs completed and recorded no hung processes, survivors or leftover
 scratch. Owned test processes were absent after diagnosis, the disposable baseline
 archive was removed, and the lock wrapper exited 0, releasing the stable lock
