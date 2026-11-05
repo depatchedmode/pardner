@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "qualificationStatus": "FAILED",
+  "outcome": "QUIET_PREREQUISITE_NOT_MET",
+  "retryReason": "User explicitly reports Machine is idle now; one fresh retry authorized on this machine.",
+  "budget": {
+    "minutes": 30,
+    "startedAt": "2026-11-05T02:42:01Z",
+    "deadline": "2026-11-05T03:12:01Z"
+  },
+  "checkedHead": "c89185191247ab3370a7b6a3a671b9dfd7a7a1b7",
+  "base": "e0fee59cbdeac55733aca15de73d45c2e2d14bfb",
+  "implementation": "34abcf98b9204bc1b564774a84554429c20d35c1",
+  "candidateFingerprint": "0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3",
+  "node": "v24.11.1",
+  "criteriaUnchanged": true,
+  "observerChange": "Only the absolute deadline changed; exact source comparison checked.",
+  "limits": {
+    "windowSeconds": 60,
+    "cpuMeanMaxPercent": 25,
+    "cpuP95MaxPercent": 40,
+    "cpuPeakMaxPercent": 60,
+    "runnableP95Max": 3,
+    "runnablePeakMax": 5,
+    "blockedP95Max": 2,
+    "load1Max": 5,
+    "eventLoopP95MaxMs": 40,
+    "eventLoopPeakMaxMs": 150,
+    "memoryPressureLevel": 1,
+    "memoryFreeMinPercent": 15,
+    "swapoutAndPageoutGrowthMax": 0
+  },
+  "metrics": {
+    "samples": 139,
+    "evaluatedWindows": 110,
+    "qualifyingWindows": 0,
+    "reasonWindowCounts": {
+      "load": 37,
+      "runnable": 110
+    },
+    "overall": {
+      "cpuMeanPercent": 20.243896148495192,
+      "cpuP95Percent": 28.908999497234788,
+      "cpuPeakPercent": 34.58128078817734,
+      "runnableP95": 7,
+      "runnablePeak": 15,
+      "load1Range": [
+        2.62353515625,
+        6.75537109375
+      ],
+      "eventLoopPeakMs": 14.213119,
+      "memoryPressureLevels": [
+        1
+      ],
+      "memoryFreePercentRange": [
+        76,
+        78
+      ],
+      "pageoutGrowth": 0,
+      "swapoutGrowth": 0
+    },
+    "finalWindow": {
+      "quiet": false,
+      "reasons": [
+        "runnable"
+      ],
+      "windowStart": "2026-11-05T02:46:00.977Z",
+      "windowEnd": "2026-11-05T02:47:02.056Z",
+      "cpuMeanPercent": 18.78535829931777,
+      "cpuP95Percent": 22.23858615611193,
+      "cpuPeakPercent": 22.44094488188977,
+      "runnableP95": 7,
+      "runnablePeak": 8,
+      "eventLoopP95Ms": 12.541951,
+      "eventLoopPeakMs": 12.804095
+    }
+  },
+  "watchdog": {
+    "startedAt": "2026-11-05T02:42:18.948Z",
+    "durationMs": 283234,
+    "timeoutSeconds": 290,
+    "outcome": "completed",
+    "exitCode": 2,
+    "timedOut": false,
+    "hungProcesses": [],
+    "survivorsAfterKill": [],
+    "newScratch": []
+  },
+  "attempts": {
+    "preflight": 1,
+    "fixtureArms": 0,
+    "loadWorkers": 0,
+    "recoveryArms": 0,
+    "fullAcceptanceRuns": 0,
+    "full20SeedGates": 0
+  },
+  "plannedNotExecuted": {
+    "order": [
+      "main-quiet",
+      "candidate-quiet",
+      "candidate-load",
+      "main-load",
+      "main-recovery",
+      "candidate-recovery"
+    ],
+    "workers": 2,
+    "dutyPercent": 75,
+    "periodMs": 100,
+    "maximumLoadSeconds": 90,
+    "controller": "Prepared externally but never executed. No fixture source archive or application service was created."
+  },
+  "cleanup": {
+    "at": "2026-11-05T02:47:58.320268+00:00",
+    "watchdog": {
+      "startedAt": "2026-11-05T02:42:18.948Z",
+      "durationMs": 283234,
+      "outcome": "completed",
+      "exitCode": 2,
+      "timedOut": false,
+      "hungProcesses": [],
+      "survivorsAfterKill": [],
+      "newScratch": []
+    },
+    "ownedProcessGroupSurvivors": [],
+    "fixtureArmsStarted": 0,
+    "cpuLoadWorkersStarted": 0,
+    "lockRelease": "wrapper exited 2 reflecting explicit non-quiet result; lock released; stable file retained",
+    "lockReleasedAt": "2026-11-05T02:48:46.868491+00:00"
+  },
+  "digests": {
+    "preflight.json": "cbc82325bebd84e6ff3caf8d651da1c3e4c95d767f6d0b7bb9a8c56deb926a0e",
+    "preflight-audit.json": "fc4fea4dedfc42a0419b570d8dd18a8a41aad5629bb808de854320c9bcf1e0c3",
+    "design.json": "0a1602e6723459f4eda5700adef8d4837568d980f329433f3c2788809217ab0a",
+    "pardner-101-quiet-retry.mjs.txt": "009cfbbda409088a78e5ec57f9b27b9ab9d351e43d23800def3d98afbd88302d",
+    "pardner-101-cpu-control.mjs.txt": "e2c13964b895a8546f80b4ba918cc66c7ab090414854e1cc2b6ce1419372feb8"
+  },
+  "causalLimits": [
+    "The final window passed CPU, load, event-loop and memory/paging criteria; runnable counts alone failed that window.",
+    "These are conservative experiment-control criteria, not a claim that the machine was generally saturated or a revision to product timing limits.",
+    "No threshold or observer criterion was relaxed. No controlled CPU comparison occurred, so no new inference about the original latency failure is supported.",
+    "Observer process-state sampling includes its own activity; it is unchanged and no particular unrelated process was identified or manipulated.",
+    "No implementation/dependency/build change, rebase, gate rerun, paid/native session, production data change, merge, issue closure or downstream handoff."
+  ],
+  "nextDecision": "Missing prerequisite remains a window satisfying the unchanged predeclared runnable/control criteria. Root owns any future environment/design decision; no retry or automatic extension."
+}

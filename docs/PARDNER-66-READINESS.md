@@ -112,6 +112,11 @@ stopped at preflight: no sustained quiet window met its predeclared CPU and
 runnable-process criteria. No fixture/load arms or gate ran. This missing
 environment prerequisite supplies no diagnosis and leaves qualification **FAILED**.
 
+After the user reported an idle machine, one [unchanged preflight retry](PARDNER-66-CPU-RETRY.md)
+also stopped before any fixture or load arm: CPU/memory checks passed, but the
+predeclared runnable-process bounds did not. This supplies no new causal
+comparison and leaves qualification **FAILED**.
+
 All watchdogs completed and recorded no hung processes, survivors or leftover
 scratch. Owned test processes were absent after diagnosis, the disposable baseline
 archive was removed, and the lock wrapper exited 0, releasing the stable lock
