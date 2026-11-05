@@ -24,7 +24,7 @@ export class ExpectedOperations {
     this.intend(request)
     assert.equal(receipt.savedLocally, true)
     if (this.sources.has(request.operationId)) assert.equal(receipt.replicaId, this.sources.get(request.operationId), 'Receipt came from the wrong replica identity')
-    assert.ok(elapsedMs <= 2000, `Local acknowledgement took ${elapsedMs}ms`)
+    assert.ok(elapsedMs <= 2500, `Local acknowledgement took ${elapsedMs}ms`)
     this.receipts.set(request.operationId, { receipt, elapsedMs })
   }
   verify(snapshot) {

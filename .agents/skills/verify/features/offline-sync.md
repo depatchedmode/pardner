@@ -33,7 +33,9 @@ browser mutations. Inspect `output/acceptance/<run>/seed-1/report.json`, the int
 manifest, per-replica readback, and browser traces. Those traces and the seed
 report contain disposable credentials; retain them only through
 `verify:sanitize` (SKILL.md, Artifact privacy). Required qualification adds
-the deliberate 20-seed gate only when requested. A new conflict/recovery behavior
+the deliberate 20-seed gate only when requested. The current acceptance contract
+sets local operation acknowledgement to 2,500 ms and local UI visibility to
+2,000 ms; inspect both enforcement and report metadata when either policy changes. A new conflict/recovery behavior
 needs direct coverage even if the existing gate passes. The browser's
 **Resolve status** / **Keep this status** controls are exercised only by
 `scripts/acceptance.js`, not by `test/pardner-ui.test.js`.

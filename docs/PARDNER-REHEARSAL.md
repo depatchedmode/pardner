@@ -99,7 +99,8 @@ Keep a short signoff record with:
 - Date, checkout revision, dependency lock hashes, machine/OS details, Actor IDs,
   and model/harness versions. Never include API tokens.
 - The task ID and final workspace heads from all services.
-- Local save/visibility times (target ≤2 seconds), offline opening time (≤5 seconds),
+- Local operation acknowledgement (≤2.5 seconds), UI visibility (≤2 seconds),
+  offline opening time (≤5 seconds),
   and convergence time after reconnection (≤10 seconds).
 - Any confusing wording, duplicate effects, lost drafts, missing context, or
   unexpected synchronization behavior, with screenshots or logs where useful.

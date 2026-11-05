@@ -5,13 +5,18 @@ through [PR101](https://github.com/depatchedmode/pardner/pull/101), for
 [#66](https://github.com/depatchedmode/pardner/issues/66) under
 [#50](https://github.com/depatchedmode/pardner/issues/50). It assesses an automated
 implementation candidate, not the remaining native/human acceptance of #66.
-**Routine verification passed; deliberate qualification failed. No merge
-recommendation is made while the latency failure remains unexplained.**
+**The owner approved a 2,500 ms local acknowledgement bound on November 5.
+Fresh qualification under that revised contract is pending.** The original
+2,384.036 ms failure remains failed historical evidence under its 2,000 ms
+contract. Deeper timing/root-cause work is explicitly deferred; this policy
+change is not a diagnosed repair. The historical miss is no longer an
+unconditional merge blocker by owner decision, but a fresh complete gate is
+required. Every other limit and persistence/authority guarantee is unchanged.
 It does not implement or close #67. The coordinator owns the merge decision.
 
 Integrated main: `e0fee59cbdeac55733aca15de73d45c2e2d14bfb`, including #103 runtime,
 #102 security/PR85 cleanup approval, and #106 schema5 operation integrity.
-Tested implementation: `34abcf98b9204bc1b564774a84554429c20d35c1`.
+Historical pre-policy tested implementation: `34abcf98b9204bc1b564774a84554429c20d35c1`.
 Source/test/lockfile/built-UI fingerprint:
 `0b0e483ec7c790f90ad50973e0dabcab19ca5b8e34f8267f1ad1b9e5a3ad3ca3`.
 Guidance-only evidence commits can follow this implementation without altering
@@ -166,7 +171,7 @@ qualify the current candidate's native execution.
 Metadata/evidence was read for open PR71 `fc0e50a5` (340 tests + seed 1), PR72
 `3b99b722` (383 tests + seed 1) and PR73 `7f59e3c0` (366 tests + seed 1). None
 reported fresh native/mixed-provider qualification after restack; earlier explicit
-10-second-budget runs do not prove today's 2-second default. None was imported.
+10-second-budget runs did not prove the then-current 2-second default. None was imported.
 
 The initial current-main reconciliation `1277bf70` passed 74 focused tests and
 build; guidance head `07a4b39` passed 116 runtime and 12 CLI tests, then full verify

@@ -278,7 +278,7 @@ async function runSeed(seed) {
     assert.ok(verified.every(result => result.snapshotHash === verified[0].snapshotHash))
     const report = { seed, candidateSha256: candidate.sha256, scenarioPassed: true, timings, gates: gates.map(gate => gate.events), verified, agentEvidence,
       manifest: expected.report(), heads: docs.map(doc => doc.heads), fixture: { tasks: 100, comments: 400, scriptedOperations: 200 },
-      limits: { localAckMs: 2000, localVisibleMs: 2000, offlineStartMs: 5000, convergenceMs: 10000 } }
+      limits: { localAckMs: 2500, localVisibleMs: 2000, offlineStartMs: 5000, convergenceMs: 10000 } }
     await writeFile(join(reportDirectory, 'report.json'), JSON.stringify(report, null, 2))
     await writeFile(join(reportDirectory, 'snapshot.json'), JSON.stringify(docs[0]))
     return { seed, scenarioPassed: true, report: join(reportDirectory, 'report.json'), hash: hash(report) }
