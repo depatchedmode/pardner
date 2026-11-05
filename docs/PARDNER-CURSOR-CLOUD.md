@@ -175,8 +175,10 @@ fixtures do not establish power-loss durability.
 
 Deterministic tests model the documented API, not a real Cursor account. Service
 and Chromium/WebKit checks verify pane integration against disposable data, including simulated active cancellation, evidence capture and separate verdicts.
-The project-wide routine suite and 20-seed qualification gate remain required;
-see the candidate's verification report/PR for actual execution results.
+The integrated routine suite passed, but the required 20-seed qualification failed
+on seed 8: offline restart 5,380.912667 ms exceeded the unchanged 5,000 ms limit.
+The draft remains `needs-qualification`; see the [verification report](PARDNER-CURSOR-CLOUD-VERIFICATION.md)
+for exact candidate, completed checks, preserved failures and diagnostic limits.
 
 Before live qualification authorize a specific account/repository/key scope,
 reviewed runtime/workspace, six-attempt plan and replacement/spending budget
