@@ -70,8 +70,8 @@ const groups = [
   },
   {
     name: 'selfhost79-proof', scripts: ['test:runtime'],
-    files: names('scripts/selfhost79.py support/selfhost79/checker.py support/selfhost79/probe.mjs support/selfhost79/fixture.json'),
-    focused: [{ command: 'node --test test/selfhost79.test.js', note: 'Offline artifact proof only; live attempts remain owner-gated' }],
+    files: names('scripts/selfhost79.py scripts/selfhost79-cloud.js support/selfhost79/checker.py support/selfhost79/probe.mjs support/selfhost79/fixture.json'),
+    focused: [{ command: 'node --test test/selfhost79.test.js test/selfhost79-cloud.test.js', note: 'Offline artifact proof only; live attempts remain owner-gated' }],
   },
   { name: 'control-runtime', scripts: ['test:control-runtime'], files: names('scripts/control-runtime.py test/control_runtime_test.py') },
   {

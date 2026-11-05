@@ -69,7 +69,7 @@ it('rejects false success, zero-exit without results and candidate filesystem wr
 }))
 
 it('rejects modified checker, probe and seal before candidate execution', () => {
-  for (const file of ['support/selfhost79/checker.py', 'support/selfhost79/probe.mjs', 'seal.json']) {
+  for (const file of ['support/selfhost79/checker.py', 'support/selfhost79/probe.mjs', 'scripts/selfhost79-cloud.js', 'seal.json']) {
     fixture(({ commit, args, frozen }) => {
       chmodSync(join(frozen.bundle, file), 0o644)
       writeFileSync(join(frozen.bundle, file), 'tampered')

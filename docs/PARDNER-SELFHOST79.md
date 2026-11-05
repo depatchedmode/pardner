@@ -24,8 +24,10 @@ See [the control contract](PARDNER-CONTROL-PANE.md),
    fresh workspace. The runtime track reported an installed schema-2 pin
    `eb66151ad57af45baf686909b1ab19ece58c7bad`, valid seal, absent managed launchd
    job, and no control ledger or T3 credential. This is a reported inventory,
-   not readiness. PR100 uses schema 4; a PR86 candidate may use schema 5. Do not
-   combine results across schemas or silently adopt old identities/data.
+   not readiness. Current merged main uses schema 5 and rejects schema 2/4 stores.
+   The installed inventory is historical; do not silently adopt old identities/data.
+   Preserve the runtime compatibility guard that checks before stopping a service;
+   see [runtime readiness](PARDNER-CONTROL-READINESS.md).
 2. Runtime owner must provide preservation/backup receipts, fresh managed-service
    doctor evidence, compatible schema, rollback procedure and explicit owner
    cutover decision. Leave old workspace and credentials intact. Control records
@@ -96,7 +98,7 @@ From the trusted tooling checkout, these offline commands require no credentials
 
 ```sh
 export PATH=/path/to/node-v24.11.1/bin:$PATH
-node --test test/selfhost79.test.js
+node --test test/selfhost79.test.js test/selfhost79-cloud.test.js
 python3 -B scripts/selfhost79.py freeze /private/tmp/reviewed-selfhost79-tools
 python3 -B scripts/selfhost79.py audit support/selfhost79/fixture.json
 ```
@@ -145,7 +147,12 @@ and one mapped provider context. Start T3 A/B/C first, then Cloud A/B/C.
    recovering the exact original run without another prompt or submission.
    Cancel that execution, confirm `cancelled`/`interrupted` in a subsequent fresh
    exact-run read, capture partial effects/output and show the queued follow-up
-   still held with zero submissions. Unknown/quarantine is a safety result but
+   still held with zero submissions. For Cloud, freeze A’s partial commit/diff,
+   output and explicitly not-run/failed test evidence before B: the adapter holds
+   every terminal run until capture, even a cancelled one. If partial changes need
+   an operator-created snapshot commit, label that intervention and retain the
+   original provider outcome. A capture is not artifact acceptance.
+   Unknown/quarantine is a safety result but
    fails live automatic recovery. No rollback is inferred.
 2. **B:** After A terminal confirmation, the owner explicitly disposes of A's
    partial changes in the isolated candidate and records the diff/decision,
@@ -162,38 +169,76 @@ and one mapped provider context. Start T3 A/B/C first, then Cloud A/B/C.
    archived B hashes. If Cloud's artifact view changed, record the new view
    separately; do not replace B's captured evidence.
 
-Cloud preparation uses the #78-owned `CursorCloudExecution` seam: `contextId`,
-`agentId`, exact `runId`, injected transport/clock, and no invented local cwd.
-Its proposed transport is `create`, `followUp`, `agent`, `run`, `runs`, `cancel`,
-`stream`, `artifacts`. The #78 owner reports documented client-chosen creation
-IDs and duplicate-create conflict; follow-ups have no documented idempotency or
-correlation lookup. Ambiguous follow-up acceptance must quarantine, not retry.
-The artifact gate requires terminal exact run and unchanged latestRunId across
-capture, plus immutable commit/diff/test evidence. Integration must demonstrate
-that this gate consumes the checker receipt; this offline package does not wire
-or qualify the adapter. Owner-provided fixture command is
-`node --test test/cursor-cloud.test.js`; it is pending integration in this branch.
+### Integrated Cloud evidence seam
 
-### Normalizing the Cloud evidence seam
+The merged [Cloud adapter](PARDNER-CURSOR-CLOUD.md) supplies
+`snapshot().cloud.contexts/executions`. It stores `executionId`, `contextId`,
+`agentId`, exact `runId`, `createdAt`, `sentAt`, `acceptedAt`, `observedAt`,
+`providerUpdatedAt`, `submissions`, transitions, optional `intervention` and
+immutable `evidence`. It has no local cwd. Its fixture suite is
+`node --test test/cursor-cloud.test.js` and is part of full regression.
 
-The #78 owner supplied `snapshot.cloud.contexts/executions` with
-`executionId/contextId/agentId/runId`, `sentAt/acceptedAt/observedAt/providerUpdatedAt`,
-`submissions`, `transitions`, `reconciliation.established`, optional `intervention`,
-and `evidence.sha256/capturedAt/commit/diff/tests/artifacts`. Preserve the original
-snapshot before normalizing: `acceptedAt` maps directly, `observedAt` becomes
-`freshReadAt`, and `evidence.capturedAt` becomes `checkerFrozenAt` only after the
-independent checker receipt and artifact hashes have also been captured. Do not
-mislabel `sentAt` as durable intent time; get `intentAt` from the persisted intent
-transition. Do not substitute `providerUpdatedAt` for a fresh read timestamp.
-Obtain terminal time from its exact-run transition/read evidence, not an agent
-summary. Link the checker receipt separately from the adapter's capture digest.
-Manual `intervention` is never automatic recovery, even if an exact run becomes
-known afterward. Preserve that distinction in A's disposition and evidence.
+Cloud capture establishes bytes and attribution, not truth of Actor-supplied
+commit/diff/test claims. First run the exact-SHA independent checker, then supply
+its `sha`, `diff.patch` bytes and **the exact `checks.json` text** to the authorized
+Cloud freeze route. The adapter requires a fresh terminal exact run and unchanged
+latestRunId across capture. Export the complete control snapshot privately and
+retain its SHA-256 separately. The new offline binding command verifies the
+snapshot digest, adapter capture hash (canonical JSON), exact identities, commit,
+diff, test bytes and each captured artifact size/hash against the separately
+pinned checker receipt and its archived files:
 
-The Cloud gate and tests are owned by the separate track and are not imported
-into this checkout. Integration must review its documented contract and run both
-suites at one combined SHA. No guessed adapter fields are sent to a live API by
-this package.
+```sh
+node /trusted/frozen/scripts/selfhost79-cloud.js \
+  --snapshot /evidence/cloud-B-snapshot.json --snapshot-sha "$SNAPSHOT_SHA256" \
+  --execution "$EXECUTION_ID" \
+  --receipt /evidence/cloud-B/receipt.json --receipt-sha "$B_RECEIPT_SHA256"
+```
+
+Pin and check the trusted tool seal before invocation. Like the Python launcher,
+the tool cannot authenticate itself after an attacker replaces its executable.
+The command is read-only and makes no provider/controller calls. It rejects a
+successful capture of false supplied diff/tests, corrupt artifact bytes, wrong-run
+binding, nonterminal/unsuccessful execution and replaced snapshots. It can still
+bind historical B after C changes the provider's mutable artifacts. The output is
+an offline binding, not a live pass or authenticated human verdict. A native human
+verdict in a snapshot is not imported as proof of a person's decision.
+
+`createdAt` is durable intent creation, not `sentAt`. `acceptedAt` and `observedAt`
+are local receipt timestamps; do not substitute provider timestamps or claim
+synchronized clocks. `checkerFrozenAt` is the Cloud capture time only after it
+contains the independent results. The command preserves `durableSubmissionCount`:
+this counts persisted POST attempts, not actual provider receives. The live
+manifest's `submissions` and zero queued submissions need independent provider
+trace evidence. Manual `intervention` remains manual; neither a stored exact run
+nor `reconciliation.established` alone proves automatic active restart recovery.
+
+Creation uses a persisted random client agent ID; duplicate-create conflict does
+not prove which prompt/run was accepted. Ambiguous follow-up POSTs lack documented
+correlation/idempotency and quarantine permanently pending exact acceptance
+proof. No blind retry or guessed identity is authorized.
+
+### Schema-5 identities and preserved boundaries
+
+Workspace request identity is separate from controller execution identity. The
+API's incoming `operationId` is a retry key; schema 5 stores it as `requestId` and
+returns a content-derived `operationId` (`op-…`) for the authored event. Preserve
+both, plus the full returned receipt and actual revision IDs. Link task IDs from
+receipts, never derive them from incoming retry keys or substitute Cloud/T3
+execution IDs. Inspect `OPERATION_INTEGRITY_CONFLICT` variants and quarantine the
+operation; do not guess a winning payload or retry to conceal the conflict.
+This package's task summary is an isolated array fixture, not a new CRDT operation.
+
+The integration retains native admission, private files, LAN pairing, local
+cleanup approval, comment authorization, durable bridge context and two-stage
+begin unchanged. No provider key, replica credential, controller mapping, active
+service, or persistent workspace is read or modified by these offline commands.
+The current automated bounds are acknowledgement 2,500 ms, UI visibility 2,000 ms,
+offline restart 6,000 ms and convergence 10,000 ms. Pairing locator 5,000 ms and
+helper startup 15,000 ms remain unchanged. Historical failures remain recorded in
+[#107](https://github.com/depatchedmode/pardner/issues/107) and
+[#108](https://github.com/depatchedmode/pardner/issues/108); the owner's deferrals
+are not attribution, repairs, retroactive passes, or waivers for new failures.
 
 ## Two additional T3 crash probes
 
@@ -307,7 +352,10 @@ The existing `test/t3-execution.test.js` and `test/control-pane.test.js` own wro
 route/zero send, competing receivers, crash-before-send, accepted-before-local
 persistence, lost reply/idempotency, stale/out-of-order reads, cancellation races,
 delayed cancel, held queues and unknown quarantine. They exercise real controller
-code with scripted transport, not real-provider effects. The #78 owner owns the
-corresponding Cloud fixtures. Run their actual candidate commands, preserve
+code with scripted transport, not real-provider effects. The merged Cloud adapter has the
+corresponding Cloud fixtures. The package’s Cloud binding fixtures exercise that
+real adapter with a scripted transport and actual independent checker receipts,
+including restart and B/C history; they do not use a real provider. Run the actual
+candidate commands, preserve
 counts and map each failure boundary; this package adds no replacement fake
 controller whose behavior could be mistaken for the production adapter.

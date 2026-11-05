@@ -26,7 +26,7 @@ def require(condition, message):
     if not condition:
         raise ValueError(message)
 
-FILES = ['scripts/selfhost79.py', 'support/selfhost79/checker.py', 'support/selfhost79/probe.mjs', 'support/selfhost79/fixture.json']
+FILES = ['scripts/selfhost79.py', 'scripts/selfhost79-cloud.js', 'support/selfhost79/checker.py', 'support/selfhost79/probe.mjs', 'support/selfhost79/fixture.json']
 
 
 def outside(path, repo):

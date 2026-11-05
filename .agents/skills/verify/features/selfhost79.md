@@ -12,3 +12,10 @@ These fixtures do not exercise live providers or authenticate a human. Existing
 [T3 control tests](control.md) and the separately owned Cloud tests establish
 deterministic adapter behavior. Their results must match the integrated candidate
 before live readiness; no separate branch result qualifies the combination.
+
+`node --test test/selfhost79-cloud.test.js` drives the merged Cloud adapter with
+scripted transport plus actual exact-SHA checker receipts. The offline binding
+CLI must match capture hash, execution/context/agent/run identities, commit,
+diff/test bytes and artifact hashes. B survives C and controller restart. Changed
+captures, wrong-run binding and false Actor claims reject; manual intervention
+and human acceptance remain separate. This changes no provider or schema behavior.
