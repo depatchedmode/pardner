@@ -4,6 +4,8 @@ This report accompanies the local client, invitation and presence implementation
 for [issue #109](https://github.com/depatchedmode/pardner/issues/109). It records
 routine evidence, not milestone acceptance or a merge recommendation.
 
+This record includes initial verification and the subsequent interrogation repairs below. See [M7 recovery and qualification](onboarding-m7.md) for the concurrent recovery work, actual-agent exchange and separate failed gate on the earlier `e591b7b8` candidate.
+
 ## Candidate
 
 - Verified implementation: `874e7f37b03fb8a71683a7231d7ab6d4ab09e006` for the sections below through “Documentation-only PR preparation”; see “Interrogation repairs” for the current candidate `ddd65331`.
@@ -113,8 +115,9 @@ contributor experience, attribution and follow-up work.
 An adversarial multi-model review of the PR found five merge-blocking defects
 and several hardening items. The repairs landed as six commits on top of the
 retrospective and were rebased onto the concurrent recovery, reporting and
-shutdown commits (through `e591b7b8`). The final executable candidate is the
-last code commit `ddd65331`; later commits are documentation only. The
+shutdown commits (through `e591b7b8`). The reviewed tree includes the code
+repairs through `ddd65331` and the test-command update in `bc60c5cf`; subsequent
+commits only update documentation. The
 acceptance runner's candidate identity (source, tests, lockfiles and built UI)
 for it is `ee4fb01330582b4cdf356b9cce74801cf7dea710c0c601c9dea1bc44d70a622d`.
 
@@ -126,7 +129,7 @@ for it is `ee4fb01330582b4cdf356b9cce74801cf7dea710c0c601c9dea1bc44d70a622d`.
 | Identity step links a device with a My device invitation; Human/Agent invitations refused there before any request | `client-onboarding-ui` (both engines): refused Human paste leaves the invitation unbound; device link adopts the sponsor identity |
 | Upstream socket tracked from creation and torn down on abandoned or aborted handshakes; start-failure backoff; enrollment metadata normalised | `client-onboarding`: invalid `Sec-WebSocket-Key` handshake leaves zero tracked sockets; second request inside the backoff does not fork; non-text agent metadata is refused with the invitation unbound |
 
-Routine results for `ddd65331` under Node 24.11.1 with pinned Chromium and WebKit:
+Reported routine results for that combined candidate under Node 24.11.1 with pinned Chromium and WebKit:
 
 | Check | Observed result |
 | --- | --- |
@@ -168,7 +171,10 @@ attempt 2 (agent-effect-ack 0.17 s, convergence 3.14 s, local-ack 0.37 s, local-
 skipped. **Qualification remains required and open**: rerun the complete gate on
 an otherwise idle machine against the current candidate `ee4fb0133058…`, then
 record the result here. The PR stays a draft with `needs-qualification` until that run succeeds,
-and the public-route and real-agent rehearsal obligations below also remain.
+and the remote-route/two-human acceptance obligations remain. The separate
+[actual local-agent exchange](onboarding-m7.md#actual-agent-participation) passed
+on the earlier `e591b7b8` candidate; it does not establish the remote route or
+human acceptance.
 
 
 ## Documentation-only PR preparation

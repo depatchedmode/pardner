@@ -236,3 +236,52 @@ These are next steps, not additional implementation hidden in this PR.
 The operating skill is deliberately left for a separate follow-up. This PR
 preserves the completed onboarding implementation and the evidence needed to
 decide what should happen next.
+
+## M7 follow-up: using the new client for the next exchange
+
+The later [M7 evidence](evidence/onboarding-m7.md) adds a distinct experience to
+this implementation retrospective. The coordinator and Gamma used the new client
+as actual Codex and Claude agents, sharing one human identity through separate
+local services. The coordinator used Alpha as its name in this isolated project;
+that Actor is separate from the earlier Cursor Cloud Alpha.
+
+This time the coordinator read Gamma's critique from Pardner, recorded the repair
+handoff there, and used T3 to point Gamma to that record. Gamma's actual experience
+led to three scoped fixes: private grants now preserve each enrolled harness's
+model and manager defaults, invitation instructions specify the client directory,
+and an agent-only client denies human browser launch before issuing a useless
+link. Gamma confirmed those results on the repaired source and exercised durable
+mention receipt and acknowledgement replay. Bounded presence reports reflected
+the agents' actual activity and ended after the exchange.
+
+The coordinator also reproduced client shutdown defects during qualification.
+Narrow passing checks were not enough: partial repairs still hung in the broader
+suite. Controlled WebSocket/HTTP interleavings and non-secret tracing established
+the remaining causes before final verification. This does not retroactively
+identify the cause of Gamma's earlier cleanup hang.
+
+One concrete friction remains: mentioning Gamma required looking up its generated
+handle instead of using its display name. Record this alongside the proposed
+operating skill and test mention selection/discovery in a follow-up. The local
+exchange supports the value of coordinating from the shared record; it does not
+establish remote reachability, two-human usability or human acceptance.
+
+The M7 20-seed gate later failed on a 3.38-second browser acknowledgement against
+the unchanged 2.5-second bound. Isolated prior/current comparisons did not
+reproduce it. The response-queue rejection also escaped the normal failure-artifact
+path, illustrating the failure-capture gap already tracked in #107. The coordinator
+retained the failed qualification result and diagnostic setup failures instead of
+treating later isolated passes as acceptance. M7 remains open for that unresolved
+gate, the remote route and human acceptance.
+
+A concurrent interrogation/repair stream then advanced the PR while this thread
+was preparing its evidence push. Its final account reports additional admission,
+outage, draft-rebase, device-linking, socket and metadata repairs; a manual merge
+combined its socket accounting with this thread's shutdown handling. It reports
+617 passing Node tests and three separate failed qualification attempts. This
+thread rebased only its documentation, preserved that work, and reconciled both
+candidate histories in the evidence records. Overlapping verification on a shared
+machine made diagnosis harder; observed load does not by itself prove the cause
+of either stream's failures. A stronger Pardner operating skill should record the
+current integration revision and who owns expensive verification before another
+coordinator starts a competing run.
