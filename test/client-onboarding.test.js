@@ -490,3 +490,76 @@ test('gateway error pages and hub 5xx responses are outages: replicas keep savin
   const { result: revoked, response } = await bob.api(path, { type: 'task.create', operationId: 'denied', payload: { title: 'denied' } }, { failure: true })
   assert.equal(response.status, 403); assert.equal(revoked.code, 'REVOKED')
 })
+
+test('enrollment normalises agent and device metadata at the boundary and leaves a refused invitation usable', { timeout: 30000 }, async t => {
+  const alice = await fixture(t, 'Alice')
+  const { result: { project } } = await alice.api('/projects', { name: 'Boundary', operationId: 'create' })
+  const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
+  const envelope = JSON.parse(Buffer.from(invitation.invitation.slice('pardner-invite-v1.'.length), 'base64url').toString())
+  const enroll = async body => {
+    const response = await fetch(`${alice.client.url}${CLIENT_API}/enroll`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    return { status: response.status, result: await response.json() }
+  }
+  const base = { inviteId: envelope.id, invitationSecret: envelope.secret, recipientProof: 'p'.repeat(48), operationId: 'enroll',
+    identity: { id: '11111111-2222-4333-8444-555555555555', name: 'Carol', email: 'carol@example.test' }, device: { id: '66666666-7777-4888-9999-aaaaaaaaaaaa', name: 'Carol laptop' } }
+  for (const [index, agent] of [{ harnessId: 'openai-codex', name: {} }, { harnessId: 'openai-codex', model: ['x'] }, { harnessId: 'openai-codex', name: 'x'.repeat(201) }].entries()) {
+    const refused = await enroll({ ...base, operationId: `refused-${index}`, agent })
+    assert.equal(refused.status, 400, JSON.stringify(refused.result)); assert.equal(refused.result.code, 'INVALID_ARGUMENT')
+  }
+  assert.equal(alice.client.registry.read().invites[invitation.invite.id].recipient, undefined, 'refused metadata never binds the invitation')
+  const accepted = await enroll({ ...base, agent: { harnessId: 'openai-codex', name: ' Carol’s agent ', model: 'gpt-x' }, device: { ...base.device, extra: 'dropped', name: ' Carol laptop ' } })
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.result))
+  assert.deepEqual(accepted.result.device, { id: base.device.id, name: 'Carol laptop' })
+  assert.equal(accepted.result.agent.name, 'Carol’s agent')
+  const people = alice.client.project(project.id).people
+  assert.ok(Object.values(people).every(person => person.devices.every(device => Object.keys(device).sort().join() === 'id,name')))
+})
+
+test('a handshake that ws aborts does not leak the upstream runtime socket', { timeout: 30000 }, async t => {
+  const { request } = await import('node:http')
+  const { client, api } = await fixture(t, 'Alice')
+  const { result: { project } } = await api('/projects', { name: 'Handshake', operationId: 'create' })
+  const { result: { ticket } } = await api(`/projects/${project.id}/api/automerge/ws-ticket`, { purpose: 'ui' })
+  const url = new URL(`${client.url}${project.wsPath}?ticket=${ticket}`)
+  // A valid, authenticated upgrade request with an invalid Sec-WebSocket-Key: ws answers 400 and destroys the socket without calling back.
+  const status = await new Promise((resolve, reject) => {
+    const req = request({ host: url.hostname, port: url.port, path: url.pathname + url.search, headers: {
+      Authorization: `Bearer ${client.registry.read().operatorToken}`, Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': 'not-base64!' } })
+    req.on('response', response => { response.resume(); resolve(response.statusCode) })
+    req.on('upgrade', () => reject(new Error('the invalid handshake was accepted')))
+    req.on('error', reject)
+    req.end()
+  })
+  assert.equal(status, 400)
+  await eventually(async () => client.sockets.size, size => size === 0)
+})
+
+test('a runtime that fails to start is not re-forked on every request until the backoff passes', { timeout: 30000 }, async t => {
+  const { ClientRuntime } = await import('../lib/client-runtime.js')
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-client-'))
+  const client = await startClient({ directory, port: 0, deviceName: 'Alice laptop', restartBackoffMs: 500 })
+  t.after(async () => { await client.stop(); await rm(directory, { recursive: true, force: true }) })
+  const api = async (path, body) => {
+    const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${client.registry.read().operatorToken}` }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+    return { status: response.status, result: await response.json() }
+  }
+  await api('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+  const { result: { project } } = await api('/projects', { name: 'Fragile', operationId: 'create' })
+  const runtime = await client.runtime(client.project(project.id))
+  runtime.child.kill('SIGKILL')
+  await new Promise(resolve => runtime.child.once('exit', resolve))
+  const start = ClientRuntime.start
+  let starts = 0
+  ClientRuntime.start = async () => { starts++; throw Object.assign(new Error('simulated start failure'), { code: 'WORKSPACE_MISMATCH' }) }
+  t.after(() => { ClientRuntime.start = start })
+  const first = await api(`/projects/${project.id}/api/automerge/doc`)
+  assert.equal(first.status, 409); assert.equal(first.result.code, 'WORKSPACE_MISMATCH')
+  const second = await api(`/projects/${project.id}/api/automerge/doc`)
+  assert.equal(second.status, 503, JSON.stringify(second.result)); assert.equal(second.result.code, 'LOCAL_SERVICE_UNAVAILABLE')
+  assert.equal(starts, 1, 'the second request must not fork again inside the backoff window')
+  ClientRuntime.start = start
+  await new Promise(resolve => setTimeout(resolve, 600))
+  const recovered = await api(`/projects/${project.id}/api/automerge/doc`)
+  assert.equal(recovered.status, 200, JSON.stringify(recovered.result))
+})
