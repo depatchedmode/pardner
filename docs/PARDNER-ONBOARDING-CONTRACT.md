@@ -69,7 +69,13 @@ does not authenticate. Normal UI never requests an API key. Local CLI control
 authority is private, distinct from agent board credentials.
 
 All routes below are relative to `/pardner/client/v1`, except bootstrap and config
-as described. Errors are HTTP errors with `{ code, error }`. Successful responses
+as described. Errors are HTTP errors with `{ code, error }`. Service-side
+conditions (`HUB_UNAVAILABLE`, `LOCAL_SERVICE_UNAVAILABLE`, `SERVICE_STOPPING`,
+`REGISTRATION_PENDING`, `RUNTIME_TIMEOUT`, `RUNTIME_FAILED`, `INTERNAL_ERROR`,
+storage failures) are 5xx and retryable with the same `operationId`; 4xx codes
+are decisions the client must not retry unchanged. Enrollment validates agent
+and device metadata once at the boundary (text fields with length limits, device
+reduced to `{id,name}`) before any member can see it. Successful responses
 use the shapes below. Mutating setup operations accept a stable `operationId`;
 same ID plus different input must fail. Secrets never appear in list/profile
 responses or normal status output.
@@ -83,7 +89,7 @@ responses or normal status output.
 | `GET /projects/:id/invites` | `{invites: InviteSummary[]}` without credential text |
 | `POST /projects/:id/invites` | `{purpose: "human"|"agent"|"device", operationId}` → `{invite: InviteSummary, invitation: string}`; invitation is private opaque setup data for explicit Copy/Reveal |
 | `POST /projects/:id/invites/:inviteId/revoke` | revokes grant; returns updated summary |
-| `POST /join` | `{invitation: string, operationId, agent?:{harnessId,name,model,managedBy}}` → `{project: Project}`; durable recipient-bound attempt and resume; optional metadata identifies another actual harness joining the existing client |
+| `POST /join` | `{invitation: string, operationId, agent?:{harnessId,name,model,managedBy}}` → `{project: Project}`; durable recipient-bound attempt and resume; optional metadata identifies another actual harness joining the existing client. The authority binds an invitation to its recipient only after validating the attempt, in the same transaction that reserves the admission, and re-checks revocation before activating |
 | `GET /projects/:id/presence` | PresenceSnapshot |
 | `POST /projects/:id/sessions` | `{kind:"browser"|"agent", model?, managedBy?}` → `{sessionId, ttlMs}`; server supplies project/Actor/device binding |
 | `POST /projects/:id/sessions/:sessionId/report` | `{seq, active:boolean, focusTaskIds:string[], model?}` → session receipt |

@@ -39,7 +39,14 @@ The real two-client fixtures cover enrollment, private bootstrap, actor binding,
 recipient proof, member invitations, device identity, remote presence, revocation
 and replay. `onboarding-flow` uses browser cookies across project switching,
 authority outage, offline client restart and reconnection; it also redeems the
-short setup prompt. The public-gateway assertion checks configuration and Host
+short setup prompt. `client-onboarding` additionally covers admission ordering
+(a rejected attempt leaves the invitation unbound; revocation during enrollment
+wins; an unauthenticated upgrade cannot wake a runtime), outage classification
+(an HTML 502 gateway page and a hub `SERVICE_STOPPING` 503 keep local saves
+working while an explicit `AUTH_REQUIRED` revokes), boundary normalisation of
+agent/device metadata, an aborted WebSocket handshake leaking no upstream
+socket, and the start-failure backoff. These suites run in `npm run test:runtime`
+and `npm run test:cli`, not only through full discovery. The public-gateway assertion checks configuration and Host
 rejection, not an actual Internet route. These fixtures do not involve live LLMs.
 The shutdown regressions pause a WebSocket upgrade at its upstream ticket, send
 a late upgrade on an accepted TCP connection, retain a rejected upgrade, and
@@ -50,8 +57,11 @@ defaults, and agent-only clients reject human browser launch before issuing a li
 
 `npm run test:ui` includes `test/client-onboarding-ui.test.js`. Its Chromium and
 WebKit journeys use two real local client services for private opening, identity,
-start/join, hidden invitations, remote saved edits, draft isolation, focus,
-reported agent models and project switching. Chromium additionally checks the
+start/join, hidden invitations, remote saved edits, draft isolation, rebasing a
+draft onto a collaborator's newer save without reverting their field, focus,
+reported agent models and project switching. A second journey links a device
+from the identity step with a My device invitation and shows that Human
+invitations pasted there are refused before reaching the hub. Chromium additionally checks the
 clipboard; WebKit exercises explicit reveal and hide without unsupported clipboard
 permissions. Both engines must run; a missing backend or browser is a failure.
 

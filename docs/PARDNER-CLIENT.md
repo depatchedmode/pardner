@@ -73,9 +73,23 @@ node bin/pardner.js client join --data .pardner-client \
 
 Start the receiving client first. For a Human invitation, confirm its own identity
 before joining. My device and Agent invitations prove the existing relationship;
-do not initialize a conflicting new identity first. If a response is uncertain,
-retry the same operation ID and unchanged invitation. Recipient proof and setup
-progress are stored privately so a retry does not consume another invitation.
+do not initialize a conflicting new identity first. In the browser, the identity
+step offers **Link this device instead**, which accepts only a My device
+invitation and adopts the inviting identity; Human and Agent invitations pasted
+there are refused before any request. If a response is uncertain, retry the same
+operation ID and unchanged invitation. Recipient proof and setup progress are
+stored privately so a retry does not consume another invitation. The authority
+validates a recipient before binding an invitation to them, so an attempt it
+rejects (for example the wrong person pasting a My device invitation) leaves the
+invitation usable by its intended recipient. A revocation that lands while an
+enrollment is still registering its Actors wins; the recipient receives
+`REVOKED` and no admission activates.
+
+Revoking a member or device ends that admission permanently. The same identity
+cannot be re-admitted by a new Human invitation, and a revoked device is not
+re-linked by a later My device invitation into the same local project entry.
+Recovery after revocation means a fresh client directory and new invitations.
+Re-linking revoked devices in place is tracked as follow-up work.
 
 When another harness joins an existing client, supply its actual metadata on
 `client join`, for example `--harness anthropic-claude-code --name Gamma --model
@@ -130,7 +144,15 @@ existing hub/WebSocket synchronization path. See the plan's
 Enrolled clients retain local work during a hub outage. New enrollment and
 delivery leases need the authority. Remote presence becomes unavailable. Local
 save acknowledgement follows the existing disk barrier; synchronization requires
-the hub's acknowledgement. Native replicas remain trusted full document writers,
+the hub's acknowledgement. An outage is any failure that is not an explicit hub
+decision: an unreachable address, a gateway error page, a non-JSON body or a hub
+5xx (including `SERVICE_STOPPING`) all count. Only an explicit `AUTH_REQUIRED` or
+`REVOKED` answer revokes local membership. Each local save on a replica still
+waits for one admission check against the hub, bounded by a 3 s timeout; moving
+that check off the write path is follow-up work. A project runtime that fails
+to start is reported as `LOCAL_SERVICE_UNAVAILABLE` and is not restarted again
+for 5 s, so polling cannot fork it repeatedly; a runtime that crashes after
+starting is restarted on the next authenticated request. Native replicas remain trusted full document writers,
 so API author binding is not a signature on arbitrary synchronized changes.
 Revocation cannot erase an offline device's already received data.
 
