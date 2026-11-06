@@ -414,3 +414,52 @@ test('the hub client also enrolls a second harness without changing its setup ag
   assert.deepEqual(alice.client.registry.read().setupAgent, initial.setupAgent)
   assert.deepEqual(alice.client.registry.read().identity, initial.identity)
 })
+
+test('a rejected enrollment leaves the invitation usable by its intended recipient', { timeout: 45000 }, async t => {
+  const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
+  const { result: { project } } = await alice.api('/projects', { name: 'Devices', operationId: 'create' })
+  const { result: device } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'device', operationId: 'device' })
+  const { result: wrong, response } = await bob.api('/join', { invitation: device.invitation, operationId: 'wrong-person' }, { failure: true })
+  assert.equal(response.status, 409); assert.equal(wrong.code, 'IDENTITY_MISMATCH')
+  assert.equal(alice.client.registry.read().invites[device.invite.id].recipient, undefined, 'a rejected attempt must not bind the invitation')
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-device-'))
+  const linked = await startClient({ directory, port: 0, deviceName: 'Alice desktop' })
+  t.after(async () => { await linked.stop(); await rm(directory, { recursive: true, force: true }) })
+  const link = await fetch(`${linked.url}${CLIENT_API}/join`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${linked.registry.read().operatorToken}` },
+    body: JSON.stringify({ invitation: device.invitation, operationId: 'link' }) })
+  const result = await link.json()
+  assert.equal(link.status, 200, JSON.stringify(result))
+  assert.equal(linked.registry.read().identity.id, alice.client.registry.read().identity.id)
+  assert.equal(alice.client.registry.read().invites[device.invite.id].state, 'redeemed')
+})
+
+test('a revocation that lands during enrollment wins over activation', { timeout: 45000 }, async t => {
+  const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
+  const { result: { project } } = await alice.api('/projects', { name: 'Race', operationId: 'create' })
+  const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
+  const register = alice.client.registerActor.bind(alice.client)
+  alice.client.registerActor = async (...args) => {
+    alice.client.invites.revokeFor(alice.client.project(project.id), alice.client.registry.read().identity.id, invitation.invite.id)
+    return register(...args)
+  }
+  const { result, response } = await bob.api('/join', { invitation: invitation.invitation, operationId: 'join' }, { failure: true })
+  assert.equal(response.status, 403, JSON.stringify(result)); assert.equal(result.code, 'REVOKED')
+  const hub = alice.client.project(project.id)
+  assert.ok(Object.values(hub.admissions).every(admission => admission.state !== 'active'), 'no admission may activate after revocation')
+  assert.equal(alice.client.registry.read().invites[invitation.invite.id].state, 'revoked')
+  assert.equal(Object.values(bob.client.registry.read().projects).filter(p => p.state === 'ready').length, 0)
+})
+
+test('an unauthenticated WebSocket upgrade cannot restart a dead project runtime', { timeout: 30000 }, async t => {
+  const { WebSocket } = await import('ws')
+  const { client, api } = await fixture(t, 'Alice')
+  const { result: { project } } = await api('/projects', { name: 'Dormant', operationId: 'create' })
+  const runtime = await client.runtime(client.project(project.id))
+  runtime.child.kill('SIGKILL')
+  await new Promise(resolve => runtime.child.once('exit', resolve))
+  const socket = new WebSocket(`${client.url.replace(/^http/, 'ws')}${CLIENT_API}/projects/${project.id}/ws?ticket=forged`, { headers: { Origin: client.url } })
+  const outcome = await new Promise(resolve => { socket.once('error', error => resolve(error.message)); socket.once('open', () => resolve('open')) })
+  assert.match(outcome, /401/)
+  assert.equal(client.runtimes.get(client.project(project.id).key), runtime, 'the dead runtime must not be replaced by an anonymous socket')
+  assert.equal(client.starting.size, 0)
+})
