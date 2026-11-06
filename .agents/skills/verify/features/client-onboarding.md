@@ -33,13 +33,20 @@ the [real-agent rehearsal](../../../../docs/PARDNER-CLIENT-REHEARSAL.md) separat
 from these automated fixtures and preserve human signoff as a distinct outcome.
 
 Run `node --test test/client-registry.test.js test/client-onboarding.test.js
-test/client-cli.test.js test/client-recovery.test.js test/onboarding-flow.test.js` for the service/CLI paths.
+test/client-cli.test.js test/client-recovery.test.js test/client-shutdown.test.js
+test/onboarding-flow.test.js` for the service/CLI paths.
 The real two-client fixtures cover enrollment, private bootstrap, actor binding,
 recipient proof, member invitations, device identity, remote presence, revocation
 and replay. `onboarding-flow` uses browser cookies across project switching,
 authority outage, offline client restart and reconnection; it also redeems the
 short setup prompt. The public-gateway assertion checks configuration and Host
 rejection, not an actual Internet route. These fixtures do not involve live LLMs.
+The shutdown regressions pause a WebSocket upgrade at its upstream ticket, send
+a late upgrade on an accepted TCP connection, retain a rejected upgrade, and
+finish an admitted HTTP request after shutdown starts. Shutdown must close the
+connections, deliver the admitted response and stop the persisted runtime.
+Agent-grant checks preserve separate harness reporting
+defaults, and agent-only clients reject human browser launch before issuing a link.
 
 `npm run test:ui` includes `test/client-onboarding-ui.test.js`. Its Chromium and
 WebKit journeys use two real local client services for private opening, identity,
