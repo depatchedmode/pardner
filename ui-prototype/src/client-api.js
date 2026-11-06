@@ -28,6 +28,17 @@ export function consumeCapturedGrant() {
   return grant
 }
 
+/** The purpose a pasted invitation declares, or null when no single invitation envelope is present. */
+export function invitationPurpose(text) {
+  const matches = typeof text === 'string' ? text.trim().match(/^pardner-invite-v1\.([A-Za-z0-9_-]+)$/gm) : null
+  if (matches?.length !== 1) return null
+  try {
+    const encoded = matches[0].slice('pardner-invite-v1.'.length).replaceAll('-', '+').replaceAll('_', '/')
+    const { purpose } = JSON.parse(atob(encoded))
+    return ['human', 'agent', 'device'].includes(purpose) ? purpose : null
+  } catch { return null }
+}
+
 export function isClientConfiguration(config) {
   return config?.mode === 'client' && typeof config.clientApiBase === 'string' &&
     /^\/(?!\/)[^?#\\]*$/.test(config.clientApiBase)

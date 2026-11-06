@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Workspace } from './Pardner.jsx'
 import { Avatar, AvatarStack, PeopleDialog, ProfileDialog, actorName, avatarLabel } from './Avatar.jsx'
 import {
-  consumeCapturedGrant, createClientApi, harnessLabel, projectConfiguration, syncLabel, takeBootstrapGrant,
+  consumeCapturedGrant, createClientApi, harnessLabel, invitationPurpose, projectConfiguration, syncLabel, takeBootstrapGrant,
 } from './client-api.js'
 import { createOperationId } from './operation-id.js'
 import { createPresenceReporter, focusByTask, presenceIndex, presenceOf, sortParticipants } from './presence.js'
@@ -23,7 +23,8 @@ const JOIN_HINTS = {
   REVOKED: 'This invitation or membership was revoked. Ask for a new invitation.',
   INVITE_USED: 'This invitation was already used by someone else. Ask for a new one.',
   INVALID_INVITATION: 'Check that you pasted the whole invitation, exactly as it was sent.',
-  IDENTITY_MISMATCH: 'This invitation is for a different person or identity. Ask for the right kind of invitation.',
+  IDENTITY_MISMATCH: 'This invitation is for a different person or identity. A My device invitation links a computer that has no identity yet; a Human invitation needs your own identity first.',
+  DEVICE_INVITATION_REQUIRED: 'Linking this device needs a My device invitation from your own client. Human and Agent invitations work after you confirm your identity.',
   HUB_UNAVAILABLE: 'The project’s hub is unreachable, so this can’t finish yet. Retry when it is back; nothing was lost.',
   HUB_REQUIRED: 'This computer can’t create invitations for this project yet. Ask the person who started the project, or retry later.',
   CLIENT_UNREACHABLE: 'Your local Pardner client may have stopped. Ask your agent to reopen it, then retry.',
@@ -127,6 +128,17 @@ function IdentityStep({ api, session, onDone }) {
     catch (error) { setFailure(error); if (error.code === 'OPERATION_ID_REUSED') attempt.current = null }
     finally { setBusy(false) }
   }
+  const [linking, setLinking] = useState(false)
+  if (linking) return <main className="connection client-entry welcome">
+    <h1>Link this device</h1>
+    <p className="lead">A My device invitation from your own client adds this computer under your existing identity.</p>
+    <JoinForm api={api} identityId={null} label="Link this device" invitationLabel="My device invitation" action="Link device" busyLabel="Linking…"
+      accept={purpose => purpose === 'device' ? null : Object.assign(new Error(purpose === 'agent' ? 'Agent invitations are for your agent, not this browser.'
+        : purpose === 'human' ? 'This is a Human invitation. Confirm your identity first, then join with it.' : 'Paste one complete My device invitation.'),
+      { code: 'DEVICE_INVITATION_REQUIRED' })}
+      onReady={async () => onDone(await api.session())} />
+    <button type="button" className="back" onClick={() => setLinking(false)}>Back to confirming my identity</button>
+  </main>
   return <main className="connection client-entry">
     <h1>Welcome to Pardner</h1>
     <p className="lead">Confirm how people in your projects will see you.</p>
@@ -141,17 +153,59 @@ function IdentityStep({ api, session, onDone }) {
       <button className="primary" disabled={busy}>{busy ? 'Saving…' : `Continue as ${name.trim() || 'this person'}`}</button>
     </form>
     <p className="muted small">This device: {session.device?.name || 'Not reported'}</p>
+    <p className="muted small">Already use Pardner on another computer? <button type="button" className="link-button" onClick={() => setLinking(true)}>Link this device instead</button></p>
   </main>
+}
+
+/** Join with a pasted invitation. Only a digest and the attempt ID are stored, never the invitation,
+ *  so a reload and re-paste resumes the same recipient-bound attempt. */
+function JoinForm({ api, identityId, label, invitationLabel = 'Invitation', action = 'Join project', busyLabel = 'Joining…', hint, accept, onReady }) {
+  const [invitation, setInvitation] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState(null)
+  const joinAttempt = useRef(null)
+  const join = async event => {
+    event.preventDefault()
+    const text = invitation.trim()
+    setFailure(null)
+    // A refused purpose never reaches the server, so the invitation stays usable by its intended recipient.
+    const refused = accept?.(invitationPurpose(text))
+    if (refused) { setFailure(refused); return }
+    setBusy(true)
+    const invitationHash = await digest(text)
+    const stored = readJson(sessionStorage, PENDING_JOIN)
+    const attempt = invitationHash && stored?.invitationHash === invitationHash && stored.identityId === identityId
+      ? stored : invitationHash ? { invitationHash, identityId, operationId: createOperationId() }
+        : joinAttempt.current?.text === text ? joinAttempt.current : { text, operationId: createOperationId() }
+    if (invitationHash) writeJson(sessionStorage, PENDING_JOIN, attempt)
+    else joinAttempt.current = attempt
+    try {
+      const { project } = await api.join({ invitation: text, operationId: attempt.operationId })
+      writeJson(sessionStorage, PENDING_JOIN, null)
+      joinAttempt.current = null
+      setInvitation('')
+      await onReady(project)
+    } catch (error) {
+      setFailure(error)
+      const retryable = !error.status || error.status >= 500 || error.code === 'AUTH_REQUIRED'
+      if (!retryable) { writeJson(sessionStorage, PENDING_JOIN, null); joinAttempt.current = null }
+    } finally { setBusy(false) }
+  }
+  return <form onSubmit={join} aria-label={label}>
+    <label>{invitationLabel}<textarea required rows={4} spellCheck={false} autoComplete="off" value={invitation}
+      onChange={event => setInvitation(event.target.value)} placeholder="Paste the invitation or setup prompt you were sent" /></label>
+    {hint && <p className="muted small">{hint}</p>}
+    <Failure error={failure} />
+    <button className="primary" disabled={busy}>{busy ? busyLabel : action}</button>
+  </form>
 }
 
 function Welcome({ api, session, current, onBack, onReady }) {
   const pendingCreate = readJson(sessionStorage, PENDING_CREATE)
   const [mode, setMode] = useState('start')
   const [name, setName] = useState(pendingCreate?.name ?? '')
-  const [invitation, setInvitation] = useState('')
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState(null)
-  const joinAttempt = useRef(null)
   const agent = session.setupAgent
   const start = async event => {
     event.preventDefault()
@@ -170,31 +224,6 @@ function Welcome({ api, session, current, onBack, onReady }) {
       if (error.status >= 400 && error.status < 500 && error.code !== 'AUTH_REQUIRED') writeJson(sessionStorage, PENDING_CREATE, null)
     } finally { setBusy(false) }
   }
-  const join = async event => {
-    event.preventDefault()
-    const text = invitation.trim()
-    setBusy(true); setFailure(null)
-    // Only a digest and the attempt ID are stored, never the invitation, so a reload and
-    // re-paste resumes the same recipient-bound attempt.
-    const invitationHash = await digest(text)
-    const stored = readJson(sessionStorage, PENDING_JOIN)
-    const attempt = invitationHash && stored?.invitationHash === invitationHash && stored.identityId === session.identity.id
-      ? stored : invitationHash ? { invitationHash, identityId: session.identity.id, operationId: createOperationId() }
-        : joinAttempt.current?.text === text ? joinAttempt.current : { text, operationId: createOperationId() }
-    if (invitationHash) writeJson(sessionStorage, PENDING_JOIN, attempt)
-    else joinAttempt.current = attempt
-    try {
-      const { project } = await api.join({ invitation: text, operationId: attempt.operationId })
-      writeJson(sessionStorage, PENDING_JOIN, null)
-      joinAttempt.current = null
-      setInvitation('')
-      await onReady(project)
-    } catch (error) {
-      setFailure(error)
-      const retryable = !error.status || error.status >= 500 || error.code === 'AUTH_REQUIRED'
-      if (!retryable) { writeJson(sessionStorage, PENDING_JOIN, null); joinAttempt.current = null }
-    } finally { setBusy(false) }
-  }
   return <main className="connection client-entry welcome">
     <h1>{current ? 'Start or join a project' : `Welcome, ${session.identity.name}`}</h1>
     <p className="lead">A project is a shared board for you, the people you invite and your agents.</p>
@@ -210,13 +239,8 @@ function Welcome({ api, session, current, onBack, onReady }) {
       </p>
       <Failure error={failure} />
       <button className="primary" disabled={busy}>{busy ? 'Starting…' : 'Start project'}</button>
-    </form> : <form onSubmit={join} aria-label="Join a project">
-      <label>Invitation<textarea required rows={4} spellCheck={false} autoComplete="off" value={invitation}
-        onChange={event => setInvitation(event.target.value)} placeholder="Paste the invitation or setup prompt you were sent" /></label>
-      <p className="muted small">Invitations work once and expire. You keep your own identity; nobody else can create it for you.</p>
-      <Failure error={failure} />
-      <button className="primary" disabled={busy}>{busy ? 'Joining…' : 'Join project'}</button>
-    </form>}
+    </form> : <JoinForm api={api} identityId={session.identity.id} label="Join a project" onReady={onReady}
+      hint="Invitations work once and expire. You keep your own identity; nobody else can create it for you." />}
     {onBack && <button type="button" className="back" onClick={onBack}>Back to {current.name}</button>}
   </main>
 }
