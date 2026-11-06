@@ -33,6 +33,13 @@ authority outage, offline client restart and reconnection; it also redeems the
 short setup prompt. The public-gateway assertion checks configuration and Host
 rejection, not an actual Internet route. These fixtures do not involve live LLMs.
 
+`npm run test:ui` includes `test/client-onboarding-ui.test.js`. Its Chromium and
+WebKit journeys use two real local client services for private opening, identity,
+start/join, hidden invitations, remote saved edits, draft isolation, focus,
+reported agent models and project switching. Chromium additionally checks the
+clipboard; WebKit exercises explicit reveal and hide without unsupported clipboard
+permissions. Both engines must run; a missing backend or browser is a failure.
+
 Use separate disposable client directories for Alice and Bob, plus explicit
 Greek-named fixture agents. Preserve existing user installations. The intended
 exercise covers private local bootstrap, project creation, human invitation,

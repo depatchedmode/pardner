@@ -1,11 +1,11 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { access, mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { chromium } from 'playwright'
+import { chromium, webkit } from 'playwright'
 import { bootstrapPath, createClientApi, projectConfiguration, takeBootstrapGrant } from '../ui-prototype/src/client-api.js'
 import { createConnection } from '../ui-prototype/src/connection.js'
 import { createPresenceReporter, focusByTask, presenceIndex, sortParticipants } from '../ui-prototype/src/presence.js'
@@ -178,10 +178,8 @@ it('indexes presence snapshots, treats absent Actors as offline, and deduplicate
   assert.equal(index.has('carol'), false)
 })
 
-// Browser flow against the real local client service. It runs only when the
-// client backend is part of this checkout; it is never replaced by mocked APIs.
+// Both engines exercise the real local client service.
 const serviceModule = new URL('../lib/client-service.js', import.meta.url)
-const backend = await access(serviceModule).then(() => true, () => false)
 
 async function gitProfile(name) {
   const directory = await mkdtemp(join(tmpdir(), `pardner-git-${name.toLowerCase()}-`))
@@ -221,16 +219,16 @@ async function eventually(read, message, timeout = 20000) {
   }
 }
 
-it('signs in, starts and joins projects, invites safely, isolates drafts and shows reported presence in chromium',
-  { timeout: 180000, skip: backend ? false : 'Local client backend (lib/client-service.js) is not in this checkout yet' }, async t => {
+for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects, invites safely, isolates drafts and shows reported presence in ${engine.name()}`,
+  { timeout: 180000 }, async t => {
     const { startClient } = await import(serviceModule)
     const alice = await person(t, startClient, 'Alice', { harnessId: 'anthropic-claude-code', name: 'Alpha' })
     const bob = await person(t, startClient, 'Bob', { harnessId: 'openai-codex', name: 'Gamma' })
-    const browser = await chromium.launch({ headless: true })
+    const browser = await engine.launch({ headless: true })
     t.after(() => browser.close())
     const errors = []
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
-    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: alice.client.url })
+    if (engine === chromium) await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: alice.client.url })
     const page = await context.newPage()
     page.on('pageerror', error => errors.push(error.message))
 
@@ -274,13 +272,17 @@ it('signs in, starts and joins projects, invites safely, isolates drafts and sho
     await dialog.getByRole('button', { name: 'Copy invite' }).waitFor()
     await dialog.getByRole('region', { name: 'New invitation' }).getByText(/Waiting to be used · Expires in \d+ h/).waitFor()
     assert.equal((await page.content()).includes('pardner-invite-v1.'), false)
-    await dialog.getByRole('button', { name: 'Copy invite' }).click()
-    await dialog.getByText(/^Copied\./).waitFor()
-    // The shared text is the backend's setup prompt when supplied, otherwise the raw invitation.
-    const invitation = await page.evaluate(() => navigator.clipboard.readText())
-    assert.match(invitation, /pardner-invite-v1\./)
+    let copied
+    if (engine === chromium) {
+      await dialog.getByRole('button', { name: 'Copy invite' }).click()
+      await dialog.getByText(/^Copied\./).waitFor()
+      copied = await page.evaluate(() => navigator.clipboard.readText())
+    }
+    // WebKit does not expose Chromium's clipboard permissions. Exercise its explicit reveal path.
     await dialog.getByRole('button', { name: 'Show invite text' }).click()
-    assert.equal(await dialog.getByLabel('Invite text').inputValue(), invitation)
+    const invitation = await dialog.getByLabel('Invite text').inputValue()
+    assert.match(invitation, /pardner-invite-v1\./)
+    if (copied !== undefined) assert.equal(invitation, copied)
     await dialog.getByRole('button', { name: 'Hide invite text' }).click()
     assert.equal((await page.content()).includes(invitation), false)
     await dialog.getByRole('button', { name: 'Close' }).click()
