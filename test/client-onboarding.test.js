@@ -262,3 +262,104 @@ test('concurrent human redemptions cannot admit the same identity through two un
   assert.equal(results.filter(result => result.status === 200).length, 1)
   assert.equal(results.find(result => result.status !== 200).result.code, 'IDENTITY_MISMATCH')
 })
+
+test('a second harness reuses Bob’s replica with distinct authorship, remote presence and delivery admission', { timeout: 45000 }, async t => {
+  const { actorId } = await import('../lib/client-identity.js')
+  const { mkdtemp, writeFile, readFile } = await import('node:fs/promises')
+  const { execFile } = await import('node:child_process')
+  const { promisify } = await import('node:util')
+  const execute = promisify(execFile)
+  const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
+  const { result: { project } } = await alice.api('/projects', { name: 'Two harnesses', operationId: 'create' })
+  const { result: human } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'human' })
+  await bob.api('/join', { invitation: human.invitation, operationId: 'join' })
+  const original = bob.client.registry.read()
+  const runtime = await bob.client.runtime(bob.client.project(project.id))
+  const { result: codex } = await bob.api(`/projects/${project.id}/agent-grant`, {})
+  const { result: invitation } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'claude-invite' })
+  const privateDirectory = await mkdtemp(join(tmpdir(), 'pardner-second-harness-'))
+  t.after(() => rm(privateDirectory, { recursive: true, force: true }))
+  const invitationFile = join(privateDirectory, 'invite.txt')
+  await writeFile(invitationFile, invitation.setupPrompt, { mode: 0o600 })
+  const cli = async args => {
+    const { stdout } = await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', bob.directory])
+    const result = JSON.parse(stdout); assert.equal(result.success, true); return result
+  }
+  const joinArgs = ['join', '--invitation-file', invitationFile, '--operation-id', 'claude-join', '--harness', 'anthropic-claude-code',
+    '--name', 'Gamma', '--model', 'reported-model', '--managed-by', 'T3']
+  assert.equal((await cli(joinArgs)).project.id, project.id)
+  assert.equal((await cli(joinArgs)).project.id, project.id)
+  for (const agent of [
+    { harnessId: 'cursor', name: 'Gamma', model: 'reported-model', managedBy: 'T3' },
+    { harnessId: 'anthropic-claude-code', name: 'Changed', model: 'reported-model', managedBy: 'T3' },
+    { harnessId: 'anthropic-claude-code', name: 'Gamma', model: 'changed-model', managedBy: 'T3' },
+    { harnessId: 'anthropic-claude-code', name: 'Gamma', model: 'reported-model', managedBy: 'Changed' },
+  ]) {
+    const changed = await bob.api('/join', { invitation: invitation.setupPrompt, operationId: 'claude-join', agent }, { failure: true })
+    assert.equal(changed.result.code, 'OPERATION_ID_REUSED')
+  }
+  const grantFile = join(privateDirectory, 'agent.json')
+  const selected = await cli(['agent-grant', '--project', project.id, '--harness', 'anthropic-claude-code', '--output-file', grantFile])
+  const claude = JSON.parse(await readFile(grantFile, 'utf8'))
+  assert.equal(selected.actorId, actorId(original.identity.id, 'anthropic-claude-code'))
+  assert.notEqual(claude.actorId, codex.actorId)
+  assert.deepEqual(bob.client.registry.read().setupAgent, original.setupAgent)
+  assert.deepEqual(bob.client.registry.read().identity, original.identity)
+  assert.equal(Object.keys(bob.client.registry.read().projects).length, 1)
+  assert.equal(await bob.client.runtime(bob.client.project(project.id)), runtime)
+  assert.equal((await bob.api(`/projects/${project.id}/agent-grant`, {})).result.actorId, codex.actorId)
+  assert.equal(bob.client.project(project.id).people[claude.actorId].displayName, 'Gamma')
+  const saved = await cli(['operation', '--project', project.id, '--harness', 'anthropic-claude-code', '--request',
+    JSON.stringify({ type: 'task.create', operationId: 'claude-task', payload: { title: 'Claude wrote this' } })])
+  assert.equal(saved.actorId, claude.actorId); assert.equal(saved.savedLocally, true)
+  await eventually(async () => (await alice.api(`/projects/${project.id}/api/automerge/doc`)).result.doc, doc => !!doc.tasks[saved.result.taskId])
+  const asClaude = { headers: { Authorization: `Bearer ${claude.token}` } }
+  const { result: session } = await bob.api(`/projects/${project.id}/sessions`, { kind: 'agent', model: 'reported-model', managedBy: 'T3' }, asClaude)
+  await bob.api(`/projects/${project.id}/sessions/${session.sessionId}/report`, { seq: 1, active: true, focusTaskIds: [saved.result.taskId] }, asClaude)
+  const presence = (await alice.api(`/projects/${project.id}/presence`)).result.actors.find(actor => actor.actorId === claude.actorId)
+  assert.equal(presence.state, 'active')
+  assert.equal(presence.sessions[0].harnessId, 'anthropic-claude-code')
+  assert.equal(presence.sessions[0].model, 'reported-model')
+  const comment = await alice.api(`/projects/${project.id}/api/automerge/operations`, { type: 'comment.add', operationId: 'mention-claude',
+    payload: { taskId: saved.result.taskId, text: `@${bob.client.project(project.id).people[claude.actorId].handle} please review` } })
+  assert.equal(comment.result.result.mentionIds.length, 1)
+  const pending = await bob.api(`/projects/${project.id}/api/automerge/deliveries`, undefined, asClaude)
+  assert.equal(pending.result.mentions.length, 1)
+  const claim = await bob.api(`/projects/${project.id}/api/automerge/deliveries/claim`, { requestId: 'claude-claim' }, asClaude)
+  assert.equal(claim.result.claimed, true)
+  assert.equal(claim.result.mention.toActorId, claude.actorId)
+  await bob.api(`/projects/${project.id}/api/automerge/deliveries/release`, { mentionId: claim.result.mention.id, claimToken: claim.result.claimToken }, asClaude)
+  for (const input of [{ harnessId: 'cursor' }, { harnessId: 'anthropic-claude-code', humanId: alice.client.registry.read().identity.id },
+    { harnessId: 'anthropic-claude-code', actorId: actorId(alice.client.registry.read().identity.id, 'anthropic-claude-code') }]) {
+    const denied = await bob.api(`/projects/${project.id}/agent-grant`, input, { failure: true })
+    assert.equal(denied.response.status, 403)
+  }
+  const injected = await bob.api(`/projects/${project.id}/api/automerge/operations`, { type: 'task.create', operationId: 'spoof-human',
+    actorId: project.actorId, payload: { title: 'Denied' } }, { ...asClaude, failure: true })
+  assert.equal(injected.result.code, 'ACTOR_MISMATCH')
+  await bob.api(`/projects/${project.id}/revoke`, { kind: 'agent', id: claude.actorId, operationId: 'revoke-claude' })
+  const revoked = await bob.api(`/projects/${project.id}/agent-grant`, { harnessId: 'anthropic-claude-code' }, { failure: true })
+  assert.equal(revoked.result.code, 'ACTOR_REVOKED')
+  const stillHuman = await bob.api(`/projects/${project.id}/api/automerge/operations`, { type: 'task.create', operationId: 'human-still-active', payload: { title: 'Bob still works' } })
+  assert.equal(stillHuman.result.savedLocally, true)
+})
+
+test('the hub client also enrolls a second harness without changing its setup agent or runtime', { timeout: 30000 }, async t => {
+  const alice = await fixture(t, 'Alice')
+  const initial = alice.client.registry.read()
+  const { result: { project } } = await alice.api('/projects', { name: 'Local harnesses', operationId: 'create' })
+  const runtime = await alice.client.runtime(alice.client.project(project.id))
+  const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'invite' })
+  await alice.api('/join', { invitation: invitation.invitation, operationId: 'join-claude', agent: { harnessId: 'anthropic-claude-code', name: 'Gamma' } })
+  const { result: selected } = await alice.api(`/projects/${project.id}/agent-grant`, { harnessId: 'anthropic-claude-code' })
+  const { result: original } = await alice.api(`/projects/${project.id}/agent-grant`, {})
+  assert.notEqual(selected.actorId, original.actorId)
+  const { result: saved } = await alice.api(`/projects/${project.id}/api/automerge/operations`, { type: 'task.create', operationId: 'claude-task', payload: { title: 'By Claude' } },
+    { headers: { Authorization: `Bearer ${selected.token}` } })
+  assert.equal(saved.actorId, selected.actorId)
+  assert.equal(saved.savedLocally, true)
+  assert.equal(await alice.client.runtime(alice.client.project(project.id)), runtime)
+  assert.equal(Object.keys(alice.client.registry.read().projects).length, 1)
+  assert.deepEqual(alice.client.registry.read().setupAgent, initial.setupAgent)
+  assert.deepEqual(alice.client.registry.read().identity, initial.identity)
+})
