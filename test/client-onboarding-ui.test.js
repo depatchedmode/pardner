@@ -330,11 +330,28 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await panel.getByRole('heading', { name: 'Renamed by Bob' }).waitFor()
     await panel.locator('.markdown').getByText('Alice draft only', { exact: true }).waitFor()
 
+    // Rebasing a draft onto a collaborator's newer save keeps their value for fields this user never touched.
+    await panel.getByRole('button', { name: 'Edit task' }).click()
+    await panel.getByLabel('Description').fill('Alice draft after rebase')
+    const bobContext3 = await bob.call(`/projects/${project.id}/api/automerge/task/${taskId}/context`)
+    await bob.call(`/projects/${project.id}/api/automerge/operations`, { operationId: 'bob-rename-2', type: 'task.update',
+      payload: { taskId, updates: { title: 'Renamed twice by Bob' }, expectedRevisions: { title: bobContext3.revisions.title } } })
+    await panel.getByText(/saved a newer title since/).waitFor({ timeout: 30000 })
+    await panel.getByRole('button', { name: 'Base my draft on the latest version' }).click()
+    assert.equal(await panel.getByLabel('Title').inputValue(), 'Renamed twice by Bob', 'an untouched field follows the latest version')
+    assert.equal(await panel.getByLabel('Description').inputValue(), 'Alice draft after rebase', 'the edited field keeps the draft')
+    await panel.getByRole('button', { name: 'Save changes' }).click()
+    await panel.getByRole('button', { name: 'Edit task' }).waitFor()
+    await panel.getByRole('heading', { name: 'Renamed twice by Bob' }).waitFor()
+    await panel.locator('.markdown').getByText('Alice draft after rebase', { exact: true }).waitFor()
+    const afterRebase = await alice.call(`/projects/${project.id}/api/automerge/doc`)
+    assert.equal(afterRebase.doc.tasks[taskId].title, 'Renamed twice by Bob', 'the rebase must not revert Bob’s saved title')
+
     // Explicit fixture agent report (not a real worker): Alpha's own credential, actual model metadata.
     const agent = await alice.call(`/projects/${project.id}/agent-grant`, {})
     const started = await alice.call(`/projects/${project.id}/sessions`, { kind: 'agent', model: 'claude-opus-5-5', managedBy: 't3' }, agent.token)
     await alice.call(`/projects/${project.id}/sessions/${started.sessionId}/report`, { seq: 1, active: true, focusTaskIds: [taskId] }, agent.token)
-    const renamedCard = page.locator('.task-card', { hasText: 'Renamed by Bob' })
+    const renamedCard = page.locator('.task-card', { hasText: 'Renamed twice by Bob' })
     await renamedCard.getByRole('img', { name: 'Alpha, agent, active, on this task' }).waitFor({ timeout: 20000 })
     await panel.getByRole('button', { name: 'Alpha, agent, active, on this task. Open profile' }).waitFor()
     await page.getByRole('group', { name: 'People in this project' })
@@ -361,7 +378,7 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await page.getByLabel('Project name').fill('Side project')
     await page.getByRole('button', { name: 'Start project' }).click()
     await page.getByRole('button', { name: 'Project: Side project. Switch project' }).waitFor({ timeout: 30000 })
-    assert.equal(await page.getByText('Renamed by Bob').count(), 0, 'another project’s tasks are not shown')
+    assert.equal(await page.getByText('Renamed twice by Bob').count(), 0, 'another project’s tasks are not shown')
     await page.getByRole('button', { name: 'Project: Side project. Switch project' }).click()
     await page.getByRole('menuitemradio', { name: /^Shared board/ }).click()
     await switcher.waitFor()

@@ -955,15 +955,28 @@ function TaskDetail({
           </p>
           <p className="muted small">If you also changed {newerFields.length === 1 ? 'that field' : 'those fields'}, saving is
             refused until you choose. Basing your draft on the latest version makes your save an explicit replacement.</p>
-          <button type="button" onClick={() => setDraft({
-            ...draftRef.current,
-            fields: { ...draft.fields, ...Object.fromEntries(newerFields.map(field => [field, task[field]])) },
-            revisions: { ...draft.revisions, ...Object.fromEntries(newerFields.map(field => [field, revisions[field]])) },
-          })}>Base my draft on the latest version</button>
+          <button type="button" onClick={() => {
+            // Fields this user never touched follow the latest version; fields they changed stay as an explicit replacement.
+            const current = draftRef.current
+            const edited = current.edited ?? current.fields
+            const untouched = field => JSON.stringify(edited[field]) === JSON.stringify(current.fields[field])
+            const latest = Object.fromEntries(newerFields.map(field => [field, task[field]]))
+            const tagsUntouched = (current.tagsText ?? current.fields.tags.join(', ')) === current.fields.tags.join(', ')
+            setDraft({
+              ...current,
+              fields: { ...current.fields, ...latest },
+              revisions: { ...current.revisions, ...Object.fromEntries(newerFields.map(field => [field, revisions[field]])) },
+              edited: { ...edited, ...Object.fromEntries(newerFields.filter(untouched).map(field => [field, task[field]])) },
+              tagsText: newerFields.includes('tags') && tagsUntouched ? task.tags.join(', ') : current.tagsText,
+              // The form seeds its state once, so a rebase remounts it on the new base.
+              generation: (current.generation ?? 0) + 1,
+            })
+          }}>Base my draft on the latest version</button>
         </div>
       )}
       {draft ? (
         <TaskForm
+          key={draft.generation ?? 0}
           editing
           actors={actors}
           busy={busy}
