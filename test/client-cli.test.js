@@ -63,3 +63,25 @@ test('explicit public gateway produces HTTPS invitations while browser origin st
     assert.equal(wrongHost, 403)
   } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
 })
+
+test('programmatic client started from Node input-type mode launches isolated file-based runtimes', { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-inline-client-'))
+  try {
+    const source = `
+      import { startClient } from './lib/client-service.js';
+      const client = await startClient({ directory: process.argv[1], port: 0 });
+      try {
+        const call = async (path, body) => {
+          const response = await fetch(client.url + '/pardner/client/v1' + path, { method: 'POST', headers: { Authorization: 'Bearer ' + client.registry.read().operatorToken, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          if (!response.ok) throw Error('Client request failed: ' + response.status);
+          return response.json();
+        };
+        await call('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' });
+        const result = await call('/projects', { name: 'Inline', operationId: 'create' });
+        console.log(JSON.stringify({ savedLocally: result.project.status.savedLocally }));
+      } finally { await client.stop(); }
+    `
+    const { stdout } = await execute(process.execPath, ['--input-type=module', '-e', source, directory])
+    assert.equal(JSON.parse(stdout).savedLocally, true)
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
