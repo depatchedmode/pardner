@@ -161,7 +161,7 @@ changed client modules.
 | --- | --- | --- |
 | 1 | seed 1 passed; seed 2 failed `Local acknowledgement took 54733 ms` (bound 2500 ms) | `output/acceptance/2026-11-06T07-59-26.552Z` |
 | 2 | seeds 1–4 passed; seed 5 failed `Offline restart took 8086 ms` (bound 6000 ms) | `output/acceptance/2026-11-06T08-04-26.036Z` |
-| 3 (current candidate) | seeds 1–4 passed; seed 5 failed `Local UI visibility took 2600 ms` (bound 2500 ms) | `output/acceptance/2026-11-06T08-25-25.595Z` |
+| 3 (current candidate) | seeds 1–4 passed; seed 5 failed `Local UI visibility took 2600 ms` (bound 2000 ms) | `output/acceptance/2026-11-06T08-25-25.595Z` |
 
 Measured maxima from the passed seed reports of attempts 1 and 2, not thresholds: attempt 1 (agent-effect-ack 0.17 s, convergence 3.04 s, local-ack 0.26 s, local-ui-visible 0.06 s, offline-start 2.02 s);
 attempt 2 (agent-effect-ack 0.17 s, convergence 3.14 s, local-ack 0.37 s, local-ui-visible 0.07 s, offline-start 2.67 s). Seeds were not combined across attempts and no seed was
