@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createServer } from 'node:http'
+import { createHash } from 'node:crypto'
 import { startClient } from '../lib/client-service.js'
 import { CLIENT_API } from '../lib/client-identity.js'
 
@@ -187,6 +189,45 @@ test('browser WebSocket tickets bind origin, project and principal; direct child
   assert.equal(frame.doc.workspaceId, project.id)
   const replay = connect(acceptedTicket, client.registry.read().operatorToken)
   await new Promise(resolve => replay.once('error', resolve))
+})
+
+test('WebSocket proxy forwards a document delivered in the same packet as its upstream upgrade', { timeout: 10000 }, async t => {
+  const { WebSocket } = await import('ws')
+  const { client, api } = await fixture(t, 'Alice')
+  const { result: { project } } = await api('/projects', { name: 'Immediate document', operationId: 'create' })
+  const runtime = await client.runtime(client.project(project.id))
+  const originalPort = runtime.connection.wsPort
+  const peers = new Set()
+  const server = createServer()
+  server.on('upgrade', (request, socket) => {
+    peers.add(socket)
+    socket.on('error', () => {})
+    socket.on('close', () => peers.delete(socket))
+    const accept = createHash('sha1').update(request.headers['sec-websocket-key'] + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64')
+    const payload = Buffer.from(JSON.stringify({ type: 'document-state', doc: { workspaceId: project.id } }))
+    assert.ok(payload.length < 126)
+    // One write makes the initial frame available before an awaited open continuation.
+    socket.write(Buffer.concat([Buffer.from(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`),
+      Buffer.from([0x81, payload.length]), payload]))
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  runtime.connection.wsPort = server.address().port
+  t.after(async () => {
+    runtime.connection.wsPort = originalPort
+    for (const peer of peers) peer.destroy()
+    await new Promise(resolve => server.close(resolve))
+  })
+  const { result: { ticket } } = await api(`/projects/${project.id}/api/automerge/ws-ticket`, { purpose: 'ui' })
+  const socket = new WebSocket(`${client.url.replace('http:', 'ws:')}${project.wsPath}?ticket=${ticket}`,
+    { headers: { Authorization: `Bearer ${client.registry.read().operatorToken}` }, handshakeTimeout: 2000 })
+  t.after(() => socket.terminate())
+  const frame = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(Error('Initial upstream document was lost')), 2000)
+    socket.once('message', data => { clearTimeout(timer); resolve(JSON.parse(data.toString())) })
+    socket.once('error', error => { clearTimeout(timer); reject(error) })
+  })
+  assert.equal(frame.type, 'document-state')
+  assert.equal(frame.doc.workspaceId, project.id)
 })
 
 test('agent-only enrollment has its own author and cannot obtain a human browser session', { timeout: 30000 }, async t => {
