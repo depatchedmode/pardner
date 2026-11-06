@@ -6,7 +6,7 @@ routine evidence, not milestone acceptance or a merge recommendation.
 
 ## Candidate
 
-- Verified implementation: `874e7f37b03fb8a71683a7231d7ab6d4ab09e006` for the sections below through “Documentation-only PR preparation”; see “Interrogation repairs” for the current candidate `b931f093`.
+- Verified implementation: `874e7f37b03fb8a71683a7231d7ab6d4ab09e006` for the sections below through “Documentation-only PR preparation”; see “Interrogation repairs” for the current candidate `ddd65331`.
 - Comparison base: `4a7ae50e4a1a114c242c1f34936ee3979a7c4f40` (`main`).
 - Node: `24.11.1`; Playwright: `1.62.1`, with its pinned Chromium and WebKit.
 - Source/test/dependency-lock/built-UI fingerprint:
@@ -112,9 +112,11 @@ contributor experience, attribution and follow-up work.
 
 An adversarial multi-model review of the PR found five merge-blocking defects
 and several hardening items. The repairs landed as six commits on top of the
-retrospective; the final executable candidate is `b931f0937ad768ad6c77886b95ac985b8caab2e5`. The acceptance
-runner's candidate identity (source, tests, lockfiles and built UI) for that
-commit is `2c160242ae8d72b137fba436b9d4dc360c1bb138f605a31db08a9f855f077e93`.
+retrospective and were rebased onto the concurrent recovery, reporting and
+shutdown commits (through `e591b7b8`). The final executable candidate is the
+last code commit `ddd65331`; later commits are documentation only. The
+acceptance runner's candidate identity (source, tests, lockfiles and built UI)
+for it is `ee4fb01330582b4cdf356b9cce74801cf7dea710c0c601c9dea1bc44d70a622d`.
 
 | Repair | Evidence |
 | --- | --- |
@@ -124,11 +126,11 @@ commit is `2c160242ae8d72b137fba436b9d4dc360c1bb138f605a31db08a9f855f077e93`.
 | Identity step links a device with a My device invitation; Human/Agent invitations refused there before any request | `client-onboarding-ui` (both engines): refused Human paste leaves the invitation unbound; device link adopts the sponsor identity |
 | Upstream socket tracked from creation and torn down on abandoned or aborted handshakes; start-failure backoff; enrollment metadata normalised | `client-onboarding`: invalid `Sec-WebSocket-Key` handshake leaves zero tracked sockets; second request inside the backoff does not fork; non-text agent metadata is refused with the invitation unbound |
 
-Routine results for `b931f0937ad768ad6c77886b95ac985b8caab2e5` under Node 24.11.1 with pinned Chromium and WebKit:
+Routine results for `ddd65331` under Node 24.11.1 with pinned Chromium and WebKit:
 
 | Check | Observed result |
 | --- | --- |
-| `npm run verify` | Built UI, 17 Python tests, 611 Node tests and one complete acceptance scenario passed; zero failed, cancelled or skipped Node tests |
+| `npm run verify` | Built UI, 17 Python tests, 617 Node tests and one complete acceptance scenario passed on the rebased candidate; zero failed, cancelled or skipped Node tests. The pre-rebase repairs alone had passed the same run with 611 tests |
 | `test/client-onboarding.test.js` | 19 passed (12 prior, 7 new), three consecutive clean runs |
 | `test/client-onboarding-ui.test.js` | 10 passed: six unit cases, the two-client journey and the device-linking journey in Chromium and WebKit |
 | `npm run test:cli` | 15 passed (now includes `client-cli`) |
@@ -145,8 +147,9 @@ unexplained environment interference, not as evidence about the candidate.
 
 ### Deliberate qualification: attempted twice, not satisfied
 
-`npm run test:acceptance -- --repeat 20 --seed 1` was run twice against candidate
-`2c160242ae8d…` (commit `b931f093`). Both attempts failed a timing bound while this
+`npm run test:acceptance -- --repeat 20 --seed 1` was run twice against the
+pre-rebase candidate `2c160242ae8d…` (commit `b931f093`, the same repairs before
+they were rebased onto the concurrent commits). Both attempts failed a timing bound while this
 shared machine was running other sessions' test suites, builds and a vitest
 process at several cores; 1-minute load averages were 44 at the first failure
 and above 130 at the second. The acceptance scenario imports none of the
@@ -160,8 +163,8 @@ changed client modules.
 Measured maxima from the passed seed reports, not thresholds: attempt 1 (agent-effect-ack 0.17 s, convergence 3.04 s, local-ack 0.26 s, local-ui-visible 0.06 s, offline-start 2.02 s);
 attempt 2 (agent-effect-ack 0.17 s, convergence 3.14 s, local-ack 0.37 s, local-ui-visible 0.07 s, offline-start 2.67 s). Seeds were not combined across attempts and no seed was
 skipped. **Qualification remains required and open**: rerun the complete gate on
-an otherwise idle machine against this same candidate, then record the result
-here. The PR stays a draft with `needs-qualification` until that run succeeds,
+an otherwise idle machine against the current candidate `ee4fb0133058…`, then
+record the result here. The PR stays a draft with `needs-qualification` until that run succeeds,
 and the public-route and real-agent rehearsal obligations below also remain.
 
 

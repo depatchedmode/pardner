@@ -152,8 +152,9 @@ waits for one admission check against the hub, bounded by a 3 s timeout; moving
 that check off the write path is follow-up work. A project runtime that fails
 to start is reported as `LOCAL_SERVICE_UNAVAILABLE` and is not restarted again
 for 5 s, so polling cannot fork it repeatedly; a runtime that crashes after
-starting is restarted on the next authenticated request. Native replicas remain trusted full document writers,
-so API author binding is not a signature on arbitrary synchronized changes.
+starting is restarted on the next authenticated request. Native replicas remain
+trusted full document writers, so API author binding is not a signature on
+arbitrary synchronized changes.
 Revocation cannot erase an offline device's already received data.
 
 Keep the complete private client directory for recovery: registry and sidecars,
