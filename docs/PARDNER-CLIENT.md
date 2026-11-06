@@ -83,6 +83,11 @@ claude-opus-5-5 --managed-by T3`. It becomes a separate Actor for the same human
 the original setup agent, project and persisted runtime remain. A later
 `client agent-grant` or `client operation` can select that enrolled harness with
 `--harness`. Selecting a harness that has not enrolled on this device fails.
+Private grants include that harness's configured model and manager when known.
+These are reporting defaults, not proof of the active model: agents must report
+their actual current model when opening or updating a presence session.
+An agent-only client cannot issue a human browser launch; it uses its scoped
+agent grant to read and edit the board.
 
 The CLI can also issue invitations through `client invite --project ID --purpose
 human|agent|device --output-file FILE --operation-id ID`. It writes the private

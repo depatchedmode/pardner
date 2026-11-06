@@ -11,6 +11,7 @@ it('accepts the original opaque invitation and a short agent-facing setup prompt
     assert.equal(invitationEnvelope(prompt), envelope)
     assert.ok(prompt.includes('client v1 CLI'))
     assert.ok(prompt.includes('--invitation-file FILE --operation-id STABLE_ID'))
+    assert.ok(prompt.includes('client join --data CLIENT_DIR'))
   }
 })
 
@@ -29,5 +30,7 @@ it('keeps project names in quoted data and gives each purpose the right identity
   assert.ok(prompt('human').includes('my own identity'))
   assert.ok(prompt('device').includes('my existing identity'))
   assert.ok(prompt('agent').includes('as my agent'))
+  assert.ok(prompt('agent').includes('does not grant human browser access'))
+  assert.ok(!prompt('agent').includes('open the board'))
   assert.throws(() => prompt('unknown'), { code: 'INVALID_ARGUMENT' })
 })

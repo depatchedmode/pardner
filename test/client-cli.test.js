@@ -14,7 +14,7 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
   const directory = await mkdtemp(join(tmpdir(), 'pardner-cli-client-'))
   let client
   try {
-    client = await startClient({ directory, port: 0 })
+    client = await startClient({ directory, port: 0, setupAgent: { model: 'reported-codex-model', managedBy: 'T3' } })
     const run = async args => {
       const { stdout } = await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', directory], { cwd: process.cwd() })
       const value = JSON.parse(stdout); assert.equal(value.success, true); return { value, stdout }
@@ -26,6 +26,14 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
     assert.equal(saved.savedLocally, true); assert.notEqual(saved.actorId, project.actorId)
     const { value: replay } = await run(['operation', '--project', project.id, '--request', JSON.stringify(request)])
     assert.equal(replay.replayed, true)
+    const grantFile = join(directory, 'agent.json')
+    const grantOutput = await run(['agent-grant', '--project', project.id, '--output-file', grantFile])
+    const grant = JSON.parse(await readFile(grantFile, 'utf8'))
+    assert.equal(grant.harnessId, 'openai-codex')
+    assert.equal(grant.model, 'reported-codex-model')
+    assert.equal(grant.managedBy, 'T3')
+    assert.ok(!grantOutput.stdout.includes(grant.token))
+    assert.equal((await stat(grantFile)).mode & 0o777, 0o600)
     const output = join(directory, 'invite.txt')
     const { stdout } = await run(['invite', '--project', project.id, '--purpose', 'human', '--operation-id', 'invite', '--output-file', output])
     const invitation = await readFile(output, 'utf8')
