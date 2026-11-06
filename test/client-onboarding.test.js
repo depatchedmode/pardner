@@ -463,3 +463,30 @@ test('an unauthenticated WebSocket upgrade cannot restart a dead project runtime
   assert.equal(client.runtimes.get(client.project(project.id).key), runtime, 'the dead runtime must not be replaced by an anonymous socket')
   assert.equal(client.starting.size, 0)
 })
+
+test('gateway error pages and hub 5xx responses are outages: replicas keep saving locally and only explicit revocation revokes', { timeout: 45000 }, async t => {
+  const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
+  const { result: { project } } = await alice.api('/projects', { name: 'Degraded', operationId: 'create' })
+  const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
+  await bob.api('/join', { invitation: invitation.invitation, operationId: 'join' })
+  let reply = { status: 502, type: 'text/html', body: '<html><body><h1>502 Bad Gateway</h1></body></html>' }
+  const gateway = createServer((_req, res) => { res.writeHead(reply.status, { 'Content-Type': reply.type }); res.end(reply.body) })
+  await new Promise(resolve => gateway.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => gateway.close(resolve)))
+  const key = Object.values(bob.client.registry.read().projects).find(p => p.id === project.id).key
+  bob.client.registry.update(state => { state.projects[key].hubUrl = `http://127.0.0.1:${gateway.address().port}` })
+  const path = `/projects/${project.id}/api/automerge/operations`
+  const { result: html } = await bob.api(path, { type: 'task.create', operationId: 'through-502', payload: { title: 'Saved behind a 502 page' } })
+  assert.equal(html.savedLocally, true)
+  const { result: view } = await bob.api(`/projects/${project.id}`)
+  assert.equal(view.project.id, project.id)
+  assert.equal(view.presence.available, false, 'remote presence is reported unavailable, not failed')
+  const { result: doc } = await bob.api(`/projects/${project.id}/api/automerge/doc`)
+  assert.equal(doc.doc.tasks[html.result.taskId].title, 'Saved behind a 502 page')
+  reply = { status: 503, type: 'application/json', body: JSON.stringify({ code: 'SERVICE_STOPPING', error: 'The service is stopping' }) }
+  const { result: stopping } = await bob.api(path, { type: 'task.create', operationId: 'through-503', payload: { title: 'Saved while the hub restarts' } })
+  assert.equal(stopping.savedLocally, true)
+  reply = { status: 401, type: 'application/json', body: JSON.stringify({ code: 'AUTH_REQUIRED', error: 'Device is not admitted to this project' }) }
+  const { result: revoked, response } = await bob.api(path, { type: 'task.create', operationId: 'denied', payload: { title: 'denied' } }, { failure: true })
+  assert.equal(response.status, 403); assert.equal(revoked.code, 'REVOKED')
+})
