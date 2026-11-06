@@ -8,8 +8,9 @@ export const actorName = actor => actor?.displayName || actor?.handle || 'Unknow
 export function initials(name) {
   const words = String(name || '?').trim().split(/[\s._-]+/).filter(Boolean)
   if (words.length > 1) return (words[0][0] + words[1][0]).toUpperCase()
+  // One capital for a single word: a mixed-case pair such as "Al" reads as "AI" on a shared screen.
   const [word = '?'] = words
-  return word.slice(0, 1).toUpperCase() + word.slice(1, 2).toLowerCase()
+  return word.slice(0, 1).toUpperCase()
 }
 
 // A stable, muted tint per Actor: a secondary cue only, never the sole distinction.

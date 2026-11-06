@@ -902,7 +902,7 @@ function TaskDetail({
   useEffect(() => {
     const key = (event) => {
       // Escape closes an open dialog (profile, invite) first, not the panel beneath it.
-      if (event.key === 'Escape' && !document.querySelector('dialog[open]')) onClose()
+      if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('dialog[open]')) onClose()
     }
     document.addEventListener('keydown', key)
     return () => document.removeEventListener('keydown', key)
@@ -935,7 +935,8 @@ function TaskDetail({
       <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />
       {here.length > 0 && <div className="here-now">
         <span className="muted">Here now</span>
-        <AvatarStack actors={here} index={session.index} max={6} size="sm" label="Here now" onOpen={session.onOpenProfile} />
+        <AvatarStack actors={here} index={session.index} max={6} size="sm" label="Here now" labelSuffix=", on this task"
+          onOpen={session.onOpenProfile} />
       </div>}
       <p className="muted">
         {labelActor(actors[task.assignee])} · {LABELS[task.status]} ·{' '}

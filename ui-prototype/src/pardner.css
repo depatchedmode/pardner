@@ -773,8 +773,8 @@ button.avatar:hover { background: hsl(var(--avatar-hue) 18% 30%); }
 .avatar-sm[data-kind='agent'] { border-radius: 6px; }
 .avatar-lg { width: 48px; height: 48px; }
 .avatar-lg[data-kind='agent'] { border-radius: 11px; }
-.avatar-initials { font-size: 12px; font-weight: 600; line-height: 1; letter-spacing: 0.01em; }
-.avatar-sm .avatar-initials { font-size: 10px; }
+.avatar-initials { font-size: 13px; font-weight: 600; line-height: 1; letter-spacing: 0.01em; }
+.avatar-sm .avatar-initials { font-size: 11px; }
 .avatar-lg .avatar-initials { font-size: 17px; }
 /* Presence is shape, not colour alone: solid ring and filled dot, dashed ring
    and hollow dot, or no ring and no dot. */

@@ -203,7 +203,7 @@ function Welcome({ api, session, current, onBack, onReady }) {
       <button type="button" aria-pressed={mode === 'join'} onClick={() => { setMode('join'); setFailure(null) }}>Join a project</button>
     </div>
     {mode === 'start' ? <form onSubmit={start} aria-label="Start a project">
-      <label>Project name<input required maxLength={120} value={name} onChange={event => setName(event.target.value)} /></label>
+      <label>Project name<input required autoFocus maxLength={120} value={name} onChange={event => setName(event.target.value)} /></label>
       {pendingCreate && <p className="muted small">An earlier attempt to start “{pendingCreate.name}” didn’t confirm. Starting it again resumes that attempt.</p>}
       <p className="muted small">
         You join as {session.identity.name}.{agent?.name ? ` ${agent.name}${harnessLabel(agent.harnessId) ? ` (${harnessLabel(agent.harnessId)})` : ''} is registered as your agent. It shows as offline until it connects, and as active only while it reports work.` : ''}
