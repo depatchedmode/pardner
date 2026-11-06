@@ -103,4 +103,27 @@ The first fresh focused CLI command hit its existing 30-second scenario deadline
 
 The original M7 full verification was interrupted after 747 seconds with client test runtimes still alive. Partial shutdown repairs also timed out; those results were retained, not relabeled. Controlled regressions and HTTP tracing established the final repair. An initial copied-test path error is separately recorded as a setup failure. See private `shutdown-diagnostic-result.md` and the distinct watchdog/log files.
 
-Remaining: resolve the failed qualification gate, exercise the new client over a real remote route, and obtain human acceptance. Automatic approval review rejected transfer of the full source and then the smaller runtime bundle to the existing exe.dev host. No source was transferred and no remote access policy changed. The explicit request to transfer the minimal runtime bundle remains pending. Existing cloud participation used the older coordination runtime, so it cannot fill this evidence gap. No power-loss durability or physical-device result is claimed.
+Remaining: resolve the failed qualification gate, exercise the new client over a real remote route, and obtain human acceptance. Automatic approval review rejected transfer of the full source and then the smaller runtime bundle to the existing exe.dev host. No source was transferred and no remote access policy changed. The request to transfer the minimal runtime bundle was pending at that point; the approved transfer is recorded below. Existing cloud participation used the older coordination runtime, so it cannot fill this evidence gap. No power-loss durability or physical-device result is claimed.
+
+
+## Approved runtime transfer (2026-11-06)
+
+The owner explicitly approved copying the reviewed runtime bundle to the existing
+`pardner-hub.exe.xyz` host. The 45 files from `e591b7b8268b2a6cd6ed4f192024d275c4e93f33`
+were copied into the new private directory
+`/home/exedev/pardner-onboarding-m7-20261106-e591b7b`. All extracted file hashes
+match the local manifest. The archive SHA-256 is
+`6d5c21dbd6d49d290a4ffb69737522b9bf8efd50d27569a71344fc7663ec8f11`.
+The source files total 808,621 bytes; the archive contains no repository history,
+task data or credentials. The destination and runtime directory are mode 0700.
+
+Locked production dependencies were installed in that isolated directory, and
+`startClient` imported successfully under Node 24.11.1. No remote client was
+started, and no existing remote service or access policy was changed. The
+source-transfer approval blocker is cleared for this bundle.
+
+This is the earlier local-rehearsal candidate, not the later combined PR candidate.
+Copying and loading it does not establish remote enrollment, native sync, a usable
+public route or human acceptance. Those exercises and the unresolved qualification
+gate remain outstanding. Exact transfer metadata is retained privately in
+`output/verification/onboarding-m7/runtime-transfer-completed.json`.
