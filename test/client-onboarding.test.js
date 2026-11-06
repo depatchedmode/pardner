@@ -242,3 +242,23 @@ test('reopening with a new browser principal replays setup instead of allocating
   assert.deepEqual(bob.client.registry.read().attempts, attemptsBefore)
   assert.equal(Object.keys(bob.client.registry.read().projects).length, 1)
 })
+
+test('concurrent human redemptions cannot admit the same identity through two unrelated grants', { timeout: 30000 }, async t => {
+  const { randomUUID, randomBytes } = await import('node:crypto')
+  const { invitationData } = await import('../lib/client-invites.js')
+  const alice = await fixture(t, 'Alice')
+  const { result: { project } } = await alice.api('/projects', { name: 'Concurrent admission', operationId: 'create' })
+  const first = (await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'one' })).result
+  const second = (await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'two' })).result
+  const identity = { id: randomUUID(), name: 'Bob', email: 'bob@example.test' }
+  const results = await Promise.all([first, second].map(async ({ invitation }) => {
+    const parsed = invitationData(invitation)
+    const response = await fetch(parsed.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      inviteId: parsed.id, invitationSecret: parsed.secret, recipientProof: randomBytes(32).toString('base64url'), operationId: randomUUID(),
+      identity, device: { id: randomUUID(), name: 'New machine' }, agent: { harnessId: 'openai-codex', name: 'Beta' },
+    }) })
+    return { status: response.status, result: await response.json() }
+  }))
+  assert.equal(results.filter(result => result.status === 200).length, 1)
+  assert.equal(results.find(result => result.status !== 200).result.code, 'IDENTITY_MISMATCH')
+})
