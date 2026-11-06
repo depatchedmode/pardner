@@ -1,6 +1,10 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import Pardner from './Pardner'
+import { captureBootstrapGrant } from './client-api.js'
+
+// A one-time sign-in grant must leave the address bar before anything else runs.
+captureBootstrapGrant()
 
 class StartupBoundary extends React.Component {
   state = { failed: false }
