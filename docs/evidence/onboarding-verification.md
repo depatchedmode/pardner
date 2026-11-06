@@ -145,22 +145,25 @@ reproduce in three consecutive isolated runs or in the full `verify`, and a
 handler/fetch detector attached to `verify` reported nothing. It is recorded as
 unexplained environment interference, not as evidence about the candidate.
 
-### Deliberate qualification: attempted twice, not satisfied
+### Deliberate qualification: attempted three times, not satisfied
 
 `npm run test:acceptance -- --repeat 20 --seed 1` was run twice against the
 pre-rebase candidate `2c160242ae8d…` (commit `b931f093`, the same repairs before
-they were rebased onto the concurrent commits). Both attempts failed a timing bound while this
-shared machine was running other sessions' test suites, builds and a vitest
-process at several cores; 1-minute load averages were 44 at the first failure
-and above 130 at the second. The acceptance scenario imports none of the
+they were rebased onto the concurrent commits) and once against the current
+candidate `ee4fb0133058…` (commit `ddd65331`). All three attempts failed a timing
+bound while this shared machine was running other sessions' test suites, builds
+and a vitest process at several cores; 1-minute load averages were 44 at the
+first failure, above 130 at the second and 41 at the third, after dipping to 9
+when the third attempt started. The acceptance scenario imports none of the
 changed client modules.
 
 | Attempt | Outcome | Reports |
 | --- | --- | --- |
 | 1 | seed 1 passed; seed 2 failed `Local acknowledgement took 54733 ms` (bound 2500 ms) | `output/acceptance/2026-11-06T07-59-26.552Z` |
 | 2 | seeds 1–4 passed; seed 5 failed `Offline restart took 8086 ms` (bound 6000 ms) | `output/acceptance/2026-11-06T08-04-26.036Z` |
+| 3 (current candidate) | seeds 1–4 passed; seed 5 failed `Local UI visibility took 2600 ms` (bound 2500 ms) | `output/acceptance/2026-11-06T08-25-25.595Z` |
 
-Measured maxima from the passed seed reports, not thresholds: attempt 1 (agent-effect-ack 0.17 s, convergence 3.04 s, local-ack 0.26 s, local-ui-visible 0.06 s, offline-start 2.02 s);
+Measured maxima from the passed seed reports of attempts 1 and 2, not thresholds: attempt 1 (agent-effect-ack 0.17 s, convergence 3.04 s, local-ack 0.26 s, local-ui-visible 0.06 s, offline-start 2.02 s);
 attempt 2 (agent-effect-ack 0.17 s, convergence 3.14 s, local-ack 0.37 s, local-ui-visible 0.07 s, offline-start 2.67 s). Seeds were not combined across attempts and no seed was
 skipped. **Qualification remains required and open**: rerun the complete gate on
 an otherwise idle machine against the current candidate `ee4fb0133058…`, then
