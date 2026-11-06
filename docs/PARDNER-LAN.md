@@ -1,5 +1,10 @@
 # Use Pardner on a companion device
 
+This guide covers standalone companion browsers. For the authenticated local
+client's owned-device enrollment, use [My device](PARDNER-CLIENT.md#invite-and-join).
+Its [recovery procedures](PARDNER-CLIENT-RECOVERY.md) include per-device revocation;
+the shared-secret pairing instructions below do not provide that capability.
+
 Companion device access serves the existing workspace from a computer on your
 trusted local network. Connect from a browser on a phone, tablet, laptop, or
 another desktop. Keep the host computer and the Pardner service running. The

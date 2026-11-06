@@ -51,7 +51,7 @@ it('leaves semantic questions open even when paths have no automatic trigger', (
 })
 
 it('distinguishes guidance, no diff, and unknown files', () => {
-  const guidance = planForFiles(['.agents/skills/verify/SKILL.md', '.claude/skills', 'AGENTS.md'])
+  const guidance = planForFiles(['.agents/skills/verify/SKILL.md', '.claude/skills', 'AGENTS.md', 'PRODUCT.md'])
   assert.equal(guidance.guidanceOnly, true)
   assert.equal(guidance.verify, false)
   assert.deepEqual(guidance.scripts, [])

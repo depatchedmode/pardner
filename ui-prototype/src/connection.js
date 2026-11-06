@@ -32,6 +32,13 @@ function isValidConfiguration({ workspaceId, apiBase, wsPath, wsPort }) {
 export async function loadConfiguration(fetcher = fetch) {
   const response = await fetcher('/pardner/config', { cache: 'no-store', signal: AbortSignal.timeout(10000) })
   const config = await readResponse(response)
+  // Local client mode chooses projects after sign-in; each project supplies its own board configuration.
+  if (config.mode === 'client') {
+    if (typeof config.clientApiBase !== 'string' || !/^\/(?!\/)[^?#\\]*$/.test(config.clientApiBase)) {
+      throw new Error('The local client configuration is incomplete. Restart Pardner and retry.')
+    }
+    return config
+  }
   if (!isValidConfiguration(config)) {
     throw new Error('The service configuration is incomplete. Restart the service and retry.')
   }
@@ -44,7 +51,10 @@ export async function loadConfiguration(fetcher = fetch) {
 }
 
 export function createConnection(config, { storage = localStorage, drafts = sessionStorage, fetcher = fetch } = {}) {
-  const key = `pardner:${config.workspaceId}`
+  // Session-authenticated projects use the browser's HttpOnly cookie and keep
+  // drafts and retries bound to both the project and the signed-in Actor.
+  const session = config.authentication === 'session'
+  const key = session ? `pardner:${config.workspaceId}:${config.actorId}` : `pardner:${config.workspaceId}`
   const read = (store, suffix) => {
     const value = store.getItem(`${key}:${suffix}`)
     try { return JSON.parse(value) } catch { return null }
@@ -57,16 +67,19 @@ export function createConnection(config, { storage = localStorage, drafts = sess
       throw new Error('Browser storage is unavailable. Allow site storage to remember this workspace and safely retry changes.')
     }
   }
-  const credential = () => read(storage, 'credential') || ''
-  const forgetCredential = () => write(storage, 'credential', null)
+  const credential = () => session ? 'session' : read(storage, 'credential') || ''
+  const forgetCredential = () => { if (!session) write(storage, 'credential', null) }
   return {
+    session,
     credential,
-    remember: token => write(storage, 'credential', token.trim()),
+    remember: token => { if (!session) write(storage, 'credential', token.trim()) },
     forgetCredential,
     preferences: () => read(storage, 'preferences') || {},
     savePreferences: value => write(storage, 'preferences', value),
     pending: () => read(drafts, 'pending'),
     savePending: value => write(drafts, 'pending', value),
+    draft: taskId => read(drafts, `draft:${taskId}`),
+    saveDraft: (taskId, value) => write(drafts, `draft:${taskId}`, value),
     forget() {
       forgetCredential()
       write(storage, 'preferences', null)
@@ -87,13 +100,14 @@ export function createConnection(config, { storage = localStorage, drafts = sess
       try {
         return await readResponse(await fetcher(`${config.apiBase}${path}`, {
           method: body === undefined ? 'GET' : 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json',
+          headers: { ...(session ? {} : { Authorization: `Bearer ${token}` }), 'Content-Type': 'application/json',
             'X-Pardner-Workspace': config.workspaceId },
+          ...(session ? { credentials: 'same-origin' } : {}),
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
           signal: AbortSignal.timeout(10000),
         }))
       } catch (error) {
-        if (error.code === 'AUTH_REQUIRED' && credential() === token) forgetCredential()
+        if (error.code === 'AUTH_REQUIRED' && !session && credential() === token) forgetCredential()
         throw error
       }
     },

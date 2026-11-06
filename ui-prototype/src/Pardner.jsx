@@ -5,6 +5,8 @@ import { createOperationId } from './operation-id.js'
 import { createConnection, loadConfiguration, websocketUrl } from './connection.js'
 import PhoneAccess from './PhoneAccess.jsx'
 import ControlPane from './ControlPane.jsx'
+import ClientApp from './ClientApp.jsx'
+import { AvatarStack } from './Avatar.jsx'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const LABELS = {
@@ -98,13 +100,33 @@ export default function Pardner() {
     {failure && <><p>Check that the service is running. If the address changed, open Pair another device on the desktop.</p>
       <button onClick={() => reload().catch(setFailure)}>Retry connection</button></>}
   </main>
+  if (config.mode === 'client') return <ClientApp config={config} />
   return <Workspace key={config.workspaceId} config={config} reloadConfiguration={reload} />
 }
 
-function Workspace({ config, reloadConfiguration }) {
+/**
+ * The board. Standalone services authenticate with a token or pairing code; in
+ * local client mode `session` is supplied, the cookie authenticates, and the
+ * author is the signed-in Actor (there is no author picker).
+ */
+export function Workspace({ config, reloadConfiguration, session = null }) {
   const client = useMemo(() => createConnection(config), [config])
+  // The session prop changes every render (presence, header); effects depend only on the mode.
+  const sessionMode = Boolean(session)
+  const sessionRef = useRef(session)
+  sessionRef.current = session
+  // Task panels open below the client header so people, Invite and the project stay reachable.
+  const headerRef = useRef(null)
+  const [headerHeight, setHeaderHeight] = useState(0)
+  useEffect(() => {
+    const element = headerRef.current
+    if (!sessionMode || !element || typeof ResizeObserver !== 'function') return
+    const observer = new ResizeObserver(() => setHeaderHeight(Math.ceil(element.getBoundingClientRect().height)))
+    observer.observe(element)
+    return () => observer.disconnect()
+  })
   // Let a scanned link validate stored authentication before normal requests begin.
-  const [token, setToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).has('pair') ? '' : client.credential())
+  const [token, setToken] = useState(() => !session && new URLSearchParams(window.location.hash.slice(1)).has('pair') ? '' : client.credential())
   const [credential, setCredential] = useState('')
   const [pairCode, setPairCode] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('pair') ?? '')
   const [pairBusy, setPairBusy] = useState(false)
@@ -113,8 +135,8 @@ function Workspace({ config, reloadConfiguration }) {
   const [doc, setDoc] = useState(null)
   const [status, setStatus] = useState(null)
   const [connected, setConnected] = useState(false)
-  const [actor, setActor] = useState(() => client.preferences().actor || '')
-  const [selected, setSelected] = useState(null)
+  const [actor, setActor] = useState(() => session ? config.actorId : client.preferences().actor || '')
+  const [selected, setSelected] = useState(() => session ? client.preferences().selected || null : null)
   const [creating, setCreating] = useState(false)
   const [view, setView] = useState(() => client.preferences().view || 'board')
   const [filter, setFilter] = useState(() => client.preferences().filter || '')
@@ -145,6 +167,7 @@ function Workspace({ config, reloadConfiguration }) {
     finally { setPairBusy(false) }
   }, [client])
   useEffect(() => {
+    if (sessionMode) return
     const pairFromUrl = () => {
       const code = new URLSearchParams(window.location.hash.slice(1)).get('pair')
       if (code === null) return
@@ -155,14 +178,24 @@ function Workspace({ config, reloadConfiguration }) {
     window.addEventListener('hashchange', pairFromUrl)
     pairFromUrl()
     return () => window.removeEventListener('hashchange', pairFromUrl)
-  }, [pairDevice])
+  }, [pairDevice, sessionMode])
 
   useEffect(() => {
-    try { client.savePreferences({ actor, filter, statusFilter, veinFilter, view }) } catch (failure) { setError(failure) }
-  }, [client, actor, filter, statusFilter, veinFilter, view])
+    try {
+      client.savePreferences(sessionMode ? { filter, statusFilter, veinFilter, view, selected }
+        : { actor, filter, statusFilter, veinFilter, view })
+    } catch (failure) { setError(failure) }
+  }, [client, sessionMode, actor, filter, statusFilter, veinFilter, view, selected])
+  const onFocusChange = session?.onFocusChange
+  useEffect(() => { onFocusChange?.(selected ? [selected] : []) }, [onFocusChange, selected])
+  const requestedTask = session?.requestedTask
+  useEffect(() => { if (requestedTask) { setSelected(requestedTask.taskId); setCreating(false) } }, [requestedTask])
+  const onTasks = session?.onTasks
+  useEffect(() => { if (doc) onTasks?.(doc.tasks) }, [onTasks, doc])
   const request = useCallback(async (path, body) => {
     try { return await client.request(path, body) } catch (failure) {
-      if (failure.code === 'AUTH_REQUIRED' && !client.credential()) {
+      if (failure.code === 'AUTH_REQUIRED' && sessionRef.current) sessionRef.current.onAuthLost()
+      else if (failure.code === 'AUTH_REQUIRED' && !client.credential()) {
         setToken('')
         setDoc(null)
         setConnectionError(new Error('The service credential changed. Pair again or enter the current local service token.'))
@@ -266,8 +299,8 @@ function Workspace({ config, reloadConfiguration }) {
     }
   }, [token, config, refresh, request, reloadConfiguration, retryGeneration])
   useEffect(() => {
-    if (doc && actor && !doc.actors[actor]) setActor('')
-  }, [doc, actor])
+    if (!sessionMode && doc && actor && !doc.actors[actor]) setActor('')
+  }, [doc, actor, sessionMode])
   const submit = async (type, payload, replay = null) => {
     if (inflight.current) return null
     if (!actor && !replay) {
@@ -348,6 +381,13 @@ function Workspace({ config, reloadConfiguration }) {
     if (!token) void pairDevice(pairCode)
     else setRetryGeneration(value => value + 1)
   }
+  if (session && !doc) return <main className="connection">
+    <h1>Pardner</h1>
+    <p role="status">{connectionError ? 'The project board isn’t reachable yet.' : 'Opening the project board…'}</p>
+    {connectionError && <div role="alert" className="error"><p>{connectionError.message}</p>
+      <button onClick={retryConnection}>Retry connection</button>
+    </div>}
+  </main>
   if (!token || !doc) return <main className="connection">
     <h1>Pardner</h1>
     <p>One workspace for human and agent Actors.</p>
@@ -391,14 +431,16 @@ function Workspace({ config, reloadConfiguration }) {
   }
   const showVein = (veinId) => showBoard({ vein: veinId })
   return (
-    <div className="app">
-      <header>
-        <div>
+    <div className="app" data-client={sessionMode || undefined}
+      style={sessionMode ? { '--client-header-height': `${headerHeight}px` } : undefined}>
+      <header ref={headerRef} className={session ? 'client-header' : undefined}>
+        {session ? session.header : <div>
           <h1>Pardner</h1>
           <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
-        </div>
+        </div>}
         <div className="header-controls">
-          <SelectActor actors={actors} value={actor} onChange={setActor} />
+          {session ? <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
+            : <SelectActor actors={actors} value={actor} onChange={setActor} />}
           <button
             className="primary"
             disabled={!actor || busy || Boolean(pending)}
@@ -427,16 +469,16 @@ function Workspace({ config, reloadConfiguration }) {
           </button>
         </div>
       )}
-      {!Object.keys(actors).length && (
+      {!session && !Object.keys(actors).length && (
         <div className="notice">
           Register your first human or agent Actor with{' '}
           <code>pardner actors register</code> to begin.
         </div>
       )}
-      <div className="workspace-actions">
+      {!session && <div className="workspace-actions">
         <button onClick={() => setPhoneSetup(true)}>Pair another device</button>
         <button disabled={busy} onClick={forget}>Forget this workspace</button>
-      </div>
+      </div>}
       <nav aria-label="Workspace views">
         <button
           aria-pressed={view === 'board'}
@@ -456,12 +498,12 @@ function Workspace({ config, reloadConfiguration }) {
         >
           Activity
         </button>
-        <button
+        {!session && <button
           aria-pressed={view === 'control'}
           onClick={() => setView('control')}
         >
           Control
-        </button>
+        </button>}
         <SelectActor
           label="Assigned to"
           emptyLabel="All Actors"
@@ -523,6 +565,7 @@ function Workspace({ config, reloadConfiguration }) {
                           Conflicting edits
                         </span>
                       )}
+                      {session?.focus[task.id]?.length > 0 && <FocusMarkers session={session} actorIds={session.focus[task.id]} />}
                     </button>
                   ))}
                 {!tasks.some((task) => task.status === column) && (
@@ -533,7 +576,7 @@ function Workspace({ config, reloadConfiguration }) {
           </div>
         ) : view === 'goals' ? (
           <Goals goals={goals} veins={veins} showVein={showVein} />
-        ) : view === 'control' ? (
+        ) : view === 'control' && !session ? (
           <ControlPane request={request} actors={actors} tasks={doc.tasks} actor={actor} canManageAccess={config.canManageAccess} />
         ) : (
           <section className="activity">
@@ -584,11 +627,25 @@ function Workspace({ config, reloadConfiguration }) {
           busy={busy}
           status={status}
           connected={connected}
+          session={session}
+          client={client}
           onClose={() => setSelected(null)}
         />
       )}
     </div>
   )
+}
+
+function focusedActors(session, actorIds) {
+  return actorIds.map(id => session.actorsById[id]).filter(Boolean)
+}
+/** Non-interactive markers inside a card button; profiles open from the task panel or header. */
+function FocusMarkers({ session, actorIds }) {
+  const list = focusedActors(session, actorIds)
+  if (!list.length) return null
+  return <span className="focus-markers">
+    <AvatarStack actors={list} index={session.index} max={3} size="sm" labelSuffix=", on this task" label="Here now" />
+  </span>
 }
 
 function Goals({ goals, veins, showVein }) {
@@ -636,6 +693,8 @@ function TaskForm({
   onClose,
   onSubmit,
   initial,
+  initialTags,
+  onChange,
   editing = false,
 }) {
   const [fields, setFields] = useState(
@@ -650,7 +709,8 @@ function TaskForm({
   )
   const set = (field, value) =>
     setFields((current) => ({ ...current, [field]: value }))
-  const [tags, setTags] = useState(fields.tags.join(', '))
+  const [tags, setTags] = useState(initialTags ?? fields.tags.join(', '))
+  useEffect(() => { onChange?.(fields, tags) }, [onChange, fields, tags])
   return (
     <section
       className={editing ? 'editor' : 'side-panel'}
@@ -786,10 +846,25 @@ function TaskDetail({
   busy,
   status,
   connected,
+  session = null,
+  client = null,
   onClose,
 }) {
   const [context, setContext] = useState(null)
-  const [draft, setDraft] = useState(null)
+  // In client mode an edit draft survives closing the panel, reloading the tab and
+  // switching projects. It is stored per project, Actor and task, never sent until saved.
+  const [draft, setDraftState] = useState(() => session ? client.draft(taskId) : null)
+  const draftRef = useRef(draft)
+  const setDraft = useCallback(value => {
+    draftRef.current = value
+    setDraftState(value)
+    if (session) try { client.saveDraft(taskId, value) } catch { /* the in-memory draft remains */ }
+  }, [session, client, taskId])
+  const persistDraftEdits = useCallback((edited, tagsText) => {
+    if (!session || !draftRef.current) return
+    draftRef.current = { ...draftRef.current, edited, tagsText }
+    try { client.saveDraft(taskId, draftRef.current) } catch { /* the in-memory draft remains */ }
+  }, [session, client, taskId])
   const [message, setMessage] = useState('')
   const [to, setTo] = useState('')
   const [handoffStatus, setHandoffStatus] = useState('review')
@@ -826,7 +901,8 @@ function TaskDetail({
   }, [taskId, actor, heads, request])
   useEffect(() => {
     const key = (event) => {
-      if (event.key === 'Escape') onClose()
+      // Escape closes an open dialog (profile, invite) first, not the panel beneath it.
+      if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('dialog[open]')) onClose()
     }
     document.addEventListener('keydown', key)
     return () => document.removeEventListener('keydown', key)
@@ -843,6 +919,13 @@ function TaskDetail({
   const canWrite = Boolean(actor) && !busy
   const handoffRevisions = { assignee: revisions.assignee, status: revisions.status }
   const handoffStale = handoffBase && JSON.stringify(handoffBase) !== JSON.stringify(handoffRevisions)
+  const newerFields = session && draft
+    ? Object.keys(draft.fields).filter(field => JSON.stringify(revisions[field]) !== JSON.stringify(draft.revisions[field]))
+    : []
+  const newerBy = newerFields.length
+    ? [...history].reverse().find(event => event.changes.some(change => newerFields.includes(change.field)))?.actorId
+    : null
+  const here = session?.focus[taskId] ? focusedActors(session, session.focus[taskId]) : []
   return (
     <aside className="side-panel" aria-label="Task details">
       <div className="panel-heading">
@@ -850,6 +933,11 @@ function TaskDetail({
         <button onClick={onClose}>Close</button>
       </div>
       <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />
+      {here.length > 0 && <div className="here-now">
+        <span className="muted">Here now</span>
+        <AvatarStack actors={here} index={session.index} max={6} size="sm" label="Here now" labelSuffix=", on this task"
+          onOpen={session.onOpenProfile} />
+      </div>}
       <p className="muted">
         {labelActor(actors[task.assignee])} · {LABELS[task.status]} ·{' '}
         {task.priority.toUpperCase()}
@@ -859,12 +947,42 @@ function TaskDetail({
       )}
       <ErrorNotice error={failure} />
       <IssueLinks taskId={taskId} issues={context.issues ?? []} canWrite={canWrite} submit={submit} />
+      {draft && newerFields.length > 0 && (
+        <div className="notice draft-notice" role="status">
+          <p>
+            {newerBy ? `${labelActor(actors[newerBy])} saved` : 'Someone saved'} a newer {newerFields.join(', ')} since
+            you started editing. Your draft is unchanged.
+          </p>
+          <p className="muted small">If you also changed {newerFields.length === 1 ? 'that field' : 'those fields'}, saving is
+            refused until you choose. Basing your draft on the latest version makes your save an explicit replacement.</p>
+          <button type="button" onClick={() => {
+            // Fields this user never touched follow the latest version; fields they changed stay as an explicit replacement.
+            const current = draftRef.current
+            const edited = current.edited ?? current.fields
+            const untouched = field => JSON.stringify(edited[field]) === JSON.stringify(current.fields[field])
+            const latest = Object.fromEntries(newerFields.map(field => [field, task[field]]))
+            const tagsUntouched = (current.tagsText ?? current.fields.tags.join(', ')) === current.fields.tags.join(', ')
+            setDraft({
+              ...current,
+              fields: { ...current.fields, ...latest },
+              revisions: { ...current.revisions, ...Object.fromEntries(newerFields.map(field => [field, revisions[field]])) },
+              edited: { ...edited, ...Object.fromEntries(newerFields.filter(untouched).map(field => [field, task[field]])) },
+              tagsText: newerFields.includes('tags') && tagsUntouched ? task.tags.join(', ') : current.tagsText,
+              // The form seeds its state once, so a rebase remounts it on the new base.
+              generation: (current.generation ?? 0) + 1,
+            })
+          }}>Base my draft on the latest version</button>
+        </div>
+      )}
       {draft ? (
         <TaskForm
+          key={draft.generation ?? 0}
           editing
           actors={actors}
           busy={busy}
-          initial={draft.fields}
+          initial={draft.edited ?? draft.fields}
+          initialTags={draft.tagsText}
+          onChange={persistDraftEdits}
           onClose={() => setDraft(null)}
           onSubmit={async (fields) => {
             const updates = Object.fromEntries(

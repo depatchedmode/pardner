@@ -65,6 +65,23 @@ const groups = [
   { name: 'reliability-tooling', scripts: ['test:runtime'], files: names('support/reliability/baseline.mjs support/reliability/collision-example.mjs support/reliability/compatibility.mjs support/reliability/locked.py support/reliability/profiles.json') },
   { name: 'control-pane', scripts: ['test:runtime', 'test:ui'], files: names('lib/control-pane.js support/fake-t3-server.js') },
   {
+    name: 'client-presence', scripts: ['test:runtime'], files: ['lib/client-presence.js'],
+    focused: [{ command: 'node --test test/client-presence.test.js', note: 'Ephemeral session ownership, expiry, replay and cross-device Actor aggregation; API and browser behavior need separate exercises' }],
+  },
+  {
+    name: 'client-onboarding', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'],
+    qualification: 'Private client persistence, authenticated admission and resumable project enrollment',
+    files: names(`lib/client-identity.js lib/client-registry.js lib/client-runtime.js lib/client-runtime-child.js
+      lib/client-auth.js lib/client-invites.js lib/client-projects.js lib/client-proxy.js lib/client-service.js lib/client-cli.js`),
+    focused: [{ command: 'node --test test/client-registry.test.js test/client-onboarding.test.js test/client-cli.test.js test/client-recovery.test.js test/client-shutdown.test.js test/onboarding-flow.test.js',
+      note: 'Real client enrollment, authority boundaries, CLI privacy, cold restoration, revocation, offline restart and project isolation' }],
+  },
+  {
+    name: 'onboarding-invitation', scripts: ['test:cli', 'test:ui'], files: ['lib/onboarding-invitation.js'],
+    qualification: 'Enrollment data parsing and the recipient setup entry point',
+    focused: [{ command: 'node --test test/onboarding-invitation.test.js', note: 'Raw and prompted versioned invitation parsing; real redemption is exercised separately' }],
+  },
+  {
     name: 't3-qualification-harness', scripts: [], files: names('scripts/t3-qualification.js support/t3-fake-codex.mjs'),
     focused: [{ command: 'npm run test:t3-qualification', note: 'Requires the pinned T3 app; see docs/PARDNER-T3-QUALIFICATION.md' }],
   },
@@ -92,12 +109,12 @@ export function classifyPath(path) {
     return { name: 'ui', scripts: ['test:ui'] }
   }
   if (/^test\/[^/]+\.test\.js$/.test(path)) {
-    if (/pardner-(ui|phone|connection-ui|control-ui)|browser-connection|lan-/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
+    if (/pardner-(ui|phone|connection-ui|control-ui)|client-onboarding-ui|browser-connection|lan-/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
     if (/storage|conflict|ticket/.test(path)) return { name: 'qualification-test', scripts: ['test:qualification'], qualification: 'Persistence or conflict regression evidence changed' }
     if (/pardner-cli|pardner-brand/.test(path)) return { name: 'cli-test', scripts: ['test:cli'] }
     return { name: 'regression-test', scripts: ['test:runtime'] }
   }
-  if (['README.md', 'AGENTS.md', 'CLAUDE.md', 'LICENSE', '.claude/skills'].includes(path)
+  if (['README.md', 'PRODUCT.md', 'AGENTS.md', 'CLAUDE.md', 'LICENSE', '.claude/skills'].includes(path)
     || /^(docs|skills|\.agents)\/.*\.md$/.test(path) || /^docs\/evidence\/.*\.json$/.test(path)) return { name: 'guidance', scripts: [] }
   if (['.gitignore', 'ui-prototype/.gitignore'].includes(path)) return { name: 'repository-config', scripts: [] }
   return null

@@ -1,10 +1,22 @@
 # Pardner local service and CLI
 
 The default service and executable now use the schema 5 workspace. Human and
-agent Actors author through the same local HTTP operations. The UI integration and
-full acceptance milestone are still in progress; see [implementation evidence](PARDNER-EVIDENCE.md).
+agent Actors author through the same local HTTP operations. See the
+[implementation evidence](PARDNER-EVIDENCE.md) for tested candidates and limitations.
 
 ## Open the local UI
+
+For the new Start/Join flow and session-bound authorship, use the
+[local client preview](PARDNER-CLIENT.md): `pardner client serve` followed by
+`pardner client open`. It opens without manually entering an API key and keeps
+each project in a separate local runtime. The standalone instructions below
+remain available for existing workspaces.
+
+The client also supports `show --project ID`, `revoke --project ID --kind
+device|agent|member --id ID --operation-id ID`, and `export --project ID
+--output-file FILE`. Use the [recovery guide](PARDNER-CLIENT-RECOVERY.md) for full
+cold backups, fresh-install restoration and authority replacement. A content
+export does not replace the private registry and replica backup.
 
 Build the browser client with `npm ci --prefix ui-prototype` and `npm run ui:build`.
 Start the local service, then open its HTTP address at `/pardner/` (normally
@@ -278,9 +290,10 @@ npm run test:runtime
 npm run test:cli
 ```
 
-These focused suites exit naturally. The legacy regression command still uses
-forced exit and is not lifecycle evidence. The final `verify` command and 20-seed
-two-browser/two-agent acceptance gate remain to be implemented.
+These focused suites exit naturally. `npm run verify` builds the UI, runs the full
+regression suite without forced exit and exercises one acceptance scenario.
+`npm run test:acceptance -- --repeat 20 --seed 1` is the separate deliberate gate;
+its deterministic workers do not establish the [real-agent rehearsal](PARDNER-CLIENT-REHEARSAL.md).
 
 ## Native transport diagnostics
 

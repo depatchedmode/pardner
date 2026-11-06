@@ -38,7 +38,14 @@ Plans in agent-assisted work are hypotheses, not blueprints. Pardner's vocabular
 
 ## Current implementation
 
-Pardner runs one local service per machine. Human and agent Actors use the same
+The [local client onboarding preview](docs/PARDNER-CLIENT.md) adds a private
+identity and project registry, isolated project runtimes, Start/Join, purpose-specific
+invitations and authenticated Actor sessions. `pardner client open` signs the local
+browser in through a one-time link. Git supplies profile defaults; the session
+determines authorship. The browser can switch projects and show reported Actor
+presence. This preview does not migrate existing standalone installations.
+
+In standalone mode, Pardner runs one local service per machine. Human and agent Actors use the same
 workspace and attributed operation API, through the browser or `pardner` CLI.
 Each service owns a persisted Automerge replica; a hub relays changes and owns a
 transactional SQLite delivery ledger. Actor identity is separate from replica
@@ -55,7 +62,7 @@ Different-field edits merge; same-field alternatives retain their authors and
 require explicit resolution. A synced indicator requires an explicit hub
 persistence acknowledgement covering the displayed document heads.
 
-The task board is served locally at `/pardner/`. It supports explicit Actor
+The task board is served locally at `/pardner/`. Standalone mode supports explicit Actor
 selection, full task context, revision-aware edits, atomic handoffs, comments,
 read receipts, conflict alternatives, history, and commit evidence. Credentials
 are entered at runtime and remembered in browser local storage without application expiry. The browser owns
@@ -98,6 +105,29 @@ Use Node **24.11.1**. From this checkout:
 npm ci
 npm ci --prefix ui-prototype
 npm run ui:build
+node bin/pardner.js client serve --data .pardner-client --harness openai-codex --name Alpha
+```
+
+In another terminal, open the client:
+
+```sh
+node bin/pardner.js client open --data .pardner-client
+```
+
+Confirm your Git-derived profile, then start or join a project. Use the actual
+setup agent's harness and name; the example registers Alpha as a Codex Actor.
+See the [client guide](docs/PARDNER-CLIENT.md) for invitations, private agent
+credentials, connectivity and recovery boundaries.
+The [recovery guide](docs/PARDNER-CLIENT-RECOVERY.md) covers private content export,
+device revocation, complete cold backups and restoring an authority at its existing
+address. The [client rehearsal](docs/PARDNER-CLIENT-REHEARSAL.md) records the separate
+real-human/real-agent acceptance flow.
+
+### Standalone service
+
+The existing service and explicit Actor-selection workflow remain available:
+
+```sh
 node bin/pardner.js serve --data .pardner
 ```
 
