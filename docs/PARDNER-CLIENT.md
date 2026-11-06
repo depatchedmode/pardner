@@ -77,6 +77,13 @@ do not initialize a conflicting new identity first. If a response is uncertain,
 retry the same operation ID and unchanged invitation. Recipient proof and setup
 progress are stored privately so a retry does not consume another invitation.
 
+When another harness joins an existing client, supply its actual metadata on
+`client join`, for example `--harness anthropic-claude-code --name Gamma --model
+claude-opus-5-5 --managed-by T3`. It becomes a separate Actor for the same human;
+the original setup agent, project and persisted runtime remain. A later
+`client agent-grant` or `client operation` can select that enrolled harness with
+`--harness`. Selecting a harness that has not enrolled on this device fails.
+
 The CLI can also issue invitations through `client invite --project ID --purpose
 human|agent|device --output-file FILE --operation-id ID`. It writes the private
 artifact to the chosen file and prints only the summary and file path.

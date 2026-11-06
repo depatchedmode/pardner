@@ -83,7 +83,7 @@ responses or normal status output.
 | `GET /projects/:id/invites` | `{invites: InviteSummary[]}` without credential text |
 | `POST /projects/:id/invites` | `{purpose: "human"|"agent"|"device", operationId}` → `{invite: InviteSummary, invitation: string}`; invitation is private opaque setup data for explicit Copy/Reveal |
 | `POST /projects/:id/invites/:inviteId/revoke` | revokes grant; returns updated summary |
-| `POST /join` | `{invitation: string, operationId}` → `{project: Project}`; durable recipient-bound attempt and resume |
+| `POST /join` | `{invitation: string, operationId, agent?:{harnessId,name,model,managedBy}}` → `{project: Project}`; durable recipient-bound attempt and resume; optional metadata identifies another actual harness joining the existing client |
 | `GET /projects/:id/presence` | PresenceSnapshot |
 | `POST /projects/:id/sessions` | `{kind:"browser"|"agent", model?, managedBy?}` → `{sessionId, ttlMs}`; server supplies project/Actor/device binding |
 | `POST /projects/:id/sessions/:sessionId/report` | `{seq, active:boolean, focusTaskIds:string[], model?}` → session receipt |
