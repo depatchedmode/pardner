@@ -65,6 +65,10 @@ const groups = [
   { name: 'reliability-tooling', scripts: ['test:runtime'], files: names('support/reliability/baseline.mjs support/reliability/collision-example.mjs support/reliability/compatibility.mjs support/reliability/locked.py support/reliability/profiles.json') },
   { name: 'control-pane', scripts: ['test:runtime', 'test:ui'], files: names('lib/control-pane.js support/fake-t3-server.js') },
   {
+    name: 'client-presence', scripts: ['test:runtime'], files: ['lib/client-presence.js'],
+    focused: [{ command: 'node --test test/client-presence.test.js', note: 'Ephemeral session ownership, expiry, replay and cross-device Actor aggregation; API and browser behavior need separate exercises' }],
+  },
+  {
     name: 't3-qualification-harness', scripts: [], files: names('scripts/t3-qualification.js support/t3-fake-codex.mjs'),
     focused: [{ command: 'npm run test:t3-qualification', note: 'Requires the pinned T3 app; see docs/PARDNER-T3-QUALIFICATION.md' }],
   },

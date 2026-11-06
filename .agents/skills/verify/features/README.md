@@ -16,6 +16,8 @@ already covered. Match the exact assertions to the task's expected result.
   reconnect, response loss, and browser credential lifecycle.
 - [Control pane and issue links](control.md): T3 credential, registry, routes,
   queued intent, stale reads, approvals, cancellation, verdicts, and GitHub links.
+- [Client onboarding and presence](client-onboarding.md): authenticated Actor
+  sessions, device aggregation, expiry and integration evidence boundaries.
 
 Entries describe the checks that exist in this checkout. When a coverage
 overlay under trial adds assertions (for example both-engine QR image loading
