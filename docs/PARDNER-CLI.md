@@ -6,6 +6,12 @@ full acceptance milestone are still in progress; see [implementation evidence](P
 
 ## Open the local UI
 
+For the new Start/Join flow and session-bound authorship, use the
+[local client preview](PARDNER-CLIENT.md): `pardner client serve` followed by
+`pardner client open`. It opens without manually entering an API key and keeps
+each project in a separate local runtime. The standalone instructions below
+remain available for existing workspaces.
+
 Build the browser client with `npm ci --prefix ui-prototype` and `npm run ui:build`.
 Start the local service, then open its HTTP address at `/pardner/` (normally
 `http://127.0.0.1:8004/pardner/`). Enter the token from the local connection file

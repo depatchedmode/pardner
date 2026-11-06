@@ -24,6 +24,15 @@ browser exercises. Registration is not evidence that an agent is doing work.
 
 ## Integrated flow evidence
 
+Run `node --test test/client-registry.test.js test/client-onboarding.test.js
+test/client-cli.test.js test/onboarding-flow.test.js` for the service/CLI paths.
+The real two-client fixtures cover enrollment, private bootstrap, actor binding,
+recipient proof, member invitations, device identity, remote presence, revocation
+and replay. `onboarding-flow` uses browser cookies across project switching,
+authority outage, offline client restart and reconnection; it also redeems the
+short setup prompt. The public-gateway assertion checks configuration and Host
+rejection, not an actual Internet route. These fixtures do not involve live LLMs.
+
 Use separate disposable client directories for Alice and Bob, plus explicit
 Greek-named fixture agents. Preserve existing user installations. The intended
 exercise covers private local bootstrap, project creation, human invitation,

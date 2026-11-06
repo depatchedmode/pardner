@@ -69,6 +69,14 @@ const groups = [
     focused: [{ command: 'node --test test/client-presence.test.js', note: 'Ephemeral session ownership, expiry, replay and cross-device Actor aggregation; API and browser behavior need separate exercises' }],
   },
   {
+    name: 'client-onboarding', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'],
+    qualification: 'Private client persistence, authenticated admission and resumable project enrollment',
+    files: names(`lib/client-identity.js lib/client-registry.js lib/client-runtime.js lib/client-runtime-child.js
+      lib/client-auth.js lib/client-invites.js lib/client-projects.js lib/client-proxy.js lib/client-service.js lib/client-cli.js`),
+    focused: [{ command: 'node --test test/client-registry.test.js test/client-onboarding.test.js test/client-cli.test.js test/onboarding-flow.test.js',
+      note: 'Real client enrollment, authority boundaries, CLI privacy, offline restart and project isolation' }],
+  },
+  {
     name: 'onboarding-invitation', scripts: ['test:cli', 'test:ui'], files: ['lib/onboarding-invitation.js'],
     qualification: 'Enrollment data parsing and the recipient setup entry point',
     focused: [{ command: 'node --test test/onboarding-invitation.test.js', note: 'Raw and prompted versioned invitation parsing; real redemption is exercised separately' }],
@@ -101,7 +109,7 @@ export function classifyPath(path) {
     return { name: 'ui', scripts: ['test:ui'] }
   }
   if (/^test\/[^/]+\.test\.js$/.test(path)) {
-    if (/pardner-(ui|phone|connection-ui|control-ui)|browser-connection|lan-/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
+    if (/pardner-(ui|phone|connection-ui|control-ui)|client-onboarding-ui|browser-connection|lan-/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
     if (/storage|conflict|ticket/.test(path)) return { name: 'qualification-test', scripts: ['test:qualification'], qualification: 'Persistence or conflict regression evidence changed' }
     if (/pardner-cli|pardner-brand/.test(path)) return { name: 'cli-test', scripts: ['test:cli'] }
     return { name: 'regression-test', scripts: ['test:runtime'] }
