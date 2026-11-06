@@ -69,6 +69,11 @@ const groups = [
     focused: [{ command: 'node --test test/client-presence.test.js', note: 'Ephemeral session ownership, expiry, replay and cross-device Actor aggregation; API and browser behavior need separate exercises' }],
   },
   {
+    name: 'onboarding-invitation', scripts: ['test:cli', 'test:ui'], files: ['lib/onboarding-invitation.js'],
+    qualification: 'Enrollment data parsing and the recipient setup entry point',
+    focused: [{ command: 'node --test test/onboarding-invitation.test.js', note: 'Raw and prompted versioned invitation parsing; real redemption is exercised separately' }],
+  },
+  {
     name: 't3-qualification-harness', scripts: [], files: names('scripts/t3-qualification.js support/t3-fake-codex.mjs'),
     focused: [{ command: 'npm run test:t3-qualification', note: 'Requires the pinned T3 app; see docs/PARDNER-T3-QUALIFICATION.md' }],
   },
