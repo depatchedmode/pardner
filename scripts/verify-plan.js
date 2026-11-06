@@ -114,7 +114,7 @@ export function classifyPath(path) {
     if (/pardner-cli|pardner-brand/.test(path)) return { name: 'cli-test', scripts: ['test:cli'] }
     return { name: 'regression-test', scripts: ['test:runtime'] }
   }
-  if (['README.md', 'AGENTS.md', 'CLAUDE.md', 'LICENSE', '.claude/skills'].includes(path)
+  if (['README.md', 'PRODUCT.md', 'AGENTS.md', 'CLAUDE.md', 'LICENSE', '.claude/skills'].includes(path)
     || /^(docs|skills|\.agents)\/.*\.md$/.test(path) || /^docs\/evidence\/.*\.json$/.test(path)) return { name: 'guidance', scripts: [] }
   if (['.gitignore', 'ui-prototype/.gitignore'].includes(path)) return { name: 'repository-config', scripts: [] }
   return null
