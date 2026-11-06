@@ -118,6 +118,10 @@ Confirm your Git-derived profile, then start or join a project. Use the actual
 setup agent's harness and name; the example registers Alpha as a Codex Actor.
 See the [client guide](docs/PARDNER-CLIENT.md) for invitations, private agent
 credentials, connectivity and recovery boundaries.
+The [recovery guide](docs/PARDNER-CLIENT-RECOVERY.md) covers private content export,
+device revocation, complete cold backups and restoring an authority at its existing
+address. The [client rehearsal](docs/PARDNER-CLIENT-REHEARSAL.md) records the separate
+real-human/real-agent acceptance flow.
 
 ### Standalone service
 

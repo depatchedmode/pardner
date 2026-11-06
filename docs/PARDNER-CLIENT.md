@@ -134,5 +134,7 @@ project directories, metadata, credentials and delivery state. Stop the client
 before a cold backup and keep only one restored copy active. Synchronization is
 not a backup. External files referenced by tasks need their own backup. Existing
 standalone `.pardner` installations are preserved; use a fresh client directory.
-Dedicated export/restore, hub-replacement and broader failure qualification remain
-tracked in M7. Process-crash checks do not establish power-loss durability.
+Use the [client recovery procedures](PARDNER-CLIENT-RECOVERY.md) for private
+content export, complete cold backup/restoration, owned-device revocation and
+authority replacement at the same address. Qualification and real-agent rehearsal
+remain separate evidence. Process-crash checks do not establish power-loss durability.

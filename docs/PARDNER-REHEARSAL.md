@@ -1,5 +1,10 @@
 # Two-machine rehearsal
 
+For the authenticated local client, use the
+[client onboarding rehearsal](PARDNER-CLIENT-REHEARSAL.md). The setup below is for
+the retained standalone service; its token entry and author picker do not apply
+to normal client mode.
+
 This is a prepared human signoff exercise, separate from automated completion.
 Use two humans and two real agents after the automated acceptance gate passes.
 The agents may use local or remote model providers; the workspace must remain
@@ -8,7 +13,7 @@ usable without its hub regardless of the provider chosen.
 ## Setup
 
 Use the same Pardner checkout and Node version on both machines. Install root and
-UI dependencies and build the UI. Start a fresh version 3 workspace: prior installs
+UI dependencies and build the UI. Start a fresh workspace of the supported schema: prior installs
 are considered stale and must not be migrated or deleted automatically.
 
 On machine A, run a hub in a separate directory on ports 18004/18005. Bind it to

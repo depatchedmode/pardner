@@ -24,8 +24,16 @@ browser exercises. Registration is not evidence that an agent is doing work.
 
 ## Integrated flow evidence
 
+The [recovery guide](../../../../docs/PARDNER-CLIENT-RECOVERY.md) is exercised by
+`test/client-recovery.test.js`: fresh-directory cold restores preserve identity,
+project isolation, retry history, invitations and delivery acknowledgements;
+an owned device can revoke another, with retained content export restricted to
+the local operator. A readable export is not a replica/credential backup. Keep
+the [real-agent rehearsal](../../../../docs/PARDNER-CLIENT-REHEARSAL.md) separate
+from these automated fixtures and preserve human signoff as a distinct outcome.
+
 Run `node --test test/client-registry.test.js test/client-onboarding.test.js
-test/client-cli.test.js test/onboarding-flow.test.js` for the service/CLI paths.
+test/client-cli.test.js test/client-recovery.test.js test/onboarding-flow.test.js` for the service/CLI paths.
 The real two-client fixtures cover enrollment, private bootstrap, actor binding,
 recipient proof, member invitations, device identity, remote presence, revocation
 and replay. `onboarding-flow` uses browser cookies across project switching,
