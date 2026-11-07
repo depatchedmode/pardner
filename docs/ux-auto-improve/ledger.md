@@ -6,6 +6,7 @@ The repository is public, so narrated videos are stored outside it, in the owner
 |---|---|---|---|---|---|
 | 1 | 2026-11-07 | Activity view and task History | `d3518ea5`, `205b2719`, `dfd334f3` | `round-1/activity-history.mp4` (79 s) | merged on branch |
 | 2 | 2026-11-07 | Comments, @mentions and unread state | `0d3b6c1f`, `b1c66222`, `f147724e`, `84f92442` | `round-2/comments-mentions.mp4` (76 s) | merged on branch |
+| 3 | 2026-11-07 | Hand off work | `aa92baca`, `d8df6c05`, `b12587c6` | `round-3/hand-off.mp4` (83 s) | merged on branch; acceptance gate owed |
 
 ## Round 1 — Activity view and task History
 
@@ -84,3 +85,43 @@ The repository is public, so narrated videos are stored outside it, in the owner
 **Video notes.** The highlight ring on the Comments heading is slightly clipped at the top edge. One caption covers a timestamp. The "Mentions look like text" ring surrounds the whole line rather than the token.
 
 **Unverified.** The `comments.js` unit tests were written before the module, but were never run red. The 20-seed acceptance gate was not run.
+
+## Round 3 — Hand off work
+
+**Why.**
+- The Hand off form was always expanded. It took about 430px of every Task details visit and pushed Comments below the fold (#111).
+- The status always defaulted to Review, so handing over a Completed task silently reopened it.
+- After a successful handoff, the form stayed filled in.
+- The stale-draft notice took 190–260px.
+- Escape threw away typed drafts (#121), and pressing Escape inside the pairing dialog also closed the task panel.
+
+**What changed.**
+- **Collapsed form.** **Hand off work** is now a button next to **Edit task**. Opening it focuses Recipient. **Cancel handoff** resets the form. A successful handoff collapses it to "Handed off to Builder · agent · Review." The submit button is now the primary action, still named **Hand off**.
+- **Error slots (V3).** When the form is closed, errors and Retry fall back to the panel, so a pending request is always reachable.
+- **Status default** comes from the task: In progress → Review; every other status stays as it is. "Use latest task details" re-derives an untouched status. The stale notice is one line, and the deliberate re-confirmation (commit 92a117d1) is unchanged.
+- **Escape** no longer closes the panel when the focused text field has content, or when focus is inside a dialog. On buttons, selects and empty fields it closes the panel as before.
+
+**Tests.**
+- New: `test/ui-handoff.test.js`, plus three Chromium/WebKit UI tests: collapse/success/Retry, status defaults, and Escape safety.
+- Updated, without weakening anything: an extra "Hand off work" click at `pardner-ui` ~82, `scripts/acceptance.js` ~179, and one phone test whose panel no longer overflowed.
+- `npm run test:ui`: 32/32 on the integrated branch. Full `node --test`: 433/433.
+
+**Not run: the 20-seed acceptance gate.** It is owed because `scripts/acceptance.js` changed (one extra click before the browser handoff). Run `npm run test:acceptance -- --repeat 20 --seed 1` under Node 24.11.1 on an idle machine. This machine's load average stayed at 7–8 because of other sessions.
+
+**Process.**
+- A Sonnet reviewer made 8 proposals.
+- An Opus judge narrowed them:
+  - The button is named "Hand off work" to avoid colliding with "Hand off".
+  - Only In progress → Review changes the default.
+  - "Hand off anyway" was rejected, because it would defeat the deliberate stale re-confirmation.
+  - The Escape fix was narrowed to keep the existing Escape tests.
+  - The header status select (#115) was deferred.
+  - Sticky composer and StatusSelect DRY were rejected.
+- Two Sonnet implementers worked in parallel. The lead resolved a test-file conflict between them.
+
+**Deferred.**
+- #115: a one-click Complete or status select in the header.
+- Drafts lost when switching Actor (#121 F-019-02; the drafts need lifting out of the keyed panel).
+- Opening the form automatically when a draft exists.
+
+**Video notes.** In the "before" clip, Comments sat at the very bottom edge rather than fully below the fold, so its caption reads "Comments pushed down". The "Draft lost" caption sits over the board, because the panel is gone at that point.
