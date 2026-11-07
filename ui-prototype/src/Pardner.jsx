@@ -504,6 +504,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
         >
           Control
         </button>}
+        {view === 'board' && <>
         <SelectActor
           label="Assigned to"
           emptyLabel="All Actors"
@@ -521,6 +522,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           {Object.values(veins).sort((a, b) => a.title.localeCompare(b.title)).map(vein =>
             <option key={vein.id} value={vein.id}>{vein.title}</option>)}
         </select></label>
+        </>}
       </nav>
       <main>
         {view === 'board' ? (
@@ -711,6 +713,7 @@ function TaskForm({
     setFields((current) => ({ ...current, [field]: value }))
   const [tags, setTags] = useState(initialTags ?? fields.tags.join(', '))
   useEffect(() => { onChange?.(fields, tags) }, [onChange, fields, tags])
+  const [titleBlank, setTitleBlank] = useState(false)
   return (
     <section
       className={editing ? 'editor' : 'side-panel'}
@@ -725,17 +728,30 @@ function TaskForm({
       <form
         onSubmit={(event) => {
           event.preventDefault()
+          if (!fields.title.trim()) {
+            setTitleBlank(true)
+            event.currentTarget.elements.namedItem('title')?.focus()
+            return
+          }
           void onSubmit({ ...fields, tags: tags.split(',').map(tag => tag.trim()).filter(Boolean) })
         }}
       >
         <label>
           Title
           <input
+            name="title"
             required
+            autoFocus={!editing}
+            aria-invalid={titleBlank || undefined}
+            aria-describedby={titleBlank ? `task-title-error-${editing ? 'edit' : 'new'}` : undefined}
             value={fields.title}
-            onChange={(event) => set('title', event.target.value)}
+            onChange={(event) => {
+              set('title', event.target.value)
+              setTitleBlank(false)
+            }}
           />
         </label>
+        {titleBlank && <p className="error" role="alert" id={`task-title-error-${editing ? 'edit' : 'new'}`}>Enter a title that is not only spaces.</p>}
         <label>
           Description
           <textarea
@@ -767,7 +783,7 @@ function TaskForm({
               onChange={(event) => set('priority', event.target.value)}
             >
               {['p0', 'p1', 'p2', 'p3'].map((value) => (
-                <option key={value}>{value}</option>
+                <option key={value} value={value}>{value.toUpperCase()}</option>
               ))}
             </select>
           </label>
@@ -1133,7 +1149,7 @@ function TaskDetail({
               onChange={(event) => setHandoffMessage(event.target.value)}
             />
           </label>
-          <button disabled={!canWrite || !to || handoffStale}>Hand off</button>
+          <button disabled={!canWrite || !to || handoffStale || !handoffMessage.trim()}>Hand off</button>
         </form>
       </section>
       <section>
@@ -1209,7 +1225,7 @@ function TaskDetail({
               placeholder="Share progress or mention an Actor with @handle"
             />
           </label>
-          <button className="primary" disabled={!canWrite}>
+          <button className="primary" disabled={!canWrite || !message.trim()}>
             Add comment
           </button>
         </form>

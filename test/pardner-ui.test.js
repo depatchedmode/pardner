@@ -53,6 +53,13 @@ for (const uuidAvailable of [true, false]) it(
       }
       const [alice, bob] = pages
       await alice.getByRole('button', { name: 'New task', exact: true }).click()
+      assert.equal(await alice.getByLabel('Title', { exact: true }).evaluate(input => input === document.activeElement), true,
+        'opening New task focuses the title')
+      assert.deepEqual(await alice.getByLabel('Priority', { exact: true }).locator('option').allTextContents(), ['P0', 'P1', 'P2', 'P3'])
+      await alice.getByLabel('Title', { exact: true }).fill('   ')
+      await alice.getByRole('button', { name: 'Create task', exact: true }).click()
+      await alice.getByRole('alert').getByText('Enter a title that is not only spaces.', { exact: true }).waitFor()
+      assert.equal((await run(['tasks'])).tasks.length, 0, 'a blank title never reaches the service')
       await alice
         .getByLabel('Title', { exact: true })
         .fill('Coordinate the first release')
@@ -73,6 +80,14 @@ for (const uuidAvailable of [true, false]) it(
       await bob
         .getByRole('button', { name: /Coordinate the first release/ })
         .click()
+      await alice.getByLabel('Comment', { exact: true }).fill('   ')
+      assert.equal(await alice.getByRole('button', { name: 'Add comment', exact: true }).isDisabled(), true)
+      assert.equal(await alice.getByRole('button', { name: 'Hand off', exact: true }).isDisabled(), true)
+      assert.equal(await alice.getByLabel('Assigned to').count(), 1)
+      await alice.getByRole('button', { name: 'Activity', exact: true }).click()
+      assert.equal(await alice.getByLabel('Assigned to').count(), 0, 'board filters are hidden off the Tasks view')
+      assert.equal(await alice.getByLabel('Status filter').count(), 0)
+      await alice.getByRole('button', { name: 'Tasks', exact: true }).click()
       await alice
         .getByLabel('Comment', { exact: true })
         .fill('The requirements are ready for @builder.')
