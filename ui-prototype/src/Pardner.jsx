@@ -10,9 +10,11 @@ import { AvatarStack } from './Avatar.jsx'
 import { isNewComment } from './comments.js'
 import { defaultHandoffStatus } from './handoff.js'
 import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js'
+import { quickStatusEditable } from './task-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
+const StatusOptions = () => STATUSES.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
 const GOAL_STATUSES = ['open', 'achieved', 'abandoned']
 const ACTIVITY_SHOWS = [
   ['changes', 'All changes'], ['status', 'Status changes and handoffs'], ['comments', 'Comments'],
@@ -721,7 +723,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
         />
         <label>Status filter<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
           <option value="">All statuses</option>
-          {STATUSES.map(value => <option key={value} value={value}>{LABELS[value]}</option>)}
+          <StatusOptions />
         </select></label>
         <label>Vein<select aria-label="Vein" title={veins[activeVeinFilter]?.title ?? 'All veins'} value={activeVeinFilter} onChange={event => setVeinFilter(event.target.value)}>
           <option value="">All veins</option>
@@ -1009,11 +1011,7 @@ function TaskForm({
               value={fields.status}
               onChange={(event) => set('status', event.target.value)}
             >
-              {STATUSES.map((value) => (
-                <option key={value} value={value}>
-                  {LABELS[value]}
-                </option>
-              ))}
+              <StatusOptions />
             </select>
           </label>
           <label>
@@ -1119,6 +1117,8 @@ function TaskDetail({
   const [handoffButton, refocusHandoff] = useRefocus()
   const [handoffOpener, refocusHandoffOpener] = useRefocus()
   const [commentButton, refocusComment] = useRefocus()
+  const [statusSelect, refocusStatus] = useRefocus()
+  const [statusChoice, setStatusChoice] = useState(null)
   // Focus the heading once per open; a remount on Actor switch must not steal focus.
   useEffect(() => {
     if (context && heading.current && claimHeadingFocus()) heading.current.focus()
@@ -1220,6 +1220,7 @@ function TaskDetail({
     )
   const { task, comments, history, conflicts, revisions } = context
   const canWrite = Boolean(actor) && !busy
+  const quickStatus = quickStatusEditable({ actor, editing: Boolean(draft), handingOff: handoffOpen, conflicts })
   const newCount = actor ? comments.filter(comment => isNewComment(comment, actor)).length : 0
   // Lowercase handle -> "Name · kind" for Actors a comment actually notified.
   const deliveredFor = (commentId) => new Map(context.mentions
@@ -1254,7 +1255,7 @@ function TaskDetail({
           onOpen={session.onOpenProfile} />
       </div>}
       <p className="muted">
-        {labelActor(actors[task.assignee])} · {LABELS[task.status]} ·{' '}
+        {labelActor(actors[task.assignee])} · {quickStatus ? '' : `${LABELS[task.status]} · `}
         {task.priority.toUpperCase()}
       </p>
       {context.veins?.length > 0 && (
@@ -1330,6 +1331,31 @@ function TaskDetail({
         </>
       )}
       <div className="task-actions">
+        {quickStatus && (
+          <label className="status-field">
+            Status
+            <select
+              aria-label="Status"
+              ref={statusSelect}
+              disabled={!canWrite}
+              value={statusChoice ?? task.status}
+              onChange={async (event) => {
+                const next = event.target.value
+                if (next === task.status) return
+                setStatusChoice(next)
+                await submit('task.update', {
+                  taskId,
+                  updates: { status: next },
+                  expectedRevisions: { status: revisions.status },
+                })
+                setStatusChoice(null)
+                refocusStatus()
+              }}
+            >
+              <StatusOptions />
+            </select>
+          </label>
+        )}
         {!draft && (
           <button
             ref={editButton}
@@ -1463,11 +1489,7 @@ function TaskDetail({
                 setHandoffStatusTouched(true)
               }}
             >
-              {STATUSES.map((value) => (
-                <option key={value} value={value}>
-                  {LABELS[value]}
-                </option>
-              ))}
+              <StatusOptions />
             </select>
           </label>
           <label>

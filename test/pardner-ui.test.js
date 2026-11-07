@@ -1124,3 +1124,119 @@ for (const engine of [chromium, webkit]) it(`keeps typed drafts and the pairing 
     assert.equal(await panel.count(), 1, 'Escape in the pairing dialog leaves the task panel open')
   })
 })
+
+for (const engine of [chromium, webkit]) it(`changes a task's status in place from Task details in ${engine.name()}`, { timeout: 180000 }, async () => {
+  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open }) => {
+    const { result: { taskId } } = await operate('task.create', { title: 'Approve release notes', status: 'review' })
+    await open()
+    const panel = page.getByRole('complementary', { name: 'Task details' })
+    const select = panel.getByLabel('Status', { exact: true })
+    const meta = panel.locator('p.muted').first()
+    const posts = []
+    page.on('request', request => {
+      if (request.method() === 'POST' && request.url().endsWith('/automerge/operations') && request.postDataJSON().type === 'task.update') posts.push(request.postDataJSON())
+    })
+    const openTask = async () => {
+      await page.getByRole('button', { name: /Approve release notes/ }).click()
+      await panel.getByRole('button', { name: 'Edit task', exact: true }).waitFor()
+    }
+    const close = () => panel.getByRole('button', { name: 'Close', exact: true }).click()
+
+    for (const width of [1440, 375]) {
+      await page.setViewportSize({ width, height: width === 375 ? 812 : 900 })
+      await run(['update', taskId, '--status', 'review', '--revisions', JSON.stringify({ status: (await run(['show', taskId])).revisions.status })])
+      posts.length = 0
+      await openTask()
+      assert.equal(await select.inputValue(), 'review')
+      assert.equal(await select.count(), 1)
+      assert.equal(await meta.textContent().then(text => text.includes('· Review ·')), false, `the meta line drops the status at ${width}`)
+      if (width === 375) {
+        const [selectBox, labelBox, panelOverflow] = [await box(select), await box(panel.locator('label.status-field')),
+          await panel.evaluate(element => element.scrollWidth - element.clientWidth)]
+        assert.ok(selectBox.bottom - selectBox.top >= 44, 'the select is at least 44px tall')
+        assert.ok(panelOverflow <= 0, 'the panel does not overflow sideways')
+        assert.ok(labelBox.bottom - labelBox.top < 70, 'the label and select share one line')
+      }
+      await select.focus()
+      await select.selectOption('completed')
+      await page.waitForFunction(() => document.querySelector('.column[aria-label="Completed"] .task-card'))
+      assert.equal((await run(['show', taskId])).task.status, 'completed')
+      assert.equal(await select.inputValue(), 'completed')
+      await panel.getByText(/to Completed/).first().waitFor()
+      assert.equal(await page.locator('.column[aria-label="Completed"] .task-card', { hasText: 'Approve release notes' }).count(), 1)
+      assert.equal(await panel.getByRole('region', { name: 'Edit task' }).count(), 0, 'no editor opens')
+      await page.waitForFunction(() => document.activeElement === document.querySelector('.side-panel select[aria-label="Status"]'), null, { timeout: 3000 })
+      assert.equal(posts.length, 1, `exactly one task.update at ${width}`)
+      await close()
+    }
+
+    // Mutual exclusion with Edit and Hand off.
+    await run(['update', taskId, '--status', 'review', '--revisions', JSON.stringify({ status: (await run(['show', taskId])).revisions.status })])
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.getByRole('button', { name: /Approve release notes/ }).click()
+    await select.waitFor()
+    await panel.getByRole('button', { name: 'Edit task', exact: true }).click()
+    assert.equal(await panel.getByLabel('Status', { exact: true }).count(), 1)
+    assert.equal(await panel.getByRole('region', { name: 'Edit task' }).getByLabel('Status', { exact: true }).count(), 1)
+    assert.equal(await meta.textContent().then(text => text.includes('· Review ·')), true, 'the meta line shows the status while editing')
+    await panel.getByRole('button', { name: 'Cancel edit', exact: true }).click()
+    await select.waitFor()
+    await panel.getByRole('button', { name: 'Hand off work', exact: true }).click()
+    assert.equal(await select.count(), 0, 'the inline select is hidden during a handoff')
+    await close()
+  })
+})
+
+for (const engine of [chromium, webkit]) it(`recovers the inline Status select from a stale change and a lost response in ${engine.name()}`, { timeout: 180000 }, async () => {
+  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open }) => {
+    const { result: { taskId } } = await operate('task.create', { title: 'Approve release notes', status: 'review' })
+    await open()
+    const panel = page.getByRole('complementary', { name: 'Task details' })
+    const select = panel.getByLabel('Status', { exact: true })
+    await page.getByRole('button', { name: /Approve release notes/ }).click()
+    await select.waitFor()
+
+    // Stale: another Actor changes status while the request is held.
+    let release
+    const held = new Promise(resolve => { release = resolve })
+    await page.route('**/automerge/operations', async route => {
+      if (route.request().postDataJSON().type === 'task.update') await held
+      await route.continue()
+    })
+    const change = select.selectOption('completed')
+    const { revisions } = await run(['show', taskId])
+    await run(['update', taskId, '--status', 'in-progress', '--revisions', JSON.stringify({ status: revisions.status })])
+    release()
+    await change
+    const alert = panel.getByRole('alert')
+    await alert.getByRole('button', { name: 'Dismiss', exact: true }).waitFor()
+    await page.waitForFunction(() => document.querySelector('.side-panel select')?.value === 'in-progress')
+    assert.equal(await select.inputValue(), 'in-progress')
+    assert.equal((await run(['show', taskId])).task.status, 'in-progress')
+    await alert.getByRole('button', { name: 'Dismiss', exact: true }).click()
+    await page.unroute('**/automerge/operations')
+
+    // Lost response: Retry replays the same operation exactly once.
+    const attempts = []
+    let lost = false
+    await page.route('**/automerge/operations', async route => {
+      const operation = route.request().postDataJSON()
+      if (operation.type === 'task.update') attempts.push(operation)
+      if (operation.type === 'task.update' && !lost) {
+        lost = true
+        assert.equal((await route.fetch()).status(), 200)
+        await route.abort('failed')
+      } else await route.continue()
+    })
+    await select.selectOption('completed')
+    const retry = panel.getByRole('button', { name: 'Retry saved request', exact: true })
+    await retry.waitFor()
+    assert.equal(await alert.getByRole('button', { name: 'Dismiss', exact: true }).count(), 0, 'a pending request cannot be dismissed')
+    await retry.click()
+    await retry.waitFor({ state: 'hidden' })
+    await page.waitForFunction(() => document.querySelector('.side-panel select')?.value === 'completed')
+    assert.equal(attempts.length, 2)
+    assert.deepEqual(attempts[0], attempts[1])
+    assert.equal((await run(['show', taskId])).task.status, 'completed')
+  })
+})
