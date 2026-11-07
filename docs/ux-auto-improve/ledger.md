@@ -8,6 +8,7 @@ The repository is public, so narrated videos are stored outside it, in the owner
 | 2 | 2026-11-07 | Comments, @mentions and unread state | `0d3b6c1f`, `b1c66222`, `f147724e`, `84f92442` | `round-2/comments-mentions.mp4` (76 s) | merged on branch |
 | 3 | 2026-11-07 | Hand off work | `aa92baca`, `d8df6c05`, `b12587c6` | `round-3/hand-off.mp4` (83 s) | merged on branch; acceptance gate owed |
 | 4 | 2026-11-07 | Task status and close-out (#115) — loop 2, iteration 1 | `f079803a` | `round-4/status-close-out.mp4` (58 s) | merged on branch |
+| 5 | 2026-11-07 | Goals view: verdicts, goal status, conflicts (#131, #143) (loop 2, iteration 2) | `2ea03452`, `292d30f1`, `a64ba081` | `round-5/goals-verdicts-conflicts.mp4` (69 s) | merged on branch |
 
 ## Round 1 — Activity view and task History
 
@@ -168,3 +169,34 @@ That is four steps for one field. The status itself was plain muted text in the 
 - Rendering a real two-replica status conflict in the UI tests. Only a unit test covers it.
 
 **Note.** On Windows and Linux, an arrow key on a closed select fires `change`, so one stray arrow press saves a change. The judge accepted this because status changes are reversible and recorded in History.
+
+## Round 5 — Goals view: vein verdicts, goal status and goal/vein conflicts (#131, #143)
+
+**Why.** The Goals view was read-only.
+- "Ready for a verdict" asked the user to act, but recording a verdict took four CLI calls.
+- When two people recorded different verdicts on separate replicas, the vein pill showed only one of them. Nothing said who disagreed, and resolving it took three CLI calls (STORY-049, -050, -053, -068, -069).
+
+**What changed.**
+- **Status selects.** Each vein and goal gets a select named "Status of vein {title}" or "Status of goal {title}". These names avoid colliding with the Task details "Status" control, which can stay open over Goals. Each select sends `vein.update` or `goal.update` with its expected revision. The selects are disabled while a request is busy or pending, and nothing cascades between goals, veins and tasks.
+- **Errors** for goal and vein operations now appear in that goal's or vein's row, never inside an unrelated task panel.
+- **Disputed status.** The pill reads "Dead end or Proven". A closed "Conflicting edits: status" disclosure lists each value with its authors and a "Keep {value}" button, which calls `vein.resolve` or `goal.resolve`. Identical concurrent values collapse into one Keep. A vein whose goal is disputed stays listed under both goals, each naming both goal titles.
+- **375 fix.** The status selects no longer clip "Dead end" or "Abandoned".
+
+**Tests.**
+- New `support/replica-workspace.js`: the first browser harness that runs a real hub and two replicas through a partition. A characterization test covers the existing task-conflict UI.
+- Four browser conflict cases: vein status, goal status, vein goalId, and stale Keep.
+- `test/ui-record-status.test.js` and `test/ui-record-conflicts.test.js`.
+- `npm run test:ui`: 46/46 on the package branch.
+- Full `node --test` on the integrated branch: 446/448. The two failures were `pardner-connection-ui` (pairing recovery) and `pardner-ui` ("uses shared browser operations", a strict-mode duplicate match on a comment's text). Both ran while the video recorder had services up. Rerun alone, both files passed twice, and the `pardner-ui` test passed 5 more times. It is recorded here as **flaky under load**; a short-lived duplicate comment render is not ruled out and should be watched.
+
+**Process.**
+- A Sonnet reviewer proposed 8 changes.
+- An Opus judge found that a task panel can stay open over Goals, then required page-unique names and record-row error routing. It required both busy and pending to disable the controls, turned the always-open conflict panel into a closed disclosure with one Keep per value, kept a disputed-goal vein listed under both goals, and asked for a real two-replica browser harness first.
+- Sonnet implementers built WP1 and WP2 in parallel, then WP3.
+
+**Deferred.**
+- Moving tasks between veins, and moving a vein to another goal, in the browser.
+- Moving the task and comment conflict blocks onto the shared component, now that a harness exists.
+- `partition()` in the harness should wait for `!syncPending` before stopping the hub. A test works around this today.
+
+**Video notes.** The goal-conflict disclosure is visible but not opened on camera. The Keep shown is the first button.
