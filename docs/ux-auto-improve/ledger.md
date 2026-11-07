@@ -7,6 +7,7 @@ The repository is public, so narrated videos are stored outside it, in the owner
 | 1 | 2026-11-07 | Activity view and task History | `d3518ea5`, `205b2719`, `dfd334f3` | `round-1/activity-history.mp4` (79 s) | merged on branch |
 | 2 | 2026-11-07 | Comments, @mentions and unread state | `0d3b6c1f`, `b1c66222`, `f147724e`, `84f92442` | `round-2/comments-mentions.mp4` (76 s) | merged on branch |
 | 3 | 2026-11-07 | Hand off work | `aa92baca`, `d8df6c05`, `b12587c6` | `round-3/hand-off.mp4` (83 s) | merged on branch; acceptance gate owed |
+| 4 | 2026-11-07 | Task status and close-out (#115) — loop 2, iteration 1 | `f079803a` | `round-4/status-close-out.mp4` (58 s) | merged on branch |
 
 ## Round 1 — Activity view and task History
 
@@ -125,3 +126,45 @@ The repository is public, so narrated videos are stored outside it, in the owner
 - Opening the form automatically when a draft exists.
 
 **Video notes.** In the "before" clip, Comments sat at the very bottom edge rather than fully below the fold, so its caption reads "Comments pushed down". The "Draft lost" caption sits over the board, because the panel is gone at that point.
+
+## Round 4 — Task status and close-out (#115)
+
+The second `/loop` started this round. It was a separate `Skill ux-auto-improve` invocation.
+
+**Why.** To close out a task, a reviewer had to:
+1. Click **Edit task**.
+2. Work through a six-field form, which opens with focus on Title.
+3. Set **Status**.
+4. Click **Save changes**.
+
+That is four steps for one field. The status itself was plain muted text in the details line, so nothing suggested it could be changed (#115; STORY-018, -021, -030, -104).
+
+**What changed.**
+- A **Status** select now sits first in the Task details actions row, labelled "Status" both visibly and for assistive tech. Choosing a value sends one `task.update {status}` with its expected revision. Closing out a task is now a single change, and focus returns to the select.
+- The details line drops the status word while the select is visible.
+- The select is hidden in these cases, so only one status control is on screen at a time:
+  - no Actor is chosen;
+  - **Edit task** is open;
+  - **Hand off work** is open;
+  - the status field has a conflict.
+- Errors and **Retry saved request** use the existing panel slot. A shared `StatusOptions` helper now supplies the four status lists.
+
+**Tests.**
+- New: `test/ui-task-status.test.js`, plus Chromium and WebKit UI tests for close-out (at 1440 and 375), mutual exclusion, the 375 layout, the stale case (shows **Dismiss**, nothing overwritten), and the lost-response case (Retry replays the same `operationId` once).
+- Existing acceptance and phone steps that go through **Edit task** are unchanged.
+- `npm run test:ui`: 36/36. Full `node --test`: 438/438.
+
+**Process.**
+- A Sonnet reviewer proposed 8 changes.
+- An Opus judge approved one package. It moved the select out of the details line into the actions row with a visible label (WCAG 3.3.2), and deferred an inline Priority select.
+- The judge rejected:
+  - removing the panel SaveStatus, because it is durability UI;
+  - dropping Title autofocus in Edit, because that was V4 criterion 3;
+  - a separate "Complete" button;
+  - a "Moved to Completed." line.
+
+**Deferred.**
+- Inline Priority.
+- Rendering a real two-replica status conflict in the UI tests. Only a unit test covers it.
+
+**Note.** On Windows and Linux, an arrow key on a closed select fires `change`, so one stray arrow press saves a change. The judge accepted this because status changes are reversible and recorded in History.
