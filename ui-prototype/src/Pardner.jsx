@@ -78,6 +78,24 @@ function ErrorNotice({ error, retry, onDismiss }) {
     </div>
   )
 }
+// Focuses the returned ref's control once it is connected and enabled again,
+// after `request()` is called. Used to keep focus off <body> when a control
+// unmounts or disables itself while a request runs.
+function useRefocus() {
+  const ref = useRef(null)
+  const wanted = useRef(false)
+  useEffect(() => {
+    if (!wanted.current) return
+    const frame = requestAnimationFrame(() => {
+      const element = ref.current
+      if (!element?.isConnected || element.disabled) return
+      wanted.current = false
+      element.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  })
+  return [ref, useCallback(() => { wanted.current = true }, [])]
+}
 function SaveStatus({ status, connected, busy, heads }) {
   let text = 'Connecting to local service'
   if (busy) text = 'Saving locally…'
@@ -174,6 +192,24 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   const statusUpdates = useRef(0)
   const refreshGeneration = useRef(0)
   const [retryGeneration, setRetryGeneration] = useState(0)
+  // Focus: the control that opened the current panel ({ taskId } for a card, else
+  // the element), and which open has already moved focus to its heading.
+  const opener = useRef(null)
+  const openCount = useRef(0)
+  const headingFocusedFor = useRef(0)
+  const newTaskButton = useRef(null)
+  const viewNav = useRef(null)
+  const panelWasOpen = useRef(false)
+  const openPanel = (from, open) => {
+    opener.current = from
+    openCount.current++
+    open()
+  }
+  const claimHeadingFocus = useCallback(() => {
+    if (headingFocusedFor.current === openCount.current) return false
+    headingFocusedFor.current = openCount.current
+    return true
+  }, [])
   const pairDevice = useCallback(async code => {
     const generation = connectionGeneration.current
     credentialSource.current = 'pair'
@@ -214,7 +250,14 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   const onFocusChange = session?.onFocusChange
   useEffect(() => { onFocusChange?.(selected ? [selected] : []) }, [onFocusChange, selected])
   const requestedTask = session?.requestedTask
-  useEffect(() => { if (requestedTask) { setSelected(requestedTask.taskId); setCreating(false) } }, [requestedTask])
+  // A task opened from a profile is a new open: focus its heading; closing falls back to New task.
+  useEffect(() => {
+    if (!requestedTask) return
+    opener.current = null
+    openCount.current++
+    setSelected(requestedTask.taskId)
+    setCreating(false)
+  }, [requestedTask])
   const onTasks = session?.onTasks
   useEffect(() => { if (doc) onTasks?.(doc.tasks) }, [onTasks, doc])
   const request = useCallback(async (path, body) => {
@@ -330,6 +373,17 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   useEffect(() => {
     if (!sessionMode && doc && actor && !doc.actors[actor]) setActor('')
   }, [doc, actor, sessionMode])
+  // Once a panel unmounts, return focus to its opener, else New task, else the current view's button.
+  useEffect(() => {
+    const open = Boolean(selected || creating)
+    if (panelWasOpen.current && !open) {
+      const from = opener.current
+      const card = from?.taskId && document.querySelector(`.task-card[data-task-id="${CSS.escape(from.taskId)}"]`)
+      const usable = element => element?.isConnected && !element.disabled
+      ;[card || from, newTaskButton.current, viewNav.current?.querySelector('[aria-pressed="true"]')].find(usable)?.focus()
+    }
+    panelWasOpen.current = open
+  }, [selected, creating])
   const submit = async (type, payload, replay = null) => {
     if (inflight.current) return null
     setErrorOrigin({ type: replay?.type ?? type, taskId: (replay?.payload ?? payload)?.taskId })
@@ -355,10 +409,10 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
     try {
       const receipt = await request('/automerge/operations', operation)
       setConfirmedOperation(operation)
-      if (operation.type === 'task.create') {
+      if (operation.type === 'task.create') openPanel({ taskId: receipt.result.taskId }, () => {
         setCreating(false)
         setSelected(receipt.result.taskId)
-      }
+      })
       client.savePending(null)
       setPending(null)
       await refresh()
@@ -440,7 +494,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
         event.preventDefault()
         await pairDevice(pairCode)
       }}>
-        <label>Pairing code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{8}" maxLength={8} required disabled={pairBusy} value={pairCode} onChange={event => { setPairCode(event.target.value); setConnectionError(null) }} /></label>
+        <label>Pairing code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{8}" maxLength={8} required autoFocus={!config.canManageAccess} disabled={pairBusy} value={pairCode} onChange={event => { setPairCode(event.target.value); setConnectionError(null) }} /></label>
         <p className="muted">Open Pair another device on the desktop to get a code. This browser will remember your workspace. Use a trusted network: HTTP traffic is unencrypted.</p>
         {connectionSlot === 'pair' && connectionNotice}
         <button className="primary" disabled={pairBusy}>{pairBusy ? 'Connecting…' : 'Pair this device'}</button>
@@ -448,7 +502,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
       <details open={config.canManageAccess}>
         <summary>Connect with a local service token</summary>
         <form onSubmit={connectWithToken}>
-          <label>Local service token<input type="password" autoComplete="off" required value={credential} onChange={event => { setCredential(event.target.value); setConnectionError(null) }} /></label>
+          <label>Local service token<input type="password" autoComplete="off" required autoFocus={config.canManageAccess} value={credential} onChange={event => { setCredential(event.target.value); setConnectionError(null) }} /></label>
           <p className="muted">Use the token from the service’s connection.json file. This browser remembers it until you forget the workspace or the secret changes.</p>
           {connectionSlot === 'token' && connectionNotice}
           <button className="primary" disabled={pairBusy}>Connect</button>
@@ -494,12 +548,13 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           {session ? <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
             : <SelectActor actors={actors} value={actor} onChange={setActor} />}
           <button
+            ref={newTaskButton}
             className="primary"
             disabled={!actor || busy || Boolean(pending)}
-            onClick={() => {
+            onClick={event => openPanel(event.currentTarget, () => {
               setCreating(true)
               setSelected(null)
-            }}
+            })}
           >
             New task
           </button>
@@ -528,7 +583,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
         <button onClick={() => setPhoneSetup(true)}>Pair another device</button>
         <button disabled={busy} onClick={forget}>Forget this workspace</button>
       </div>}
-      <nav aria-label="Workspace views">
+      <nav aria-label="Workspace views" ref={viewNav}>
         <button
           aria-pressed={view === 'board'}
           onClick={() => setView('board')}
@@ -599,10 +654,12 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
                     <button
                       className="task-card"
                       key={task.id}
-                      onClick={() => {
+                      data-task-id={task.id}
+                      aria-current={selected === task.id ? 'true' : undefined}
+                      onClick={() => openPanel({ taskId: task.id }, () => {
                         setSelected(task.id)
                         setCreating(false)
-                      }}
+                      })}
                     >
                       <span className="priority">
                         {task.priority.toUpperCase()}
@@ -642,7 +699,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
                     {event.type}
                   </p>
                   {event.taskId && (
-                    <button onClick={() => setSelected(event.taskId)}>
+                    <button onClick={click => openPanel(click.currentTarget, () => setSelected(event.taskId))}>
                       {doc.tasks[event.taskId]?.title || event.taskId}
                     </button>
                   )}
@@ -659,11 +716,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           notice={errorSlot === 'create' && errorNotice}
           onClose={closeCreate}
           onSubmit={async (fields) => {
-            const receipt = await submit('task.create', fields)
-            if (receipt) {
-              setCreating(false)
-              setSelected(receipt.result.taskId)
-            }
+            return submit('task.create', fields)
           }}
         />
       )}
@@ -685,6 +738,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           errorSlot={errorSlot}
           errorNotice={errorNotice}
           clearError={() => setError(null)}
+          claimHeadingFocus={claimHeadingFocus}
           onClose={closeDetails}
         />
       )}
@@ -769,6 +823,8 @@ function TaskForm({
   const [tags, setTags] = useState(initialTags ?? fields.tags.join(', '))
   useEffect(() => { onChange?.(fields, tags) }, [onChange, fields, tags])
   const [titleBlank, setTitleBlank] = useState(false)
+  // A failed submit returns focus to its button once it re-enables; the error is announced, not focused.
+  const [submitButton, refocusSubmit] = useRefocus()
   return (
     <section
       className={editing ? 'editor' : 'side-panel'}
@@ -788,7 +844,8 @@ function TaskForm({
             event.currentTarget.elements.namedItem('title')?.focus()
             return
           }
-          void onSubmit({ ...fields, tags: tags.split(',').map(tag => tag.trim()).filter(Boolean) })
+          void Promise.resolve(onSubmit({ ...fields, tags: tags.split(',').map(tag => tag.trim()).filter(Boolean) }))
+            .then(receipt => { if (!receipt) refocusSubmit() })
         }}
       >
         <label>
@@ -796,7 +853,7 @@ function TaskForm({
           <input
             name="title"
             required
-            autoFocus={!editing}
+            autoFocus
             aria-invalid={titleBlank || undefined}
             aria-describedby={titleBlank ? `task-title-error-${editing ? 'edit' : 'new'}` : undefined}
             value={fields.title}
@@ -859,7 +916,7 @@ function TaskForm({
         </label>
         {notice}
         <div className="actions">
-          <button className="primary" disabled={busy}>
+          <button className="primary" ref={submitButton} disabled={busy}>
             {editing ? 'Save changes' : 'Create task'}
           </button>
           {editing && (
@@ -923,9 +980,18 @@ function TaskDetail({
   errorSlot,
   errorNotice,
   clearError,
+  claimHeadingFocus,
   onClose,
 }) {
   const [context, setContext] = useState(null)
+  const heading = useRef(null)
+  const [editButton, refocusEdit] = useRefocus()
+  const [handoffButton, refocusHandoff] = useRefocus()
+  const [commentButton, refocusComment] = useRefocus()
+  // Focus the heading once per open; a remount on Actor switch must not steal focus.
+  useEffect(() => {
+    if (context && heading.current && claimHeadingFocus()) heading.current.focus()
+  }, [context, claimHeadingFocus])
   // In client mode an edit draft survives closing the panel, reloading the tab and
   // switching projects. It is stored per project, Actor and task, never sent until saved.
   const [draft, setDraftState] = useState(() => session ? client.draft(taskId) : null)
@@ -1008,7 +1074,7 @@ function TaskDetail({
   return (
     <aside className="side-panel" aria-label="Task details">
       <div className="panel-heading">
-        <h2>{task.title}</h2>
+        <h2 tabIndex={-1} ref={heading}>{task.title}</h2>
         <button onClick={onClose}>Close</button>
       </div>
       <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />
@@ -1064,7 +1130,7 @@ function TaskDetail({
           initialTags={draft.tagsText}
           onChange={persistDraftEdits}
           notice={noticeFor('task.update')}
-          onClose={() => { setDraft(null); clearError() }}
+          onClose={() => { setDraft(null); clearError(); refocusEdit() }}
           onSubmit={async (fields) => {
             const updates = Object.fromEntries(
               Object.entries(fields).filter(
@@ -1074,7 +1140,8 @@ function TaskDetail({
             )
             if (!Object.keys(updates).length) {
               setDraft(null)
-              return
+              refocusEdit()
+              return true
             }
             const receipt = await submit('task.update', {
               taskId,
@@ -1083,13 +1150,15 @@ function TaskDetail({
                 Object.keys(updates).map((key) => [key, draft.revisions[key]]),
               ),
             })
-            if (receipt) setDraft(null)
+            if (receipt) { setDraft(null); refocusEdit() }
+            return receipt
           }}
         />
       ) : (
         <>
           <MarkdownBody>{task.description || 'No description yet.'}</MarkdownBody>
           <button
+            ref={editButton}
             disabled={!canWrite}
             onClick={() =>
               setDraft({
@@ -1170,7 +1239,7 @@ function TaskDetail({
             if (receipt) {
               setHandoffMessage(current => current === handoffMessage ? '' : current)
               setHandoffBase(null)
-            }
+            } else refocusHandoff()
           }}
         >
           {handoffStale && (
@@ -1211,7 +1280,7 @@ function TaskDetail({
             />
           </label>
           {noticeFor('task.handoff')}
-          <button disabled={!canWrite || !to || handoffStale || !handoffMessage.trim()}>Hand off</button>
+          <button ref={handoffButton} disabled={!canWrite || !to || handoffStale || !handoffMessage.trim()}>Hand off</button>
         </form>
       </section>
       <section>
@@ -1273,6 +1342,7 @@ function TaskDetail({
               text: message,
             })
             if (receipt) setMessage(current => current === message ? '' : current)
+            else refocusComment()
           }}
         >
           <label>
@@ -1286,7 +1356,7 @@ function TaskDetail({
             />
           </label>
           {noticeFor('comment.add')}
-          <button className="primary" disabled={!canWrite || !message.trim()}>
+          <button className="primary" ref={commentButton} disabled={!canWrite || !message.trim()}>
             Add comment
           </button>
         </form>

@@ -7,6 +7,9 @@ function isPairingReady(access) {
 
 export default function PhoneAccess({ request, onClose, canManageAccess }) {
   const dialog = useRef(null)
+  const closeButton = useRef(null)
+  // The button that started the current action; it gets focus back once busy clears.
+  const invoker = useRef(null)
   const [access, setAccess] = useState(null)
   const [interfaceName, setInterfaceName] = useState('')
   const [pairing, setPairing] = useState(null)
@@ -35,32 +38,45 @@ export default function PhoneAccess({ request, onClose, canManageAccess }) {
       .then(url => { if (!stale) setQr(url) }).catch(setError)
     return () => { stale = true }
   }, [pairingUrl])
-  const perform = async action => {
+  useEffect(() => {
+    if (busy || !invoker.current) return
+    const frame = requestAnimationFrame(() => {
+      const target = invoker.current
+      invoker.current = null
+      if (!dialog.current?.open) return
+      const usable = target?.isConnected && !target.disabled && dialog.current.contains(target)
+      ;(usable ? target : closeButton.current)?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [busy])
+  // WebKit does not focus a clicked button, so the invoker comes from the event.
+  const perform = async (action, event) => {
+    invoker.current = event?.currentTarget ?? null
     setBusy(true)
     setError(null)
     try { await action() } catch (failure) { setError(failure) }
     finally { setBusy(false) }
   }
-  const configure = enabled => perform(async () => {
+  const configure = (enabled, event) => perform(async () => {
     setAccess(await request('/pardner/access', { enabled, interfaceName }))
     setPairing(null)
-  })
-  const copyAddress = () => perform(async () => {
+  }, event)
+  const copyAddress = event => perform(async () => {
     if (!navigator.clipboard) throw new Error('Select the device address above and copy it manually.')
     await navigator.clipboard.writeText(deviceUrl)
     setCopied(true)
-  })
-  const generatePairing = () => perform(async () => {
+  }, event)
+  const generatePairing = event => perform(async () => {
     setPairing(await request('/pardner/access/pairing', {}))
     setCopied(false)
-  })
+  }, event)
   return <dialog ref={dialog} className="phone-dialog" aria-labelledby="phone-title" onClose={onClose}>
     <div className="panel-heading">
       <h2 id="phone-title">Pair another device</h2>
-      <button onClick={() => dialog.current.close()} aria-label="Close device pairing">Close</button>
+      <button ref={closeButton} onClick={() => dialog.current.close()} aria-label="Close device pairing">Close</button>
     </div>
     <p className="muted">Scan with a device on the same Wi-Fi to connect.</p>
-    {error && <div role="alert" className="error"><p>{error.message}</p><button onClick={() => perform(load)}>Try again</button></div>}
+    {error && <div role="alert" className="error"><p>{error.message}</p><button onClick={event => perform(load, event)}>Try again</button></div>}
     {!access && !error && <p role="status">Finding available networks…</p>}
     {access && <>
       {!canManageAccess && !access.phoneUrl && <p>Open Pardner on the service computer through its local address to enable device access.</p>}
@@ -89,10 +105,10 @@ export default function PhoneAccess({ request, onClose, canManageAccess }) {
         </label>
         {!access.interfaces.length && <p>No LAN IPv4 address is available. Connect this computer to Wi-Fi or Ethernet, then try again.</p>}
         <div className="actions">
-          <button disabled={busy || !interfaceName} onClick={() => configure(true)}>
+          <button disabled={busy || !interfaceName} onClick={event => configure(true, event)}>
             {access.saved.enabled ? 'Save network' : 'Enable device access'}
           </button>
-          {access.saved.enabled && <button disabled={busy} onClick={() => configure(false)}>Disable device access</button>}
+          {access.saved.enabled && <button disabled={busy} onClick={event => configure(false, event)}>Disable device access</button>}
         </div>
       </details>}
       <p className="pairing-network-note muted">Trusted networks only. This connection is unencrypted.</p>

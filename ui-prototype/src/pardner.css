@@ -233,6 +233,9 @@ nav button[aria-pressed='true'] {
   background: var(--surface);
   overflow-wrap: anywhere;
 }
+.task-card[aria-current] {
+  border-color: var(--accent);
+}
 .task-card strong {
   font-size: 15px;
   line-height: 1.4;

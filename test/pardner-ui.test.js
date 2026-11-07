@@ -747,3 +747,107 @@ for (const engine of [chromium, webkit]) it(`shows a connection error inside the
     assert.equal(await alert.count(), 0, 'no stale error after Forget')
   })
 })
+
+for (const engine of [chromium, webkit]) it(`moves focus into panels and back to their opener in ${engine.name()}`, { timeout: 120000 }, async () => {
+  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open, service }) => {
+    await run(['actors', 'register', 'bob', '--handle', 'bob', '--kind', 'human'])
+    const { result: { taskId } } = await operate('task.create', { title: 'Keep focus where the work is' })
+    await operate('task.create', { title: 'A neighbouring card' })
+
+    // On loopback the token field is focused on arrival.
+    await page.goto(`${service.httpUrl}/pardner/`)
+    await page.getByLabel('Local service token').waitFor()
+    await page.waitForFunction(() => document.activeElement?.type === 'password')
+    await open()
+
+    const panel = page.getByRole('complementary', { name: 'Task details' })
+    const heading = panel.getByRole('heading', { level: 2 })
+    const focused = () => page.evaluate(() => {
+      const element = document.activeElement
+      return { tag: element?.tagName, text: element?.textContent?.trim(), taskId: element?.dataset?.taskId, label: element?.getAttribute('aria-label') }
+    })
+    const waitForFocus = (predicate, arg) => page.waitForFunction(predicate, arg, { timeout: 5000 })
+    const card = page.locator(`.task-card[data-task-id="${taskId}"]`)
+
+    // Opening a card focuses the details heading; Escape and Close return focus to the card.
+    await card.click()
+    await waitForFocus(() => document.activeElement?.matches('.side-panel h2'))
+    assert.equal(await card.getAttribute('aria-current'), 'true', 'the open card is current')
+    const neighbour = page.getByRole('button', { name: /A neighbouring card/ })
+    assert.equal(await neighbour.getAttribute('aria-current'), null)
+    // Buttons transition their border colour, so wait for it to settle.
+    await page.waitForFunction(() => document.getAnimations().length === 0)
+    const borders = await page.evaluate(id => ({
+      open: getComputedStyle(document.querySelector(`.task-card[data-task-id="${id}"]`)).borderTopColor,
+      other: getComputedStyle([...document.querySelectorAll('.task-card')].find(card => card.dataset.taskId !== id)).borderTopColor,
+      accent: (() => { const probe = document.createElement('span'); probe.style.color = 'var(--accent)'; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color })(),
+    }), taskId)
+    assert.equal(borders.open, borders.accent, `the open card has the accent border: ${JSON.stringify(borders)}`)
+    assert.notEqual(borders.open, borders.other)
+    await page.keyboard.press('Escape')
+    await waitForFocus(id => document.activeElement?.dataset.taskId === id, taskId)
+    await card.click()
+    await waitForFocus(() => document.activeElement?.matches('.side-panel h2'))
+    await panel.getByRole('button', { name: 'Close', exact: true }).click()
+    await waitForFocus(id => document.activeElement?.dataset.taskId === id, taskId)
+
+    // New task focuses Title; Close returns to New task.
+    await page.getByRole('button', { name: 'New task', exact: true }).click()
+    await waitForFocus(() => document.activeElement?.name === 'title')
+    await page.getByRole('region', { name: 'New task' }).getByRole('button', { name: 'Close', exact: true }).click()
+    await waitForFocus(() => document.activeElement?.textContent === 'New task')
+
+    // Edit task focuses Title; Cancel edit and Save changes return to Edit task; a failed Save focuses Save changes.
+    await card.click()
+    await waitForFocus(() => document.activeElement?.matches('.side-panel h2'))
+    const editTask = panel.getByRole('button', { name: 'Edit task', exact: true })
+    await editTask.click()
+    await waitForFocus(() => document.activeElement?.name === 'title' && Boolean(document.activeElement.closest('.editor')))
+    await panel.getByRole('button', { name: 'Cancel edit', exact: true }).click()
+    await waitForFocus(() => document.activeElement?.textContent === 'Edit task')
+    await editTask.click()
+    await panel.getByLabel('Title', { exact: true }).fill('Keep focus where the work is, edited')
+    await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
+    await heading.getByText('Keep focus where the work is, edited', { exact: true }).waitFor()
+    await waitForFocus(() => document.activeElement?.textContent === 'Edit task')
+    await editTask.click()
+    await panel.getByLabel('Title', { exact: true }).fill('A stale draft')
+    const { revisions } = await run(['show', taskId])
+    await run(['update', taskId, '--title', 'A newer title', '--revisions', JSON.stringify({ title: revisions.title })])
+    await heading.getByText('A newer title', { exact: true }).waitFor()
+    await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
+    await page.getByRole('alert').getByText(/draft is preserved/).waitFor()
+    await waitForFocus(() => document.activeElement?.textContent === 'Save changes')
+    await panel.getByRole('button', { name: 'Cancel edit', exact: true }).click()
+
+    // Switching Actor with details open leaves focus on the Actor select.
+    const actor = page.getByLabel('Actor', { exact: true })
+    await actor.focus()
+    await actor.selectOption('bob')
+    await panel.getByRole('button', { name: 'Edit task', exact: true }).waitFor()
+    await page.waitForTimeout(300)
+    assert.equal(await actor.evaluate(select => select === document.activeElement), true, `focus stays on the Actor select: ${JSON.stringify(await focused())}`)
+    await actor.selectOption('alice')
+    await page.keyboard.press('Escape')
+
+    // An Activity button is an opener too.
+    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('button', { name: 'Activity', exact: true }).click()
+    const activityButton = page.locator('.activity article button').first()
+    const activityLabel = await activityButton.textContent()
+    await activityButton.click()
+    await waitForFocus(() => document.activeElement?.matches('.side-panel h2'))
+    await page.keyboard.press('Escape')
+    await waitForFocus(text => document.activeElement?.closest('.activity') && document.activeElement.textContent === text, activityLabel)
+    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('button', { name: 'Tasks', exact: true }).click()
+
+    // After creating a task its card becomes the opener.
+    await page.getByRole('button', { name: 'New task', exact: true }).click()
+    await page.getByLabel('Title', { exact: true }).fill('Created with focus kept')
+    await page.getByRole('button', { name: 'Create task', exact: true }).click()
+    await heading.getByText('Created with focus kept', { exact: true }).waitFor()
+    await waitForFocus(() => document.activeElement?.matches('.side-panel h2'))
+    const createdId = (await run(['tasks'])).tasks.find(task => task.title === 'Created with focus kept').id
+    await page.keyboard.press('Escape')
+    await waitForFocus(id => document.activeElement?.dataset.taskId === id, createdId)
+  })
+})
