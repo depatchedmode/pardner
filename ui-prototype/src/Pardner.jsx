@@ -50,6 +50,7 @@ function SelectActor({
   label = 'Actor',
   optional = false,
   emptyLabel,
+  disabled = false,
 }) {
   return (
     <label>
@@ -57,6 +58,7 @@ function SelectActor({
       <select
         aria-label={label}
         value={value || ''}
+        disabled={disabled || undefined}
         onChange={(event) => onChange(event.target.value)}
       >
         <option value="">{emptyLabel || (optional ? 'Unassigned' : 'Choose an Actor')}</option>
@@ -226,6 +228,8 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   const [actor, setActor] = useState(() => session ? config.actorId : client.preferences().actor || '')
   const [selected, setSelected] = useState(() => session ? client.preferences().selected || null : null)
   const [creating, setCreating] = useState(false)
+  // In-memory New task draft ({ fields, tags }); null means the defaults. Never persisted.
+  const [newTaskDraft, setNewTaskDraft] = useState(null)
   const [view, setView] = useState(() => client.preferences().view || 'board')
   const [filter, setFilter] = useState(() => client.preferences().filter || '')
   const [statusFilter, setStatusFilter] = useState(() => client.preferences().statusFilter || '')
@@ -492,6 +496,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
       setConfirmedOperation(operation)
       if (operation.type === 'task.create') openPanel({ taskId: receipt.result.taskId }, () => {
         setCreating(false)
+        setNewTaskDraft(null)
         setSelected(receipt.result.taskId)
       })
       client.savePending(null)
@@ -535,6 +540,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
       setActivityCutoff(null)
       showBoard({})
       setPending(null)
+      setNewTaskDraft(null)
       setDoc(null)
       setCredential('')
       setPairCode('')
@@ -858,6 +864,9 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
         <TaskForm
           actors={actors}
           busy={busy}
+          pending={Boolean(pending)}
+          draft={newTaskDraft}
+          onDraftChange={setNewTaskDraft}
           notice={errorSlot === 'create' && errorNotice}
           onClose={closeCreate}
           onSubmit={async (fields) => {
@@ -1021,9 +1030,18 @@ function Goals({ goals, veins, showVein, actor, actors, submit, busy, pending, e
   )
 }
 
+const EMPTY_TASK_DRAFT = {
+  fields: { title: '', description: '', priority: 'p2', status: 'backlog', assignee: null, tags: [] },
+  tags: '',
+}
+const draftIsDirty = ({ fields, tags }) =>
+  Boolean(fields.title.trim() || fields.description.trim() || tags.trim()) ||
+  fields.status !== 'backlog' || fields.priority !== 'p2' || fields.assignee !== null
+
 function TaskForm({
   actors,
   busy,
+  pending = false,
   onClose,
   onSubmit,
   initial,
@@ -1031,21 +1049,22 @@ function TaskForm({
   onChange,
   editing = false,
   notice,
+  draft,
+  onDraftChange,
 }) {
-  const [fields, setFields] = useState(
-    initial || {
-      title: '',
-      description: '',
-      priority: 'p2',
-      status: 'backlog',
-      assignee: null,
-      tags: [],
-    },
-  )
-  const set = (field, value) =>
-    setFields((current) => ({ ...current, [field]: value }))
-  const [tags, setTags] = useState(initialTags ?? fields.tags.join(', '))
+  // The create form is controlled by Workspace so its draft survives closing; edit keeps local state.
+  const controlled = Boolean(onDraftChange)
+  const [local, setLocal] = useState(() => ({
+    fields: initial || EMPTY_TASK_DRAFT.fields,
+    tags: initialTags ?? (initial || EMPTY_TASK_DRAFT.fields).tags.join(', '),
+  }))
+  const { fields, tags } = controlled ? draft ?? EMPTY_TASK_DRAFT : local
+  const update = (patch) => (controlled ? onDraftChange({ fields, tags, ...patch }) : setLocal((current) => ({ ...current, ...patch })))
+  const set = (field, value) => update({ fields: { ...fields, [field]: value } })
+  const setTags = (value) => update({ tags: value })
   useEffect(() => { onChange?.(fields, tags) }, [onChange, fields, tags])
+  // Per control, not <fieldset disabled>: Retry inside the form must stay enabled.
+  const locked = controlled && (busy || pending)
   const [titleBlank, setTitleBlank] = useState(false)
   // A failed submit returns focus to its button once it re-enables; the error is announced, not focused.
   const [submitButton, refocusSubmit] = useRefocus()
@@ -1061,6 +1080,7 @@ function TaskForm({
         </div>
       )}
       <form
+        aria-busy={(controlled && busy) || undefined}
         onSubmit={(event) => {
           event.preventDefault()
           if (!fields.title.trim()) {
@@ -1078,6 +1098,7 @@ function TaskForm({
             name="title"
             required
             autoFocus
+            readOnly={locked}
             aria-invalid={titleBlank || undefined}
             aria-describedby={titleBlank ? `task-title-error-${editing ? 'edit' : 'new'}` : undefined}
             value={fields.title}
@@ -1092,6 +1113,7 @@ function TaskForm({
           Description
           <textarea
             rows={5}
+            readOnly={locked}
             value={fields.description}
             onChange={(event) => set('description', event.target.value)}
           />
@@ -1101,6 +1123,7 @@ function TaskForm({
             Status
             <select
               aria-label="Status"
+              disabled={locked}
               value={fields.status}
               onChange={(event) => set('status', event.target.value)}
             >
@@ -1111,6 +1134,7 @@ function TaskForm({
             Priority
             <select
               aria-label="Priority"
+              disabled={locked}
               value={fields.priority}
               onChange={(event) => set('priority', event.target.value)}
             >
@@ -1126,10 +1150,12 @@ function TaskForm({
           value={fields.assignee}
           onChange={(value) => set('assignee', value || null)}
           optional
+          disabled={locked}
         />
         <label>
           Tags, separated by commas
           <input
+            readOnly={locked}
             value={tags}
             onChange={(event) => setTags(event.target.value)}
           />
@@ -1137,8 +1163,22 @@ function TaskForm({
         {notice}
         <div className="actions">
           <button className="primary" ref={submitButton} disabled={busy}>
-            {editing ? 'Save changes' : 'Create task'}
+            {editing ? 'Save changes' : busy ? 'Creating…' : 'Create task'}
           </button>
+          {controlled && draftIsDirty({ fields, tags }) && (
+            <button
+              type="button"
+              disabled={busy || pending}
+              onClick={(event) => {
+                const form = event.currentTarget.form
+                onDraftChange(null)
+                setTitleBlank(false)
+                form?.elements.namedItem('title')?.focus()
+              }}
+            >
+              Discard draft
+            </button>
+          )}
           {editing && (
             <button type="button" onClick={onClose}>
               Cancel edit

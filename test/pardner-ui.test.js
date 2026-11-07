@@ -1317,3 +1317,116 @@ for (const engine of [chromium, webkit]) it(`recovers the inline Status select f
     assert.equal((await run(['show', taskId])).task.status, 'completed')
   })
 })
+
+for (const engine of [chromium, webkit]) it(`keeps the New task draft until it is created or discarded in ${engine.name()}`, { timeout: 180000 }, async () => {
+  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open }) => {
+    await operate('task.create', { title: 'Existing card' })
+    await open()
+    const panel = page.getByRole('region', { name: 'New task' })
+    const title = panel.getByLabel('Title', { exact: true })
+    const description = panel.locator('textarea')
+    const tags = panel.getByLabel('Tags, separated by commas')
+    const priority = panel.getByLabel('Priority', { exact: true })
+    const create = panel.getByRole('button', { name: /^(Create task|Creating…)$/ })
+    const discard = panel.getByRole('button', { name: 'Discard draft', exact: true })
+    const newTask = page.getByRole('button', { name: 'New task', exact: true })
+    const close = () => panel.getByRole('button', { name: 'Close', exact: true }).click()
+    const titleFocused = () => page.waitForFunction(() => document.activeElement?.getAttribute('name') === 'title')
+    const retry = page.getByRole('button', { name: 'Retry saved request', exact: true })
+    const taskCount = async title => (await run(['tasks'])).tasks.filter(task => task.title === title).length
+
+    // 1. Close and reopen restores the draft and focuses Title.
+    await newTask.click()
+    assert.equal(await discard.count(), 0, 'a pristine form has no Discard draft')
+    await title.fill('Drafted title')
+    await description.fill('Drafted description')
+    await tags.fill('a, b')
+    await priority.selectOption('p1')
+    await close()
+    await panel.waitFor({ state: 'detached' })
+    await newTask.click()
+    await titleFocused()
+    assert.equal(await title.inputValue(), 'Drafted title')
+    assert.equal(await description.inputValue(), 'Drafted description')
+    assert.equal(await tags.inputValue(), 'a, b')
+    assert.equal(await priority.inputValue(), 'p1')
+
+    // 2. Opening a card keeps the draft.
+    await close()
+    await page.locator('.task-card', { hasText: 'Existing card' }).click()
+    await page.getByRole('complementary', { name: 'Task details' }).waitFor()
+    await page.getByRole('complementary', { name: 'Task details' }).getByRole('button', { name: 'Close', exact: true }).click()
+    await newTask.click()
+    assert.equal(await title.inputValue(), 'Drafted title')
+
+    // 3. Discard draft resets, keeps the panel open on Title, and the button goes away.
+    await discard.click()
+    await titleFocused()
+    assert.equal(await title.inputValue(), '')
+    assert.equal(await description.inputValue(), '')
+    assert.equal(await tags.inputValue(), '')
+    assert.equal(await priority.inputValue(), 'p2')
+    assert.equal(await discard.count(), 0)
+    await close()
+    await newTask.click()
+    assert.equal(await title.inputValue(), '')
+
+    // 6. A definitive rejection keeps the draft editable.
+    await title.fill('Rejected title')
+    await page.route('**/automerge/operations', route => route.fulfill({
+      status: 400, contentType: 'application/json',
+      body: JSON.stringify({ code: 'INVALID_ARGUMENT', error: 'Send a valid JSON request.' }),
+    }))
+    await create.click()
+    await panel.getByRole('alert').waitFor()
+    assert.equal(await title.getAttribute('readonly'), null, 'the Title stays editable after a rejection')
+    assert.equal(await title.inputValue(), 'Rejected title')
+    await page.unroute('**/automerge/operations')
+
+    // 7. While saving the form is busy and locked.
+    let release
+    const gate = new Promise(resolve => { release = resolve })
+    await page.route('**/automerge/operations', async route => { await gate; await route.continue() })
+    await title.fill('Busy title')
+    await create.click()
+    await panel.getByRole('button', { name: 'Creating…', exact: true }).waitFor()
+    assert.equal(await panel.locator('form').getAttribute('aria-busy'), 'true')
+    assert.equal(await create.isDisabled(), true)
+    assert.notEqual(await title.getAttribute('readonly'), null)
+    release()
+    await page.getByRole('complementary', { name: 'Task details' }).waitFor()
+    await page.unroute('**/automerge/operations')
+    await page.getByRole('complementary', { name: 'Task details' }).getByRole('button', { name: 'Close', exact: true }).click()
+
+    // 4. After a successful create the draft is gone.
+    await newTask.click()
+    assert.equal(await title.inputValue(), '')
+    assert.equal(await discard.count(), 0)
+
+    // 5. A pending create locks the fields; a page Retry after closing creates exactly one task and clears the draft.
+    await page.route('**/automerge/operations', route => route.abort('failed'))
+    await title.fill('Pending title')
+    await create.click()
+    await panel.getByRole('button', { name: 'Retry saved request', exact: true }).waitFor()
+    assert.notEqual(await title.getAttribute('readonly'), null)
+    assert.equal(await priority.isDisabled(), true)
+    assert.equal(await panel.getByRole('button', { name: 'Retry saved request', exact: true }).isEnabled(), true)
+    await close()
+    await page.unroute('**/automerge/operations')
+    await retry.click()
+    await retry.waitFor({ state: 'hidden' })
+    await page.getByRole('complementary', { name: 'Task details' }).getByRole('button', { name: 'Close', exact: true }).click()
+    assert.equal(await taskCount('Pending title'), 1)
+    await newTask.click()
+    assert.equal(await title.inputValue(), '')
+    assert.equal(await discard.count(), 0)
+
+    // 8. Forget this workspace drops the draft.
+    await title.fill('Secret draft')
+    await close()
+    await page.getByRole('button', { name: 'Forget this workspace', exact: true }).click()
+    await open()
+    await newTask.click()
+    assert.equal(await title.inputValue(), '')
+  })
+})
