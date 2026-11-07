@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ActorMarkdown from './ActorMarkdown.jsx'
 import './pardner.css'
 import { createOperationId } from './operation-id.js'
@@ -7,10 +7,30 @@ import PhoneAccess from './PhoneAccess.jsx'
 import ControlPane from './ControlPane.jsx'
 import ClientApp from './ClientApp.jsx'
 import { AvatarStack } from './Avatar.jsx'
-import { STATUS_LABELS as LABELS, describeEvent, sortEvents } from './events.js'
+import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const GOAL_STATUSES = ['open', 'achieved', 'abandoned']
+const ACTIVITY_SHOWS = [
+  ['changes', 'All changes'], ['status', 'Status changes and handoffs'], ['comments', 'Comments'],
+  ['commits', 'Commits and branches'], ['plans', 'Goals and veins'], ['actors', 'Actors registered'], ['reads', 'Read receipts'],
+]
+const ACTIVITY_PAGE = 100
+const dayStart = date => new Date(date.getFullYear(), date.getMonth(), date.getDate())
+function dayHeading(date, now = new Date()) {
+  const days = Math.round((dayStart(now) - dayStart(date)) / 86400000)
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  return date.toLocaleDateString(undefined, {
+    weekday: 'long', month: 'long', day: 'numeric', ...(date.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+  })
+}
+// True when `event` sorts at or after `cutoff` in newest-first order.
+const atOrAfter = (event, cutoff) => {
+  const a = Date.parse(event.timestamp) || 0
+  const b = Date.parse(cutoff.timestamp) || 0
+  return a !== b ? a > b : String(event.operationId) >= String(cutoff.operationId)
+}
 // Task details operations whose errors render above that form's submit button.
 const FORM_SLOTS = ['task.update', 'task.handoff', 'comment.add']
 const labelActor = (actor) =>
@@ -113,12 +133,12 @@ function SaveStatus({ status, connected, busy, heads }) {
 
 // One event as a plain sentence. Activity passes handlers so subjects become
 // buttons; History passes none and stays plain text.
-function EventRow({ event, lookups, within, onTask, onVein, onGoal, formatTime }) {
+function EventRow({ event, lookups, within, onTask, onVein, onGoal, formatTime, ...articleProps }) {
   const description = describeEvent(event, lookups, { within })
   const when = new Date(event.timestamp)
   const handlers = { task: onTask, vein: onVein, goal: onGoal }
   return (
-    <article className="event" title={event.type}>
+    <article className="event" title={event.type} {...articleProps}>
       <p className="event-line">
         <strong>{description.actor}</strong>
         {description.parts.map((part, index) => {
@@ -203,6 +223,10 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   const [filter, setFilter] = useState(() => client.preferences().filter || '')
   const [statusFilter, setStatusFilter] = useState(() => client.preferences().statusFilter || '')
   const [veinFilter, setVeinFilter] = useState(() => client.preferences().veinFilter || '')
+  const [activityActor, setActivityActor] = useState('')
+  const [activityShow, setActivityShow] = useState('changes')
+  // { timestamp, operationId } of the oldest rendered row; rows at or after it always render.
+  const [activityCutoff, setActivityCutoff] = useState(null)
   const [error, setError] = useState(null)
   // { type, taskId } of the operation that failed, so its message renders beside that form.
   const [errorOrigin, setErrorOrigin] = useState(null)
@@ -406,6 +430,26 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
     }
     panelWasOpen.current = open
   }, [selected, creating])
+  const activityEvents = useMemo(() => {
+    const actorId = doc?.actors?.[activityActor] ? activityActor : ''
+    return sortEvents(Object.values(doc?.operations ?? {}).filter(event => {
+      if (actorId && event.actorId !== actorId) return false
+      const group = eventGroup(event)
+      return activityShow === 'changes' ? group !== 'reads' : group === activityShow
+    }))
+  }, [doc?.operations, doc?.actors, activityActor, activityShow])
+  const activityFocus = useRef(null)
+  useEffect(() => {
+    if (!activityCutoff && activityEvents.length) {
+      const last = activityEvents[Math.min(ACTIVITY_PAGE, activityEvents.length) - 1]
+      setActivityCutoff({ timestamp: last.timestamp, operationId: last.operationId })
+    }
+  }, [activityCutoff, activityEvents])
+  useEffect(() => {
+    const id = activityFocus.current
+    activityFocus.current = null
+    if (id) document.querySelector(`.event[data-operation-id="${CSS.escape(id)}"]`)?.focus()
+  }, [activityCutoff])
   // A subject that switches views asks for focus once the new view has rendered.
   const focusAfterView = useRef(null)
   useEffect(() => {
@@ -478,6 +522,9 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
       client.forget()
       setToken('')
       setActor('')
+      setActivityActor('')
+      setActivityShow('changes')
+      setActivityCutoff(null)
       showBoard({})
       setPending(null)
       setDoc(null)
@@ -553,6 +600,16 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
       && (!activeVeinFilter || task.veinIds?.includes(activeVeinFilter)),
   )
   const showVein = (veinId) => showBoard({ vein: veinId })
+  const shownActivityActor = actors[activityActor] ? activityActor : ''
+  const visibleCount = activityCutoff
+    ? activityEvents.filter(event => atOrAfter(event, activityCutoff)).length
+    : Math.min(ACTIVITY_PAGE, activityEvents.length)
+  const visibleEvents = activityEvents.slice(0, visibleCount)
+  const showOlder = () => {
+    const next = activityEvents[Math.min(visibleCount + ACTIVITY_PAGE, activityEvents.length) - 1]
+    activityFocus.current = activityEvents[visibleCount].operationId
+    setActivityCutoff({ timestamp: next.timestamp, operationId: next.operationId })
+  }
   const lookups = { actors, tasks: doc.tasks, veins, goals, comments: doc.comments }
   const openVein = (_element, veinId) => {
     focusAfterView.current = () => viewNav.current?.querySelector('[aria-pressed="true"]')?.focus()
@@ -669,6 +726,19 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
             <option key={vein.id} value={vein.id}>{vein.title}</option>)}
         </select></label>
         </>}
+        {view === 'activity' && <>
+        <SelectActor
+          label="Performed by"
+          emptyLabel="Any Actor"
+          actors={actors}
+          value={shownActivityActor}
+          onChange={value => { setActivityActor(value); setActivityCutoff(null) }}
+          optional
+        />
+        <label>Show<select aria-label="Show" value={activityShow} onChange={event => { setActivityShow(event.target.value); setActivityCutoff(null) }}>
+          {ACTIVITY_SHOWS.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+        </select></label>
+        </>}
       </nav>
       {/* Keyed by view so a view switch never inherits a stale scroll position. */}
       <main key={view}>
@@ -731,18 +801,36 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           <ControlPane request={request} actors={actors} tasks={doc.tasks} actor={actor} canManageAccess={config.canManageAccess} />
         ) : (
           <section className="activity">
-            <h2>Activity</h2>
-            {sortEvents(Object.values(doc.operations)).map(event => (
-              <EventRow
-                key={event.operationId}
-                event={event}
-                lookups={lookups}
-                formatTime={when => when.toLocaleString()}
-                onTask={(element, id) => openPanel(element, () => setSelected(id))}
-                onVein={openVein}
-                onGoal={openGoal}
-              />
-            ))}
+            <div className="activity-heading">
+              <h2>Activity</h2>
+              <span className="muted">Showing {visibleCount.toLocaleString()} of {activityEvents.length.toLocaleString()}</span>
+            </div>
+            {!activityEvents.length && <p className="empty">
+              {Object.keys(doc.operations).length ? 'No activity matches these filters.' : 'No activity yet.'}
+            </p>}
+            {visibleEvents.map((event, index) => {
+              const when = new Date(event.timestamp)
+              const heading = dayHeading(when)
+              const newDay = index === 0 || heading !== dayHeading(new Date(visibleEvents[index - 1].timestamp))
+              return (
+                <Fragment key={event.operationId}>
+                  {newDay && <h3 className="day">{heading}</h3>}
+                  <EventRow
+                    event={event}
+                    lookups={lookups}
+                    data-operation-id={event.operationId}
+                    tabIndex={-1}
+                    formatTime={time => time.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                    onTask={(element, id) => openPanel(element, () => setSelected(id))}
+                    onVein={openVein}
+                    onGoal={openGoal}
+                  />
+                </Fragment>
+              )
+            })}
+            {activityEvents.length > 0 && (visibleCount < activityEvents.length
+              ? <button type="button" onClick={showOlder}>Show older activity</button>
+              : <p className="muted">Start of activity</p>)}
           </section>
         )}
       </main>

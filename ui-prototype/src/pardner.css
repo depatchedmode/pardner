@@ -386,6 +386,25 @@ nav button[aria-pressed='true'] {
   padding: 10px 0;
   border-bottom: 1px solid var(--line);
 }
+.activity-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+}
+.activity-heading h2 {
+  margin-right: 0;
+}
+.day {
+  margin: 22px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.event:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .event > p {
   grid-column: 1;
   margin: 0;

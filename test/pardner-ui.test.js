@@ -495,10 +495,18 @@ for (const engine of [chromium, webkit]) it(`keeps the app frame in the viewport
       await nav('Activity').click()
       await page.getByText(/commented on/).first().waitFor()
       assert.equal(await page.locator('main').evaluate(main => main.scrollTop), 0, 'a view switch starts at the top')
-      assert.ok(await page.locator('.activity article').count() >= 300)
+      assert.ok(await page.locator('.activity article').count() >= 100)
+      if (width === 1024) assert.equal(await page.locator('.activity article').count(), 100, 'Activity pages at 100 rows')
       await assertFrame(at('Activity'))
+      assert.equal(await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth), true, `no sideways overflow with the Activity filters ${at('Activity')}`)
       assert.ok(await scrollMain() > 0, `the activity region scrolls ${at('Activity')}`)
       await assertFrame(`after scrolling ${at('Activity')}`)
+      if (width === 1024) {
+        await page.getByRole('button', { name: 'Show older activity', exact: true }).click()
+        assert.ok(await page.locator('.activity article').count() > 100)
+        assert.ok(await scrollMain() > 0, `the activity region still scrolls ${at('Activity')}`)
+        await assertFrame(`after paging ${at('Activity')}`)
+      }
     }
 
     // A request lost before the service saw it stays pending across a reload.
@@ -894,5 +902,67 @@ it('describes Activity and task History as plain sentences', { timeout: 120000 }
     assert.equal(await history.locator('button').count(), 0, 'History subjects are plain text')
     assert.match(await rows.first().innerText(), /linked commit a1b2c3d/, 'the newest event comes first')
     assert.match(await rows.last().innerText(), /created this task/)
+  })
+})
+
+it('filters, groups and pages the Activity feed', { timeout: 120000 }, async () => {
+  await withWorkspace(chromium, { viewport: { width: 1440, height: 900 } }, async ({ page, run, open, token, service }) => {
+    const as = (actor, type, payload) => operationHttp(service.httpUrl, token, type, payload, actor)
+    await run(['actors', 'register', 'reviewer', '--handle', 'reviewer', '--kind', 'agent', '--display-name', 'Reviewer'])
+    const { taskId } = (await as('alice', 'task.create', { title: 'Page this feed', status: 'review' })).result
+    const revisions = async () => (await run(['show', taskId])).revisions
+    const { assignee, status } = await revisions()
+    await as('reviewer', 'task.handoff', { taskId, to: 'alice', status: 'completed', message: 'Approved', expectedRevisions: { assignee, status } })
+    for (let start = 0; start < 150; start += 25)
+      await Promise.all(Array.from({ length: 25 }, (_, offset) => as('reviewer', 'comment.add', { taskId, text: `Review note ${start + offset + 1}` })))
+    for (let index = 0; index < 30; index++) {
+      const { result } = await as('alice', 'comment.add', { taskId, text: `Alice note ${index + 1}` })
+      const comment = (await run(['show', taskId])).comments.find(candidate => candidate.id === result.commentId)
+      await as('reviewer', 'read.mark', { taskId, comments: [{ commentId: comment.id, revisionId: comment.revisionIds[0] }] })
+    }
+    await open()
+    const views = page.getByRole('navigation', { name: 'Workspace views' })
+    await views.getByRole('button', { name: 'Activity', exact: true }).click()
+    const activity = page.locator('.activity')
+    const articles = activity.locator('article')
+    await activity.getByText(/Showing 100 of/).waitFor()
+    assert.equal(await articles.count(), 100)
+    assert.equal(await activity.getByText(/read \d+ comment/).count(), 0, 'read receipts are hidden by default')
+    await activity.getByRole('heading', { name: 'Today', exact: true }).waitFor()
+    assert.equal(await page.getByLabel('Assigned to').count(), 0, 'board filters stay off Activity')
+    assert.equal(await page.getByLabel('Status filter').count(), 0)
+    assert.equal(await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth), true)
+
+    await page.getByLabel('Performed by', { exact: true }).selectOption({ label: 'Reviewer · agent' })
+    await page.getByLabel('Show', { exact: true }).selectOption({ label: 'Status changes and handoffs' })
+    await articles.first().waitFor()
+    assert.equal(await articles.count(), 1)
+    assert.match(await articles.first().innerText(), /and set it to Completed/)
+    await page.getByLabel('Performed by', { exact: true }).selectOption('')
+    await page.getByLabel('Show', { exact: true }).selectOption({ label: 'Read receipts' })
+    await activity.getByText(/read 1 comment/).first().waitFor()
+    await page.getByLabel('Show', { exact: true }).selectOption({ label: 'Actors registered' })
+    await page.getByLabel('Performed by', { exact: true }).selectOption({ label: 'Reviewer · agent' })
+    await activity.getByText('No activity matches these filters.').waitFor()
+    await page.getByLabel('Performed by', { exact: true }).selectOption('')
+    await page.getByLabel('Show', { exact: true }).selectOption({ label: 'All changes' })
+
+    await articles.nth(99).waitFor()
+    assert.equal(await articles.count(), 100, 'changing a filter resets paging')
+    await page.getByRole('button', { name: 'Show older activity', exact: true }).click()
+    await articles.nth(100).waitFor()
+    assert.ok(await articles.count() > 100)
+    assert.equal(await articles.nth(100).evaluate(article => article === document.activeElement), true, 'focus moves to the first newly revealed row')
+
+    // A panel opened from a row keeps its opener when new operations arrive.
+    const row = activity.locator('article button[data-task-id]').first()
+    const opener = await row.elementHandle()
+    await row.click()
+    await page.locator('.side-panel h2').waitFor()
+    const before = await articles.count()
+    await as('alice', 'comment.add', { taskId, text: 'Arrived while the panel was open' })
+    await page.waitForFunction(count => document.querySelectorAll('.activity article').length > count, before)
+    await page.keyboard.press('Escape')
+    await page.waitForFunction(element => document.activeElement === element, opener)
   })
 })
