@@ -28,6 +28,7 @@ const DEFAULT_WS_PORT = 8005
 
 /** WebSocket path for Automerge Repo native (CBOR) sync — distinct from JSON UI subscriptions. */
 const NATIVE_AUTOMERGE_WS_PATH = '/automerge'
+const REQUEST_LIMIT = '100kb'
 
 function wsUpgradePathname(req) {
   try {
@@ -521,8 +522,11 @@ class AutomergeSyncServer {
       next()
     })
     this.app.use((req, res, next) => this.originMiddleware(req, res, next))
-    this.app.use(express.json())
-    this.app.use((_error, _req, res, _next) => {
+    this.app.use(express.json({ limit: REQUEST_LIMIT }))
+    this.app.use((error, _req, res, _next) => {
+      if (error?.type === 'entity.too.large') {
+        return res.status(413).json({ code: 'INVALID_ARGUMENT', error: 'This change is larger than the 100 kB request limit. Shorten it and try again.' })
+      }
       res.status(400).json({ code: 'INVALID_ARGUMENT', error: 'Send a valid JSON request.' })
     })
     this.app.get('/pardner/config', (req, res) => res.set('Cache-Control', 'no-store').json({
