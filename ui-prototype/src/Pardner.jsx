@@ -1196,8 +1196,15 @@ function TaskDetail({
   }, [taskId, actor, heads, request])
   useEffect(() => {
     const key = (event) => {
-      // Escape closes an open dialog (profile, invite) first, not the panel beneath it.
-      if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('dialog[open]')) onClose()
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      const target = event.target
+      // A modal dialog owns its own Escape; typed text is never discarded by it.
+      // An open dialog (profile, invite) closes first, not the panel beneath it.
+      if (target?.closest?.('dialog') || document.querySelector('dialog[open]')) return
+      const typed = target?.tagName === 'TEXTAREA' ||
+        (target?.tagName === 'INPUT' && ['', 'text', 'search', 'url', 'email'].includes(target.getAttribute('type') ?? ''))
+      if (typed && target.value.trim() !== '') return
+      onClose()
     }
     document.addEventListener('keydown', key)
     return () => document.removeEventListener('keydown', key)

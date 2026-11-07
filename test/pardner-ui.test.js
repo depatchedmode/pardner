@@ -1085,3 +1085,42 @@ for (const engine of [chromium, webkit]) it(`defaults the handoff status from th
     assert.equal(await status.inputValue(), 'completed')
   })
 })
+
+for (const engine of [chromium, webkit]) it(`keeps typed drafts and the pairing dialog safe from Escape in ${engine.name()}`, { timeout: 120000 }, async () => {
+  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, operate, open, service }) => {
+    const { result: { taskId } } = await operate('task.create', { title: 'Do not lose the draft', description: 'Original description' })
+    await page.goto(`${service.httpUrl}/pardner/`)
+    await page.getByLabel('Local service token').waitFor()
+    await open()
+    const panel = page.getByRole('complementary', { name: 'Task details' })
+    const card = page.locator(`.task-card[data-task-id="${taskId}"]`)
+    const comment = panel.getByLabel('Comment', { exact: true })
+
+    await card.click()
+    await comment.fill('Half-written thought')
+    await comment.press('Escape')
+    assert.equal(await panel.count(), 1, 'Escape in a field with text keeps the panel')
+    assert.equal(await comment.inputValue(), 'Half-written thought')
+
+    await panel.getByRole('button', { name: 'Edit task', exact: true }).click()
+    const description = panel.locator('.editor textarea')
+    await description.fill('Edited description')
+    await description.press('Escape')
+    assert.equal(await description.inputValue(), 'Edited description', 'the editor stays')
+    await page.getByRole('button', { name: 'Cancel edit', exact: true }).click()
+
+    await comment.fill('')
+    await comment.press('Escape')
+    await panel.waitFor({ state: 'detached' })
+    await page.waitForFunction(id => document.activeElement?.dataset.taskId === id, taskId)
+
+    await card.click()
+    await panel.waitFor()
+    await page.getByRole('button', { name: 'Pair another device', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Pair another device' })
+    await dialog.waitFor()
+    await page.keyboard.press('Escape')
+    await dialog.waitFor({ state: 'hidden' })
+    assert.equal(await panel.count(), 1, 'Escape in the pairing dialog leaves the task panel open')
+  })
+})
