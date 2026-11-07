@@ -248,9 +248,6 @@ nav button[aria-pressed='true'] {
   align-items: center;
   flex-wrap: wrap;
 }
-.section-heading button {
-  font-size: 12px;
-}
 .form-row > * {
   flex: 1;
   min-width: 0;
@@ -281,7 +278,7 @@ nav button[aria-pressed='true'] {
 .history p {
   color: var(--muted);
 }
-.comment strong {
+.comment > strong {
   font-size: 14px;
 }
 .conflict {
@@ -391,10 +388,12 @@ code {
 }
 .board[data-filtered='true'] {
   grid-template-columns: minmax(0, 1fr);
+  background: transparent;
 }
 .board[data-filtered='true'] .column {
   width: min(100%, 760px);
   margin-inline: auto;
+  border-inline: 1px solid var(--line);
 }
 .phone-dialog {
   width: min(440px, calc(100% - 32px));
