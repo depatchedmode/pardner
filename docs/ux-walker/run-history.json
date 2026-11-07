@@ -23,6 +23,16 @@
       "quick_fixes_applied": 0,
       "issues_filed": 8,
       "note": "second pass over the 77 multi-service and cli-only stories, at HEAD 5be1448f"
+    },
+    {
+      "timestamp": "2026-11-07T22:05:00Z",
+      "url": "private hubs 8900\u20138959",
+      "stories_walked": 0,
+      "stories_skipped": 127,
+      "stories_re_verified": 11,
+      "quick_fixes_applied": 0,
+      "issues_filed": 1,
+      "note": "re-verify run of fail/blocked stories at a0d307c7: 096, 132, 134 now pass; 107 and 093 no longer blocked (fail; 093 steps 7\u20139 still blocked)"
     }
   ],
   "stories": {
@@ -69,10 +79,10 @@
       "fixes_merged_since": false
     },
     "STORY-008": {
-      "last_walked": "2026-11-07T18:00:00Z",
+      "last_walked": "2026-11-07T22:05:00Z",
       "status": "fail",
-      "findings_count": 5,
-      "source_files_hash": "b182acb3",
+      "findings_count": 3,
+      "source_files_hash": "a0d307c7",
       "fixes_merged_since": false
     },
     "STORY-009": {
@@ -104,10 +114,10 @@
       "fixes_merged_since": true
     },
     "STORY-014": {
-      "last_walked": "2026-11-07T18:00:00Z",
+      "last_walked": "2026-11-07T22:05:00Z",
       "status": "fail",
       "findings_count": 5,
-      "source_files_hash": "b182acb3",
+      "source_files_hash": "a0d307c7",
       "fixes_merged_since": false
     },
     "STORY-015": {
@@ -223,10 +233,10 @@
       "fixes_merged_since": true
     },
     "STORY-036": {
-      "last_walked": "2026-11-07T18:00:00Z",
+      "last_walked": "2026-11-07T22:05:00Z",
       "status": "fail",
       "findings_count": 4,
-      "source_files_hash": "b182acb3",
+      "source_files_hash": "a0d307c7",
       "fixes_merged_since": false
     },
     "STORY-037": {
@@ -342,10 +352,10 @@
       "fixes_merged_since": false
     },
     "STORY-096": {
-      "last_walked": "2026-11-07T18:00:00Z",
-      "status": "fail",
+      "last_walked": "2026-11-07T22:05:00Z",
+      "status": "pass",
       "findings_count": 5,
-      "source_files_hash": "b182acb3",
+      "source_files_hash": "a0d307c7",
       "fixes_merged_since": false
     },
     "STORY-102": {
@@ -363,11 +373,11 @@
       "fixes_merged_since": false
     },
     "STORY-107": {
-      "last_walked": "2026-11-07T18:00:00Z",
-      "status": "blocked",
-      "findings_count": 3,
-      "source_files_hash": "b182acb3",
-      "fixes_merged_since": true
+      "last_walked": "2026-11-07T22:05:00Z",
+      "status": "fail",
+      "findings_count": 4,
+      "source_files_hash": "a0d307c7",
+      "fixes_merged_since": false
     },
     "STORY-110": {
       "last_walked": "2026-11-07T18:00:00Z",
@@ -426,10 +436,10 @@
       "fixes_merged_since": false
     },
     "STORY-132": {
-      "last_walked": "2026-11-07T18:00:00Z",
-      "status": "fail",
-      "findings_count": 4,
-      "source_files_hash": "b182acb3",
+      "last_walked": "2026-11-07T22:05:00Z",
+      "status": "pass",
+      "findings_count": 5,
+      "source_files_hash": "a0d307c7",
       "fixes_merged_since": false
     },
     "STORY-133": {
@@ -440,17 +450,17 @@
       "fixes_merged_since": false
     },
     "STORY-134": {
-      "last_walked": "2026-11-07T18:00:00Z",
-      "status": "fail",
-      "findings_count": 5,
-      "source_files_hash": "b182acb3",
+      "last_walked": "2026-11-07T22:05:00Z",
+      "status": "pass",
+      "findings_count": 2,
+      "source_files_hash": "a0d307c7",
       "fixes_merged_since": false
     },
     "STORY-136": {
-      "last_walked": "2026-11-07T18:00:00Z",
+      "last_walked": "2026-11-07T22:05:00Z",
       "status": "fail",
-      "findings_count": 3,
-      "source_files_hash": "b182acb3",
+      "findings_count": 4,
+      "source_files_hash": "a0d307c7",
       "fixes_merged_since": false
     },
     "STORY-007": {
@@ -783,10 +793,10 @@
       "fixes_merged_since": false
     },
     "STORY-093": {
-      "last_walked": "2026-11-07T15:30:00Z",
-      "status": "blocked",
-      "findings_count": 3,
-      "source_files_hash": "5be1448f",
+      "last_walked": "2026-11-07T22:05:00Z",
+      "status": "fail",
+      "findings_count": 6,
+      "source_files_hash": "a0d307c7",
       "fixes_merged_since": false
     },
     "STORY-094": {
@@ -804,10 +814,10 @@
       "fixes_merged_since": false
     },
     "STORY-097": {
-      "last_walked": "2026-11-07T15:30:00Z",
+      "last_walked": "2026-11-07T22:05:00Z",
       "status": "fail",
-      "findings_count": 3,
-      "source_files_hash": "5be1448f",
+      "findings_count": 4,
+      "source_files_hash": "a0d307c7",
       "fixes_merged_since": false
     },
     "STORY-098": {
@@ -874,10 +884,10 @@
       "fixes_merged_since": false
     },
     "STORY-111": {
-      "last_walked": "2026-11-07T15:30:00Z",
+      "last_walked": "2026-11-07T22:05:00Z",
       "status": "fail",
-      "findings_count": 2,
-      "source_files_hash": "5be1448f",
+      "findings_count": 3,
+      "source_files_hash": "a0d307c7",
       "fixes_merged_since": false
     },
     "STORY-113": {

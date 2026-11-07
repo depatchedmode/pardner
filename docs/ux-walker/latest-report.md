@@ -10,7 +10,7 @@
 | Stories walked | **138 of 138**. Pass 1: 61 browser stories. Pass 2: the 77 multi-service and cli-only stories, using real replicas, hub outages, LAN pairing and CLI flows |
 | Stories skipped | 0. STORY-093 is blocked (the host's IP can't safely change mid-run). STORY-107 was blocked in pass 1 |
 | Re-verified after fixes | 8 stories' fixed findings (STORY-013, 015, 023, 034, 035, 042, 107, 112) |
-| Status | 127 pass · 9 fail · 2 blocked |
+| Status | **130 pass · 8 fail · 0 blocked** (after the re-verify run at `a0d307c7`) |
 
 ## Findings Summary
 | Severity | Count |
@@ -168,3 +168,26 @@ Walked at HEAD `5be1448f`, after the ux-visual and ux-auto-improve changes. Each
 - **Pass-1 failures not re-walked:** 008, 014, 036, 096, 132, 134 and 136. Several are probably fixed by V1–V5 and rounds 1–3 (for example 132 and 134 by the round 1 Activity work, and 036 by V2/V4). Re-verify with a `/ux-walker` re-run.
 
 **Hygiene.** One throwaway rotated token in `STORY-109/walk-report.md` was redacted before commit. Delivery claim tokens and Automerge heads from deleted test hubs remain in CLI captures; they are not credentials for anything that still exists.
+
+
+## Re-verify run (`/ux-walker` re-invoked at `a0d307c7`)
+
+**Scope.** The 11 stories whose last status was fail or blocked. All 127 passing stories were skipped under the run-history rules. No quick fixes were made, and 1 issue was filed.
+
+| Story | Before | Now | Notes |
+|---|---|---|---|
+| 096 | fail | **pass** | The opening-screen Forget crash (#122) is gone |
+| 132 | fail | **pass** | Activity rows now name and link veins and goals (round 1) |
+| 134 | fail | **pass** | 1,117 operations, with filters, counts and paging. Reviewer + Status filter finds the one approval |
+| 107 | blocked | fail | Walked for real against a clone with no build. A missing build still returns raw 401 JSON (#116) |
+| 093 | blocked | fail | The address change was simulated with a Node preload, without touching the host network. Steps 7–9 are still blocked, because no second address can be bound without sudo |
+| 008 | fail | fail | Switching Actor still discards drafts (#121). Own-comment unread is fixed |
+| 014 | fail | fail | The New task draft is still lost (#121) |
+| 036 | fail | fail | The panel covers the Actor select (#123) |
+| 097 | fail | fail | Forget drops the pending write (#114), and the status line says "synced" while a write is pending (#146) |
+| 111 | fail | fail | The bundle is rejected for a disallowed origin (#144) |
+| 136 | fail | fail (partial) | Who deleted a comment, and when, is now visible. The deleted text is still CLI-only |
+
+**New issue.** #148: Activity follow-ups.
+
+**Evidence added to existing issues.** #144, #137 and #114.
