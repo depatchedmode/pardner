@@ -7,6 +7,7 @@ import PhoneAccess from './PhoneAccess.jsx'
 import ControlPane from './ControlPane.jsx'
 import ClientApp from './ClientApp.jsx'
 import { AvatarStack } from './Avatar.jsx'
+import { isNewComment } from './comments.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
@@ -1186,6 +1187,7 @@ function TaskDetail({
     )
   const { task, comments, history, conflicts, revisions } = context
   const canWrite = Boolean(actor) && !busy
+  const newCount = actor ? comments.filter(comment => isNewComment(comment, actor)).length : 0
   const handoffRevisions = { assignee: revisions.assignee, status: revisions.status }
   const handoffStale = handoffBase && JSON.stringify(handoffBase) !== JSON.stringify(handoffRevisions)
   const newerFields = session && draft
@@ -1414,32 +1416,36 @@ function TaskDetail({
         <div className="section-heading">
           <h3>
             Comments <span>{comments.length}</span>
+            {actor && newCount > 0 && <span className="comment-new-count"> · {newCount} new</span>}
           </h3>
-          <button
-            disabled={!canWrite || !context.unreadCount}
-            onClick={() =>
-              submit('read.mark', {
-                taskId,
-                comments: comments.flatMap((comment) =>
-                  comment.revisionIds.map((revisionId) => ({
-                    commentId: comment.id,
-                    revisionId,
-                  })),
-                ),
-              })
-            }
-          >
-            Mark displayed comments read
-          </button>
+          {actor && (
+            <button
+              disabled={!canWrite || !newCount}
+              onClick={() =>
+                submit('read.mark', {
+                  taskId,
+                  comments: comments.flatMap((comment) =>
+                    comment.revisionIds.map((revisionId) => ({
+                      commentId: comment.id,
+                      revisionId,
+                    })),
+                  ),
+                })
+              }
+            >
+              Mark all read
+            </button>
+          )}
         </div>
-        <p className="muted">
-          {context.unreadCount} unread for{' '}
-          {actors[actor]?.handle || 'this Actor'}
-        </p>
-        {comments.map((comment) => (
-          <article className="comment" key={comment.id}>
-            <strong>{labelActor(actors[comment.actorId])}</strong>
-            <time>{new Date(comment.timestamp).toLocaleString()}</time>
+        {comments.map((comment) => {
+          const isNew = isNewComment(comment, actor)
+          return (
+          <article className={isNew ? 'comment is-new' : 'comment'} key={comment.id}>
+            <div className="comment-head">
+              <strong>{labelActor(actors[comment.actorId])}</strong>
+              <time>{new Date(comment.timestamp).toLocaleString()}</time>
+              {isNew && <span className="comment-tag">New</span>}
+            </div>
             <MarkdownBody>{comment.content}</MarkdownBody>
             {comment.conflicts.map((choice) => (
               <div className="conflict" key={choice.operationId}>
@@ -1460,7 +1466,8 @@ function TaskDetail({
               </div>
             ))}
           </article>
-        ))}
+          )
+        })}
         <form
           onSubmit={async (event) => {
             event.preventDefault()

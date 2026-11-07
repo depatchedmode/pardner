@@ -99,18 +99,26 @@ for (const uuidAvailable of [true, false]) it(
       await bob
         .getByText('The requirements are ready for @builder.', { exact: true })
         .waitFor()
-      assert.match(
-        await bob.getByText(/unread for bob/).textContent(),
-        /1 unread/,
-      )
-      await bob
-        .getByRole('button', { name: 'Mark displayed comments read' })
-        .click()
-      await bob.getByText('0 unread for bob', { exact: true }).waitFor()
-      // Alice's comments and unread count arrive in the same task-context response, so wait for her
-      // rendered comment and then for the live count; Bob's receipt applies to Bob only.
+      const heading = (page) => page.getByRole('heading', { name: /^Comments \d/ })
+      const headingText = async (page) => (await heading(page).textContent()).replace(/\s+/g, ' ').trim()
+      await bob.getByText('Comments 1 · 1 new', { exact: true }).waitFor()
+      // Alice's comments and new count arrive in the same task-context response, so wait for her rendered comment first.
       await alice.locator('article.comment').getByText('The requirements are ready for @builder.', { exact: true }).waitFor()
-      await alice.getByText('1 unread for alice', { exact: true }).waitFor()
+      assert.equal(await headingText(alice), 'Comments 1', 'authors are not told their own comment is new')
+      assert.equal(await alice.getByText('New', { exact: true }).count(), 0)
+      assert.equal(await bob.getByText('New', { exact: true }).count(), 1)
+      assert.equal(await alice.getByRole('button', { name: 'Mark all read', exact: true }).isDisabled(), true)
+      await bob.getByRole('button', { name: 'Mark all read', exact: true }).click()
+      await bob.getByText('Comments 1', { exact: true }).waitFor()
+      assert.equal(await headingText(bob), 'Comments 1')
+      assert.equal(await bob.getByRole('button', { name: 'Mark all read', exact: true }).isDisabled(), true)
+      assert.equal(await bob.getByText('New', { exact: true }).count(), 0)
+      await bob.getByLabel('Comment', { exact: true }).fill('Seen')
+      await bob.getByRole('button', { name: 'Add comment', exact: true }).click()
+      await alice.getByText('Comments 2 · 1 new', { exact: true }).waitFor()
+      assert.equal(await alice.getByText('New', { exact: true }).count(), 1)
+      assert.equal(await alice.locator('.comment.is-new', { hasText: 'Seen' }).count(), 1, 'the tag sits on Bob\'s comment')
+      assert.equal(await headingText(bob), 'Comments 2', 'Bob sees no new count for his own comment')
       await alice
         .getByRole('button', { name: 'Edit task', exact: true })
         .click()

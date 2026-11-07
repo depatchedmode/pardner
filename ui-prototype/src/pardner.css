@@ -376,8 +376,34 @@ nav button[aria-pressed='true'] {
   text-underline-offset: 3px;
 }
 .comment {
-  padding: 18px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--line);
+}
+.comment.is-new {
+  border-left: 2px solid var(--accent);
+  padding-left: 10px;
+}
+.comment-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+.comment-head time {
+  font-size: 13px;
+  color: var(--muted);
+}
+.comment-tag,
+.comment-new-count {
+  color: var(--accent);
+  font-weight: 600;
+}
+.comment-tag {
+  font-size: 12px;
+}
+.comment-new-count {
+  font-size: 0.85em;
 }
 .event {
   display: grid;
@@ -441,7 +467,7 @@ nav button[aria-pressed='true'] {
   font: inherit;
   text-align: left;
 }
-.comment > strong {
+.comment-head > strong {
   font-size: 14px;
 }
 .conflict {
