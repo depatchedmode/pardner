@@ -585,3 +585,165 @@ for (const engine of [chromium, webkit]) it(`never overflows sideways at mid wid
     }
   })
 })
+
+// Box of a locator, or null when it is absent.
+const box = locator => locator.evaluate(element => {
+  const { top, bottom, left, right } = element.getBoundingClientRect()
+  return { top, bottom, left, right }
+})
+
+for (const engine of [chromium, webkit]) it(`shows errors where the work is in ${engine.name()}`, { timeout: 120000 }, async () => {
+  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open }) => {
+    const { result: { taskId } } = await operate('task.create', { title: 'Route errors to the work' })
+    await open()
+    const panel = page.getByRole('complementary', { name: 'Task details' })
+    const alert = page.getByRole('alert')
+
+    // Blank title: a compact field error attached to its input.
+    await page.getByRole('button', { name: 'New task', exact: true }).click()
+    const title = page.getByLabel('Title', { exact: true })
+    const description = page.getByLabel('Description', { exact: true })
+    const before = await box(description)
+    await title.fill('   ')
+    await page.getByRole('button', { name: 'Create task', exact: true }).click()
+    await alert.getByText('Enter a title that is not only spaces.', { exact: true }).waitFor()
+    assert.equal(await title.getAttribute('aria-invalid'), 'true')
+    const [input, fieldError, after] = [await box(title), await box(alert), await box(description)]
+    const lineHeight = await alert.evaluate(element => parseFloat(getComputedStyle(element).lineHeight))
+    assert.ok(fieldError.top >= input.bottom && fieldError.top - input.bottom <= 8, `the field error sits ≤ 8px below its input: ${JSON.stringify({ input, fieldError })}`)
+    assert.ok(fieldError.bottom - fieldError.top <= lineHeight + 1, 'the field error is one line')
+    assert.ok(after.top - before.top <= lineHeight + 8, `the field error adds at most one line: ${before.top} → ${after.top}`)
+    assert.notEqual(await title.evaluate(element => getComputedStyle(element).borderTopColor),
+      await description.evaluate(element => getComputedStyle(element).borderTopColor), 'the invalid input has a danger border')
+    await page.getByRole('button', { name: 'Close', exact: true }).click()
+
+    // Error, notice and warning have distinct, tokenised tones; the notice is not red.
+    const tones = await page.evaluate(() => Object.fromEntries(['error', 'notice', 'notice warning'].map(className => {
+      const probe = document.createElement('div')
+      probe.className = className
+      document.querySelector('.app').append(probe)
+      const style = getComputedStyle(probe)
+      const tone = { border: style.borderBottomColor, background: style.backgroundColor, color: style.color }
+      probe.remove()
+      return [className, tone]
+    })))
+    assert.equal(new Set(Object.values(tones).map(tone => tone.border)).size, 3, `distinct borders: ${JSON.stringify(tones)}`)
+    assert.notEqual(tones.notice.color, tones.error.color, 'the notice does not use the error colour')
+    assert.notEqual(tones.notice.background, tones.error.background, 'the notice does not use the error background')
+
+    const openTask = async () => {
+      await page.getByRole('button', { name: /Route errors to the work|A newer agent title/ }).click()
+      await panel.getByRole('button', { name: 'Edit task', exact: true }).waitFor()
+    }
+    for (const width of [375, 1440]) {
+      await page.setViewportSize({ width, height: 900 })
+      // STALE_UPDATE renders inside the edit form, above Save changes, and Cancel edit clears it.
+      await openTask()
+      await panel.getByRole('button', { name: 'Edit task', exact: true }).click()
+      await panel.getByLabel('Title', { exact: true }).fill(`A stale local draft at ${width}`)
+      const { revisions } = await run(['show', taskId])
+      await run(['update', taskId, '--title', `A newer agent title ${width}`, '--revisions', JSON.stringify({ title: revisions.title })])
+      await panel.getByRole('heading', { name: `A newer agent title ${width}`, exact: true }).waitFor()
+      await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
+      await alert.getByText(/draft is preserved/).waitFor()
+      assert.equal(await panel.getByRole('alert').count(), 1, `the stale error renders inside the panel at ${width}`)
+      assert.equal(await panel.getByRole('region', { name: 'Edit task' }).getByRole('alert').count(), 1, `the stale error renders inside the edit form at ${width}`)
+      const save = await box(panel.getByRole('button', { name: 'Save changes', exact: true }))
+      const cancel = await box(panel.getByRole('button', { name: 'Cancel edit', exact: true }))
+      const notice = await box(alert)
+      assert.ok(notice.bottom <= save.top && notice.bottom <= cancel.top, `the error sits above Save/Cancel at ${width}: ${JSON.stringify({ notice, save, cancel })}`)
+      assert.equal(await alert.getByRole('button', { name: 'Dismiss', exact: true }).count(), 1, 'a non-pending error can be dismissed')
+      await panel.getByRole('button', { name: 'Cancel edit', exact: true }).click()
+      assert.equal(await alert.count(), 0, `Cancel edit clears the error at ${width}`)
+      await panel.getByRole('button', { name: 'Close', exact: true }).click()
+    }
+
+    // A lost response keeps Retry inside the panel, then on the page after Escape; it replays exactly once.
+    await page.setViewportSize({ width: 375, height: 812 })
+    await openTask()
+    const attempts = []
+    let dropped = 0
+    await page.route('**/automerge/operations', async route => {
+      const operation = route.request().postDataJSON()
+      if (operation.type === 'comment.add') attempts.push(operation)
+      if (operation.type === 'comment.add' && dropped === 0) {
+        dropped++
+        assert.equal((await route.fetch()).status(), 200)
+        await route.abort('failed')
+      } else if (operation.type === 'comment.add' && dropped === 1) {
+        dropped++
+        await route.abort('failed')
+      } else await route.continue()
+    })
+    await panel.getByLabel('Comment', { exact: true }).fill('Replay this comment once')
+    await panel.getByRole('button', { name: 'Add comment', exact: true }).click()
+    await panel.getByRole('alert').getByRole('button', { name: 'Retry saved request', exact: true }).waitFor()
+    assert.equal(await page.getByRole('button', { name: 'Dismiss', exact: true }).count(), 0, 'a pending error cannot be dismissed')
+    const commentForm = panel.getByRole('button', { name: 'Add comment', exact: true }).locator('xpath=ancestor::form')
+    assert.equal(await commentForm.getByRole('alert').count(), 1, 'the comment error renders in the comment form')
+    await page.keyboard.press('Escape')
+    await panel.waitFor({ state: 'detached' })
+    await page.getByText('A request is awaiting confirmation.').waitFor()
+    assert.equal(await alert.count(), 0, 'Escape clears the error but not the pending request')
+    await page.getByRole('button', { name: 'Retry saved request', exact: true }).click()
+    // The second attempt is lost before the service sees it: the page slot keeps Retry in flow under the header.
+    await alert.getByRole('button', { name: 'Retry saved request', exact: true }).waitFor()
+    const slot = await page.locator('.app > .error').evaluate(element => ({
+      position: getComputedStyle(element).position, top: element.getBoundingClientRect().top,
+      header: document.querySelector('header').getBoundingClientRect().bottom,
+    }))
+    assert.notEqual(slot.position, 'fixed', 'the page error is in normal flow')
+    assert.ok(slot.top >= slot.header - 1, `the page error sits under the header: ${JSON.stringify(slot)}`)
+    assert.equal(await page.getByRole('button', { name: 'Dismiss', exact: true }).count(), 0)
+    await page.getByRole('button', { name: 'Retry saved request', exact: true }).click()
+    await page.getByRole('button', { name: 'Retry saved request', exact: true }).waitFor({ state: 'hidden' })
+    assert.equal((await run(['show', taskId])).comments.filter(comment => comment.content === 'Replay this comment once').length, 1)
+    assert.equal(attempts.length, 3)
+    assert.deepEqual(attempts[0], attempts[2])
+    await page.unroute('**/automerge/operations')
+
+    // AMBIGUOUS_ACTOR: Dismiss clears the alert and keeps the draft.
+    await openTask()
+    await page.route('**/automerge/operations', route => route.fulfill({
+      status: 400, contentType: 'application/json',
+      body: JSON.stringify({ code: 'AMBIGUOUS_ACTOR', error: 'Ambiguous Actor: choose another reference' }),
+    }))
+    await panel.getByLabel('Comment', { exact: true }).fill('Keep this draft')
+    await panel.getByRole('button', { name: 'Add comment', exact: true }).click()
+    await commentForm.getByRole('alert').getByText(/Ambiguous Actor/).waitFor()
+    await alert.getByRole('button', { name: 'Dismiss', exact: true }).click()
+    assert.equal(await alert.count(), 0, 'Dismiss clears the error')
+    assert.equal(await panel.getByLabel('Comment', { exact: true }).inputValue(), 'Keep this draft')
+    await page.unroute('**/automerge/operations')
+  })
+})
+
+for (const engine of [chromium, webkit]) it(`shows a connection error inside the failed form in ${engine.name()}`, { timeout: 60000 }, async () => {
+  await withWorkspace(engine, { viewport: { width: 375, height: 640 } }, async ({ page, service, open }) => {
+    await page.goto(`${service.httpUrl}/pardner/`)
+    const token = page.getByLabel('Local service token')
+    await token.fill('incorrect')
+    await page.getByRole('button', { name: 'Connect', exact: true }).click()
+    const alert = page.getByRole('alert')
+    await alert.waitFor()
+    assert.equal(await alert.evaluate(element => Boolean(element.closest('form')?.querySelector('input[type=password]'))), true,
+      'the token error renders inside the token form')
+    const where = await alert.evaluate(element => {
+      const { top, bottom } = element.getBoundingClientRect()
+      return { top, bottom, innerHeight }
+    })
+    assert.ok(where.top >= 0 && where.bottom <= where.innerHeight + 1, `the token error is in the viewport: ${JSON.stringify(where)}`)
+    await token.fill('another attempt')
+    assert.equal(await alert.count(), 0, 'editing the token clears its error')
+
+    // Failures still in flight when the user forgets the workspace never reach the fresh form (P1-05).
+    await open()
+    await page.route('**/automerge/**', route => route.abort('failed'))
+    await page.reload()
+    await alert.getByRole('button', { name: 'Retry connection', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Forget this workspace', exact: true }).click()
+    await page.getByLabel('Local service token').waitFor()
+    await page.waitForTimeout(1500)
+    assert.equal(await alert.count(), 0, 'no stale error after Forget')
+  })
+})

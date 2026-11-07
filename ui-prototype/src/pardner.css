@@ -8,6 +8,16 @@
   --muted: #b3b3b3;
   --accent: #76dfba;
   --warning: #ffce87;
+  /* Message tones: error (danger), warning and neutral notice (info). */
+  --danger-text: #ffcabf;
+  --danger-bg: #291b19;
+  --danger-line: #825349;
+  --warning-bg: #231d15;
+  --warning-line: #80643b;
+  --info-bg: #131a20;
+  --info-line: #3d5568;
+  --form-gap: 17px;
+  --field-error-gap: 4px;
   /* User-authored Markdown scale; sits below the 20/17px chrome headings. */
   --text-prose: 15px;
   --text-prose-h1: 16px;
@@ -106,7 +116,7 @@ label {
 }
 form {
   display: grid;
-  gap: 17px;
+  gap: var(--form-gap);
 }
 h1 {
   font-size: 22px;
@@ -391,19 +401,55 @@ nav button[aria-pressed='true'] {
 .conflict p {
   white-space: pre-wrap;
 }
+/* Messages are boxes where the work is; in the app chrome they are full-width bands. */
 .error,
 .notice {
-  padding: 15px 28px;
-  background: #291b19;
-  color: #ffcabf;
-  border-bottom: 1px solid #825349;
+  padding: 12px 15px;
+  border: 1px solid;
+  border-radius: 6px;
+}
+.error {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border-color: var(--danger-line);
 }
 .error p {
   margin: 7px 0;
 }
+.error .actions {
+  margin-top: 10px;
+}
 .notice {
-  background: #232018;
-  color: #ffddad;
+  background: var(--info-bg);
+  border-color: var(--info-line);
+}
+.notice.warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+  border-color: var(--warning-line);
+}
+.app > .error,
+.app > .notice {
+  padding: 15px 28px;
+  border-width: 0 0 1px;
+  border-radius: 0;
+}
+.app > .error {
+  max-height: 30vh;
+  overflow: auto;
+}
+.app > .error p {
+  max-width: 75ch;
+}
+/* Pulled up against its input: the form gap would otherwise separate them. */
+.field-error {
+  margin: calc(var(--field-error-gap) - var(--form-gap)) 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--danger-text);
+}
+input[aria-invalid='true'] {
+  border-color: var(--danger-line);
 }
 .connection {
   max-width: 480px;
@@ -417,9 +463,8 @@ nav button[aria-pressed='true'] {
   margin-bottom: 30px;
   color: var(--muted);
 }
-.connection .error {
+.connection > .error {
   margin-top: 20px;
-  padding: 15px;
 }
 .activity,
 .goals {
@@ -675,8 +720,8 @@ code {
   .save-status {
     font-size: 12px;
   }
-  .error,
-  .notice {
+  .app > .error,
+  .app > .notice {
     padding: 14px 16px;
   }
 }
@@ -686,19 +731,6 @@ code {
       background-color 0.12s ease,
       border-color 0.12s ease;
   }
-}
-.app > .error {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 20;
-  max-height: 30vh;
-  overflow: auto;
-  border-top: 1px solid #825349;
-}
-.app > .error p {
-  max-width: 75ch;
 }
 .control {
   max-width: 1000px;

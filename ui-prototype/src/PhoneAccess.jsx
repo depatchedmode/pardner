@@ -64,7 +64,7 @@ export default function PhoneAccess({ request, onClose, canManageAccess }) {
     {!access && !error && <p role="status">Finding available networks…</p>}
     {access && <>
       {!canManageAccess && !access.phoneUrl && <p>Open Pardner on the service computer through its local address to enable device access.</p>}
-      {access.restartRequired && <p className="notice" role="status">Settings saved. Restart the Pardner service with the same data directory to apply them, then reopen this dialog. Existing access stays active until restart.</p>}
+      {access.restartRequired && <p className="notice warning" role="status">Settings saved. Restart the Pardner service with the same data directory to apply them, then reopen this dialog. Existing access stays active until restart.</p>}
       {access.diagnostic && <p role="status">{access.diagnostic}</p>}
       {isPairingReady(access) && <section className="phone-pairing">
         {qr && <img width="240" height="240" src={qr} alt="QR code for the device address" />}

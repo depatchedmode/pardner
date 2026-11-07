@@ -22,6 +22,8 @@ const LABELS = {
   achieved: 'Achieved',
 }
 const GOAL_STATUSES = ['open', 'achieved', 'abandoned']
+// Task details operations whose errors render above that form's submit button.
+const FORM_SLOTS = ['task.update', 'task.handoff', 'comment.add']
 const labelActor = (actor) =>
   actor ? `${actor.displayName || actor.handle} · ${actor.kind}` : 'Unassigned'
 
@@ -58,7 +60,8 @@ function MarkdownBody({ children }) {
     </div>
   )
 }
-function ErrorNotice({ error, retry }) {
+// Buttons are type="button": the notice can sit inside the form that failed.
+function ErrorNotice({ error, retry, onDismiss }) {
   if (!error) return null
   return (
     <div className="error" role="alert">
@@ -68,7 +71,10 @@ function ErrorNotice({ error, retry }) {
           ? 'Your draft is preserved. Review the latest context before making a new edit.'
           : 'Your last confirmed data remains available.'}
       </p>
-      {retry && <button onClick={retry}>Retry saved request</button>}
+      {(retry || onDismiss) && <div className="actions">
+        {retry && <button type="button" onClick={retry}>Retry saved request</button>}
+        {onDismiss && <button type="button" onClick={onDismiss}>Dismiss</button>}
+      </div>}
     </div>
   )
 }
@@ -138,7 +144,15 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   const [pairCode, setPairCode] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('pair') ?? '')
   const [pairBusy, setPairBusy] = useState(false)
   const [phoneSetup, setPhoneSetup] = useState(false)
+  // { failure, source }: source names the form that failed ('pair' / 'token') or 'open'.
   const [connectionError, setConnectionError] = useState(null)
+  // Failures from before a Forget belong to a workspace the user already left.
+  const connectionGeneration = useRef(0)
+  const credentialSource = useRef(config.canManageAccess ? 'token' : 'pair')
+  const connectionAlert = useRef(null)
+  const failConnection = useCallback((failure, source, generation = connectionGeneration.current) => {
+    if (generation === connectionGeneration.current) setConnectionError({ failure, source })
+  }, [])
   const [doc, setDoc] = useState(null)
   const [status, setStatus] = useState(null)
   const [connected, setConnected] = useState(false)
@@ -150,6 +164,8 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   const [statusFilter, setStatusFilter] = useState(() => client.preferences().statusFilter || '')
   const [veinFilter, setVeinFilter] = useState(() => client.preferences().veinFilter || '')
   const [error, setError] = useState(null)
+  // { type, taskId } of the operation that failed, so its message renders beside that form.
+  const [errorOrigin, setErrorOrigin] = useState(null)
   const [busy, setBusy] = useState(false)
   const [confirmedOperation, setConfirmedOperation] = useState(null)
   const [pending, setPending] = useState(() => client.pending())
@@ -159,6 +175,8 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   const refreshGeneration = useRef(0)
   const [retryGeneration, setRetryGeneration] = useState(0)
   const pairDevice = useCallback(async code => {
+    const generation = connectionGeneration.current
+    credentialSource.current = 'pair'
     setPairBusy(true)
     setConnectionError(null)
     try {
@@ -170,9 +188,9 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
       setPairCode('')
       setToken(client.credential())
     }
-    catch (failure) { setConnectionError(failure) }
+    catch (failure) { failConnection(failure, 'pair', generation) }
     finally { setPairBusy(false) }
-  }, [client])
+  }, [client, failConnection])
   useEffect(() => {
     if (sessionMode) return
     const pairFromUrl = () => {
@@ -200,17 +218,18 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   const onTasks = session?.onTasks
   useEffect(() => { if (doc) onTasks?.(doc.tasks) }, [onTasks, doc])
   const request = useCallback(async (path, body) => {
+    const generation = connectionGeneration.current
     try { return await client.request(path, body) } catch (failure) {
       if (failure.code === 'AUTH_REQUIRED' && sessionRef.current) sessionRef.current.onAuthLost()
       else if (failure.code === 'AUTH_REQUIRED' && !client.credential()) {
         setToken('')
         setDoc(null)
-        setConnectionError(new Error('The service credential changed. Pair again or enter the current local service token.'))
+        failConnection(new Error('The service credential changed. Pair again or enter the current local service token.'), credentialSource.current, generation)
       }
       if (failure.code === 'WORKSPACE_MISMATCH') await reloadConfiguration()
       throw failure
     }
-  }, [client, reloadConfiguration])
+  }, [client, reloadConfiguration, failConnection])
   const refresh = useCallback(async () => {
     const generation = ++refreshGeneration.current
     const observedDoc = docUpdates.current
@@ -259,13 +278,13 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
             const message = JSON.parse(event.data)
             if (message.doc && message.doc.workspaceId !== config.workspaceId) {
               socket.close()
-              void reloadConfiguration().catch(setConnectionError)
+              void reloadConfiguration().catch(failure => { if (!stopped) failConnection(failure, 'open') })
               return
             }
             if (message.doc) { docUpdates.current++; setDoc(message.doc) }
             if (message.status) { statusUpdates.current++; setStatus(message.status) }
           } catch {
-            setConnectionError(new Error('The service sent an unreadable update. Reconnecting…'))
+            failConnection(new Error('The service sent an unreadable update. Reconnecting…'), 'open')
             socket.close()
           }
         }
@@ -274,7 +293,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           connecting = false
           if (stopped) return
           setConnected(false)
-          setConnectionError(new Error('Live updates disconnected. Reconnecting automatically. Check that both service ports are reachable.'))
+          failConnection(new Error('Live updates disconnected. Reconnecting automatically. Check that both service ports are reachable.'), 'open')
           schedule()
         }
         socket.onerror = () => socket.close()
@@ -282,7 +301,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
         connecting = false
         if (stopped) return
         setConnected(false)
-        setConnectionError(failure)
+        failConnection(failure, failure.code === 'AUTH_REQUIRED' ? credentialSource.current : 'open')
         if (failure.code !== 'AUTH_REQUIRED') schedule()
       }
     }
@@ -304,12 +323,16 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
       window.removeEventListener('focus', resume)
       document.removeEventListener('visibilitychange', resume)
     }
-  }, [token, config, refresh, request, reloadConfiguration, retryGeneration])
+  }, [token, config, refresh, request, reloadConfiguration, retryGeneration, failConnection])
+  useEffect(() => {
+    connectionAlert.current?.scrollIntoView({ block: 'nearest' })
+  }, [connectionError])
   useEffect(() => {
     if (!sessionMode && doc && actor && !doc.actors[actor]) setActor('')
   }, [doc, actor, sessionMode])
   const submit = async (type, payload, replay = null) => {
     if (inflight.current) return null
+    setErrorOrigin({ type: replay?.type ?? type, taskId: (replay?.payload ?? payload)?.taskId })
     if (!actor && !replay) {
       setError({ message: 'Choose the Actor making this change.' })
       return null
@@ -361,8 +384,14 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
       setBusy(false)
     }
   }
+  // Each board preset sets every filter, so a stale one never hides its tasks.
+  // Declared before the connection screen's early return: forget() uses it there too.
+  const showBoard = ({ assignee = '', status = '', vein = '' }) => {
+    setFilter(assignee); setStatusFilter(status); setVeinFilter(vein); setView('board')
+  }
   const forget = () => {
     try {
+      connectionGeneration.current++
       client.forget()
       setToken('')
       setActor('')
@@ -377,12 +406,13 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   }
   const connectWithToken = event => {
     event.preventDefault()
+    credentialSource.current = 'token'
     setConnectionError(null)
     try {
       client.remember(credential)
       setToken(client.credential())
       setCredential('')
-    } catch (failure) { setConnectionError(failure) }
+    } catch (failure) { failConnection(failure, 'token') }
   }
   const retryConnection = () => {
     if (!token) void pairDevice(pairCode)
@@ -391,11 +421,18 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   if (session && !doc) return <main className="connection">
     <h1>Pardner</h1>
     <p role="status">{connectionError ? 'The project board isn’t reachable yet.' : 'Opening the project board…'}</p>
-    {connectionError && <div role="alert" className="error"><p>{connectionError.message}</p>
-      <button onClick={retryConnection}>Retry connection</button>
+    {connectionError && <div role="alert" className="error" ref={connectionAlert}><p>{connectionError.failure.message}</p>
+      <button type="button" onClick={retryConnection}>Retry connection</button>
     </div>}
   </main>
-  if (!token || !doc) return <main className="connection">
+  if (!token || !doc) {
+    // While opening, the error sits under the status; otherwise inside the form that failed.
+    const connectionSlot = !connectionError ? null : token ? 'open' : connectionError.source === 'token' ? 'token' : 'pair'
+    const connectionNotice = connectionError && <div role="alert" className="error" ref={connectionAlert}><p>{connectionError.failure.message}</p>
+      <p>Check that the service is running. For a changed address, reopen Pair another device on the desktop.</p>
+      <button type="button" disabled={pairBusy || (!token && !pairCode)} onClick={retryConnection}>Retry connection</button>
+    </div>
+    return <main className="connection">
     <h1>Pardner</h1>
     <p>One workspace for human and agent Actors.</p>
     {!token && <>
@@ -403,27 +440,27 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
         event.preventDefault()
         await pairDevice(pairCode)
       }}>
-        <label>Pairing code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{8}" maxLength={8} required disabled={pairBusy} value={pairCode} onChange={event => setPairCode(event.target.value)} /></label>
+        <label>Pairing code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{8}" maxLength={8} required disabled={pairBusy} value={pairCode} onChange={event => { setPairCode(event.target.value); setConnectionError(null) }} /></label>
         <p className="muted">Open Pair another device on the desktop to get a code. This browser will remember your workspace. Use a trusted network: HTTP traffic is unencrypted.</p>
+        {connectionSlot === 'pair' && connectionNotice}
         <button className="primary" disabled={pairBusy}>{pairBusy ? 'Connecting…' : 'Pair this device'}</button>
       </form>
       <details open={config.canManageAccess}>
         <summary>Connect with a local service token</summary>
         <form onSubmit={connectWithToken}>
-          <label>Local service token<input type="password" autoComplete="off" required value={credential} onChange={event => setCredential(event.target.value)} /></label>
+          <label>Local service token<input type="password" autoComplete="off" required value={credential} onChange={event => { setCredential(event.target.value); setConnectionError(null) }} /></label>
           <p className="muted">Use the token from the service’s connection.json file. This browser remembers it until you forget the workspace or the secret changes.</p>
+          {connectionSlot === 'token' && connectionNotice}
           <button className="primary" disabled={pairBusy}>Connect</button>
         </form>
       </details>
     </>}
     {token && <p role="status">Opening your local workspace…</p>}
-    {connectionError && <div role="alert" className="error"><p>{connectionError.message}</p>
-      <p>Check that the service is running. For a changed address, reopen Pair another device on the desktop.</p>
-      <button disabled={pairBusy || (!token && !pairCode)} onClick={retryConnection}>Retry connection</button>
-    </div>}
+    {connectionSlot === 'open' && connectionNotice}
     <ErrorNotice error={error} />
     {token && <button onClick={forget}>Forget this workspace</button>}
   </main>
+  }
   const actors = doc.actors
   const veins = doc.veins || {}
   const goals = doc.goals || {}
@@ -432,11 +469,19 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
     (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter)
       && (!activeVeinFilter || task.veinIds?.includes(activeVeinFilter)),
   )
-  // Each board preset sets every filter, so a stale one never hides its tasks.
-  const showBoard = ({ assignee = '', status = '', vein = '' }) => {
-    setFilter(assignee); setStatusFilter(status); setVeinFilter(vein); setView('board')
-  }
   const showVein = (veinId) => showBoard({ vein: veinId })
+  // One routed message: inside the open panel (beside the form that failed), else under the header.
+  // A pending request keeps Retry and cannot be dismissed, wherever the message sits.
+  const errorSlot = !error ? null : creating ? 'create' : selected
+    ? (errorOrigin?.taskId === selected ? errorOrigin.type : 'panel') : 'page'
+  const errorNotice = <ErrorNotice
+    error={error}
+    retry={pending && !busy ? () => submit(null, null, pending) : null}
+    onDismiss={pending ? null : () => setError(null)}
+  />
+  // Closing a panel clears its message but never the pending request; the page notice then offers Retry.
+  const closeCreate = () => { setCreating(false); setError(null) }
+  const closeDetails = () => { setSelected(null); setError(null) }
   return (
     <div className="app" data-client={sessionMode || undefined}
       style={sessionMode ? { '--client-header-height': `${headerHeight}px` } : undefined}>
@@ -460,14 +505,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           </button>
         </div>
       </header>
-      {phoneSetup && <PhoneAccess canManageAccess={config.canManageAccess} request={request} onClose={() => setPhoneSetup(false)} />}
-      {connectionError && <div className="notice" role="status"><p>{connectionError.message}</p>
-        <button onClick={retryConnection}>Retry connection</button>
-      </div>}
-      <ErrorNotice
-        error={error}
-        retry={pending && !busy ? () => submit(null, null, pending) : null}
-      />
+      {errorSlot === 'page' && errorNotice}
       {pending && !error && (
         <div className="notice">
           A request is awaiting confirmation.{' '}
@@ -476,6 +514,10 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           </button>
         </div>
       )}
+      {phoneSetup && <PhoneAccess canManageAccess={config.canManageAccess} request={request} onClose={() => setPhoneSetup(false)} />}
+      {connectionError && <div className="notice" role="status"><p>{connectionError.failure.message}</p>
+        <button onClick={retryConnection}>Retry connection</button>
+      </div>}
       {!session && !Object.keys(actors).length && (
         <div className="notice">
           Register your first human or agent Actor with{' '}
@@ -614,7 +656,8 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
         <TaskForm
           actors={actors}
           busy={busy}
-          onClose={() => setCreating(false)}
+          notice={errorSlot === 'create' && errorNotice}
+          onClose={closeCreate}
           onSubmit={async (fields) => {
             const receipt = await submit('task.create', fields)
             if (receipt) {
@@ -639,7 +682,10 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           connected={connected}
           session={session}
           client={client}
-          onClose={() => setSelected(null)}
+          errorSlot={errorSlot}
+          errorNotice={errorNotice}
+          clearError={() => setError(null)}
+          onClose={closeDetails}
         />
       )}
     </div>
@@ -706,6 +752,7 @@ function TaskForm({
   initialTags,
   onChange,
   editing = false,
+  notice,
 }) {
   const [fields, setFields] = useState(
     initial || {
@@ -759,7 +806,7 @@ function TaskForm({
             }}
           />
         </label>
-        {titleBlank && <p className="error" role="alert" id={`task-title-error-${editing ? 'edit' : 'new'}`}>Enter a title that is not only spaces.</p>}
+        {titleBlank && <p className="field-error" role="alert" id={`task-title-error-${editing ? 'edit' : 'new'}`}>Enter a title that is not only spaces.</p>}
         <label>
           Description
           <textarea
@@ -810,6 +857,7 @@ function TaskForm({
             onChange={(event) => setTags(event.target.value)}
           />
         </label>
+        {notice}
         <div className="actions">
           <button className="primary" disabled={busy}>
             {editing ? 'Save changes' : 'Create task'}
@@ -872,6 +920,9 @@ function TaskDetail({
   connected,
   session = null,
   client = null,
+  errorSlot,
+  errorNotice,
+  clearError,
   onClose,
 }) {
   const [context, setContext] = useState(null)
@@ -937,6 +988,7 @@ function TaskDetail({
         <button onClick={onClose}>Close</button>
         <p role="status">Opening task…</p>
         <ErrorNotice error={failure} />
+        {errorNotice}
       </aside>
     )
   const { task, comments, history, conflicts, revisions } = context
@@ -950,6 +1002,9 @@ function TaskDetail({
     ? [...history].reverse().find(event => event.changes.some(change => newerFields.includes(change.field)))?.actorId
     : null
   const here = session?.focus[taskId] ? focusedActors(session, session.focus[taskId]) : []
+  // An edit error falls back to the panel top once its form has closed.
+  const formSlot = errorSlot === 'task.update' && !draft ? 'panel' : errorSlot
+  const noticeFor = slot => formSlot === slot && errorNotice
   return (
     <aside className="side-panel" aria-label="Task details">
       <div className="panel-heading">
@@ -970,6 +1025,7 @@ function TaskDetail({
         <p className="muted">Veins: {context.veins.map(vein => `${vein.title} (${LABELS[vein.status]})`).join(', ')}</p>
       )}
       <ErrorNotice error={failure} />
+      {!FORM_SLOTS.includes(formSlot) && errorNotice}
       <IssueLinks taskId={taskId} issues={context.issues ?? []} canWrite={canWrite} submit={submit} />
       {draft && newerFields.length > 0 && (
         <div className="notice draft-notice" role="status">
@@ -1007,7 +1063,8 @@ function TaskDetail({
           initial={draft.edited ?? draft.fields}
           initialTags={draft.tagsText}
           onChange={persistDraftEdits}
-          onClose={() => setDraft(null)}
+          notice={noticeFor('task.update')}
+          onClose={() => { setDraft(null); clearError() }}
           onSubmit={async (fields) => {
             const updates = Object.fromEntries(
               Object.entries(fields).filter(
@@ -1153,6 +1210,7 @@ function TaskDetail({
               onChange={(event) => setHandoffMessage(event.target.value)}
             />
           </label>
+          {noticeFor('task.handoff')}
           <button disabled={!canWrite || !to || handoffStale || !handoffMessage.trim()}>Hand off</button>
         </form>
       </section>
@@ -1227,6 +1285,7 @@ function TaskDetail({
               placeholder="Share progress or mention an Actor with @handle"
             />
           </label>
+          {noticeFor('comment.add')}
           <button className="primary" disabled={!canWrite || !message.trim()}>
             Add comment
           </button>
