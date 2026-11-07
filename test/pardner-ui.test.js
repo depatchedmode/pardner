@@ -3,8 +3,9 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { chromium } from 'playwright'
+import { chromium, webkit } from 'playwright'
 import { cli, startCliService } from '../support/cli-resources.js'
+import { operationHttp } from '../lib/native-peer-client.js'
 
 for (const uuidAvailable of [true, false]) it(
   `uses shared browser operations with crypto.randomUUID ${uuidAvailable ? 'available' : 'unavailable'}`,
@@ -291,3 +292,175 @@ for (const uuidAvailable of [true, false]) it(
     }
   },
 )
+
+// Opens one browser on a fresh workspace with Actor alice. `operate` posts a
+// shared operation directly so layout tests can seed hundreds of records quickly.
+async function withWorkspace(engine, viewport, body) {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-ui-layout-'))
+  const service = await startCliService(directory)
+  let browser
+  const errors = []
+  const run = async args => {
+    const output = await cli(directory, [...args, '--actor', 'alice'])
+    assert.equal(output.code, 0, output.stdout + output.stderr)
+    return output.result
+  }
+  try {
+    await run(['actors', 'register', 'alice', '--handle', 'alice', '--kind', 'human'])
+    const { token } = JSON.parse(await readFile(join(directory, 'connection.json'), 'utf8'))
+    const operate = (type, payload) => operationHttp(service.httpUrl, token, type, payload, 'alice')
+    browser = await engine.launch({ headless: true })
+    const context = await browser.newContext({ viewport })
+    const page = await context.newPage()
+    page.on('pageerror', error => errors.push(error.message))
+    const open = async () => {
+      await page.goto(`${service.httpUrl}/pardner/`)
+      await page.getByLabel('Local service token').fill(token)
+      await page.getByRole('button', { name: 'Connect', exact: true }).click()
+      await page.getByLabel('Actor', { exact: true }).selectOption('alice')
+    }
+    await body({ page, run, operate, open })
+    assert.deepEqual(errors, [])
+  } finally {
+    await browser?.close()
+    await service.stop()
+    await rm(directory, { recursive: true, force: true })
+  }
+}
+
+// Reads one pixel column of an element screenshot; used to see scroll shadows.
+async function pixelColumn(page, locator, x) {
+  const png = (await locator.screenshot()).toString('base64')
+  return page.evaluate(async ({ png, x }) => {
+    const image = new Image()
+    image.src = `data:image/png;base64,${png}`
+    await image.decode()
+    const canvas = document.createElement('canvas')
+    canvas.width = image.width
+    canvas.height = image.height
+    const context = canvas.getContext('2d')
+    context.drawImage(image, 0, 0)
+    const column = x < 0 ? image.width + x : x
+    const { data } = context.getImageData(column, Math.floor(image.height / 2), 1, 1)
+    return [data[0], data[1], data[2]]
+  }, { png, x })
+}
+
+const MARKDOWN_FIXTURE = [
+  '# Heading one',
+  '',
+  '## Heading two',
+  '',
+  '### Heading three',
+  '',
+  '> A quoted decision from the review.',
+  '',
+  '- [ ] Write the failing assertion first',
+  '- [x] Keep **bold** and `code` inline in a task item',
+  '',
+  `| ${Array.from({ length: 12 }, (_, index) => `Measurement${String(index + 1).padStart(2, '0')}`).join(' | ')} |`,
+  `|${' --- |'.repeat(12)}`,
+  `| ${Array.from({ length: 12 }, (_, index) => `value${index + 1}`).join(' | ')} |`,
+  '',
+  '```',
+  `const line = '${'x'.repeat(200)}'`,
+  '```',
+  '',
+  '```',
+  'short()',
+  '```',
+].join('\n')
+
+for (const engine of [chromium, webkit]) it(`gives user-authored Markdown its own subordinate scale in ${engine.name()}`, { timeout: 60000 }, async () => {
+  await withWorkspace(engine, { width: 1440, height: 900 }, async ({ page, operate, open }) => {
+    const { result: { taskId } } = await operate('task.create', { title: 'Render the Markdown fixture', description: MARKDOWN_FIXTURE })
+    await operate('comment.add', { taskId, text: MARKDOWN_FIXTURE })
+    await open()
+    await page.getByRole('button', { name: /Render the Markdown fixture/ }).click()
+    const panel = page.getByRole('complementary', { name: 'Task details' })
+    const description = panel.locator('.markdown').first()
+    const comment = panel.locator('.comment .markdown')
+    await comment.getByRole('heading', { name: 'Heading one' }).waitFor()
+    const styles = target => target.evaluate(root => {
+      const pick = (selector, ...properties) => {
+        const style = getComputedStyle(root.querySelector(selector))
+        return Object.fromEntries(properties.map(property => [property, style[property]]))
+      }
+      return {
+        h1: pick('h1', 'fontSize', 'fontWeight', 'lineHeight', 'marginTop'),
+        h2: pick('h2', 'fontSize', 'fontWeight', 'lineHeight'),
+        h3: pick('h3', 'fontSize', 'fontWeight', 'color'),
+        quote: pick('blockquote', 'borderLeftWidth', 'borderLeftStyle', 'color', 'paddingLeft'),
+        td: pick('td', 'borderTopWidth', 'borderLeftWidth', 'paddingTop', 'paddingLeft', 'borderCollapse'),
+        th: pick('th', 'backgroundColor'),
+        pre: pick('pre', 'backgroundImage', 'backgroundAttachment'),
+        checkbox: pick('input[type=checkbox]', 'width', 'minHeight', 'paddingLeft'),
+        muted: getComputedStyle(document.documentElement).getPropertyValue('--muted').trim(),
+        mutedColor: (() => { const probe = document.createElement('span'); probe.style.color = 'var(--muted)'; root.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color })(),
+      }
+    })
+    const fromDescription = await styles(description)
+    assert.deepEqual(await styles(comment), fromDescription, 'descriptions and comments render Markdown identically')
+    const size = value => parseFloat(value)
+    assert.ok(size(fromDescription.h1.fontSize) < 17, `h1 ${fromDescription.h1.fontSize} is below the 17px section heading`)
+    assert.ok(size(fromDescription.h1.fontSize) >= size(fromDescription.h2.fontSize))
+    assert.ok(size(fromDescription.h2.fontSize) >= size(fromDescription.h3.fontSize))
+    assert.ok(Number(fromDescription.h1.fontWeight) >= 700 && Number(fromDescription.h2.fontWeight) >= 700, 'h1 and h2 are bold')
+    assert.equal(fromDescription.h3.color, fromDescription.mutedColor, 'h3 is muted')
+    assert.ok(size(fromDescription.quote.borderLeftWidth) >= 2 && fromDescription.quote.borderLeftStyle === 'solid')
+    assert.equal(fromDescription.quote.color, fromDescription.mutedColor, 'blockquote text is muted')
+    assert.equal(fromDescription.td.borderTopWidth, '1px')
+    assert.equal(fromDescription.td.borderLeftWidth, '1px')
+    assert.ok(size(fromDescription.td.paddingTop) >= 6 && size(fromDescription.td.paddingLeft) >= 10, 'cells have at least 6×10px padding')
+    assert.notEqual(fromDescription.th.backgroundColor, 'rgba(0, 0, 0, 0)', 'header cells are tinted')
+    assert.match(fromDescription.pre.backgroundImage, /gradient/)
+    assert.match(fromDescription.pre.backgroundAttachment, /local/)
+
+    for (const target of [description, comment]) {
+      assert.equal(await target.getByRole('table').count(), 1, 'the wrapped table keeps table semantics')
+      const scroll = await target.locator('.md-table').evaluate(wrapper => ({
+        overflows: wrapper.scrollWidth > wrapper.clientWidth, overflowX: getComputedStyle(wrapper).overflowX,
+        table: getComputedStyle(wrapper.querySelector('table')).display,
+      }))
+      assert.deepEqual(scroll, { overflows: true, overflowX: 'auto', table: 'table' }, 'a wide table scrolls inside .md-table')
+      const [long, short] = await target.locator('pre').all()
+      assert.equal(await long.evaluate(pre => pre.scrollWidth > pre.clientWidth), true)
+      assert.equal(await short.evaluate(pre => pre.scrollWidth > pre.clientWidth), false)
+      const shortEdge = await pixelColumn(page, short, -3)
+      const shortMiddle = await pixelColumn(page, short, 40)
+      const longEdge = await pixelColumn(page, long, -3)
+      assert.deepEqual(shortEdge, shortMiddle, 'a short code block shows no scroll shadow')
+      assert.ok(Math.max(...longEdge.map((channel, index) => Math.abs(channel - shortMiddle[index]))) >= 8,
+        `an overflowing code block shows a scroll shadow (${longEdge} vs ${shortMiddle})`)
+    }
+    assert.equal(await panel.evaluate(aside => aside.scrollWidth <= aside.clientWidth), true, 'wide Markdown never widens the panel')
+    const output = resolve('output/playwright')
+    await mkdir(output, { recursive: true })
+    await description.screenshot({ path: join(output, `pardner-markdown-${engine.name()}.png`) })
+
+    for (const width of [1440, 375]) {
+      await page.setViewportSize({ width, height: 900 })
+      for (const target of [description, comment]) {
+        const items = await target.locator('li.task-list-item').evaluateAll(list => list.map(item => {
+          const checkbox = item.querySelector('input[type=checkbox]')
+          const text = [...item.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim())
+          const range = document.createRange()
+          range.selectNodeContents(text)
+          const line = range.getClientRects()[0]
+          const box = checkbox.getBoundingClientRect()
+          const li = item.getBoundingClientRect()
+          return { checkbox: { left: box.left, right: box.right, top: box.top, width: box.width, height: box.height },
+            text: { left: line.left, top: line.top, height: line.height }, li: { left: li.left, right: li.right, top: li.top } }
+        }))
+        assert.equal(items.length, 2)
+        for (const { checkbox, text, li } of items) {
+          const where = `at ${width}: ${JSON.stringify({ checkbox, text, li })}`
+          assert.ok(checkbox.width <= 16, `checkbox is at most 16px wide ${where}`)
+          assert.ok(checkbox.right <= text.left, `checkbox sits left of its text ${where}`)
+          assert.ok(Math.abs((checkbox.top + checkbox.height / 2) - (text.top + text.height / 2)) <= 4, `checkbox shares the first line ${where}`)
+          assert.ok(checkbox.left >= li.left && checkbox.right <= li.right && checkbox.top >= li.top - 4, `checkbox stays inside its item ${where}`)
+        }
+      }
+    }
+  })
+})

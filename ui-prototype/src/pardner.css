@@ -8,6 +8,14 @@
   --muted: #b3b3b3;
   --accent: #76dfba;
   --warning: #ffce87;
+  /* User-authored Markdown scale; sits below the 20/17px chrome headings. */
+  --text-prose: 15px;
+  --text-prose-h1: 16px;
+  --text-prose-h2: 15px;
+  --text-prose-h3: 14px;
+  --code-bg: #090909;
+  --table-head-bg: #1c1c1c;
+  --scroll-shadow: #ffffff38;
 }
 * {
   box-sizing: border-box;
@@ -253,14 +261,78 @@ nav button[aria-pressed='true'] {
   min-width: 0;
 }
 .markdown {
+  font-size: var(--text-prose);
   line-height: 1.6;
   max-width: 70ch;
   overflow-wrap: anywhere;
 }
+.markdown :is(h1, h2, h3, h4) {
+  margin: 1em 0 0.4em;
+  line-height: 1.35;
+}
+.markdown h1 {
+  font-size: var(--text-prose-h1);
+  font-weight: 700;
+}
+.markdown h2 {
+  font-size: var(--text-prose-h2);
+  font-weight: 700;
+}
+.markdown :is(h3, h4) {
+  font-size: var(--text-prose-h3);
+  font-weight: 600;
+  color: var(--muted);
+}
+.markdown blockquote {
+  margin: 1em 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
+/* Hanging indent: the checkbox sits in its item's left padding, beside the first line. */
+.markdown .contains-task-list {
+  list-style: none;
+  padding-left: 0;
+}
+.markdown .contains-task-list > li {
+  padding-left: 1.6em;
+}
+/* Overrides the global form input sizing and the phone 44px/16px input rules;
+   the inherited font size keeps the -1.6em margin equal to the item indent. */
+.markdown input[type='checkbox'] {
+  font-size: inherit;
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  margin: 0 0.5em 0 -1.6em;
+  vertical-align: -2px;
+}
+.md-table {
+  overflow-x: auto;
+  margin: 1em 0;
+}
+.md-table table {
+  border-collapse: collapse;
+}
+.md-table :is(th, td) {
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  text-align: left;
+  overflow-wrap: normal;
+}
+.md-table th {
+  background: var(--table-head-bg);
+}
+/* Scroll shadows: the local covers hide the shadows unless the code overflows. */
 .markdown pre {
   overflow: auto;
-  background: #090909;
   padding: 12px;
+  background:
+    linear-gradient(to right, var(--code-bg) 30%, transparent) left / 40px 100% no-repeat local,
+    linear-gradient(to left, var(--code-bg) 30%, transparent) right / 40px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, var(--scroll-shadow), transparent) left / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, var(--scroll-shadow), transparent) right / 14px 100% no-repeat scroll,
+    var(--code-bg);
 }
 .markdown a {
   color: var(--accent);

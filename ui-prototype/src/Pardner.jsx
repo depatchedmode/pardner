@@ -51,6 +51,13 @@ function SelectActor({
     </label>
   )
 }
+function MarkdownBody({ children }) {
+  return (
+    <div className="markdown">
+      <ActorMarkdown>{children}</ActorMarkdown>
+    </div>
+  )
+}
 function ErrorNotice({ error, retry }) {
   if (!error) return null
   return (
@@ -1023,11 +1030,7 @@ function TaskDetail({
         />
       ) : (
         <>
-          <div className="markdown">
-            <ActorMarkdown>
-              {task.description || 'No description yet.'}
-            </ActorMarkdown>
-          </div>
+          <MarkdownBody>{task.description || 'No description yet.'}</MarkdownBody>
           <button
             disabled={!canWrite}
             onClick={() =>
@@ -1182,9 +1185,7 @@ function TaskDetail({
           <article className="comment" key={comment.id}>
             <strong>{labelActor(actors[comment.actorId])}</strong>
             <time>{new Date(comment.timestamp).toLocaleString()}</time>
-            <div className="markdown">
-              <ActorMarkdown>{comment.content}</ActorMarkdown>
-            </div>
+            <MarkdownBody>{comment.content}</MarkdownBody>
             {comment.conflicts.map((choice) => (
               <div className="conflict" key={choice.operationId}>
                 <strong>{labelActor(actors[choice.actorId])}</strong>
