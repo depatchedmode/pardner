@@ -7,20 +7,9 @@ import PhoneAccess from './PhoneAccess.jsx'
 import ControlPane from './ControlPane.jsx'
 import ClientApp from './ClientApp.jsx'
 import { AvatarStack } from './Avatar.jsx'
+import { STATUS_LABELS as LABELS, describeEvent, sortEvents } from './events.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
-const LABELS = {
-  backlog: 'Backlog',
-  'up-next': 'Up next',
-  'in-progress': 'In progress',
-  review: 'Review',
-  completed: 'Completed',
-  'dead-end': 'Dead end',
-  abandoned: 'Abandoned',
-  open: 'Open',
-  proven: 'Proven',
-  achieved: 'Achieved',
-}
 const GOAL_STATUSES = ['open', 'achieved', 'abandoned']
 // Task details operations whose errors render above that form's submit button.
 const FORM_SLOTS = ['task.update', 'task.handoff', 'comment.add']
@@ -119,6 +108,32 @@ function SaveStatus({ status, connected, busy, heads }) {
     >
       {text}
     </span>
+  )
+}
+
+// One event as a plain sentence. Activity passes handlers so subjects become
+// buttons; History passes none and stays plain text.
+function EventRow({ event, lookups, within, onTask, onVein, onGoal, formatTime }) {
+  const description = describeEvent(event, lookups, { within })
+  const when = new Date(event.timestamp)
+  const handlers = { task: onTask, vein: onVein, goal: onGoal }
+  return (
+    <article className="event" title={event.type}>
+      <p className="event-line">
+        <strong>{description.actor}</strong>
+        {description.parts.map((part, index) => {
+          if (typeof part === 'string') return part
+          if (part.status) return <span key={index} className="record-status" data-status={part.status}>{part.label}</span>
+          const open = handlers[part.subject]
+          if (!open || part.missing) return part.label
+          return <button key={index} type="button" className="subject" {...(part.subject === 'task' ? { 'data-task-id': part.id } : {})}
+            onClick={click => open(click.currentTarget, part.id)}>{part.label}</button>
+        })}
+      </p>
+      {description.detail && <p className="event-detail">{description.detail}</p>}
+      {description.excerpt && <p className="event-detail">{description.excerpt}</p>}
+      <time dateTime={when.toISOString()} title={when.toLocaleString()}>{formatTime(when)}</time>
+    </article>
   )
 }
 
@@ -391,6 +406,13 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
     }
     panelWasOpen.current = open
   }, [selected, creating])
+  // A subject that switches views asks for focus once the new view has rendered.
+  const focusAfterView = useRef(null)
+  useEffect(() => {
+    const focus = focusAfterView.current
+    focusAfterView.current = null
+    focus?.()
+  }, [view])
   const submit = async (type, payload, replay = null) => {
     if (inflight.current) return null
     setErrorOrigin({ type: replay?.type ?? type, taskId: (replay?.payload ?? payload)?.taskId })
@@ -531,6 +553,19 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
       && (!activeVeinFilter || task.veinIds?.includes(activeVeinFilter)),
   )
   const showVein = (veinId) => showBoard({ vein: veinId })
+  const lookups = { actors, tasks: doc.tasks, veins, goals, comments: doc.comments }
+  const openVein = (_element, veinId) => {
+    focusAfterView.current = () => viewNav.current?.querySelector('[aria-pressed="true"]')?.focus()
+    showVein(veinId)
+  }
+  const openGoal = (_element, goalId) => {
+    focusAfterView.current = () => {
+      const goal = document.querySelector(`.goal[data-goal-id="${CSS.escape(goalId)}"]`)
+      goal?.scrollIntoView({ block: 'start' })
+      goal?.focus({ preventScroll: true })
+    }
+    setView('goals')
+  }
   // One routed message: inside the open panel (beside the form that failed), else under the header.
   // A pending request keeps Retry and cannot be dismissed, wherever the message sits.
   const errorSlot = !error ? null : creating ? 'create' : selected
@@ -696,23 +731,18 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           <ControlPane request={request} actors={actors} tasks={doc.tasks} actor={actor} canManageAccess={config.canManageAccess} />
         ) : (
           <section className="activity">
-            <h2>Workspace activity</h2>
-            {Object.values(doc.operations)
-              .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-              .map((event) => (
-                <article key={event.operationId}>
-                  <p>
-                    <strong>{labelActor(actors[event.actorId])}</strong> ·{' '}
-                    {event.type}
-                  </p>
-                  {event.taskId && (
-                    <button onClick={click => openPanel(click.currentTarget, () => setSelected(event.taskId))}>
-                      {doc.tasks[event.taskId]?.title || event.taskId}
-                    </button>
-                  )}
-                  <time>{new Date(event.timestamp).toLocaleString()}</time>
-                </article>
-              ))}
+            <h2>Activity</h2>
+            {sortEvents(Object.values(doc.operations)).map(event => (
+              <EventRow
+                key={event.operationId}
+                event={event}
+                lookups={lookups}
+                formatTime={when => when.toLocaleString()}
+                onTask={(element, id) => openPanel(element, () => setSelected(id))}
+                onVein={openVein}
+                onGoal={openGoal}
+              />
+            ))}
           </section>
         )}
       </main>
@@ -732,6 +762,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           key={`${selected}:${actor}`}
           taskId={selected}
           actors={actors}
+          lookups={lookups}
           actor={actor}
           heads={doc.heads.join(',')}
           request={request}
@@ -781,7 +812,7 @@ function Goals({ goals, veins, showVein }) {
       {list.map(goal => {
         const goalVeins = veinsByGoal[goal.id] ?? []
         return (
-          <article className="goal" key={goal.id} aria-label={goal.title}>
+          <article className="goal" key={goal.id} aria-label={goal.title} data-goal-id={goal.id} tabIndex={-1}>
             <h3>{goal.title} <span className="record-status" data-status={goal.status}>{LABELS[goal.status]}</span></h3>
             {goal.description && <p className="muted">{goal.description}</p>}
             {Object.keys(goal.conflicts).length > 0 && <p className="conflict-label">Conflicting edits</p>}
@@ -974,6 +1005,7 @@ function IssueLinks({ taskId, issues, canWrite, submit }) {
 function TaskDetail({
   taskId,
   actors,
+  lookups,
   actor,
   heads,
   request,
@@ -1383,17 +1415,14 @@ function TaskDetail({
       </section>
       <section>
         <h3>History</h3>
-        {history.map((event) => (
-          <article className="history" key={event.operationId}>
-            <strong>{labelActor(actors[event.actorId])}</strong> · {event.type}
-            <time>{new Date(event.timestamp).toLocaleString()}</time>
-            {event.changes.map((change) => (
-              <p key={change.field}>
-                {change.field}: {JSON.stringify(change.old)} →{' '}
-                {JSON.stringify(change.new)}
-              </p>
-            ))}
-          </article>
+        {sortEvents(history.filter(event => event.type !== 'comment.add')).map(event => (
+          <EventRow
+            key={event.operationId}
+            event={event}
+            lookups={lookups}
+            within={taskId}
+            formatTime={when => when.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+          />
         ))}
       </section>
     </aside>

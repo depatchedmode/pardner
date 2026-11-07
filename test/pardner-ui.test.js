@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 import { chromium, webkit } from 'playwright'
 import { cli, startCliService } from '../support/cli-resources.js'
 import { withWorkspace } from '../support/ui-workspace.js'
+import { operationHttp } from '../lib/native-peer-client.js'
 
 for (const uuidAvailable of [true, false]) it(
   `uses shared browser operations with crypto.randomUUID ${uuidAvailable ? 'available' : 'unavailable'}`,
@@ -492,7 +493,7 @@ for (const engine of [chromium, webkit]) it(`keeps the app frame in the viewport
       await assertFrame(`after scrolling ${at('Goals')}`)
 
       await nav('Activity').click()
-      await page.getByText('comment.add').first().waitFor()
+      await page.getByText(/commented on/).first().waitFor()
       assert.equal(await page.locator('main').evaluate(main => main.scrollTop), 0, 'a view switch starts at the top')
       assert.ok(await page.locator('.activity article').count() >= 300)
       await assertFrame(at('Activity'))
@@ -832,7 +833,7 @@ for (const engine of [chromium, webkit]) it(`moves focus into panels and back to
 
     // An Activity button is an opener too.
     await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('button', { name: 'Activity', exact: true }).click()
-    const activityButton = page.locator('.activity article button').first()
+    const activityButton = page.locator('.activity article button[data-task-id]').first()
     const activityLabel = await activityButton.textContent()
     await activityButton.click()
     await waitForFocus(() => document.activeElement?.matches('.side-panel h2'))
@@ -849,5 +850,49 @@ for (const engine of [chromium, webkit]) it(`moves focus into panels and back to
     const createdId = (await run(['tasks'])).tasks.find(task => task.title === 'Created with focus kept').id
     await page.keyboard.press('Escape')
     await waitForFocus(id => document.activeElement?.dataset.taskId === id, createdId)
+  })
+})
+
+it('describes Activity and task History as plain sentences', { timeout: 120000 }, async () => {
+  await withWorkspace(chromium, { viewport: { width: 1440, height: 900 } }, async ({ page, run, open, token, service }) => {
+    const as = (actor, type, payload) => operationHttp(service.httpUrl, token, type, payload, actor)
+    await run(['actors', 'register', 'carol', '--handle', 'carol', '--kind', 'human', '--display-name', 'Carol Moreno'])
+    await run(['actors', 'register', 'builder', '--handle', 'builder', '--kind', 'agent', '--display-name', 'Builder'])
+    const { taskId } = (await as('carol', 'task.create', { title: 'Ship the release', assignee: 'carol' })).result
+    const revisions = async fields => Object.fromEntries(Object.entries((await run(['show', taskId])).revisions).filter(([field]) => fields.includes(field)))
+    await as('carol', 'task.update', { taskId, updates: { status: 'review' }, expectedRevisions: await revisions(['status']) })
+    await as('carol', 'comment.add', { taskId, text: 'Looks fine to me' })
+    await as('carol', 'task.handoff', { taskId, to: 'builder', status: 'completed', message: 'Over to you', expectedRevisions: await revisions(['assignee', 'status']) })
+    await as('builder', 'task.link-commit', { taskId, commit: { hash: 'a1b2c3d4e5f6', message: 'feat: ship it' } })
+    const { veinId } = (await as('carol', 'vein.create', { title: 'Launch plan', goal: { title: 'Launch well' } })).result
+    await open()
+    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('button', { name: 'Activity', exact: true }).click()
+    const activity = page.locator('.activity')
+    await activity.getByText('Carol Moreno moved Ship the release to Review', { exact: false }).first().waitFor()
+    const visible = await activity.innerText()
+    assert.ok(!visible.includes('task.update'), `raw operation types stay out of view: ${visible}`)
+    assert.ok(!/ · (human|agent)/.test(visible), `no kind suffix in Activity: ${visible}`)
+    assert.match(visible, /Carol Moreno moved Ship the release to Review/)
+    assert.match(visible, /Carol Moreno handed Ship the release to Builder and set it to Completed/)
+    assert.match(visible, /Builder linked commit a1b2c3d to Ship the release/)
+    assert.equal(await activity.locator('article[title="task.update"]').count(), 1, 'the raw type is only a tooltip')
+    const veinRow = activity.locator('article', { hasText: 'started vein' })
+    await veinRow.getByRole('button', { name: 'Launch plan', exact: true }).click()
+    await page.getByLabel('Vein', { exact: true }).waitFor()
+    assert.equal(await page.getByLabel('Vein', { exact: true }).inputValue(), veinId)
+    assert.equal(await page.locator('.board').count(), 1, 'the vein subject shows Tasks')
+
+    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('button', { name: 'Activity', exact: true }).click()
+    await activity.locator('article button[data-task-id]').first().click()
+    const history = page.locator('.side-panel section', { has: page.getByRole('heading', { name: 'History', exact: true }) })
+    await history.getByRole('heading', { name: 'History', exact: true }).waitFor()
+    const rows = history.locator('.event')
+    await rows.first().waitFor()
+    const text = await history.innerText()
+    assert.ok(!text.includes('null →') && !text.includes('order:') && !text.includes('"builder"'), `History has no raw values: ${text}`)
+    assert.ok(!/commented on/.test(text), 'History has no comment.add rows')
+    assert.equal(await history.locator('button').count(), 0, 'History subjects are plain text')
+    assert.match(await rows.first().innerText(), /linked commit a1b2c3d/, 'the newest event comes first')
+    assert.match(await rows.last().innerText(), /created this task/)
   })
 })
