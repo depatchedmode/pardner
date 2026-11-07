@@ -1237,3 +1237,15 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
     border-top: 1px solid var(--line);
   }
 }
+
+.mention {
+  background: color-mix(in srgb, var(--accent, currentColor) 14%, transparent);
+  border-radius: 3px;
+  padding: 0 0.2em;
+  font-weight: 600;
+}
+
+.mention-hint {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+}
