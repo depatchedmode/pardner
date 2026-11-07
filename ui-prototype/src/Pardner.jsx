@@ -531,7 +531,8 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
         </select></label>
         </>}
       </nav>
-      <main>
+      {/* Keyed by view so a view switch never inherits a stale scroll position. */}
+      <main key={view}>
         {view === 'board' ? (
           <div className="board" data-filtered={Boolean(statusFilter)} style={{ '--columns': STATUSES.length }}>
             {STATUSES.filter(column => !statusFilter || column === statusFilter).map((column) => (

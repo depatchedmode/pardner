@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium, webkit } from 'playwright'
 import { cli, startCliService } from '../support/cli-resources.js'
-import { operationHttp } from '../lib/native-peer-client.js'
+import { withWorkspace } from '../support/ui-workspace.js'
 
 for (const uuidAvailable of [true, false]) it(
   `uses shared browser operations with crypto.randomUUID ${uuidAvailable ? 'available' : 'unavailable'}`,
@@ -293,41 +293,6 @@ for (const uuidAvailable of [true, false]) it(
   },
 )
 
-// Opens one browser on a fresh workspace with Actor alice. `operate` posts a
-// shared operation directly so layout tests can seed hundreds of records quickly.
-async function withWorkspace(engine, viewport, body) {
-  const directory = await mkdtemp(join(tmpdir(), 'pardner-ui-layout-'))
-  const service = await startCliService(directory)
-  let browser
-  const errors = []
-  const run = async args => {
-    const output = await cli(directory, [...args, '--actor', 'alice'])
-    assert.equal(output.code, 0, output.stdout + output.stderr)
-    return output.result
-  }
-  try {
-    await run(['actors', 'register', 'alice', '--handle', 'alice', '--kind', 'human'])
-    const { token } = JSON.parse(await readFile(join(directory, 'connection.json'), 'utf8'))
-    const operate = (type, payload) => operationHttp(service.httpUrl, token, type, payload, 'alice')
-    browser = await engine.launch({ headless: true })
-    const context = await browser.newContext({ viewport })
-    const page = await context.newPage()
-    page.on('pageerror', error => errors.push(error.message))
-    const open = async () => {
-      await page.goto(`${service.httpUrl}/pardner/`)
-      await page.getByLabel('Local service token').fill(token)
-      await page.getByRole('button', { name: 'Connect', exact: true }).click()
-      await page.getByLabel('Actor', { exact: true }).selectOption('alice')
-    }
-    await body({ page, run, operate, open })
-    assert.deepEqual(errors, [])
-  } finally {
-    await browser?.close()
-    await service.stop()
-    await rm(directory, { recursive: true, force: true })
-  }
-}
-
 // Reads one pixel column of an element screenshot; used to see scroll shadows.
 async function pixelColumn(page, locator, x) {
   const png = (await locator.screenshot()).toString('base64')
@@ -372,7 +337,7 @@ const MARKDOWN_FIXTURE = [
 ].join('\n')
 
 for (const engine of [chromium, webkit]) it(`gives user-authored Markdown its own subordinate scale in ${engine.name()}`, { timeout: 60000 }, async () => {
-  await withWorkspace(engine, { width: 1440, height: 900 }, async ({ page, operate, open }) => {
+  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, operate, open }) => {
     const { result: { taskId } } = await operate('task.create', { title: 'Render the Markdown fixture', description: MARKDOWN_FIXTURE })
     await operate('comment.add', { taskId, text: MARKDOWN_FIXTURE })
     await open()
@@ -462,5 +427,96 @@ for (const engine of [chromium, webkit]) it(`gives user-authored Markdown its ow
         }
       }
     }
+  })
+})
+
+// Runs `count` seeding operations a batch at a time.
+async function seed(count, operation, batch = 25) {
+  for (let start = 0; start < count; start += batch)
+    await Promise.all(Array.from({ length: Math.min(batch, count - start) }, (_, offset) => operation(start + offset)))
+}
+
+for (const engine of [chromium, webkit]) it(`keeps the app frame in the viewport and scrolls its regions in ${engine.name()}`, { timeout: 120000 }, async () => {
+  await withWorkspace(engine, { viewport: { width: 1024, height: 700 } }, async ({ page, operate, open }) => {
+    const created = []
+    await seed(40, async index => created.push((await operate('task.create', {
+      title: `Backlog task ${index + 1}`, description: 'Seeded to overflow one column.',
+    })).result.taskId))
+    await seed(260, index => operate('comment.add', { taskId: created[0], text: `Activity event ${index + 1}` }))
+    await seed(12, index => operate('vein.create', {
+      title: `Vein ${index + 1}`, goal: { title: `Goal ${index + 1}`, description: 'Seeded to overflow the goals view.' },
+    }))
+    await open()
+    await page.getByRole('button', { name: /Backlog task 40/ }).waitFor()
+    const nav = name => page.getByRole('navigation', { name: 'Workspace views' }).getByRole('button', { name, exact: true })
+    const frame = () => page.evaluate(() => {
+      const top = selector => document.querySelector(selector).getBoundingClientRect().top
+      const newTask = [...document.querySelectorAll('header button')].find(button => button.textContent === 'New task')
+      return {
+        fits: document.scrollingElement.scrollHeight <= innerHeight + 1,
+        scrollHeight: document.scrollingElement.scrollHeight, innerHeight,
+        scrollY, header: top('header'), nav: top('nav'), newTask: newTask.getBoundingClientRect().top,
+      }
+    })
+    const assertFrame = async where => {
+      const state = await frame()
+      assert.equal(state.fits, true, `document stays within the viewport ${where}: ${JSON.stringify(state)}`)
+      assert.equal(state.scrollY, 0, `the document never scrolls ${where}`)
+      assert.ok(state.header >= 0 && state.nav >= 0 && state.newTask >= 0, `header, nav and New task stay visible ${where}: ${JSON.stringify(state)}`)
+    }
+    const scrollMain = () => page.locator('main').evaluate(main => { main.scrollTop = 1e6; return main.scrollTop })
+
+    for (const [width, height] of [[1024, 700], [1440, 900], [1920, 1080]]) {
+      await page.setViewportSize({ width, height })
+      const at = view => `on ${view} at ${width}×${height}`
+      await nav('Tasks').click()
+      await assertFrame(at('Tasks'))
+      const backlog = page.getByRole('region', { name: 'Backlog' })
+      assert.ok(await backlog.evaluate(column => { column.scrollTop = 1e6; return column.scrollTop }) > 0, `the long column scrolls inside itself ${at('Tasks')}`)
+      await assertFrame(`after scrolling a column ${at('Tasks')}`)
+      assert.equal(await backlog.getByRole('heading').evaluate(heading => {
+        const column = heading.parentElement.getBoundingClientRect()
+        return Math.abs(heading.getBoundingClientRect().top - column.top) < 40
+      }), true, 'the column heading stays in view while its cards scroll')
+      const board = await page.locator('.board').evaluate(board => {
+        const overflows = board.scrollWidth > board.clientWidth
+        board.scrollLeft = 1e6
+        return { overflows, scrolled: board.scrollLeft > 0, page: document.scrollingElement.scrollWidth <= innerWidth }
+      })
+      if (width === 1024) assert.deepEqual(board, { overflows: true, scrolled: true, page: true }, 'the board scrolls sideways inside itself')
+
+      await nav('Goals').click()
+      await page.getByRole('article', { name: 'Goal 12' }).waitFor()
+      await assertFrame(at('Goals'))
+      assert.ok(await scrollMain() > 0, `the goals region scrolls ${at('Goals')}`)
+      await assertFrame(`after scrolling ${at('Goals')}`)
+
+      await nav('Activity').click()
+      await page.getByText('comment.add').first().waitFor()
+      assert.equal(await page.locator('main').evaluate(main => main.scrollTop), 0, 'a view switch starts at the top')
+      assert.ok(await page.locator('.activity article').count() >= 300)
+      await assertFrame(at('Activity'))
+      assert.ok(await scrollMain() > 0, `the activity region scrolls ${at('Activity')}`)
+      await assertFrame(`after scrolling ${at('Activity')}`)
+    }
+
+    // A request lost before the service saw it stays pending across a reload.
+    await page.setViewportSize({ width: 1024, height: 700 })
+    await page.route('**/automerge/operations', route => route.abort('failed'))
+    await nav('Tasks').click()
+    await page.getByRole('button', { name: 'New task', exact: true }).click()
+    await page.getByLabel('Title', { exact: true }).fill('Lost before the service saw it')
+    await page.getByRole('button', { name: 'Create task', exact: true }).click()
+    await page.getByRole('button', { name: 'Retry saved request', exact: true }).waitFor()
+    await page.unroute('**/automerge/operations')
+    await page.reload()
+    await page.getByText('A request is awaiting confirmation.').waitFor()
+    for (const view of ['Tasks', 'Goals', 'Activity']) {
+      await nav(view).click()
+      await assertFrame(`with the pending notice on ${view} at 1024×700`)
+      if (view !== 'Tasks') assert.ok(await scrollMain() > 0)
+      await assertFrame(`after scrolling with the pending notice on ${view} at 1024×700`)
+    }
+    await page.screenshot({ path: join(resolve('output/playwright'), `pardner-frame-${engine.name()}.png`), fullPage: true })
   })
 })

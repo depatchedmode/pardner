@@ -16,6 +16,13 @@
   --code-bg: #090909;
   --table-head-bg: #1c1c1c;
   --scroll-shadow: #ffffff38;
+  --column-bg: #0a0a0a;
+  --app-height: 100vh;
+}
+@supports (height: 100dvh) {
+  :root {
+    --app-height: 100dvh;
+  }
 }
 * {
   box-sizing: border-box;
@@ -170,11 +177,10 @@ nav button[aria-pressed='true'] {
   gap: 1px;
   background: var(--line);
   border-block: 1px solid var(--line);
-  min-height: 65vh;
   overflow-x: auto;
 }
 .column {
-  background: #0a0a0a;
+  background: var(--column-bg);
   padding: 18px 12px;
 }
 .column h2 {
@@ -541,7 +547,54 @@ code {
 .connection form + button {
   margin-top: 16px;
 }
+/* Desktop frame: the app fills the viewport and its regions scroll, so the
+   header, workspace actions and nav never leave view. Phones keep document scroll. */
+@media (min-width: 761px) and (min-height: 600px) {
+  .app {
+    height: var(--app-height);
+    display: flex;
+    flex-direction: column;
+  }
+  .app > * {
+    flex-shrink: 0;
+  }
+  .app > main {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .app > main:has(> .board) {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .board {
+    flex: 1 1 0;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    overflow: auto hidden;
+  }
+  .column {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+  .column h2 {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--column-bg);
+  }
+}
 @media (max-width: 760px) {
+  /* body too: WebKit scrolls body when only the root element is locked. */
+  html:has(.side-panel),
+  html:has(.side-panel) body {
+    overflow: hidden;
+  }
+  .side-panel {
+    overscroll-behavior: contain;
+  }
   button, input, select {
     min-height: 44px;
   }

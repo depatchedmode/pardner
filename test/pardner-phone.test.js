@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 import { chromium, webkit } from 'playwright'
 import { cli, startCliService } from '../support/cli-resources.js'
 import { lanInterfaces } from '../lib/lan-access.js'
+import { withWorkspace } from '../support/ui-workspace.js'
 
 for (const engine of [chromium, webkit]) it(`pairs and remembers a phone over actual LAN HTTP in ${engine.name()}`, { timeout: 90000 }, async t => {
   const candidate = lanInterfaces()[0]
@@ -140,4 +141,23 @@ for (const engine of [chromium, webkit]) it(`pairs and remembers a phone over ac
   const logs = service.logs()
   assert.equal(JSON.stringify(logs).includes(token), false)
   assert.equal(JSON.stringify(logs).includes(code), false)
+})
+
+for (const engine of [chromium, webkit]) it(`keeps the page behind an open phone panel still in ${engine.name()}`, { timeout: 60000 }, async () => {
+  // Playwright cannot send wheel events to mobile WebKit, so WebKit runs the 375px layout without mobile emulation.
+  const mobile = engine !== webkit
+  await withWorkspace(engine, { viewport: { width: 375, height: 812 }, isMobile: mobile, hasTouch: mobile }, async ({ page, operate, open }) => {
+    for (let index = 0; index < 12; index++) await operate('task.create', { title: `Phone backlog task ${index + 1}` })
+    await open()
+    await page.getByRole('button', { name: /Phone backlog task 1\b/ }).click()
+    const panel = page.getByRole('complementary', { name: 'Task details' })
+    await panel.getByRole('heading', { name: 'Phone backlog task 1' }).waitFor()
+    assert.ok(await page.evaluate(() => document.scrollingElement.scrollHeight > innerHeight + 100),
+      'the page behind the panel is taller than the viewport, so it could scroll')
+    await panel.getByRole('heading', { name: 'History' }).hover()
+    for (let step = 0; step < 6; step++) await page.mouse.wheel(0, 800)
+    await page.waitForFunction(() => document.querySelector('.side-panel').scrollTop > 0)
+    await page.waitForTimeout(300)
+    assert.equal(await page.evaluate(() => scrollY), 0, 'wheel over an open panel never scrolls the page behind it')
+  })
 })
