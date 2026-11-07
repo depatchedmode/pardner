@@ -1116,6 +1116,7 @@ function TaskDetail({
   const heading = useRef(null)
   const [editButton, refocusEdit] = useRefocus()
   const [handoffButton, refocusHandoff] = useRefocus()
+  const [handoffOpener, refocusHandoffOpener] = useRefocus()
   const [commentButton, refocusComment] = useRefocus()
   // Focus the heading once per open; a remount on Actor switch must not steal focus.
   useEffect(() => {
@@ -1142,16 +1143,36 @@ function TaskDetail({
   const [handoffMessage, setHandoffMessage] = useState('')
   const [failure, setFailure] = useState(null)
   const [handoffBase, setHandoffBase] = useState(null)
+  const [handoffOpen, setHandoffOpen] = useState(false)
+  const [handoffDone, setHandoffDone] = useState(null)
+  const handoffForm = useRef(null)
+  const focusRecipient = useRef(false)
+  // Latest values for async completions, which must not act on a stale closure.
+  const handoffLive = useRef({})
+  handoffLive.current = { open: handoffOpen, message: handoffMessage }
+  useEffect(() => {
+    if (!handoffOpen || !focusRecipient.current) return
+    focusRecipient.current = false
+    handoffForm.current?.querySelector('select')?.focus()
+  }, [handoffOpen])
+  const finishHandoff = useCallback(({ to: sentTo, status }) => {
+    setHandoffOpen(false)
+    setTo('')
+    setHandoffMessage('')
+    setHandoffBase(null)
+    setHandoffDone({ to: sentTo, status })
+    refocusHandoffOpener()
+  }, [refocusHandoffOpener])
   useEffect(() => {
     if (confirmedOperation?.payload.taskId !== taskId) return
     if (confirmedOperation.type === 'comment.add') {
       setMessage(current => current === confirmedOperation.payload.text ? '' : current)
     }
     if (confirmedOperation.type === 'task.handoff') {
-      setHandoffMessage(current => current === confirmedOperation.payload.message ? '' : current)
-      setHandoffBase(null)
+      const { open, message: current } = handoffLive.current
+      if (open && current === confirmedOperation.payload.message) finishHandoff(confirmedOperation.payload)
     }
-  }, [confirmedOperation, taskId])
+  }, [confirmedOperation, taskId, finishHandoff])
   useEffect(() => {
     let stale = false
     request(
@@ -1205,7 +1226,10 @@ function TaskDetail({
     : null
   const here = session?.focus[taskId] ? focusedActors(session, session.focus[taskId]) : []
   // An edit error falls back to the panel top once its form has closed.
-  const formSlot = errorSlot === 'task.update' && !draft ? 'panel' : errorSlot
+  // A handoff error does too while its form is closed, so Retry stays visible.
+  const formSlot = (errorSlot === 'task.update' && !draft) || (errorSlot === 'task.handoff' && !handoffOpen)
+    ? 'panel'
+    : errorSlot
   const noticeFor = slot => formSlot === slot && errorNotice
   return (
     <aside className="side-panel" aria-label="Task details">
@@ -1293,6 +1317,10 @@ function TaskDetail({
       ) : (
         <>
           <MarkdownBody>{task.description || 'No description yet.'}</MarkdownBody>
+        </>
+      )}
+      <div className="task-actions">
+        {!draft && (
           <button
             ref={editButton}
             disabled={!canWrite}
@@ -1314,8 +1342,27 @@ function TaskDetail({
           >
             Edit task
           </button>
-        </>
-      )}
+        )}
+        {!handoffOpen && (
+          <button
+            ref={handoffOpener}
+            disabled={!canWrite}
+            onClick={() => {
+              focusRecipient.current = true
+              setHandoffDone(null)
+              setHandoffBase(handoffRevisions)
+              setHandoffOpen(true)
+            }}
+          >
+            Hand off work
+          </button>
+        )}
+        {handoffDone && (
+          <p role="status" className="muted">
+            Handed off to {labelActor(actors[handoffDone.to])} · {LABELS[handoffDone.status]}.
+          </p>
+        )}
+      </div>
       {(context.integrityConflicts ?? []).map(group => (
         <section className="conflict integrity-conflict" key={group.requestId} aria-label="Operation integrity conflict">
           <h3>Unresolved operation ID conflict</h3>
@@ -1357,25 +1404,21 @@ function TaskDetail({
           ))}
         </section>
       ))}
+      {handoffOpen && (
       <section>
         <h3>Hand off work</h3>
         <form
+          ref={handoffForm}
           onFocusCapture={() => {
             setHandoffBase(current => current ?? handoffRevisions)
           }}
           onSubmit={async (event) => {
             event.preventDefault()
-            const receipt = await submit('task.handoff', {
-              taskId,
-              to,
-              status: handoffStatus,
-              message: handoffMessage,
-              expectedRevisions: handoffBase,
-            })
-            if (receipt) {
-              setHandoffMessage(current => current === handoffMessage ? '' : current)
-              setHandoffBase(null)
-            } else refocusHandoff()
+            const sent = { taskId, to, status: handoffStatus, message: handoffMessage }
+            const receipt = await submit('task.handoff', { ...sent, expectedRevisions: handoffBase })
+            const { open, message: current } = handoffLive.current
+            if (!receipt) refocusHandoff()
+            else if (open && current === sent.message) finishHandoff(sent)
           }}
         >
           {handoffStale && (
@@ -1416,9 +1459,25 @@ function TaskDetail({
             />
           </label>
           {noticeFor('task.handoff')}
-          <button ref={handoffButton} disabled={!canWrite || !to || handoffStale || !handoffMessage.trim()}>Hand off</button>
+          <div className="actions">
+            <button className="primary" ref={handoffButton} disabled={!canWrite || !to || handoffStale || !handoffMessage.trim()}>Hand off</button>
+            <button
+              type="button"
+              onClick={() => {
+                setHandoffOpen(false)
+                setTo('')
+                setHandoffMessage('')
+                setHandoffBase(null)
+                clearError()
+                refocusHandoffOpener()
+              }}
+            >
+              Cancel handoff
+            </button>
+          </div>
         </form>
       </section>
+      )}
       <section>
         <div className="section-heading">
           <h3>

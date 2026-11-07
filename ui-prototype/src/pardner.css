@@ -604,6 +604,15 @@ code {
 .actions {
   flex-wrap: wrap;
 }
+.task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.task-actions p {
+  margin: 0;
+}
 .workspace-actions {
   display: flex;
   flex-wrap: wrap;

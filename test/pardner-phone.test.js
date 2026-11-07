@@ -155,6 +155,8 @@ for (const engine of [chromium, webkit]) it(`keeps the page behind an open phone
     await page.getByRole('button', { name: /Phone backlog task 1\b/ }).click()
     const panel = page.getByRole('complementary', { name: 'Task details' })
     await panel.getByRole('heading', { name: 'Phone backlog task 1' }).waitFor()
+    // The collapsed panel fits the phone; open the handoff form so the panel has something to scroll.
+    await panel.getByRole('button', { name: 'Hand off work', exact: true }).click()
     assert.ok(await page.evaluate(() => document.scrollingElement.scrollHeight > innerHeight + 100),
       'the page behind the panel is taller than the viewport, so it could scroll')
     await panel.getByRole('heading', { name: 'History' }).hover()
