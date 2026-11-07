@@ -17,6 +17,11 @@
   --table-head-bg: #1c1c1c;
   --scroll-shadow: #ffffff38;
   --column-bg: #0a0a0a;
+  --filter-width: 190px;
+  --filter-min: 120px;
+  --panel-width: 680px;
+  /* The narrowest board strip worth showing beside an open panel. */
+  --panel-reveal-min: 160px;
   --app-height: 100vh;
 }
 @supports (height: 100dvh) {
@@ -163,9 +168,22 @@ nav {
   align-items: end;
   padding: 18px 28px;
 }
+/* Filters shrink before the row overflows; nowrap stays scoped to the nav so
+   form labels elsewhere still wrap on phones. */
 nav label {
+  flex: 0 1 var(--filter-width);
+  min-width: var(--filter-min);
+  white-space: nowrap;
+}
+nav > button + label {
   margin-left: auto;
-  min-width: 190px;
+}
+/* overflow: hidden makes the ellipsis apply and stops WebKit spilling a long
+   selected title outside the select. */
+nav select {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 nav button[aria-pressed='true'] {
   border-color: var(--accent);
@@ -232,7 +250,7 @@ nav button[aria-pressed='true'] {
   right: 0;
   top: 0;
   bottom: 0;
-  width: min(680px, 100%);
+  width: min(var(--panel-width), 100%);
   overflow: auto;
   background: #111;
   border-left: 1px solid var(--line);
@@ -547,6 +565,13 @@ code {
 .connection form + button {
   margin-top: 16px;
 }
+/* 839 = --panel-width + --panel-reveal-min - 1: below 840px the board beside a
+   680px panel would be a sliver under 160px, so the panel takes the full width. */
+@media (max-width: 839px) {
+  .side-panel {
+    width: 100%;
+  }
+}
 /* Desktop frame: the app fills the viewport and its regions scroll, so the
    header, workspace actions and nav never leave view. Phones keep document scroll. */
 @media (min-width: 761px) and (min-height: 600px) {
@@ -630,8 +655,12 @@ code {
     flex-wrap: wrap;
   }
   nav label {
+    flex: 1 1 100%;
     min-width: 0;
     width: 100%;
+  }
+  /* Out-specifies the shared rule above, so the grouping margin is reset here. */
+  nav > button + label {
     margin-left: 0;
   }
   .board {

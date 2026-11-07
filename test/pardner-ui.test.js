@@ -520,3 +520,68 @@ for (const engine of [chromium, webkit]) it(`keeps the app frame in the viewport
     await page.screenshot({ path: join(resolve('output/playwright'), `pardner-frame-${engine.name()}.png`), fullPage: true })
   })
 })
+
+for (const engine of [chromium, webkit]) it(`never overflows sideways at mid widths and never leaves a panel sliver in ${engine.name()}`, { timeout: 120000 }, async () => {
+  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, operate, open }) => {
+    const longTitle = `Evidence-first reviews for the companion devices ${'and their long-running agent handoffs '.repeat(3)}`.slice(0, 120)
+    assert.equal(longTitle.length, 120)
+    const { result: { veinId } } = await operate('vein.create', { title: longTitle, goal: { title: 'Ship the first release' } })
+    await operate('task.create', { title: 'Review the handoff evidence', status: 'review', veinIds: [veinId] })
+    await operate('task.create', { title: 'Coordinate the first release', status: 'in-progress' })
+    await operate('task.create', { title: 'Plan the next milestone' })
+    await open()
+    await page.getByRole('button', { name: /Review the handoff evidence/ }).waitFor()
+    const vein = page.getByLabel('Vein', { exact: true })
+    const widths = [...Array.from({ length: 101 }, (_, index) => 320 + index * 16), 761, 767, 768, 839, 840, 867]
+    const sweep = async when => {
+      const overflowing = []
+      for (const width of widths) {
+        await page.setViewportSize({ width, height: 900 })
+        const scrollWidth = await page.evaluate(() => document.scrollingElement.scrollWidth)
+        if (scrollWidth > width) overflowing.push(`${width}→${scrollWidth}`)
+      }
+      assert.deepEqual(overflowing, [], `the page never scrolls sideways ${when}`)
+    }
+    await sweep('with no vein selected')
+    await page.setViewportSize({ width: 1440, height: 900 })
+    assert.equal(await vein.getAttribute('title'), 'All veins')
+    await vein.selectOption(veinId)
+    assert.equal(await vein.getAttribute('title'), longTitle, 'the Vein select names the full selected vein')
+    await sweep('with the long vein selected')
+
+    for (const width of [1024, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 })
+      const filters = await page.getByRole('navigation', { name: 'Workspace views' }).evaluate(nav => {
+        const style = getComputedStyle(nav)
+        return {
+          right: nav.getBoundingClientRect().right - parseFloat(style.paddingRight),
+          labels: [...nav.querySelectorAll('label')].map(label => {
+            const box = label.getBoundingClientRect()
+            return { left: box.left, right: box.right, select: label.querySelector('select').getBoundingClientRect().width }
+          }),
+        }
+      })
+      const where = `at ${width}: ${JSON.stringify(filters)}`
+      assert.equal(filters.labels.length, 3)
+      for (const [index, label] of filters.labels.entries()) {
+        assert.ok(label.select <= 191, `filter selects keep their share ${where}`)
+        if (index) assert.ok(label.left - filters.labels[index - 1].right <= 10, `filters form one group ${where}`)
+      }
+      assert.ok(Math.abs(filters.labels.at(-1).right - filters.right) <= 1, `filters sit at the right of the nav ${where}`)
+    }
+
+    await page.setViewportSize({ width: 768, height: 1024 })
+    await page.getByRole('button', { name: /Review the handoff evidence/ }).click()
+    const panel = page.getByRole('complementary', { name: 'Task details' })
+    const close = panel.getByRole('button', { name: 'Close', exact: true })
+    await close.waitFor()
+    const closeBox = await close.boundingBox()
+    assert.ok(closeBox.x + closeBox.width <= 768, `Close sits inside the viewport at 768: ${JSON.stringify(closeBox)}`)
+    for (const width of [761, 768, 800, 839, 840, 867, 1024]) {
+      await page.setViewportSize({ width, height: 900 })
+      const { innerWidth, panelWidth } = await panel.evaluate(aside => ({ innerWidth, panelWidth: aside.getBoundingClientRect().width }))
+      const sliver = innerWidth - panelWidth
+      assert.ok(sliver === 0 || sliver >= 160, `the board beside the panel is 0 or ≥ 160px at ${width}, got ${sliver}`)
+    }
+  })
+})

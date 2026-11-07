@@ -524,7 +524,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           <option value="">All statuses</option>
           {STATUSES.map(value => <option key={value} value={value}>{LABELS[value]}</option>)}
         </select></label>
-        <label>Vein<select aria-label="Vein" value={activeVeinFilter} onChange={event => setVeinFilter(event.target.value)}>
+        <label>Vein<select aria-label="Vein" title={veins[activeVeinFilter]?.title ?? 'All veins'} value={activeVeinFilter} onChange={event => setVeinFilter(event.target.value)}>
           <option value="">All veins</option>
           {Object.values(veins).sort((a, b) => a.title.localeCompare(b.title)).map(vein =>
             <option key={vein.id} value={vein.id}>{vein.title}</option>)}
