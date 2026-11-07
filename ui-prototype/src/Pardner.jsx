@@ -8,6 +8,7 @@ import ControlPane from './ControlPane.jsx'
 import ClientApp from './ClientApp.jsx'
 import { AvatarStack } from './Avatar.jsx'
 import { isNewComment } from './comments.js'
+import { defaultHandoffStatus } from './handoff.js'
 import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
 
@@ -1140,6 +1141,7 @@ function TaskDetail({
   const [commentFocused, setCommentFocused] = useState(false)
   const [to, setTo] = useState('')
   const [handoffStatus, setHandoffStatus] = useState('review')
+  const [handoffStatusTouched, setHandoffStatusTouched] = useState(false)
   const [handoffMessage, setHandoffMessage] = useState('')
   const [failure, setFailure] = useState(null)
   const [handoffBase, setHandoffBase] = useState(null)
@@ -1160,6 +1162,7 @@ function TaskDetail({
     setTo('')
     setHandoffMessage('')
     setHandoffBase(null)
+    setHandoffStatusTouched(false)
     setHandoffDone({ to: sentTo, status })
     refocusHandoffOpener()
   }, [refocusHandoffOpener])
@@ -1350,6 +1353,8 @@ function TaskDetail({
             onClick={() => {
               focusRecipient.current = true
               setHandoffDone(null)
+              setHandoffStatus(defaultHandoffStatus(task.status))
+              setHandoffStatusTouched(false)
               setHandoffBase(handoffRevisions)
               setHandoffOpen(true)
             }}
@@ -1423,9 +1428,15 @@ function TaskDetail({
         >
           {handoffStale && (
             <div className="notice" role="status">
-              <p>Assignment or status changed while you were preparing this handoff. Your draft is preserved.</p>
-              <p>Current task: {labelActor(actors[task.assignee])} · {LABELS[task.status]}.</p>
-              <button type="button" disabled={!canWrite} onClick={() => setHandoffBase(handoffRevisions)}>
+              <p>This task changed while you were writing: now {labelActor(actors[task.assignee])} · {LABELS[task.status]}. Your draft is preserved.</p>
+              <button
+                type="button"
+                disabled={!canWrite}
+                onClick={() => {
+                  setHandoffBase(handoffRevisions)
+                  if (!handoffStatusTouched) setHandoffStatus(defaultHandoffStatus(task.status))
+                }}
+              >
                 Use latest task details
               </button>
             </div>
@@ -1440,7 +1451,10 @@ function TaskDetail({
             Handoff status
             <select
               value={handoffStatus}
-              onChange={(event) => setHandoffStatus(event.target.value)}
+              onChange={(event) => {
+                setHandoffStatus(event.target.value)
+                setHandoffStatusTouched(true)
+              }}
             >
               {STATUSES.map((value) => (
                 <option key={value} value={value}>
@@ -1468,6 +1482,7 @@ function TaskDetail({
                 setTo('')
                 setHandoffMessage('')
                 setHandoffBase(null)
+                setHandoffStatusTouched(false)
                 clearError()
                 refocusHandoffOpener()
               }}

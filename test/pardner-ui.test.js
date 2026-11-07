@@ -1045,3 +1045,43 @@ for (const engine of [chromium, webkit]) it(`keeps Hand off work collapsed until
     assert.equal(comments.length, 1)
   })
 })
+
+for (const engine of [chromium, webkit]) it(`defaults the handoff status from the task and re-derives it on Use latest in ${engine.name()}`, { timeout: 120000 }, async () => {
+  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open }) => {
+    await run(['actors', 'register', 'builder', '--handle', 'builder', '--kind', 'agent', '--display-name', 'Builder'])
+    const { result: { taskId: backlogId } } = await operate('task.create', { title: 'Backlog handoff' })
+    await operate('task.create', { title: 'Moving handoff' , status: 'in-progress' })
+    await open()
+    const panel = page.getByRole('complementary', { name: 'Task details' })
+    const status = panel.getByLabel('Handoff status')
+    const opener = panel.getByRole('button', { name: 'Hand off work', exact: true })
+
+    await page.getByRole('button', { name: /Moving handoff/ }).click()
+    await opener.click()
+    assert.equal(await status.inputValue(), 'review', 'In progress hands off to Review')
+    await panel.getByRole('button', { name: 'Close', exact: true }).click()
+
+    await page.getByRole('button', { name: /Backlog handoff/ }).click()
+    await opener.click()
+    assert.equal(await status.inputValue(), 'backlog', 'Backlog stays Backlog')
+    await panel.getByLabel('Handoff message').fill('Draft kept')
+    const shown = await run(['show', backlogId])
+    await run(['update', backlogId, '--status', 'in-progress', '--revisions', JSON.stringify({ status: shown.revisions.status })])
+    const notice = panel.getByRole('status').filter({ hasText: 'This task changed while you were writing' })
+    await notice.getByText(/^This task changed while you were writing: now .* · In progress\. Your draft is preserved\.$/).waitFor()
+    assert.equal(await panel.getByRole('button', { name: 'Hand off', exact: true }).isDisabled(), true)
+    await panel.getByRole('button', { name: 'Use latest task details', exact: true }).click()
+    assert.equal(await status.inputValue(), 'review', 'an untouched status is re-derived from the latest task')
+    assert.equal(await panel.getByLabel('Handoff message').inputValue(), 'Draft kept')
+
+    // A status the user chose is never overwritten.
+    await panel.getByRole('button', { name: 'Cancel handoff', exact: true }).click()
+    await opener.click()
+    await status.selectOption('completed')
+    await panel.getByLabel('Handoff message').fill('Chosen')
+    const again = await run(['show', backlogId])
+    await run(['update', backlogId, '--status', 'up-next', '--revisions', JSON.stringify({ status: again.revisions.status })])
+    await panel.getByRole('button', { name: 'Use latest task details', exact: true }).click()
+    assert.equal(await status.inputValue(), 'completed')
+  })
+})
