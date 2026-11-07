@@ -29,3 +29,18 @@
 | F-004-01 tags never shown; F-048-03 no vein picker | #119 |
 | F-031-01 (editing a handoff comment cancels the assignee's delivery) | #60 |
 | F-015-01 no active-filter indicator / Clear filters | #113 |
+
+## Second pass (multi-service and cli-only stories)
+
+| Issue | Story | Severity | Title | URL |
+|---|---|---|---|---|
+| #140 | STORY-117 | high | CLI write whose response is lost reports failure with no operation ID | https://github.com/depatchedmode/pardner/issues/140 |
+| #141 | STORY-126 | high | Bridge accepts a mapping to a human Actor and drains their mentions | https://github.com/depatchedmode/pardner/issues/141 |
+| #142 | STORY-057 | high | CLI list filters accept invalid values and return an empty success | https://github.com/depatchedmode/pardner/issues/142 |
+| #143 | STORY-053 | high | Goal and vein conflicts show only a badge | https://github.com/depatchedmode/pardner/issues/143 |
+| #144 | STORY-111 | high | A disallowed origin or bind host blocks the app bundle | https://github.com/depatchedmode/pardner/issues/144 |
+| #145 | STORY-077 | high | A lost write response blocks all edits though the change landed | https://github.com/depatchedmode/pardner/issues/145 |
+| #146 | STORY-081 | high | "Saved locally · synced" shown when sync is unknown or pending | https://github.com/depatchedmode/pardner/issues/146 |
+| #147 | STORY-085 | high | A pairing code goes invalid silently while the dialog keeps showing it | https://github.com/depatchedmode/pardner/issues/147 |
+
+Evidence was added as comments on #127 (F-125-01, F-106-01) and #114 (F-097-001).

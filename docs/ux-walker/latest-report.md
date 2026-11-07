@@ -7,10 +7,10 @@
 | Target | Local Pardner hub UI at `/pardner/`, each batch on its own seeded private hub (ports 8310–8379) |
 | Branch / base | `ux-skill-pack-run` (base `e9331731`, which is **behind `main`**; re-check each finding on `main`) |
 | Browser driver | Playwright 1.62.1 Chromium at 1440×900, with a 390×844 check per story (`agent-browser` is not installed on this machine) |
-| Stories walked | 61 (every `browser` and `browser+cli` story in the catalog) |
-| Stories skipped | 77 (`multi-service` and `cli-only`: replicas, hub outages, LAN restarts, bridge) — listed in `walk-plan.json` under `deferred` |
+| Stories walked | **138 of 138**. Pass 1: 61 browser stories. Pass 2: the 77 multi-service and cli-only stories, using real replicas, hub outages, LAN pairing and CLI flows |
+| Stories skipped | 0. STORY-093 is blocked (the host's IP can't safely change mid-run). STORY-107 was blocked in pass 1 |
 | Re-verified after fixes | 8 stories' fixed findings (STORY-013, 015, 023, 034, 035, 042, 107, 112) |
-| Status | 53 pass · 7 fail · 1 blocked |
+| Status | 127 pass · 9 fail · 2 blocked |
 
 ## Findings Summary
 | Severity | Count |
@@ -123,3 +123,48 @@ Flow and redundancy signals appear in far more than 3 stories. `/ux-flow` has al
 - 10 of 10 quick fixes merged and verified in the browser. 1 additional fix (F-001-02) was held back, as described above.
 - `npm run test:ui`: 10/10 pass after the fixes.
 - `npm run verify` stops at the control-runtime step because this machine runs Node 24.22.1 and that step requires 24.11.1. The full `node --test` suite, run separately, passes 358/358.
+
+
+## Second pass: the 77 multi-service and cli-only stories
+
+Walked at HEAD `5be1448f`, after the ux-visual and ux-auto-improve changes. Each batch ran its own hub, replicas or LAN services on private ports (87xx–88xx):
+
+- **Replica conflicts:** two or three replicas, hub stopped and restarted, so the conflicts are real.
+- **Offline:** genuine hub outages and service restarts.
+- **LAN pairing:** a real `en0` LAN address, with a 390×844 mobile browser context standing in for the phone.
+- **Agent CLI:** the bridge ran against a local Codex app server with no login, so no model ran.
+
+| Batch | Stories | Result | Findings (H/M/L/S) |
+|---|---|---|---|
+| H1 agent CLI | 024, 025, 026, 029, 039, 117, 118, 119, 127 | 9 pass | 1/14/18/2 |
+| H2 power CLI | 055, 057, 106, 114, 121, 124, 125, 126 | 8 pass (126 partly walked) | 4/14/7/1 |
+| I conflicts | 053, 054, 058–061, 064–066 | 9 pass | 1/9/10/1 |
+| J conflicts + audit | 056, 067–071, 115, 123, 135, 137, 138 | 11 pass (115's premise can't happen any more) | 2/15/14/0 |
+| K offline/sync | 072–083 | 12 pass | 3/15/13/2 |
+| L LAN pairing | 020, 041, 084–095 | 13 pass, 093 blocked | 1/15/14/1 |
+| M credentials/errors | 007, 012, 097–101, 103, 105, 108, 109, 111, 113, 116 | 12 pass, 097 and 111 fail | 3/19/12/1 |
+
+**Totals across both passes:** 498 findings (43 high, 218 medium, 221 low, 16 suggestion).
+
+**New issues filed (#140–#147):**
+- **#140:** a lost CLI response gives no operation ID, so a retry duplicates the write.
+- **#141:** the bridge accepts a human Actor and drains that person's mentions.
+- **#142:** list filters accept invalid values and return an empty success.
+- **#143:** goal and vein conflicts can't be resolved in the browser.
+- **#144:** a disallowed origin or bind host blocks the app bundle, and the error advises a rebuild.
+- **#145:** a lost write response blocks every edit even though the change landed.
+- **#146:** "synced" is shown when sync is unknown or pending.
+- **#147:** pairing codes go invalid silently while the dialog keeps showing them.
+
+**Evidence added to existing issues:** #127 (an unreachable service gives an opaque CLI error) and #114 (Forget discards a pending write).
+
+**No quick fixes this pass.** The run had already used its 10-fix cap.
+
+**Confirmed fixed since pass 1:** STORY-098's predicted crash (the D1 bug, #122) did not reproduce; V3 fixed it. Errors now appear inside the panel above the form's buttons, and "Mark all read" and the comment changes from round 2 were observed in passing.
+
+**Still failing:**
+- **STORY-097:** Forget discards a pending write (#114).
+- **STORY-111:** an origin that isn't allowed never loads the app (#144).
+- **Pass-1 failures not re-walked:** 008, 014, 036, 096, 132, 134 and 136. Several are probably fixed by V1–V5 and rounds 1–3 (for example 132 and 134 by the round 1 Activity work, and 036 by V2/V4). Re-verify with a `/ux-walker` re-run.
+
+**Hygiene.** One throwaway rotated token in `STORY-109/walk-report.md` was redacted before commit. Delivery claim tokens and Automerge heads from deleted test hubs remain in CLI captures; they are not credentials for anything that still exists.
