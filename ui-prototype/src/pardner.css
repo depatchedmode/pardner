@@ -652,10 +652,18 @@ code {
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
   }
+  /* The column's top padding moves into the sticky heading so its opaque band
+     covers the full column width and the gap above the first card; text and
+     card positions are unchanged (12px column inset + 4px heading margin = 16px). */
+  .column {
+    padding-top: 0;
+  }
   .column h2 {
     position: sticky;
     top: 0;
     z-index: 1;
+    margin: 0 -12px;
+    padding: 18px 16px;
     background: var(--column-bg);
   }
 }
