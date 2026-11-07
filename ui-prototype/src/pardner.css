@@ -559,14 +559,17 @@ input[aria-invalid='true'] {
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
 }
-.goal h3 {
+.goal-heading {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  margin: 0 0 8px;
+}
+.goal h3 {
   font-size: 17px;
   font-weight: 500;
-  margin: 0 0 8px;
+  margin: 0;
 }
 .goal ul {
   list-style: none;
@@ -580,6 +583,21 @@ input[aria-invalid='true'] {
   gap: 10px;
   padding: 8px 0;
   font-size: 13px;
+}
+.goal li > .error {
+  flex-basis: 100%;
+}
+.goal-heading select,
+.vein-meta select {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+.vein-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
 .record-status {
   font-size: 12px;
@@ -763,6 +781,20 @@ code {
   }
 }
 @media (max-width: 760px) {
+  .goal li {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .goal li > .error {
+    align-self: stretch;
+  }
+  .goal-heading select,
+  .vein-meta select {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
   .event {
     grid-template-columns: 1fr;
   }

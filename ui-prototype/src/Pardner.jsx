@@ -11,11 +11,11 @@ import { isNewComment } from './comments.js'
 import { defaultHandoffStatus } from './handoff.js'
 import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js'
 import { quickStatusEditable } from './task-status.js'
+import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
-const StatusOptions = () => STATUSES.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
-const GOAL_STATUSES = ['open', 'achieved', 'abandoned']
+const StatusOptions = ({ values = STATUSES }) => values.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
 const ACTIVITY_SHOWS = [
   ['changes', 'All changes'], ['status', 'Status changes and handoffs'], ['comments', 'Comments'],
   ['commits', 'Commits and branches'], ['plans', 'Goals and veins'], ['actors', 'Actors registered'], ['reads', 'Read receipts'],
@@ -464,7 +464,8 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   }, [view])
   const submit = async (type, payload, replay = null) => {
     if (inflight.current) return null
-    setErrorOrigin({ type: replay?.type ?? type, taskId: (replay?.payload ?? payload)?.taskId })
+    const origin = replay?.payload ?? payload
+    setErrorOrigin({ type: replay?.type ?? type, taskId: origin?.taskId, recordId: origin?.veinId ?? origin?.goalId })
     if (!actor && !replay) {
       setError({ message: 'Choose the Actor making this change.' })
       return null
@@ -630,7 +631,8 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   }
   // One routed message: inside the open panel (beside the form that failed), else under the header.
   // A pending request keeps Retry and cannot be dismissed, wherever the message sits.
-  const errorSlot = !error ? null : creating ? 'create' : selected
+  const errorSlot = !error ? null : /^(goal|vein)\./.test(errorOrigin?.type ?? '') ? (view === 'goals' ? 'record' : 'page')
+    : creating ? 'create' : selected
     ? (errorOrigin?.taskId === selected ? errorOrigin.type : 'panel') : 'page'
   const errorNotice = <ErrorNotice
     error={error}
@@ -801,7 +803,17 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
             ))}
           </div>
         ) : view === 'goals' ? (
-          <Goals goals={goals} veins={veins} showVein={showVein} />
+          <Goals
+            goals={goals}
+            veins={veins}
+            showVein={showVein}
+            actor={actor}
+            submit={submit}
+            busy={busy}
+            pending={pending}
+            errorNotice={errorSlot === 'record' && errorNotice}
+            errorOrigin={errorOrigin}
+          />
         ) : view === 'control' && !session ? (
           <ControlPane request={request} actors={actors} tasks={doc.tasks} actor={actor} canManageAccess={config.canManageAccess} />
         ) : (
@@ -889,16 +901,56 @@ function FocusMarkers({ session, actorIds }) {
   </span>
 }
 
-function Goals({ goals, veins, showVein }) {
+// One goal or vein status control: a select for an Actor, else the read-only pill.
+function RecordStatusSelect({ kind, record, statuses, submit, disabled }) {
+  const [choice, setChoice] = useState(null)
+  const [select, refocus] = useRefocus()
+  return (
+    <select
+      ref={select}
+      aria-label={`Status of ${kind} ${record.title}`}
+      value={choice ?? record.status}
+      disabled={disabled}
+      onChange={async event => {
+        const next = event.target.value
+        if (next === record.status) return
+        setChoice(next)
+        await submit(`${kind}.update`, {
+          [`${kind}Id`]: record.id,
+          updates: { status: next },
+          expectedRevisions: { status: record.revisions.status },
+        })
+        setChoice(null)
+        refocus()
+      }}
+    >
+      <StatusOptions values={statuses} />
+    </select>
+  )
+}
+
+function Goals({ goals, veins, showVein, actor, submit, busy, pending, errorNotice, errorOrigin }) {
   const list = Object.values(goals).sort((a, b) =>
     GOAL_STATUSES.indexOf(a.status) - GOAL_STATUSES.indexOf(b.status) || a.created_at.localeCompare(b.created_at))
   const veinsByGoal = {}
   for (const vein of Object.values(veins).sort((a, b) => a.created_at.localeCompare(b.created_at))) {
     for (const goalId of vein.goalIds) (veinsByGoal[goalId] ??= []).push(vein)
   }
+  const disabled = busy || Boolean(pending)
+  const statusControl = (kind, record, statuses) =>
+    quickStatusEditable({ actor, conflicts: record.conflicts })
+      ? <RecordStatusSelect kind={kind} record={record} statuses={statuses} submit={submit} disabled={disabled} />
+      : <span className="record-status" data-status={record.status}>{LABELS[record.status]}</span>
+  // The notice sits by its record: under a goal's heading, or in the first row that lists a vein.
+  const recordId = errorNotice ? errorOrigin?.recordId : null
+  const noticeGoal = goals[recordId]
+    ? recordId
+    : list.find(goal => (veinsByGoal[goal.id] ?? []).some(vein => vein.id === recordId))?.id
+  const noticeFallback = errorNotice && !noticeGoal
   return (
     <section className="goals" aria-label="Goals">
       <h2>Goals</h2>
+      {noticeFallback && errorNotice}
       {!list.length && <p className="empty">
         No goals yet. Start a vein with <code>pardner vein create --title … --goal …</code>.
       </p>}
@@ -906,18 +958,25 @@ function Goals({ goals, veins, showVein }) {
         const goalVeins = veinsByGoal[goal.id] ?? []
         return (
           <article className="goal" key={goal.id} aria-label={goal.title} data-goal-id={goal.id} tabIndex={-1}>
-            <h3>{goal.title} <span className="record-status" data-status={goal.status}>{LABELS[goal.status]}</span></h3>
+            <div className="goal-heading">
+              <h3>{goal.title}</h3>
+              {statusControl('goal', goal, GOAL_STATUSES)}
+            </div>
+            {recordId === goal.id && errorNotice}
             {goal.description && <p className="muted">{goal.description}</p>}
             {Object.keys(goal.conflicts).length > 0 && <p className="conflict-label">Conflicting edits</p>}
             {!goalVeins.length && <p className="muted">No veins pursue this goal yet.</p>}
             <ul>
               {goalVeins.map(vein => (
-                <li key={vein.id}>
-                  <button onClick={() => showVein(vein.id)}>{vein.title}</button>
-                  <span className="record-status" data-status={vein.status}>{LABELS[vein.status]}</span>
-                  <span className="muted">{vein.taskIds.length} {vein.taskIds.length === 1 ? 'task' : 'tasks'}</span>
-                  {vein.readyForVerdict && <span className="verdict-label">Ready for a verdict</span>}
-                  {Object.keys(vein.conflicts).length > 0 && <span className="conflict-label">Conflicting edits</span>}
+                <li key={vein.id} data-vein-id={vein.id}>
+                  <button className="vein-title" onClick={() => showVein(vein.id)}>{vein.title}</button>
+                  <div className="vein-meta">
+                    {statusControl('vein', vein, VEIN_STATUSES)}
+                    <span className="muted">{vein.taskIds.length} {vein.taskIds.length === 1 ? 'task' : 'tasks'}</span>
+                    {vein.readyForVerdict && <span className="verdict-label">Ready for a verdict</span>}
+                    {Object.keys(vein.conflicts).length > 0 && <span className="conflict-label">Conflicting edits</span>}
+                  </div>
+                  {recordId === vein.id && noticeGoal === goal.id && errorNotice}
                 </li>
               ))}
             </ul>

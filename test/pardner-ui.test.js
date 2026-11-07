@@ -274,8 +274,85 @@ for (const uuidAvailable of [true, false]) it(
       await alice.getByRole('button', { name: 'Goals', exact: true }).click()
       const goal = alice.getByRole('article', { name: 'Ship the first release' })
       await goal.getByText('Ready for a verdict', { exact: true }).waitFor()
-      assert.match(await goal.textContent(), /Evidence-first reviews.*Open.*1 task/)
+      const veinRow = goal.locator(`li[data-vein-id="${vein.veinId}"]`)
+      const veinStatus = alice.getByLabel('Status of vein Evidence-first reviews', { exact: true })
+      assert.equal(await veinStatus.inputValue(), 'open')
+      assert.match(await veinRow.textContent(), /1 task/)
+      assert.equal(await veinRow.locator('.record-status').count(), 0, 'an Actor sees the select, not the pill')
       await alice.screenshot({ path: join(output, 'pardner-goals.png'), fullPage: true })
+
+      // A pending request disables the record selects, and Retry still works.
+      let lostVerdict = false
+      await alice.route('**/automerge/operations', async route => {
+        if (!lostVerdict && route.request().postDataJSON().type === 'vein.update') {
+          lostVerdict = true
+          await route.abort('failed')
+        } else await route.continue()
+      })
+      await veinStatus.selectOption('proven')
+      await alice.getByRole('button', { name: 'Retry saved request', exact: true }).first().waitFor()
+      assert.equal(await veinStatus.isDisabled(), true, 'pending request disables the vein select')
+      assert.equal(await alice.getByLabel('Status of goal Ship the first release', { exact: true }).isDisabled(), true)
+      await alice.getByRole('button', { name: 'Retry saved request', exact: true }).first().click()
+      await goal.getByText('Ready for a verdict', { exact: true }).waitFor({ state: 'hidden' })
+      await alice.unroute('**/automerge/operations')
+      assert.equal((await run(['vein', 'show', vein.veinId])).vein.status, 'proven')
+      assert.equal(await veinStatus.inputValue(), 'proven')
+      await veinStatus.selectOption('open')
+      await goal.getByText('Ready for a verdict', { exact: true }).waitFor()
+      await veinStatus.selectOption('proven')
+      await goal.getByText('Ready for a verdict', { exact: true }).waitFor({ state: 'hidden' })
+      await alice.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Status of vein Evidence-first reviews')
+
+      // A stale change from the CLI lands in the vein row, never a task panel.
+      let raced = false
+      await alice.route('**/automerge/operations', async route => {
+        if (raced) return route.continue()
+        raced = true
+        const current = (await run(['vein', 'show', vein.veinId])).revisions.status
+        await run(['vein', 'update', vein.veinId, '--status', 'dead-end', '--revisions', JSON.stringify({ status: current })], 'builder')
+        await route.continue()
+      })
+      await veinStatus.selectOption('abandoned')
+      await veinRow.getByRole('alert').waitFor()
+      assert.equal(await alice.locator('.side-panel [role="alert"]').count(), 0)
+      await veinRow.getByRole('alert').getByRole('button', { name: 'Dismiss', exact: true }).click()
+      assert.equal(await veinStatus.inputValue(), 'dead-end', 'the select falls back to the stored value')
+      await veinStatus.selectOption('proven')
+      await veinRow.getByRole('alert').waitFor({ state: 'hidden' })
+      await alice.unroute('**/automerge/operations')
+      assert.equal((await run(['vein', 'show', vein.veinId])).vein.status, 'proven')
+
+      // A task panel open over Goals must not make "Status" ambiguous.
+      await alice.getByRole('button', { name: 'Tasks', exact: true }).click()
+      await alice.getByLabel('Status filter').selectOption('dead-end')
+      await alice.getByRole('button', { name: /Review the handoff evidence/ }).click()
+      await alice.getByRole('button', { name: 'Goals', exact: true }).click()
+      assert.equal(await alice.getByLabel('Status', { exact: true }).count(), 1)
+      await alice.getByRole('button', { name: 'Close', exact: true }).click()
+      await alice.getByRole('button', { name: 'Tasks', exact: true }).click()
+      await alice.getByLabel('Status filter').selectOption('review')
+      await alice.getByRole('button', { name: 'Goals', exact: true }).click()
+
+      const goalStatus = alice.getByLabel('Status of goal Ship the first release', { exact: true })
+      await goalStatus.focus()
+      await goalStatus.selectOption('achieved')
+      await alice.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Status of goal Ship the first release')
+      const [goalId] = (await run(['vein', 'show', vein.veinId])).vein.goalIds
+      assert.equal((await run(['goal', 'show', goalId])).goal.status, 'achieved')
+      assert.equal((await run(['vein', 'show', vein.veinId])).vein.status, 'proven', 'achieving a goal leaves its veins alone')
+      assert.equal(await veinStatus.inputValue(), 'proven')
+      await alice.screenshot({ path: join(output, 'pardner-goals-achieved.png'), fullPage: true })
+
+      // Without an Actor the Goals view is read-only: pills, no selects.
+      await alice.getByLabel('Actor', { exact: true }).selectOption('')
+      assert.equal(await alice.locator('.goals select').count(), 0)
+      assert.equal(await alice.locator('.goals .record-status').count(), 2)
+      await alice.getByLabel('Actor', { exact: true }).selectOption('alice')
+      await goalStatus.selectOption('open')
+      await goalStatus.evaluate(element => element.value === 'open')
+      await veinStatus.selectOption('open')
+      await goal.getByText('Ready for a verdict', { exact: true }).waitFor()
       await goal.getByRole('button', { name: 'Evidence-first reviews', exact: true }).click()
       await alice.getByRole('button', { name: /Review the handoff evidence.*Evidence-first reviews/ }).waitFor()
       assert.equal(await alice.getByLabel('Status filter').inputValue(), '', 'showing a vein clears filters that could hide its tasks')
