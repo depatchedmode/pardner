@@ -87,6 +87,13 @@ function useRefocus() {
   useEffect(() => {
     if (!wanted.current) return
     const frame = requestAnimationFrame(() => {
+      const active = document.activeElement
+      // Only recover lost focus: never take it back from a control the user
+      // has moved to while the request was running.
+      if (active && active !== document.body) {
+        wanted.current = false
+        return
+      }
       const element = ref.current
       if (!element?.isConnected || element.disabled) return
       wanted.current = false
