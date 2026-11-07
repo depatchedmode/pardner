@@ -8,9 +8,9 @@ const components = {
   table: ({ node, ...props }) => <div className="md-table"><table {...props} /></div>,
 }
 
-export default function ActorMarkdown({ children }) {
+export default function ActorMarkdown({ children, extraPlugins = [] }) {
   return (
-    <Markdown remarkPlugins={[remarkGfm]} components={components}>
+    <Markdown remarkPlugins={[remarkGfm, ...extraPlugins]} components={components}>
       {children}
     </Markdown>
   )

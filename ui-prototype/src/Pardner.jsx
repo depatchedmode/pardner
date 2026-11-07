@@ -8,6 +8,7 @@ import ControlPane from './ControlPane.jsx'
 import ClientApp from './ClientApp.jsx'
 import { AvatarStack } from './Avatar.jsx'
 import { isNewComment } from './comments.js'
+import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
@@ -63,10 +64,10 @@ function SelectActor({
     </label>
   )
 }
-function MarkdownBody({ children }) {
+function MarkdownBody({ children, extraPlugins = [] }) {
   return (
     <div className="markdown">
-      <ActorMarkdown>{children}</ActorMarkdown>
+      <ActorMarkdown extraPlugins={extraPlugins}>{children}</ActorMarkdown>
     </div>
   )
 }
@@ -1135,6 +1136,7 @@ function TaskDetail({
     try { client.saveDraft(taskId, draftRef.current) } catch { /* the in-memory draft remains */ }
   }, [session, client, taskId])
   const [message, setMessage] = useState('')
+  const [commentFocused, setCommentFocused] = useState(false)
   const [to, setTo] = useState('')
   const [handoffStatus, setHandoffStatus] = useState('review')
   const [handoffMessage, setHandoffMessage] = useState('')
@@ -1188,6 +1190,11 @@ function TaskDetail({
   const { task, comments, history, conflicts, revisions } = context
   const canWrite = Boolean(actor) && !busy
   const newCount = actor ? comments.filter(comment => isNewComment(comment, actor)).length : 0
+  // Lowercase handle -> "Name · kind" for Actors a comment actually notified.
+  const deliveredFor = (commentId) => new Map(context.mentions
+    .filter(mention => mention.commentId === commentId && actors[mention.toActorId])
+    .map(mention => [String(actors[mention.toActorId].handle).toLowerCase(), labelActor(actors[mention.toActorId])]))
+  const hint = mentionHint(unmatchedHandles(message, actors, { focused: commentFocused }))
   const handoffRevisions = { assignee: revisions.assignee, status: revisions.status }
   const handoffStale = handoffBase && JSON.stringify(handoffBase) !== JSON.stringify(handoffRevisions)
   const newerFields = session && draft
@@ -1446,7 +1453,7 @@ function TaskDetail({
               <time>{new Date(comment.timestamp).toLocaleString()}</time>
               {isNew && <span className="comment-tag">New</span>}
             </div>
-            <MarkdownBody>{comment.content}</MarkdownBody>
+            <MarkdownBody extraPlugins={[remarkMentionChips(deliveredFor(comment.id))]}>{comment.content}</MarkdownBody>
             {comment.conflicts.map((choice) => (
               <div className="conflict" key={choice.operationId}>
                 <strong>{labelActor(actors[choice.actorId])}</strong>
@@ -1486,9 +1493,13 @@ function TaskDetail({
               required
               value={message}
               onChange={(event) => setMessage(event.target.value)}
+              onFocus={() => setCommentFocused(true)}
+              onBlur={() => setCommentFocused(false)}
+              aria-describedby={hint ? 'comment-mention-hint' : undefined}
               placeholder="Share progress or mention an Actor with @handle"
             />
           </label>
+          {hint && <p id="comment-mention-hint" className="muted mention-hint">{hint}</p>}
           {noticeFor('comment.add')}
           <button className="primary" ref={commentButton} disabled={!canWrite || !message.trim()}>
             Add comment

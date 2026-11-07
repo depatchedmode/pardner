@@ -119,6 +119,13 @@ for (const uuidAvailable of [true, false]) it(
       assert.equal(await alice.getByText('New', { exact: true }).count(), 1)
       assert.equal(await alice.locator('.comment.is-new', { hasText: 'Seen' }).count(), 1, 'the tag sits on Bob\'s comment')
       assert.equal(await headingText(bob), 'Comments 2', 'Bob sees no new count for his own comment')
+      assert.equal(await bob.locator('.mention', { hasText: '@builder' }).count(), 1, 'a delivered mention is chipped')
+      await alice.getByLabel('Comment', { exact: true }).fill('ping @buildr ')
+      await alice.getByText("@buildr matches no Actor and won't notify anyone.", { exact: true }).waitFor()
+      assert.equal(await alice.getByRole('button', { name: 'Add comment', exact: true }).isDisabled(), false)
+      await alice.getByLabel('Comment', { exact: true }).fill('ping @bui')
+      assert.equal(await alice.locator('.mention-hint').count(), 0, 'a half-typed handle is not flagged')
+      await alice.getByLabel('Comment', { exact: true }).fill('')
       await alice
         .getByRole('button', { name: 'Edit task', exact: true })
         .click()
