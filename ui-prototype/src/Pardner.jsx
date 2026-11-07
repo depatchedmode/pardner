@@ -7,6 +7,8 @@ import PhoneAccess from './PhoneAccess.jsx'
 import ControlPane from './ControlPane.jsx'
 import ClientApp from './ClientApp.jsx'
 import { AvatarStack } from './Avatar.jsx'
+import RecordConflicts from './RecordConflicts.jsx'
+import { disputedStatusText } from './record-conflicts.js'
 import { isNewComment } from './comments.js'
 import { defaultHandoffStatus } from './handoff.js'
 import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js'
@@ -808,6 +810,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
             veins={veins}
             showVein={showVein}
             actor={actor}
+            actors={actors}
             submit={submit}
             busy={busy}
             pending={pending}
@@ -929,7 +932,7 @@ function RecordStatusSelect({ kind, record, statuses, submit, disabled }) {
   )
 }
 
-function Goals({ goals, veins, showVein, actor, submit, busy, pending, errorNotice, errorOrigin }) {
+function Goals({ goals, veins, showVein, actor, actors, submit, busy, pending, errorNotice, errorOrigin }) {
   const list = Object.values(goals).sort((a, b) =>
     GOAL_STATUSES.indexOf(a.status) - GOAL_STATUSES.indexOf(b.status) || a.created_at.localeCompare(b.created_at))
   const veinsByGoal = {}
@@ -937,10 +940,41 @@ function Goals({ goals, veins, showVein, actor, submit, busy, pending, errorNoti
     for (const goalId of vein.goalIds) (veinsByGoal[goalId] ??= []).push(vein)
   }
   const disabled = busy || Boolean(pending)
+  // A disputed status names every alternative instead of the merge's pick, and offers no select.
   const statusControl = (kind, record, statuses) =>
-    quickStatusEditable({ actor, conflicts: record.conflicts })
-      ? <RecordStatusSelect kind={kind} record={record} statuses={statuses} submit={submit} disabled={disabled} />
-      : <span className="record-status" data-status={record.status}>{LABELS[record.status]}</span>
+    record.conflicts.status
+      ? <span className="record-status" data-status="disputed">{disputedStatusText(record.conflicts.status, LABELS)}</span>
+      : quickStatusEditable({ actor, conflicts: record.conflicts })
+        ? <RecordStatusSelect kind={kind} record={record} statuses={statuses} submit={submit} disabled={disabled} />
+        : <span className="record-status" data-status={record.status}>{LABELS[record.status]}</span>
+  // After a Keep, focus goes to the record's status control (or the vein's button) once the snapshot shows it.
+  const focusAfter = useRef(null)
+  const [focusTick, setFocusTick] = useState(0)
+  const keptRecord = target => { focusAfter.current = target; setFocusTick(tick => tick + 1) }
+  useEffect(() => {
+    const target = focusAfter.current
+    if (!target) return
+    let element = target.element
+    if (!element) {
+      const root = target.kind === 'goal'
+        ? document.querySelector(`.goal[data-goal-id="${CSS.escape(target.record.id)}"]`)
+        : target.field === 'goalId'
+          ? document.querySelector(`.goal[data-goal-id="${CSS.escape(target.value)}"] li[data-vein-id="${CSS.escape(target.record.id)}"]`)
+          : document.querySelector(`li[data-vein-id="${CSS.escape(target.record.id)}"]`)
+      element = target.kind === 'goal' ? root?.querySelector('.goal-heading select') ?? root
+        : root?.querySelector('select') ?? root?.querySelector('.vein-title')
+    }
+    if (!element?.isConnected) return
+    if (element.disabled) return
+    focusAfter.current = null
+    element.focus()
+  }, [goals, veins, disabled, focusTick])
+  const conflicts = (kind, record) => Object.keys(record.conflicts).length > 0 && (
+    <RecordConflicts
+      kind={kind} record={record} actors={actors} goals={goals} labels={LABELS} labelActor={labelActor}
+      submit={submit} disabled={!actor || disabled} onDone={keptRecord}
+    />
+  )
   // The notice sits by its record: under a goal's heading, or in the first row that lists a vein.
   const recordId = errorNotice ? errorOrigin?.recordId : null
   const noticeGoal = goals[recordId]
@@ -964,7 +998,7 @@ function Goals({ goals, veins, showVein, actor, submit, busy, pending, errorNoti
             </div>
             {recordId === goal.id && errorNotice}
             {goal.description && <p className="muted">{goal.description}</p>}
-            {Object.keys(goal.conflicts).length > 0 && <p className="conflict-label">Conflicting edits</p>}
+            {conflicts('goal', goal)}
             {!goalVeins.length && <p className="muted">No veins pursue this goal yet.</p>}
             <ul>
               {goalVeins.map(vein => (
@@ -974,8 +1008,8 @@ function Goals({ goals, veins, showVein, actor, submit, busy, pending, errorNoti
                     {statusControl('vein', vein, VEIN_STATUSES)}
                     <span className="muted">{vein.taskIds.length} {vein.taskIds.length === 1 ? 'task' : 'tasks'}</span>
                     {vein.readyForVerdict && <span className="verdict-label">Ready for a verdict</span>}
-                    {Object.keys(vein.conflicts).length > 0 && <span className="conflict-label">Conflicting edits</span>}
                   </div>
+                  {conflicts('vein', vein)}
                   {recordId === vein.id && noticeGoal === goal.id && errorNotice}
                 </li>
               ))}

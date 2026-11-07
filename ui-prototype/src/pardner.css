@@ -590,8 +590,48 @@ input[aria-invalid='true'] {
 .goal-heading select,
 .vein-meta select {
   width: auto;
-  padding: 4px 8px;
+  /* Room for the longest label ("Abandoned") beside the arrow. */
+  min-width: 9.5em;
+  padding: 4px 28px 4px 8px;
   font-size: 13px;
+}
+.goal li > .record-conflict,
+.goal > .record-conflict {
+  flex-basis: 100%;
+}
+.record-conflict {
+  font-size: 13px;
+  margin: 6px 0 0;
+}
+.record-conflict summary {
+  color: var(--warning);
+  cursor: pointer;
+  min-height: 24px;
+}
+.record-conflict-field {
+  margin: 8px 0 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--warning);
+}
+.record-conflict-field p {
+  margin: 0 0 6px;
+  color: var(--muted);
+}
+.record-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 6px 0;
+}
+.record-choice-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  flex: 1 1 8em;
+}
+.record-status[data-status='disputed'] {
+  color: var(--warning);
+  border-color: var(--warning);
 }
 .vein-meta {
   display: flex;
@@ -793,6 +833,16 @@ code {
   .vein-meta select {
     min-height: 44px;
     font-size: 16px;
+    min-width: 10em;
+    padding-right: 32px;
+  }
+  .record-conflict summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+  .record-choice button {
+    min-height: 44px;
   }
 
   .event {
