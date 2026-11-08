@@ -332,7 +332,8 @@ describe('shared workspace operations', () => {
       const doomed = (await command(workspace, 'comment.add', { taskId, text: 'Doomed' })).result.commentId
       const peer = await create(workspace)
       const first = await command(workspace, 'comment.edit', { commentId, text: 'Human revision', expectedRevisions: [original.operationId] })
-      const second = await command(peer, 'comment.edit', { commentId, text: 'Agent revision', expectedRevisions: [original.operationId] }, 'builder')
+      // Only the author may edit a comment, so the concurrent revision is Alice's on another replica.
+      const second = await command(peer, 'comment.edit', { commentId, text: 'Peer revision', expectedRevisions: [original.operationId] }, 'alice')
       workspace.handle.merge(peer.handle)
       const unread = (observer) => Object.fromEntries(workspace.taskContext(taskId, observer).comments.map(comment => [comment.id, comment.unreadRevisionIds]))
       const { revisionIds } = workspace.taskContext(taskId).comments.find(comment => comment.id === commentId)
