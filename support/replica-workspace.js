@@ -7,6 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import AutomergeSyncServer from '../automerge-sync-server.js'
 import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
 import { requestJson } from '../lib/sync-client.js'
+import { replicaCredentials, replicaOptions } from './replica-credentials.js'
 
 const token = 'replica-workspace-token'
 const actors = [
@@ -25,8 +26,11 @@ async function eventually(check, message = 'Replicas did not converge within ten
 
 function service(directory, options = {}) {
   const { hubUrl, hubWsUrl, ...serverOptions } = options
+  // The hub admits replicas only with a configured replica credential.
   return new AutomergeSyncServer({
-    store: new WorkspaceRuntime({ directory, role: hubUrl ? 'replica' : 'hub', hubUrl, hubWsUrl, token, actors, retryMs: 100 }),
+    store: new WorkspaceRuntime({ directory, role: hubUrl ? 'replica' : 'hub', hubUrl, hubWsUrl, token, actors, retryMs: 100,
+      ...(hubUrl ? replicaOptions : {}) }),
+    ...(hubUrl ? {} : { replicaCredentials }),
     env: {}, apiToken: token, httpPort: 0, wsPort: 0, logger: {}, ...serverOptions,
   })
 }
