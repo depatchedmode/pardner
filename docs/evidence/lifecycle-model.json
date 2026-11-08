@@ -453,5 +453,24 @@
     "transitions": 679456,
     "durationMs": 4348,
     "review": "Retain security credential admission and runtime/schema guard. Relative to main only Workspace receipt/history projection and operationFailure 409 changed among mapped sources. All modeled admission, persistence, acknowledgement and shutdown actions/anchors retain their guard/effect/atomicity. Historical standalone records are preserved; no mutation/wider-bound claim for this combined candidate."
+  },
+  "oversizeRequestMessageReview": {
+    "recorded": "2026-11-08",
+    "mapping": {
+      "revision": "124a69e9b7599c315aaddec8a9633887dfa91b80",
+      "files": {
+        "automerge-sync-server.js": "ac11ebc970ee96e912b42a8cfde3158543e2097ad2094911abc89f4ca03f3235",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "db3eb7b8aaf0a3a2360c13e26439b193931e3e9e22ffc61712b9a1d4caae0a31",
+        "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "durationMs": 4602,
+    "result": "passed",
+    "review": "Only the express body-parser error handler changed: the JSON limit is named (100kb, the body-parser default, so admission is unchanged) and an entity.too.large error now answers 413 with a size message instead of the generic 400. The error is raised before any route handler, so no operation is admitted, persisted or acknowledged; body parsing is outside the model. Arrive, UpgradeArrive, StopBegin, IdleConnectionEnds, Respond, ReclaimIdle, ListenerClosed and StoreCloseBegin keep their guard, effect and atomicity; no action, anchor, invariant, witness or mutation changed. Prior mutation and wider-bound records remain historical; not rerun for this candidate."
   }
 }
