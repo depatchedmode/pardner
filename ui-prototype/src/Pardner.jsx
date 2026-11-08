@@ -38,6 +38,16 @@ const atOrAfter = (event, cutoff) => {
   const b = Date.parse(cutoff.timestamp) || 0
   return a !== b ? a > b : String(event.operationId) >= String(cutoff.operationId)
 }
+// Escape closes a panel unless a dialog owns it or typed text would be lost.
+function escapeKeepsPanel(event) {
+  if (event.defaultPrevented) return true
+  const target = event.target
+  // An open dialog (profile, invite) closes first, not the panel beneath it.
+  if (target?.closest?.('dialog') || document.querySelector('dialog[open]')) return true
+  const typed = target?.tagName === 'TEXTAREA' ||
+    (target?.tagName === 'INPUT' && ['', 'text', 'search', 'url', 'email'].includes(target.getAttribute('type') ?? ''))
+  return Boolean(typed && target.value.trim() !== '')
+}
 // Task details operations whose errors render above that form's submit button.
 const FORM_SLOTS = ['task.update', 'task.handoff', 'comment.add']
 const labelActor = (actor) =>
@@ -84,11 +94,11 @@ function ErrorNotice({ error, retry, onDismiss }) {
   return (
     <div className="error" role="alert">
       <strong>{error.message}</strong>
-      <p>
+      {(error.code === 'STALE_UPDATE' || !error.preflight) && <p>
         {error.code === 'STALE_UPDATE'
           ? 'Your draft is preserved. Review the latest context before making a new edit.'
           : 'Your last confirmed data remains available.'}
-      </p>
+      </p>}
       {(retry || onDismiss) && <div className="actions">
         {retry && <button type="button" onClick={retry}>Retry saved request</button>}
         {onDismiss && <button type="button" onClick={onDismiss}>Dismiss</button>}
@@ -473,12 +483,13 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
     const origin = replay?.payload ?? payload
     setErrorOrigin({ type: replay?.type ?? type, taskId: origin?.taskId, recordId: origin?.veinId ?? origin?.goalId })
     if (!actor && !replay) {
-      setError({ message: 'Choose the Actor making this change.' })
+      setError({ message: 'Choose the Actor making this change.', preflight: true })
       return null
     }
     if (pending && !replay) {
       setError({
         message: 'Resolve the saved request before starting another change.',
+        preflight: true,
       })
       return null
     }
@@ -847,7 +858,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
                     data-operation-id={event.operationId}
                     tabIndex={-1}
                     formatTime={time => time.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-                    onTask={(element, id) => openPanel(element, () => setSelected(id))}
+                    onTask={(element, id) => openPanel(element, () => { setCreating(false); setSelected(id) })}
                     onVein={openVein}
                     onGoal={openGoal}
                   />
@@ -863,6 +874,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
       {creating && (
         <TaskForm
           actors={actors}
+          actor={actor}
           busy={busy}
           pending={Boolean(pending)}
           draft={newTaskDraft}
@@ -1040,6 +1052,7 @@ const draftIsDirty = ({ fields, tags }) =>
 
 function TaskForm({
   actors,
+  actor,
   busy,
   pending = false,
   onClose,
@@ -1066,6 +1079,16 @@ function TaskForm({
   // Per control, not <fieldset disabled>: Retry inside the form must stay enabled.
   const locked = controlled && (busy || pending)
   const [titleBlank, setTitleBlank] = useState(false)
+  const noActor = !editing && !actors[actor]
+  useEffect(() => {
+    if (editing) return undefined
+    const key = (event) => {
+      if (event.key !== 'Escape' || escapeKeepsPanel(event)) return
+      onClose()
+    }
+    document.addEventListener('keydown', key)
+    return () => document.removeEventListener('keydown', key)
+  }, [editing, onClose])
   // A failed submit returns focus to its button once it re-enables; the error is announced, not focused.
   const [submitButton, refocusSubmit] = useRefocus()
   return (
@@ -1078,6 +1101,13 @@ function TaskForm({
           <h2>New task</h2>
           <button onClick={onClose}>Close</button>
         </div>
+      )}
+      {!editing && (
+        <p className="muted" id="new-task-actor">
+          {noActor
+            ? 'No Actor chosen. Close this panel and choose one in the header; your draft is kept.'
+            : `Creating as ${labelActor(actors[actor])}`}
+        </p>
       )}
       <form
         aria-busy={(controlled && busy) || undefined}
@@ -1162,7 +1192,7 @@ function TaskForm({
         </label>
         {notice}
         <div className="actions">
-          <button className="primary" ref={submitButton} disabled={busy}>
+          <button className="primary" ref={submitButton} disabled={busy || noActor} aria-describedby={noActor ? 'new-task-actor' : undefined}>
             {editing ? 'Save changes' : busy ? 'Creating…' : 'Create task'}
           </button>
           {controlled && draftIsDirty({ fields, tags }) && (
@@ -1329,14 +1359,7 @@ function TaskDetail({
   }, [taskId, actor, heads, request])
   useEffect(() => {
     const key = (event) => {
-      if (event.key !== 'Escape' || event.defaultPrevented) return
-      const target = event.target
-      // A modal dialog owns its own Escape; typed text is never discarded by it.
-      // An open dialog (profile, invite) closes first, not the panel beneath it.
-      if (target?.closest?.('dialog') || document.querySelector('dialog[open]')) return
-      const typed = target?.tagName === 'TEXTAREA' ||
-        (target?.tagName === 'INPUT' && ['', 'text', 'search', 'url', 'email'].includes(target.getAttribute('type') ?? ''))
-      if (typed && target.value.trim() !== '') return
+      if (event.key !== 'Escape' || escapeKeepsPanel(event)) return
       onClose()
     }
     document.addEventListener('keydown', key)
