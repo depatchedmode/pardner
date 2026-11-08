@@ -9,6 +9,7 @@ The repository is public, so narrated videos are stored outside it, in the owner
 | 3 | 2026-11-07 | Hand off work | `aa92baca`, `d8df6c05`, `b12587c6` | `round-3/hand-off.mp4` (83 s) | merged on branch; acceptance gate owed |
 | 4 | 2026-11-07 | Task status and close-out (#115) — loop 2, iteration 1 | `f079803a` | `round-4/status-close-out.mp4` (58 s) | merged on branch |
 | 5 | 2026-11-07 | Goals view: verdicts, goal status, conflicts (#131, #143) (loop 2, iteration 2) | `2ea03452`, `292d30f1`, `a64ba081` | `round-5/goals-verdicts-conflicts.mp4` (69 s) | merged on branch |
+| 6 | 2026-11-07 | New task panel (#139, #120, #121) (loop 2, iteration 3) | `7ea34c10`, `07731a10`, `ee9cd12e` | `round-6/new-task.mp4` (80 s) | merged on branch |
 
 ## Round 1 — Activity view and task History
 
@@ -200,3 +201,49 @@ That is four steps for one field. The status itself was plain muted text in the 
 - `partition()` in the harness should wait for `!syncPending` before stopping the hub. A test works around this today.
 
 **Video notes.** The goal-conflict disclosure is visible but not opened on camera. The Keep shown is the first button.
+
+## Round 6 — New task panel (#139, #120, #121)
+
+This round is the third and last iteration of the second `/loop`.
+
+**Why.**
+- Closing New task, or clicking a card, threw away the draft (#121).
+- Escape did nothing on New task (#120).
+- The panel covers the header Actor select, so the form never said who was creating the task. With no Actor, Create stayed enabled and then failed.
+- While a create was saving, only the button faded.
+- A description over 100 kB failed with "Send a valid JSON request." (#139).
+
+**What changed.**
+- **Draft kept until created or discarded.** The New task draft now lives in memory in the workspace. It survives Close, card clicks, Activity links and Actor changes. It is cleared only by a confirmed `task.create`, including a replayed Retry (cleared inside `submit()`, so there is no duplicate-create hazard), by **Discard draft**, or by **Forget this workspace**. It is never persisted.
+- **Saving state.** While saving or pending, the fields lock, the button reads **Creating…**, and the form is marked `aria-busy`.
+- **Escape.** Escape now closes New task unless a text field has content. This uses the round-3 guard, now shared as `escapeKeepsPanel`.
+- **Activity links.** Opening a task from Activity closes New task, so two panels no longer stack.
+- **Actor line.** The panel shows "Creating as {Actor}". With no Actor it says "No Actor chosen. Close this panel and choose one in the header; your draft is kept." and disables Create.
+- **Pre-flight notices.** These two notices no longer add "Your last confirmed data remains available.":
+  - "Choose the Actor making this change."
+  - "Resolve the saved request before starting another change."
+- **Oversized requests.** The server answers 413 INVALID_ARGUMENT with "This change is larger than the 100 kB request limit. Shorten it and try again."
+
+**Tests.**
+- New UI tests in Chromium and WebKit:
+  - draft kept, restored, discarded and cleared on create, through a lost-response Retry, and after Forget;
+  - busy and lock behaviour;
+  - Escape cases;
+  - the Actor line and the no-Actor state;
+  - the pre-flight notice suffix;
+  - Activity stacking;
+  - a 110 kB UI case.
+- New server test in `test/error-resilience.test.js` (413 and the malformed-JSON 400).
+- `npm run test:ui`: 54/54. Full `node --test`: 457/457, with the recorder running at the same time.
+
+**Process.**
+- A Sonnet reviewer proposed 8 changes.
+- An Opus judge found that a lifted draft cleared from the form, rather than inside `submit()`, would duplicate a Retry. It moved the clear point and added the lock while pending.
+- The judge rejected Cancel (ambiguous with a kept draft), a textarea Title (breaks Enter and IME input), a taller Description, a length counter, and a "Draft restored" note. It deferred the sticky footer.
+- V4's "no Escape on New task until #121" condition is now met by the kept draft.
+
+**Deferred.**
+- Sticky actions footer at 667×375.
+- The oversize alert still ends with "Your last confirmed data remains available." because it is a server error.
+
+**Note.** This branch has no lifecycle source-hash check, unlike `main`'s newer base. The earlier held-back `GET /` → `/pardner/` redirect could be applied here without drift; that is still the owner's call (#116).
