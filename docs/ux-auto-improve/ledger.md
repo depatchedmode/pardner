@@ -1,15 +1,15 @@
 # UX auto-improve ledger
 
-The repository is public, so narrated videos are stored outside it, in the owner's local Movies folder (`pardner-ux-auto-improve/round-N/`). Commits are on branch `ux-skill-pack-run`. No pull requests were opened: the branch has not been pushed, and pushing is the owner's call.
+The repository is public, so narrated videos are stored outside it, in the owner's local Movies folder (`pardner-ux-auto-improve/round-N/`). Commits are on branch `ux-skill-pack-run`, rebased onto `main` (`b3c36fc0`) on 2026-11-08; the SHAs below are the rebased ones (pre-rebase tip kept at `backup/ux-skill-pack-run-pre-rebase`). No pull requests were opened: the branch has not been pushed, and pushing is the owner's call.
 
 | Round | Date | Section | Commits | Video | Status |
 |---|---|---|---|---|---|
-| 1 | 2026-11-07 | Activity view and task History | `d3518ea5`, `205b2719`, `dfd334f3` | `round-1/activity-history.mp4` (79 s) | merged on branch |
-| 2 | 2026-11-07 | Comments, @mentions and unread state | `0d3b6c1f`, `b1c66222`, `f147724e`, `84f92442` | `round-2/comments-mentions.mp4` (76 s) | merged on branch |
-| 3 | 2026-11-07 | Hand off work | `aa92baca`, `d8df6c05`, `b12587c6` | `round-3/hand-off.mp4` (83 s) | merged on branch; acceptance gate owed |
-| 4 | 2026-11-07 | Task status and close-out (#115) — loop 2, iteration 1 | `f079803a` | `round-4/status-close-out.mp4` (58 s) | merged on branch |
-| 5 | 2026-11-07 | Goals view: verdicts, goal status, conflicts (#131, #143) (loop 2, iteration 2) | `2ea03452`, `292d30f1`, `a64ba081` | `round-5/goals-verdicts-conflicts.mp4` (69 s) | merged on branch |
-| 6 | 2026-11-07 | New task panel (#139, #120, #121) (loop 2, iteration 3) | `7ea34c10`, `07731a10`, `ee9cd12e` | `round-6/new-task.mp4` (80 s) | merged on branch |
+| 1 | 2026-11-07 | Activity view and task History | `98a9d66f`, `82fd33a4`, `ee600bb8` | `round-1/activity-history.mp4` (79 s) | merged on branch |
+| 2 | 2026-11-07 | Comments, @mentions and unread state | `437f7591`, `8e6e4ea1`, `7c7a6896`, `7badb746` | `round-2/comments-mentions.mp4` (76 s) | merged on branch |
+| 3 | 2026-11-07 | Hand off work | `db6758c4`, `13635ae1`, `dff17008` | `round-3/hand-off.mp4` (83 s) | merged on branch; acceptance gate owed |
+| 4 | 2026-11-07 | Task status and close-out (#115) — loop 2, iteration 1 | `9263f4c8` | `round-4/status-close-out.mp4` (58 s) | merged on branch |
+| 5 | 2026-11-07 | Goals view: verdicts, goal status, conflicts (#131, #143) (loop 2, iteration 2) | `24655dbc`, `19e82720`, `79771f4e` | `round-5/goals-verdicts-conflicts.mp4` (69 s) | merged on branch |
+| 6 | 2026-11-07 | New task panel (#139, #120, #121) (loop 2, iteration 3) | `919e9d4a`, `a71c8fc6`, `8a1d9449` | `round-6/new-task.mp4` (80 s) | merged on branch |
 
 ## Round 1 — Activity view and task History
 
@@ -247,3 +247,19 @@ This round is the third and last iteration of the second `/loop`.
 - The oversize alert still ends with "Your last confirmed data remains available." because it is a server error.
 
 **Note.** This branch has no lifecycle source-hash check, unlike `main`'s newer base. The earlier held-back `GET /` → `/pardner/` redirect could be applied here without drift; that is still the owner's call (#116).
+
+## Rebase onto main and re-recorded videos (2026-11-08)
+
+- **Rebase:** the branch was rebased onto `main` at `b3c36fc0`. All 42 commits were kept, plus 4 follow-ups:
+  - `30a3bb2b`: the replica fixture now uses main's replica credentials.
+  - `124a69e9`: in the context test, the concurrent comment revision is now the author's own, because main allows only authors to edit their comments.
+  - `62e6cef4`: lifecycle-model drift for the 413 change was reviewed per `verify-lifecycle-model` and accepted. Nothing changed semantically.
+  - `00218d76`: the verify plan now classifies the new UI fixtures.
+- **Verify:** `npm run verify` under Node 24.11.1 passed: 716/716 tests, then one acceptance scenario.
+- **Videos:** all six were re-recorded on the rebased checkouts (each round's parent vs its last code commit), with the same seed data on both sides.
+  - The UI now opens on main's pairing screen and shows the Control tab.
+  - Seeds now make comment edits as the comment's author, because main's CLI rejects edits by anyone else.
+  - Round 5 now also opens and resolves the goal conflict.
+  - Round 6 now also shows "Creating…" and the no-Actor state.
+  - The previous recordings are kept beside the new ones as `*-pre-rebase.mp4`.
+- **Still owed:** the 20-seed acceptance gate. Load was above 100 during this work.
