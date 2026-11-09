@@ -32,6 +32,10 @@ class ControlError(Exception):
     pass
 
 
+class ControlUsageError(ControlError):
+    """A refused command line, as opposed to a service that is stopped or cannot be verified."""
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -54,7 +58,11 @@ def atomic_json(path, value):
 class Controller:
     def __init__(self, home):
         self.home = Path(home).resolve()
-        self.config = json.loads((self.home / 'config.json').read_text())
+        try:
+            self.config = json.loads((self.home / 'config.json').read_text())
+        except FileNotFoundError:
+            raise ControlError(f'{self.home} is not a Pardner control installation (no config.json); '
+                               'pass --home or set PARDNER_CONTROL_HOME') from None
         c = self.config
         if not isinstance(c, dict):
             raise ControlError('Config must be a JSON object')
@@ -337,13 +345,13 @@ class Controller:
 
     def cli(self, argv, agent):
         if not argv or argv[0].startswith('--') or argv[0] in ['serve', 'bridge', 'client', 'open']:
-            raise ControlError('Supply a coordination command; lifecycle, client and bridge commands are not Actor entrypoints')
+            raise ControlUsageError('Supply a coordination command; lifecycle, client and bridge commands are not Actor entrypoints')
         protected = {'--data', '--server', '--token', '--token-file', '--actor', '--agent', '--role', '--hub', '--hub-ws',
                      '--hub-token', '--http-port', '--ws-port'}
         if protected.intersection(argv):
-            raise ControlError('The control installation selects connection settings and the entrypoint Actor')
+            raise ControlUsageError('The control installation selects connection settings and the entrypoint Actor')
         if agent not in self.config['agents']:
-            raise ControlError('Name an agent harness from config.agents; people use control open')
+            raise ControlUsageError('Name an agent harness from config.agents; people use control open')
         self.require_service()
         try:
             path, api_base = self.credential(agent)
@@ -355,7 +363,7 @@ class Controller:
 
     def open(self, argv):
         if argv and (len(argv) != 2 or argv[0] != '--output-file'):
-            raise ControlError('open accepts only --output-file FILE')
+            raise ControlUsageError('open accepts only --output-file FILE')
         self.require_service()
         self.exec_node(['client', 'open', '--data', str(self.data), *argv], environment(self.config['node']))
 
@@ -389,7 +397,10 @@ def main(argv=None):
     parser.add_argument('action', choices=['start', 'status', 'stop', 'restart', 'run', 'cli', 'open', 'seal', 'entrypoints'])
     parser.add_argument('--home', type=Path)
     parser.add_argument('--agent')
-    args = parser.parse_args(argv[:separator])
+    args, unknown = parser.parse_known_args(argv[:separator])
+    if unknown:
+        parser.error(f'unrecognized arguments: {" ".join(unknown)}; '
+                     'arguments for cli/open go after --, e.g. control open -- --output-file FILE')
     if args.action != 'cli' and args.agent:
         parser.error('Only cli accepts --agent')
     if args.action not in ['cli', 'open'] and forwarded:
@@ -426,7 +437,8 @@ def main(argv=None):
         return 0
     except (ControlError, OSError, ValueError, subprocess.SubprocessError) as error:
         if args.action == 'cli':
-            print(json.dumps({'success': False, 'error': {'code': 'CONTROL_RUNTIME_UNAVAILABLE',
+            code = 'INVALID_ARGUMENT' if isinstance(error, ControlUsageError) else 'CONTROL_RUNTIME_UNAVAILABLE'
+            print(json.dumps({'success': False, 'error': {'code': code,
                                                        'message': str(error), 'details': None}}))
         print(f'Control runtime: {error}', file=sys.stderr)
         return 1

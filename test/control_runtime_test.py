@@ -274,8 +274,37 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(code, 1)
         result = json.loads(stdout.getvalue())
         self.assertFalse(result['success'])
-        self.assertEqual(result['error']['code'], 'CONTROL_RUNTIME_UNAVAILABLE')
+        self.assertEqual(result['error']['code'], 'INVALID_ARGUMENT')
         self.assertIn('Control runtime:', stderr.getvalue())
+
+    def test_usage_refusals_and_unavailable_service_have_distinct_codes(self):
+        def run(args):
+            stdout = io.StringIO()
+            with patch.object(module, 'Controller', return_value=self.control), contextlib.redirect_stdout(stdout), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(module.main(args), 1)
+            return json.loads(stdout.getvalue())['error']['code']
+        for args in [['cli', '--home', str(self.home), '--', 'tasks'],
+                     ['cli', '--home', str(self.home), '--agent', AGENT, '--', 'tasks', '--server', 'http://elsewhere']]:
+            with self.subTest(args=args):
+                self.assertEqual(run(args), 'INVALID_ARGUMENT')
+        unavailable = module.ControlError('The selected managed service cannot be verified; inspect control status')
+        with patch.object(self.control, 'require_service', side_effect=unavailable):
+            self.assertEqual(run(['cli', '--home', str(self.home), '--agent', AGENT, '--', 'tasks']), 'CONTROL_RUNTIME_UNAVAILABLE')
+
+    def test_a_directory_without_config_is_named_as_not_an_installation(self):
+        empty = Path(self.scratch.name) / 'not-an-installation'
+        empty.mkdir()
+        result = subprocess.run(['/usr/bin/python3', str(SOURCE), 'status', '--home', str(empty)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('is not a Pardner control installation (no config.json); pass --home or set PARDNER_CONTROL_HOME', result.stderr)
+        self.assertNotIn('Errno', result.stderr)
+
+    def test_open_options_before_the_separator_explain_the_separator(self):
+        result = subprocess.run(['/usr/bin/python3', str(SOURCE), 'open', '--home', str(self.home), '--output-file', 'launch.txt'],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('arguments for cli/open go after --, e.g. control open -- --output-file FILE', result.stderr)
 
     def test_bad_launch_record_and_dirty_release_still_allow_live_diagnostics(self):
         (self.home / 'running.json').write_text('{partial')
