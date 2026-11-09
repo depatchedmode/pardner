@@ -134,6 +134,29 @@ test('explicit public gateway produces HTTPS invitations while browser origin st
   } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
 })
 
+test('a public gateway may be plain HTTP only on loopback', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-loopback-gateway-'))
+  let client
+  try {
+    for (const publicUrl of ['http://pardner.example.test', 'http://192.168.1.20:8443', 'https://pardner.example.test/path', 'ftp://127.0.0.1']) {
+      await assert.rejects(startClient({ directory, port: 0, publicUrl }), /explicit HTTPS origin, or an HTTP origin on loopback/)
+    }
+    client = await startClient({ directory, port: 0, publicUrl: 'http://127.0.0.1:47123' })
+    const operator = { Authorization: `Bearer ${client.registry.read().operatorToken}`, 'Content-Type': 'application/json' }
+    const api = async (path, body) => {
+      const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: 'POST', headers: operator, body: JSON.stringify(body) })
+      assert.equal(response.status, 200); return response.json()
+    }
+    await api('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+    const { project } = await api('/projects', { name: 'Loopback gateway', operationId: 'create' })
+    const { invitation } = await api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
+    assert.equal(invitationData(invitation).endpoint, 'http://127.0.0.1:47123/pardner/client/v1/enroll')
+    await client.stop()
+    client = await startClient({ directory, port: 0, publicUrl: 'http://localhost:47124' })
+    assert.equal(client.gatewayUrl, 'http://localhost:47124')
+  } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
+})
+
 test('programmatic client started from Node input-type mode launches isolated file-based runtimes', { timeout: 30000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-inline-client-'))
   try {

@@ -134,8 +134,10 @@ agent remains the responsibility of its external app or harness.
 
 Local client HTTP listens on numeric loopback. Other machines need an explicitly
 configured reachable HTTPS gateway, supplied with `client serve --public-url`.
-An invitation containing a loopback address works only on the originating
-machine. The option does not provision a relay, publish the client or establish
+Plain HTTP is accepted there only for a loopback origin (`http://127.0.0.1:<port>`
+or `http://localhost:<port>`), such as a relay on the same machine or the
+acceptance network gate; any other origin must be HTTPS. An invitation
+containing a loopback address works only on the originating machine. The option does not provision a relay, publish the client or establish
 network reachability. Keep the browser/operator surface private and route only
 the intended enrollment and authenticated replica endpoints.
 
