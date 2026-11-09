@@ -31,7 +31,7 @@ const groups = [
     name: 'cli', scripts: ['test:cli'],
     files: names('bin/pardner.js lib/cli.js lib/cli-trace.js lib/agent-trace.js lib/github-remote.js support/cli-resources.js'),
   },
-  { name: 'lan', scripts: ['test:ui', 'test:runtime'], files: ['lib/lan-access.js'] },
+  { name: 'loopback', scripts: ['test:runtime'], files: ['lib/loopback.js'] },
   {
     name: 'bridge', scripts: ['test:runtime', 'test:cli'],
     files: names(`lib/agent-bridge.js lib/codex-bridge-adapter.js lib/bridge-paths.js lib/bridge-retirement.js
@@ -115,7 +115,7 @@ export function classifyPath(path) {
     return { name: 'ui', scripts: ['test:ui'] }
   }
   if (/^test\/[^/]+\.test\.js$/.test(path)) {
-    if (/pardner-(ui|control-ui)|client-(onboarding|companion)-ui|browser-connection|lan-/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
+    if (/pardner-(ui|control-ui)|client-(onboarding|companion)-ui|browser-connection/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
     if (/storage|conflict|ticket/.test(path)) return { name: 'qualification-test', scripts: ['test:qualification'], qualification: 'Persistence or conflict regression evidence changed' }
     if (/pardner-cli|pardner-brand/.test(path)) return { name: 'cli-test', scripts: ['test:cli'] }
     return { name: 'regression-test', scripts: ['test:runtime'] }

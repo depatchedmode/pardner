@@ -9,7 +9,8 @@ import { startClient } from '../lib/client-service.js'
 import { ClientRegistry } from '../lib/client-registry.js'
 import { ClientAuth } from '../lib/client-auth.js'
 import { workspaceProxy } from '../lib/client-proxy.js'
-import { ClientCompanion, MAX_PENDING_PAIRINGS, PAIRING_TTL_MS, Throttle, matchPairing, throttleSource } from '../lib/client-companion.js'
+import { ClientCompanion, MAX_PENDING_PAIRINGS, PAIRING_TTL_MS, Throttle, lanInterfaces, matchPairing, throttleSource } from '../lib/client-companion.js'
+import { isLoopbackRequest } from '../lib/loopback.js'
 import { eventually } from '../support/client-workspace.js'
 
 const CLIENT_API = '/pardner/client/v1'
@@ -84,6 +85,19 @@ async function pairedPhone(fixture) {
   return { phone, redeemed }
 }
 const humanCookie = client => `${client.auth.cookieName}=${client.auth.exchange(client.auth.browserGrant(client.url), client.url)}`
+
+test('phone listeners bind only external IPv4 addresses and local admin needs a loopback request', () => {
+  assert.deepEqual(lanInterfaces({ lo: [{ family: 'IPv4', internal: true, address: '127.0.0.1' }],
+    wifi: [{ family: 'IPv6', internal: false, address: '::1' }, { family: 'IPv4', internal: false, address: '192.168.1.5' }],
+    link: [{ family: 'IPv4', internal: false, address: '169.254.2.3' }] }), [{ name: 'wifi', address: '192.168.1.5' }])
+  const request = { socket: { localAddress: '127.0.0.1', remoteAddress: '::ffff:127.0.0.1' }, hostname: 'localhost', headers: {} }
+  assert.equal(isLoopbackRequest(request), true)
+  for (const host of ['127.evil.example', 'public.example', '192.168.1.5']) {
+    assert.equal(isLoopbackRequest({ ...request, hostname: host }), false)
+    assert.equal(isLoopbackRequest({ ...request, headers: { origin: `http://${host}` } }), false)
+  }
+  assert.equal(isLoopbackRequest({ ...request, socket: { ...request.socket, localAddress: '192.168.1.5' } }), false)
+})
 
 test('pairing throttle refuses a noisy source before it can spend the global allowance', () => {
   let now = 100000

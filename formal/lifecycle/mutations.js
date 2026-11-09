@@ -99,7 +99,6 @@ export const MUTATIONS = [
     this.control = null
     this.wsHttpServer = null
     this.httpServer = null
-    this.lanServers = []
 
     await this.store.close()
 `,
@@ -109,7 +108,6 @@ export const MUTATIONS = [
     this.control = null
     this.wsHttpServer = null
     this.httpServer = null
-    this.lanServers = []
 
 `,
     check: { file: CONFORMANCE, pattern: 'keeps storage open until an acknowledgement admitted before stop' },

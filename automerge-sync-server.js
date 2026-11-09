@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url'
 import { resolve } from 'node:path'
 import { findGitRoot, getTraceByCommit } from './lib/agent-trace.js'
 import { parseGithubRepo } from './lib/github-remote.js'
-import { LanAccess, canManageAccess, isLoopback } from './lib/lan-access.js'
+import { isLoopback, isLoopbackRequest } from './lib/loopback.js'
 import { ControlPane } from './lib/control-pane.js'
 import { T3Busy, T3Rejected, T3Unknown } from './lib/t3-mcp-client.js'
 
@@ -108,11 +108,9 @@ class AutomergeSyncServer {
     this.httpServer = null
     this.wsHttpServer = null
     this.host = options.host ?? env.PARDNER_BIND_HOST ?? '127.0.0.1'
-    this.access = options.access ?? new LanAccess(this.store.directory)
     // Host-local T3 control records; `control: false` leaves them unopened.
     this.controlOptions = options.control ?? {}
     this.control = null
-    this.lanServers = []
     this.browserWsPath = options.browserWsPath ?? env.PARDNER_BROWSER_WS_PATH
     if (this.browserWsPath !== undefined && !/^\/(?!\/)[^?#\\]*$/.test(this.browserWsPath)) {
       throw new Error('PARDNER_BROWSER_WS_PATH must be an absolute path without a query or fragment')
@@ -173,7 +171,6 @@ class AutomergeSyncServer {
     
     // Initialize backend store
     await this.store.init()
-    const lanInterface = await this.access.load()
     this.onDocumentChange = () => this.broadcastDocumentUpdate()
     this.onRuntimeStatus = status => this.broadcastMessage({ type: 'sync-status', status })
     this.store.docHandle.on('change', this.onDocumentChange)
@@ -203,28 +200,6 @@ class AutomergeSyncServer {
 
     await this.listen(this.wsHttpServer, this.wsPort, this.host)
     this.wsPort = this.getBoundPort(this.wsHttpServer, this.wsPort)
-
-    if (lanInterface && (!isLoopback(this.host) || !this.apiToken)) {
-      this.access.diagnostic = 'Companion device setup requires a token-protected loopback service. Remove PARDNER_BIND_HOST overrides and restart.'
-    } else if (lanInterface) {
-      try {
-        const http = createServer(this.app)
-        this.lanServers.push(http)
-        await this.listen(http, this.httpPort, lanInterface.address)
-        const ws = createServer(this.wsRequestHandler)
-        ws.on('upgrade', this.wsUpgradeHandler)
-        this.lanServers.push(ws)
-        await this.listen(ws, this.wsPort, lanInterface.address)
-        this.access.active = lanInterface
-        for (const origin of defaultAllowedOrigins(this.httpPort)) this.allowedOrigins.add(origin)
-        this.allowedOrigins.add(`http://${lanInterface.address}:${this.httpPort}`)
-      } catch (error) {
-        await Promise.all(this.lanServers.map(server => this.closeServer(server)))
-        this.lanServers = []
-        this.access.diagnostic = `LAN listeners could not start (${error.code || 'listen failed'}). Check the interface and both ports, then restart.`
-      }
-    }
-    if (this.access.diagnostic) this.logger.warn?.(this.access.diagnostic)
 
     this.logger.log?.(`📡 HTTP API listening on ${this.host}:${this.httpPort}`)
     this.logger.log?.(`🌐 WebSocket sync on ${this.host}:${this.wsPort}`)
@@ -270,9 +245,7 @@ class AutomergeSyncServer {
     // Stop both listeners before draining upgraded sockets and in-flight requests.
     const listenersClosed = Promise.allSettled([
       this.closeServer(this.wsHttpServer), this.closeServer(this.httpServer),
-      ...this.lanServers.map(server => this.closeServer(server)),
     ])
-    this.access.pairing = null
     if (this.onDocumentChange) this.store.docHandle?.off('change', this.onDocumentChange)
     if (this.onRuntimeStatus) this.store.off?.('status', this.onRuntimeStatus)
     for (const client of this.connectedClients) {
@@ -300,7 +273,6 @@ class AutomergeSyncServer {
     this.control = null
     this.wsHttpServer = null
     this.httpServer = null
-    this.lanServers = []
 
     await this.store.close()
     for (const result of listenerResults) if (result.status === 'rejected') throw result.reason
@@ -348,7 +320,7 @@ class AutomergeSyncServer {
         'httpOriginRejected',
         `Rejected HTTP ${req.method} from a disallowed origin`
       )
-      return res.status(403).json({ code: 'ORIGIN_REJECTED', error: 'Origin not allowed. Open the current address shown in Pair another device.' })
+      return res.status(403).json({ code: 'ORIGIN_REJECTED', error: 'Origin not allowed. Open the current device address.' })
     }
 
     this.applyCorsHeaders(res, origin)
@@ -469,7 +441,7 @@ class AutomergeSyncServer {
       res.set('Cache-Control', 'no-store')
       try {
         if (!this.control) throw Object.assign(new Error('The control pane is not running in this service'), { code: 'CONTROL_UNAVAILABLE' })
-        if (admin && !canManageAccess(req)) throw Object.assign(new Error('Open Pardner on this computer through its loopback address to change control settings.'), { code: 'LOCAL_ADMIN_REQUIRED' })
+        if (admin && !isLoopbackRequest(req)) throw Object.assign(new Error('Open Pardner on this computer through its loopback address to change control settings.'), { code: 'LOCAL_ADMIN_REQUIRED' })
         res.json({ success: true, result: await action(req.body ?? {}) })
       } catch (error) { failure(res, error) }
     })
@@ -529,50 +501,15 @@ class AutomergeSyncServer {
       }
       res.status(400).json({ code: 'INVALID_ARGUMENT', error: 'Send a valid JSON request.' })
     })
-    this.app.get('/pardner/config', (req, res) => res.set('Cache-Control', 'no-store').json({
+    this.app.get('/pardner/config', (_req, res) => res.set('Cache-Control', 'no-store').json({
       apiBase: '', wsPath: this.browserWsPath ?? '/',
       ...(this.browserWsPath === undefined ? { wsPort: this.wsPort } : {}),
       workspaceId: this.store.manifest.workspaceId,
-      canManageAccess: canManageAccess(req),
     }))
-    this.app.post('/pardner/pair', (req, res) => {
-      res.set('Cache-Control', 'no-store')
-      if (!req.headers.origin || !req.is('application/json')) {
-        return res.status(403).json({ code: 'ORIGIN_REQUIRED', error: 'Pair from the device page using its pairing form.' })
-      }
-      try {
-        this.access.redeem(req.body?.code, req.socket.remoteAddress)
-        res.json({ token: this.apiToken, workspaceId: this.store.manifest.workspaceId })
-      } catch (error) {
-        res.status(error.code === 'PAIRING_THROTTLED' ? 429 : 400).json({ code: error.code, error: error.message })
-      }
-    })
     this.app.use('/pardner', express.static(fileURLToPath(new URL('./ui-prototype/dist/', import.meta.url)), {
       setHeaders: res => res.setHeader('Cache-Control', 'no-cache'),
     }))
     this.app.use((req, res, next) => this.authMiddleware(req, res, next))
-    this.app.use('/pardner/access', (req, res, next) => {
-      res.set('Cache-Control', 'no-store')
-      const pairingRequest = req.method === 'GET' || (req.method === 'POST' && req.path === '/pairing')
-      if (!this.apiToken || (!pairingRequest && !canManageAccess(req))) {
-        return res.status(403).json({ code: 'LOCAL_ADMIN_REQUIRED', error: 'Open Pardner on this computer through its loopback address to manage device access.' })
-      }
-      next()
-    })
-    this.app.get('/pardner/access', (_req, res) => res.json(this.access.status(this.httpPort, this.wsPort)))
-    this.app.post('/pardner/access', async (req, res) => {
-      try {
-        await this.access.configure(req.body || {})
-        res.json(this.access.status(this.httpPort, this.wsPort))
-      } catch (error) {
-        res.status(error.code === 'CONFIG_BUSY' ? 409 : 400).json({ code: error.code || 'CONFIG_SAVE_FAILED', error: error.code ? error.message : 'Could not save device access. Check the service data directory and try again.' })
-      }
-    })
-    this.app.post('/pardner/access/pairing', (_req, res) => {
-      try { res.json(this.access.createPairing(this.httpPort, this.wsPort)) } catch (error) {
-        res.status(409).json({ code: error.code, error: error.message })
-      }
-    })
     this.setupControlAPI()
     const commands = new Set(['/automerge/operations', '/automerge/sync-ack', '/automerge/ws-ticket',
       '/automerge/deliveries/claim', '/automerge/deliveries/ack', '/automerge/deliveries/release'])

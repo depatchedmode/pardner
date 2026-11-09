@@ -39,7 +39,7 @@ links through the API, two merged replicas and the CLI.
 The fake T3 models the qualified behavior; it does not establish live T3 or
 provider behavior. Live qualification is `npm run test:t3-qualification`, and live
 human approval belongs to #79. Settings and owner decisions need a loopback page,
-so a LAN browser sees the pane but not its settings. Control records are
+so a non-loopback browser sees the pane but not its settings. Control records are
 host-local and never synchronize; issue links do.
 
 ## Cursor Cloud

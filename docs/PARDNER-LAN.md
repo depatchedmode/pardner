@@ -146,7 +146,8 @@ or cookies.
 
 ## Standalone service
 
-The standalone `pardner serve` workspace still has its older **Pair another
-device** flow, which hands a phone the workspace's shared secret and has no
-per-device revocation. It is being removed in favour of the client phone
-companion described above; use the local client for new setups.
+The standalone `pardner serve` workspace is an agent and integration service.
+It listens only on its configured bind address and has no LAN listener, phone
+pairing or device-access routes; phones pair only through the client companion
+described above. An `access.json` left in an older standalone data directory is
+no longer read, and is left in place.

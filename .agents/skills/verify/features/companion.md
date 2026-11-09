@@ -72,9 +72,8 @@ non-local address fails quickly with `EADDRNOTAVAIL`; use 192.0.2.x for failure
 cases, never a real interface of the machine. Never run an exercise against the
 user's own client data directory.
 
-The standalone service's browser pairing (**Pair another device**) is gone from
-the UI. Its server-side LAN endpoints remain until they are removed, covered by
-`test/lan-server.test.js`.
+The standalone service has no LAN listener, pairing or device-access routes;
+phones pair only through the client companion.
 
 Security coverage elsewhere: `test/markdown-privacy.test.js` (persisted images,
 CSP, referrer-free links, `test:ui`), `test/framing.test.js` (headers and iframe
