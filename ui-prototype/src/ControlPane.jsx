@@ -213,7 +213,7 @@ function Setup({ state, actors, tasks, act, busy }) {
   </details>
 }
 
-export default function ControlPane({ request, actors, tasks, actor, canManageAccess }) {
+export default function ControlPane({ request, actors, tasks, actor, canManage }) {
   const [state, setState] = useState(null)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -253,10 +253,10 @@ export default function ControlPane({ request, actors, tasks, actor, canManageAc
     </p>
     {['expired', 'expiring', 'rejected'].includes(credential.status) && <p className="notice" role="status">Pair T3 again before the credential stops working. Requests that may already be in T3 cannot be retried with a new credential.</p>}
     {error && <div className="error" role="alert"><strong>{error.message}</strong></div>}
-    {canManageAccess && <Setup {...{ state, actors, tasks, act, busy }} />}
+    {canManage && <Setup {...{ state, actors, tasks, act, busy }} />}
     {!actor && <p className="notice">Choose the Actor making these requests.</p>}
     {!state.sessions.length && <p className="empty">No T3 threads are mapped yet.</p>}
-    <CloudControl cloud={state.cloud} {...{ actor, act, busy, canManageAccess }} />
-    {state.sessions.map(session => <SessionCard key={session.threadId} {...{ session, state, actors, tasks, actor, canManage: canManageAccess, act, busy }} />)}
+    <CloudControl cloud={state.cloud} {...{ actor, act, busy, canManage }} />
+    {state.sessions.map(session => <SessionCard key={session.threadId} {...{ session, state, actors, tasks, actor, canManage, act, busy }} />)}
   </section>
 }

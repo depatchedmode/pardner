@@ -519,11 +519,12 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
       </button>
     </div>
   </>
+  const canControl = details?.project.controlAvailable === true
   const sessionProps = useMemo(() => ({
     actorsById, index, focus: focusByTask(index), onOpenProfile: openProfile, requestedTask,
     onFocusChange: taskIds => reporter.current?.setFocus(taskIds),
-    onTasks: setTasks, onAuthLost,
-  }), [actorsById, index, openProfile, requestedTask, onAuthLost])
+    onTasks: setTasks, onAuthLost, canControl,
+  }), [actorsById, index, openProfile, requestedTask, onAuthLost, canControl])
   if (!details) return <main className="connection">
     <h1>{project.name}</h1>
     <p role="status">{failure ? 'This project didn’t open.' : 'Opening project…'}</p>

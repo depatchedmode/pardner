@@ -206,6 +206,10 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   // The session prop changes every render (presence, header); effects depend only on the mode.
   const sessionMode = Boolean(session)
   const sessionRef = useRef(session)
+  // In client mode the project grants control to people on this computer; a standalone service shows it to every
+  // connection and keeps settings to its loopback page.
+  const canControl = session ? Boolean(session.canControl) : true
+  const canManage = session ? Boolean(session.canControl) : config.canManageAccess
   sessionRef.current = session
   // Task panels open below the client header so people, Invite and the project stay reachable.
   const headerRef = useRef(null)
@@ -727,7 +731,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
         >
           Activity
         </button>
-        {!session && <button
+        {canControl && <button
           aria-pressed={view === 'control'}
           onClick={() => setView('control')}
         >
@@ -834,8 +838,8 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
             errorNotice={errorSlot === 'record' && errorNotice}
             errorOrigin={errorOrigin}
           />
-        ) : view === 'control' && !session ? (
-          <ControlPane request={request} actors={actors} tasks={doc.tasks} actor={actor} canManageAccess={config.canManageAccess} />
+        ) : view === 'control' && canControl ? (
+          <ControlPane request={request} actors={actors} tasks={doc.tasks} actor={actor} canManage={canManage} />
         ) : (
           <section className="activity">
             <div className="activity-heading">
