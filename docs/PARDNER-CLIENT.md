@@ -113,7 +113,11 @@ The authenticated session determines the author. Assignment and board filters
 do not change who is acting. An agent can obtain a project-bound API credential
 through the local operator's `client agent-grant --project ID --output-file FILE`.
 Keep that file private; it is distinct from the operator credential and native
-replica admission. The [API contract](PARDNER-ONBOARDING-CONTRACT.md#browserserver-contract)
+replica admission. Coordination commands use it with `pardner --token-file FILE
+task create …` (or `mentions pending`, `show`, …): the token stays out of
+arguments, `--server` defaults to the file's `apiBase`, and the agent is the
+author without `--actor`. A file holding only the token works with an explicit
+`--server PROJECT_API_BASE`. The [API contract](PARDNER-ONBOARDING-CONTRACT.md#browserserver-contract)
 documents operation, session, report and end routes.
 
 An avatar shows identity, human/agent kind and active, idle or offline presence.
