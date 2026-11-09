@@ -105,14 +105,12 @@ Use Node **24.11.1**. From this checkout:
 npm ci
 npm ci --prefix ui-prototype
 npm run ui:build
-node bin/pardner.js client serve --data .pardner-client --harness openai-codex --name Alpha
+node bin/pardner.js open --harness openai-codex --name Alpha
 ```
 
-In another terminal, open the client:
-
-```sh
-node bin/pardner.js client open --data .pardner-client
-```
+`pardner open` (or a bare `pardner`) starts your local client service in the
+background if it is not already running, using `~/.pardner/client` unless you pass
+`--data`, and opens the board in your browser. `pardner client stop` stops it.
 
 Confirm your Git-derived profile, then start or join a project. Use the actual
 setup agent's harness and name; the example registers Alpha as a Codex Actor.
@@ -125,7 +123,8 @@ real-human/real-agent acceptance flow.
 
 ### Standalone service
 
-The existing service and explicit Actor-selection workflow remain available:
+The standalone service is for agents and integrations; people use `pardner open`.
+Its explicit Actor-selection workflow remains available:
 
 ```sh
 node bin/pardner.js serve --data .pardner

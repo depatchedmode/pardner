@@ -6,11 +6,22 @@ agent Actors author through the same local HTTP operations. See the
 
 ## Open the local UI
 
-For the new Start/Join flow and session-bound authorship, use the
-[local client preview](PARDNER-CLIENT.md): `pardner client serve` followed by
-`pardner client open`. It opens without manually entering an API key and keeps
-each project in a separate local runtime. The standalone instructions below
-remain available for existing workspaces.
+People open Pardner with `pardner` (or `pardner open`). It uses the
+[local client](PARDNER-CLIENT.md) in the per-user directory `~/.pardner/client`
+(override with `--data`). If no client service answers there, it starts
+`pardner client serve` in the background, logging to `client.log` (mode 0600) in
+that directory, waits up to 15 seconds for it, and then signs the browser in
+through a one-time link. `--output-file FILE` writes the private launch URL
+instead of launching a browser. Serve flags such as `--http-port` and `--harness`
+are passed to a service it starts. If the recorded port answers but rejects the
+client's operator token, it reports `PORT_IN_USE` and stops nothing. If a started
+service exits, it reports the service's error, such as `STORAGE_IN_USE`.
+
+`pardner client status` reports the running client. `pardner client stop` asks it
+to shut down with the local operator token (browser sessions cannot) and waits
+until it releases its data directory. Each project runs in a separate local
+runtime. The standalone `pardner serve` instructions below are for agents and
+integrations.
 
 The client also supports `show --project ID`, `revoke --project ID --kind
 device|agent|member --id ID --operation-id ID`, and `export --project ID
