@@ -1,9 +1,11 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium, webkit } from 'playwright'
 import { withClientReplicas, withClientWorkspace } from '../support/client-workspace.js'
+import { startCliService } from '../support/cli-resources.js'
 
 for (const uuidAvailable of [true, false]) it(
   `uses shared browser operations with crypto.randomUUID ${uuidAvailable ? 'available' : 'unavailable'}`,
@@ -1389,4 +1391,24 @@ for (const engine of [chromium, webkit]) it(`explains an oversized description i
     assert.equal(await panel.getByLabel('Title', { exact: true }).getAttribute('readonly'), null)
     assert.equal(await panel.locator('textarea').getAttribute('readonly'), null, 'the draft stays editable')
   })
+})
+
+for (const engine of [chromium, webkit]) it(`shows the standalone service page as an agent service with no board in ${engine.name()}`, { timeout: 60000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-standalone-page-'))
+  const service = await startCliService(directory)
+  const browser = await engine.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    const errors = []
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(`${service.httpUrl}/pardner/`)
+    await page.getByText('This is an agent and integration service. Open Pardner with pardner open.', { exact: true }).waitFor()
+    assert.equal(await page.locator('input, select, textarea, button').count(), 0, 'no token, pairing or Actor controls')
+    assert.equal(await page.getByRole('region', { name: /Backlog/ }).count(), 0, 'no board')
+    assert.deepEqual(errors, [])
+  } finally {
+    await browser.close()
+    await service.stop()
+    await rm(directory, { recursive: true, force: true })
+  }
 })
