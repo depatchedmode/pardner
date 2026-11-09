@@ -112,6 +112,46 @@ test('programmatic client started from Node input-type mode launches isolated fi
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
 
+test('bare pardner starts a detached client service, writes the launch grant to a file and client stop ends it', { timeout: 60000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-open-'))
+  const data = join(directory, 'client')
+  try {
+    const launchFile = join(directory, 'launch.txt')
+    const opened = await pardner(['--data', data, '--output-file', launchFile])
+    const launch = await readFile(launchFile, 'utf8')
+    const connection = await connectionOf(data)
+    assert.ok(launch.startsWith(`${connection.url}/pardner/#grant=`)); assert.ok(!JSON.stringify(opened).includes('#grant='))
+    assert.equal(opened.localUrl, `${connection.url}/pardner/`)
+    assert.notEqual(connection.pid, process.pid); assert.ok(alive(connection.pid))
+    const session = await fetch(`${connection.url}/pardner/client/v1/session`, { headers: { Authorization: `Bearer ${connection.token}` } })
+    assert.equal(session.status, 200)
+    assert.equal((await stat(join(data, 'client.log'))).mode & 0o777, 0o600)
+    // A project runtime child must not keep the service alive after shutdown.
+    await pardner(['client', 'identity', '--name', 'Alice', '--email', 'alice@example.test', '--operation-id', 'identity', '--data', data])
+    await pardner(['client', 'create', '--name', 'Opened board', '--operation-id', 'create', '--data', data])
+    assert.deepEqual(await pardner(['client', 'stop', '--data', data]), { success: true, stopped: true, running: false })
+    for (let i = 0; i < 50 && alive(connection.pid); i++) await new Promise(resolve => setTimeout(resolve, 100))
+    assert.equal(alive(connection.pid), false, 'the serve process exits after shutdown')
+    await assert.rejects(fetch(`${connection.url}/pardner/client/v1/session`, { signal: AbortSignal.timeout(2000) }))
+    assert.deepEqual(await pardner(['client', 'stop', '--data', data]), { success: true, stopped: false, running: false })
+  } finally { await stopSpawned(data); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('pardner open reuses the running client in the per-user default directory', { timeout: 60000 }, async () => {
+  const home = await mkdtemp(join(tmpdir(), 'pardner-home-'))
+  const data = join(home, '.pardner', 'client'), env = { HOME: home }
+  try {
+    await pardner(['open', '--output-file', join(home, 'first.txt')], env)
+    const first = await connectionOf(data)
+    await pardner(['open', '--output-file', join(home, 'second.txt')], env)
+    assert.equal((await connectionOf(data)).pid, first.pid)
+    const log = await readFile(join(data, 'client.log'), 'utf8')
+    assert.equal(log.match(/"serving":true/g).length, 1, 'only one client service was started')
+    assert.notEqual(await readFile(join(home, 'first.txt'), 'utf8'), await readFile(join(home, 'second.txt'), 'utf8'))
+    assert.equal((await pardner(['client', 'stop'], env)).stopped, true)
+  } finally { await stopSpawned(data, env); await rm(home, { recursive: true, force: true }) }
+})
+
 test('client shutdown accepts only the operator token, never a browser session', { timeout: 30000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-shutdown-'))
   let client
@@ -132,4 +172,28 @@ test('client shutdown accepts only the operator token, never a browser session',
     assert.deepEqual(await stopped.json(), { stopping: true })
     await client.stopPromise
   } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('pardner open reports PORT_IN_USE for a stale port held by another process and starts nothing', { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-stale-'))
+  const other = createServer((_req, res) => res.writeHead(401).end())
+  try {
+    await new Promise(resolve => other.listen(0, '127.0.0.1', resolve))
+    const url = `http://127.0.0.1:${other.address().port}`
+    await writeFile(join(directory, 'client-connection.json'), JSON.stringify({ url, token: 'stale-token' }), { mode: 0o600 })
+    const error = await pardnerFailure(['open', '--data', directory, '--output-file', join(directory, 'launch.txt')])
+    assert.equal(error.code, 'PORT_IN_USE'); assert.ok(error.message.includes(url))
+    assert.equal((await pardnerFailure(['client', 'stop', '--data', directory])).code, 'PORT_IN_USE')
+    await assert.rejects(stat(join(directory, 'client.log')), { code: 'ENOENT' })
+    assert.equal(other.listening, true)
+  } finally { other.close(); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('pardner open surfaces why a started client service exited', { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-in-use-'))
+  const lease = await acquireStorageLease(directory)
+  try {
+    const error = await pardnerFailure(['open', '--data', directory, '--output-file', join(directory, 'launch.txt')])
+    assert.equal(error.code, 'STORAGE_IN_USE')
+  } finally { lease.close(); await stopSpawned(directory); await rm(directory, { recursive: true, force: true }) }
 })
