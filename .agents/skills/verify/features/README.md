@@ -12,8 +12,8 @@ already covered. Match the exact assertions to the task's expected result.
   restart, convergence, and competing authored edits.
 - [Handoffs and agent delivery](delivery.md): human/agent handoffs, durable
   receipt, acknowledgement loss, and effect replay.
-- [Companion browsers](companion.md): pairing, Actor/filter persistence,
-  reconnect, response loss, and browser credential lifecycle.
+- [Phone companion](companion.md): opt-in phone listener, pairing codes, phone
+  authorship and presence, revocation, and sign-out.
 - [Control pane and issue links](control.md): T3 credential, registry, routes,
   queued intent, stale reads, approvals, cancellation, verdicts, and GitHub links.
 - [Client onboarding and presence](client-onboarding.md): authenticated Actor

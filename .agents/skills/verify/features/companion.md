@@ -7,12 +7,12 @@ change or failed bind, keyed pairing codes (QR, grouped digits, countdown,
 several waiting at once, cancel), pairing from the scanned link or by typing the
 code, the reduced phone header, edits authored as the computer's human,
 presence showing the phone's name, revoking a phone, signing out on the phone,
-and returning to pairing when the session ends. The older standalone **Pair
-another device** flow is separate (see Gotchas).
+and returning to pairing when the session ends. The standalone service has no
+phone flow (see Gotchas).
 
 ## How to get to it (user POV)
 
-On the computer, open the local client (`pardner client open`) and a project,
+On the computer, open the local client (`pardner open`) and a project,
 then **Pair a phone** → choose **Network** if there are several → **Turn on phone
 access** → **New code**. On the phone (same network), scan the QR code or open the
 shown `http://<address>:<port>/pardner/` and type the eight digits. The phone opens

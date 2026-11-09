@@ -76,5 +76,5 @@ screenshots alone establish neither persistence nor remote presence.
 Invitations, browser grants, cookies, enrollment credentials and raw browser
 traces are private. Capture the default hidden invitation state. Do not copy
 private request headers or bootstrap fragments into evidence or screenshots.
-Keep [companion browser](companion.md) coverage for standalone mode; a new
-client walkthrough does not replace those regression assertions.
+Keep the [phone companion](companion.md) coverage; a new client walkthrough does
+not replace those regression assertions.
