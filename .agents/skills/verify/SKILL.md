@@ -175,10 +175,17 @@ For another feature, reuse [cli-resources.js](../../../support/cli-resources.js)
 in an owned exercise: `startCliService(directory)` launches and waits for service
 readiness; `cli(directory, ['status'])` is the read-only doctor. Compare the
 returned `workspaceId` to the launch result and inspect `savedLocally` and
-`storageError`. Repeat the doctor whenever a drive looks wrong. For a browser,
-open the returned `httpUrl + '/pardner/'`; use the selectors in the feature map.
-Read only the disposable instance's connection file for authentication and keep
-its tokens out of artifacts. A fresh service has no Actors until registered.
+`storageError`. Repeat the doctor whenever a drive looks wrong. The standalone
+service's `/pardner/` page serves no board; it only points people to `pardner
+open`. For a browser, start a disposable local client with `pardner client open
+--data <scratch dir> --output-file <file>` (it starts the client if needed) and
+open the one-time grant URL from that file within a minute, or use
+`withClientWorkspace`/`withClientReplicas` from
+[client-workspace.js](../../../support/client-workspace.js) in an owned exercise;
+use the selectors in the feature map. The grant URL, the session cookie and the
+client's `client-connection.json` operator token are credentials: read only the
+disposable instance's files and keep them out of artifacts. A fresh service has
+no Actors until registered.
 Searching artifacts for a word such as `token` does not show they are free of
 credentials. Prefer never writing secrets: mask them in screenshots, record
 receipts rather than request headers, and inspect any artifact that captured
