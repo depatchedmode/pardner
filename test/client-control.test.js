@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { startClient } from '../lib/client-service.js'
-import { workspaceProxy } from '../lib/client-proxy.js'
+import { hash } from '../lib/client-identity.js'
 import { FakeT3 } from '../support/fake-t3-server.js'
 import { eventually } from '../support/client-workspace.js'
 
@@ -67,12 +67,14 @@ test('control accepts only the real control routes', { timeout: 30000 }, async t
   assert.equal((await call(`${control}/poll`, {}, { token: human })).success, true)
 })
 
-test('companion surfaces cannot reach control', { timeout: 30000 }, async t => {
-  const { client, project } = await controlClient(t)
-  const principal = { id: 'operator', kind: 'operator', deviceId: client.registry.read().device.id }
-  await assert.rejects(workspaceProxy(client, client.project(project.id), principal, 'GET', new URL(`${client.url}/pardner/control`), undefined, null, 'lan'),
-    error => error.code === 'FORBIDDEN')
-  assert.equal(client.controlAllowed(principal, 'lan'), false)
+test('a stored session of any other kind authenticates nothing', { timeout: 30000 }, async t => {
+  const { client, project, call } = await controlClient(t)
+  // A registry written by an earlier version may still hold such sessions; they reach neither the board nor control.
+  const token = 'stale-session-token'
+  client.registry.update(state => { state.sessions[hash(token)] = { id: randomUUID(), kind: 'companion', deviceId: randomUUID(), projectIds: [project.id] } })
+  for (const path of ['/session', `/projects/${project.id}`, `/projects/${project.id}/api/pardner/control`]) {
+    assert.equal((await call(path, undefined, { token, status: 401 })).code, 'AUTH_REQUIRED')
+  }
 })
 
 test('control binds the requesting Actor to the signed-in person and maps control errors', { timeout: 60000 }, async t => {

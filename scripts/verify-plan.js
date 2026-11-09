@@ -31,7 +31,10 @@ const groups = [
     name: 'cli', scripts: ['test:cli'],
     files: names('bin/pardner.js lib/cli.js lib/cli-trace.js lib/agent-trace.js lib/github-remote.js support/cli-resources.js'),
   },
-  { name: 'loopback', scripts: ['test:runtime'], files: ['lib/loopback.js'] },
+  {
+    name: 'loopback', scripts: ['test:runtime'], files: ['lib/loopback.js'],
+    focused: [{ command: 'node --test test/loopback.test.js', note: 'Loopback peer, listener, host and origin checks for local administration' }],
+  },
   {
     name: 'bridge', scripts: ['test:runtime', 'test:cli'],
     files: names(`lib/agent-bridge.js lib/codex-bridge-adapter.js lib/bridge-paths.js lib/bridge-retirement.js
@@ -69,15 +72,11 @@ const groups = [
     focused: [{ command: 'node --test test/client-presence.test.js', note: 'Ephemeral session ownership, expiry, replay and cross-device Actor aggregation; API and browser behavior need separate exercises' }],
   },
   {
-    name: 'client-companion', scripts: ['test:runtime', 'test:ui'], files: ['lib/client-companion.js'],
-    focused: [{ command: 'node --test test/client-companion.test.js', note: 'Phone listener allowlist, pairing codes, throttle, revocation and runtime network changes on an injected loopback interface; real-phone, real-Wi-Fi evidence is separate' }],
-  },
-  {
     name: 'client-onboarding', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'],
     qualification: 'Private client persistence, authenticated admission and resumable project enrollment',
     files: names(`lib/client-identity.js lib/client-registry.js lib/client-runtime.js lib/client-runtime-child.js
       lib/client-auth.js lib/client-invites.js lib/client-projects.js lib/client-proxy.js lib/client-service.js lib/client-cli.js`),
-    focused: [{ command: 'node --test test/client-registry.test.js test/client-onboarding.test.js test/client-cli.test.js test/client-recovery.test.js test/client-shutdown.test.js test/client-control.test.js test/client-companion.test.js test/onboarding-flow.test.js test/client-admission-cache.test.js',
+    focused: [{ command: 'node --test test/client-registry.test.js test/client-onboarding.test.js test/client-cli.test.js test/client-recovery.test.js test/client-shutdown.test.js test/client-control.test.js test/onboarding-flow.test.js test/client-admission-cache.test.js',
       note: 'Real client enrollment, authority boundaries, CLI privacy, cold restoration, revocation, offline restart and project isolation' }],
   },
   {
@@ -115,7 +114,7 @@ export function classifyPath(path) {
     return { name: 'ui', scripts: ['test:ui'] }
   }
   if (/^test\/[^/]+\.test\.js$/.test(path)) {
-    if (/pardner-(ui|control-ui)|client-(onboarding|companion)-ui|browser-connection/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
+    if (/pardner-(ui|control-ui)|client-onboarding-ui|browser-connection/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
     if (/storage|conflict|ticket/.test(path)) return { name: 'qualification-test', scripts: ['test:qualification'], qualification: 'Persistence or conflict regression evidence changed' }
     if (/pardner-cli|pardner-brand/.test(path)) return { name: 'cli-test', scripts: ['test:cli'] }
     return { name: 'regression-test', scripts: ['test:runtime'] }
