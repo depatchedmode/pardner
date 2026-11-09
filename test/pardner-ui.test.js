@@ -875,7 +875,7 @@ it('describes Activity and task History as plain sentences', { timeout: 120000 }
     assert.match(visible, /Carol Moreno moved Ship the release to Review/)
     assert.match(visible, /Carol Moreno handed Ship the release to Builder and set it to Completed/)
     assert.match(visible, /Builder linked commit a1b2c3d to Ship the release/)
-    assert.equal(await activity.locator('article[title="task.update"]').count(), 1, 'the raw type is only a tooltip')
+    assert.equal(await activity.locator('article[title]').count(), 0, 'no row shows the raw type as a tooltip')
     const veinRow = activity.locator('article', { hasText: 'started vein' })
     await veinRow.getByRole('button', { name: 'Launch plan', exact: true }).click()
     await page.getByLabel('Vein', { exact: true }).waitFor()
@@ -896,6 +896,28 @@ it('describes Activity and task History as plain sentences', { timeout: 120000 }
     assert.match(await rows.last().innerText(), /created this task/)
     assert.match(text, /Carol Moreno linked issue acme\/lantern-checkout#418 to this task/)
     assert.ok(!text.includes('task.link-issue'), 'History names the issue, not the operation type')
+    await page.getByRole('complementary', { name: 'Task details' })
+      .getByRole('button', { name: 'Unlink acme/lantern-checkout#418', exact: true }).waitFor()
+    const commentTime = page.locator('.side-panel .comment-head time').first()
+    const historyFormat = await commentTime.evaluate(element => new Date(element.dateTime).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }))
+    assert.equal(await commentTime.innerText(), historyFormat, 'comments use the History time format')
+  })
+})
+
+it('credits each newer field to the Actor who saved it', { timeout: 120000 }, async () => {
+  await withClientWorkspace(chromium, { contextOptions: { viewport: { width: 1440, height: 900 } }, actors: [{ id: 'carol', kind: 'human', displayName: 'Carol Moreno' }, { id: 'builder', kind: 'agent', displayName: 'Builder' }] }, async ({ page, task, operate, open }) => {
+    const as = (actor, type, payload) => operate(type, payload, actor)
+    const { taskId } = (await as('carol', 'task.create', { title: 'Split the credit' })).result
+    await open()
+    const panel = page.getByRole('complementary', { name: 'Task details' })
+    await page.locator(`.task-card[data-task-id="${taskId}"]`).click()
+    await panel.getByRole('button', { name: 'Edit task', exact: true }).click()
+    await panel.getByLabel('Description', { exact: true }).fill('My draft')
+    await as('carol', 'task.update', { taskId, updates: { status: 'review' }, expectedRevisions: { status: (await task(taskId)).revisions.status } })
+    await as('builder', 'task.update', { taskId, updates: { tags: ['release'] }, expectedRevisions: { tags: (await task(taskId)).revisions.tags } })
+    const notice = panel.locator('.draft-notice p').first()
+    await notice.getByText(/Builder/).waitFor({ timeout: 30000 })
+    assert.match(await notice.innerText(), /^Carol Moreno[^;]* saved a newer status; Builder[^;]* saved newer tags since/)
   })
 })
 
