@@ -861,6 +861,7 @@ it('describes Activity and task History as plain sentences', { timeout: 120000 }
     const revisions = async fields => Object.fromEntries(Object.entries((await task(taskId)).revisions).filter(([field]) => fields.includes(field)))
     await as('carol', 'task.update', { taskId, updates: { status: 'review' }, expectedRevisions: await revisions(['status']) })
     await as('carol', 'comment.add', { taskId, text: 'Looks fine to me' })
+    await as('carol', 'task.link-issue', { taskId, repository: 'acme/lantern-checkout', number: 418 })
     await as('carol', 'task.handoff', { taskId, to: 'builder', status: 'completed', message: 'Over to you', expectedRevisions: await revisions(['assignee', 'status']) })
     await as('builder', 'task.link-commit', { taskId, commit: { hash: 'a1b2c3d4e5f6', message: 'feat: ship it' } })
     const { veinId } = (await as('carol', 'vein.create', { title: 'Launch plan', goal: { title: 'Launch well' } })).result
@@ -893,6 +894,8 @@ it('describes Activity and task History as plain sentences', { timeout: 120000 }
     assert.equal(await history.locator('button').count(), 0, 'History subjects are plain text')
     assert.match(await rows.first().innerText(), /linked commit a1b2c3d/, 'the newest event comes first')
     assert.match(await rows.last().innerText(), /created this task/)
+    assert.match(text, /Carol Moreno linked issue acme\/lantern-checkout#418 to this task/)
+    assert.ok(!text.includes('task.link-issue'), 'History names the issue, not the operation type')
   })
 })
 
