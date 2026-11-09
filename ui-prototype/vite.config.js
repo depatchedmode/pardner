@@ -6,9 +6,34 @@ const allowedHosts = (process.env.PARDNER_UI_ALLOWED_HOSTS || 'localhost,127.0.0
   .split(',')
   .map(host => host.trim())
   .filter(Boolean)
-const apiHost = process.env.PARDNER_API_HOST || 'localhost'
-const apiHttpPort = process.env.PARDNER_HTTP_PORT || '8004'
-const apiWsPort = process.env.PARDNER_WS_PORT || '8005'
+
+// Development against a local client:
+//   pardner client open --data <dir> --output-file <file>   (starts the client if needed;
+//                                                              its URL is in <dir>/client-connection.json)
+//   PARDNER_CLIENT_URL=<that URL> npm run dev --prefix ui-prototype
+// then open the one-time grant URL from <file> with its origin replaced by this dev
+// server's (http://127.0.0.1:5174/pardner/#grant=…) within a minute; run open again for a fresh one. The proxy presents the client's own
+// Origin and Host for requests that come from this dev page, so the client's
+// origin-bound grant, cookie session and socket tickets work unchanged. A request
+// from any other origin keeps its Origin and is rejected by the client.
+// Without PARDNER_CLIENT_URL the dev server serves the UI only.
+export function clientProxy(target) {
+  if (!target) return undefined
+  const clientOrigin = new URL(target).origin
+  const presentAsClient = (outgoing, incoming) => {
+    if (incoming.headers.origin === `http://${incoming.headers.host}`) outgoing.setHeader('origin', clientOrigin)
+  }
+  const route = ws => ({
+    target: clientOrigin,
+    changeOrigin: true,
+    ws,
+    configure: proxy => {
+      proxy.on('proxyReq', presentAsClient)
+      proxy.on('proxyReqWs', presentAsClient)
+    },
+  })
+  return { '/pardner/config': route(false), '^/pardner/client/': route(true) }
+}
 
 export default defineConfig({
   plugins: [react()],
@@ -22,18 +47,7 @@ export default defineConfig({
       allow: [fileURLToPath(new URL('.', import.meta.url))],
       deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.pardner/**', '**/.mission-control/**', '**/.agent-trace/**']
     },
-    proxy: {
-      '/pardner/config': { target: `http://${apiHost}:${apiHttpPort}` },
-      '/pardner-ws': {
-        target: `ws://${apiHost}:${apiWsPort}`,
-        ws: true,
-        rewrite: (path) => path.replace(/^\/pardner-ws/, '')
-      },
-      '/pardner-api': {
-        target: `http://${apiHost}:${apiHttpPort}`,
-        rewrite: (path) => path.replace(/^\/pardner-api/, '')
-      }
-    }
+    proxy: clientProxy(process.env.PARDNER_CLIENT_URL)
   },
   build: {
     target: 'esnext'
