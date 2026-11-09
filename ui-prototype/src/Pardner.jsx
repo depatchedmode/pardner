@@ -130,20 +130,14 @@ function useRefocus() {
   })
   return [ref, useCallback(() => { wanted.current = true }, [])]
 }
-// A paired phone keeps no copy of the board: its changes are saved on the host computer, never "locally".
-function SaveStatus({ status, connected, busy, heads, companion = false }) {
-  const copy = companion
-    ? { connecting: 'Connecting to your computer', saving: 'Saving on your computer…', disconnected: 'Your computer isn’t reachable',
-      failed: 'Your computer couldn’t save', pending: 'Saved on your computer · waiting for hub', synced: 'Saved on your computer · synced' }
-    : { connecting: 'Connecting to local service', saving: 'Saving locally…', disconnected: 'Local service disconnected',
-      failed: 'Local save failed', pending: 'Saved locally · waiting for hub', synced: 'Saved locally · synced' }
-  let text = copy.connecting
-  if (busy) text = copy.saving
-  else if (!connected) text = copy.disconnected
-  else if (status?.storageError) text = copy.failed
-  else if (!status?.savedLocally || status.heads?.join(',') !== heads) text = copy.saving
-  else if (status.syncPending) text = copy.pending
-  else text = copy.synced
+function SaveStatus({ status, connected, busy, heads }) {
+  let text = 'Connecting to local service'
+  if (busy) text = 'Saving locally…'
+  else if (!connected) text = 'Local service disconnected'
+  else if (status?.storageError) text = 'Local save failed'
+  else if (!status?.savedLocally || status.heads?.join(',') !== heads) text = 'Saving locally…'
+  else if (status.syncPending) text = 'Saved locally · waiting for hub'
+  else text = 'Saved locally · synced'
   return (
     <span
       className="save-status"
@@ -548,7 +542,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
       <header ref={headerRef} className="client-header">
         {session.header}
         <div className="header-controls">
-          <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} companion={session.companion} />
+          <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
           <button
             ref={newTaskButton}
             className="primary"
@@ -1270,7 +1264,7 @@ function TaskDetail({
         <h2 tabIndex={-1} ref={heading}>{task.title}</h2>
         <button onClick={onClose}>Close</button>
       </div>
-      <SaveStatus status={status} connected={connected} busy={busy} heads={heads} companion={session.companion} />
+      <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />
       {here.length > 0 && <div className="here-now">
         <span className="muted">Here now</span>
         <AvatarStack actors={here} index={session.index} max={6} size="sm" label="Here now" labelSuffix=", on this task"

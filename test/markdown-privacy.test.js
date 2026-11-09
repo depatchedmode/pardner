@@ -52,7 +52,7 @@ for (const engine of [chromium, webkit]) it(`blocks Markdown image tracking in $
       image.onload = () => resolve(image.naturalWidth)
       image.onerror = () => resolve(0)
       image.src = document.createElement('canvas').toDataURL()
-    })), 300, 'data images used for pairing QR codes remain loadable')
+    })), 300, 'data images remain loadable under the page policy')
 
     // Exercise the browser policy independently of the Markdown renderer.
     const violation = await page.evaluate(url => new Promise(resolve => {
