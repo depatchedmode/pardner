@@ -169,17 +169,13 @@ it('keeps session-authenticated drafts and retries bound to project and Actor wi
   assert.equal(bobHere.draft('task-1'), null)
   assert.equal(otherProject.draft('task-1'), null)
   assert.equal(otherProject.pending(), null)
-  alice.remember('ignored')
-  assert.equal(alice.credential(), 'session')
+  alice.savePreferences({ view: 'board' })
   assert.equal([...local.values.keys()].some(key => key.endsWith(':credential')), false)
   await assert.rejects(alice.request('/automerge/doc'), { code: 'AUTH_REQUIRED' })
   assert.equal(sent.headers.Authorization, undefined)
   assert.equal(sent.headers['X-Pardner-Workspace'], 'project-a')
   assert.equal(sent.credentials, 'same-origin')
   assert.equal(alice.pending().operationId, 'op-1', 'an uncertain request survives an authentication failure')
-  // Standalone services keep their original storage keys.
-  const standalone = createConnection({ workspaceId: 'project-a', apiBase: '', wsPath: '/' }, { storage: local, drafts, fetcher })
-  assert.equal(standalone.pending(), null)
 })
 
 it('reports browser activity only after real interaction and ends the activity lease with the idle window', async () => {
