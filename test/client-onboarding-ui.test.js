@@ -412,3 +412,124 @@ for (const engine of [chromium, webkit]) it(`links a second device from the iden
     assert.equal(alice.client.registry.read().invites[device.invite.id].state, 'redeemed')
     assert.deepEqual(errors, [])
   })
+
+// A Git profile with only user.name; global and system config are hidden so the email cannot leak in.
+async function startNameOnlyClient(t, startClient, name) {
+  const directory = await mkdtemp(join(tmpdir(), `pardner-ui-${name.toLowerCase()}-`))
+  const gitDirectory = await mkdtemp(join(tmpdir(), `pardner-git-${name.toLowerCase()}-`))
+  await run('git', ['init', '-q'], { cwd: gitDirectory })
+  await run('git', ['config', 'user.name', name], { cwd: gitDirectory })
+  const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM }
+  process.env.GIT_CONFIG_GLOBAL = '/dev/null'
+  process.env.GIT_CONFIG_NOSYSTEM = '1'
+  let client
+  try { client = await startClient({ directory, port: 0, deviceName: `${name}’s laptop`, gitDirectory }) } finally {
+    for (const [key, value] of [['GIT_CONFIG_GLOBAL', saved.global], ['GIT_CONFIG_NOSYSTEM', saved.nosystem]]) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value
+    }
+  }
+  t.after(async () => {
+    await client.stop()
+    await rm(directory, { recursive: true, force: true })
+    await rm(gitDirectory, { recursive: true, force: true })
+  })
+  return client
+}
+
+// Fixture Actors registered straight into the project's people, so the header overflows into "+N".
+async function addFixturePeople(client, projectId, people) {
+  const { actorsFor } = await import(new URL('../lib/client-identity.js', import.meta.url))
+  const project = client.project(projectId)
+  for (const [index, { name, agent }] of people.entries()) {
+    const id = `00000000-0000-4000-8000-00000000000${index + 1}`
+    const device = { id: `00000000-0000-4000-9000-00000000000${index + 1}`, name: `${name}’s desk` }
+    for (const actor of actorsFor({ id, name, email: `${name.toLowerCase()}@example.test` }, device, agent)) {
+      await client.registerActor(project, actor)
+    }
+  }
+}
+
+it('explains sign-in, the Git prefill, invitation follow-up and People focus in chromium', { timeout: 180000 }, async t => {
+  const { startClient } = await import(serviceModule)
+  const client = await startNameOnlyClient(t, startClient, 'Nadia')
+  const call = async (path, body) => {
+    const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${client.registry.read().operatorToken}` },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+    assert.equal(response.ok, true, path)
+    return response.json()
+  }
+  const browser = await chromium.launch({ headless: true })
+  t.after(() => browser.close())
+  const errors = []
+  const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
+  page.on('pageerror', error => errors.push(error.message))
+
+  // Signed out: the person can run the command; a reused link says why it failed.
+  const { url: openUrl } = await call('/open', {})
+  await page.goto(openUrl.split('#')[0])
+  await page.getByText('Run pardner open on this computer, or ask your agent to.', { exact: false }).waitFor()
+  assert.equal(await page.getByText('pardner client open').count(), 0)
+  await page.goto(openUrl)
+  await page.getByRole('button', { name: /^Continue as/ }).waitFor()
+  const stranger = await (await browser.newContext()).newPage()
+  await stranger.goto(openUrl)
+  await stranger.getByText('This sign-in link was already used or is more than 60 seconds old. Links work once.').waitFor()
+
+  // Git supplied only a name, so the note says which field still needs typing.
+  assert.equal(await page.getByLabel('Name').inputValue(), 'Nadia')
+  assert.equal(await page.getByLabel('Email').inputValue(), '')
+  await page.getByText('Name filled in from your Git configuration; enter your email.').waitFor()
+  await page.getByLabel('Email').fill('nadia@example.test')
+  await page.getByRole('button', { name: 'Continue as Nadia' }).click()
+  await page.getByLabel('Project name').fill('Chrome board')
+  await page.getByRole('button', { name: 'Start project' }).click()
+  await page.getByRole('button', { name: 'Project: Chrome board. Switch project' }).waitFor()
+  const projectId = (await call('/session')).projects[0].id
+
+  // The new invitation is not repeated in history; after revoking it, another is one click away.
+  await page.getByRole('button', { name: 'Invite' }).click()
+  await page.getByRole('menuitem', { name: /^Human/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Invite a person' })
+  await dialog.getByRole('button', { name: 'Create invitation' }).click()
+  const ready = dialog.getByRole('region', { name: 'New invitation' })
+  await ready.getByRole('button', { name: 'Copy invite' }).waitFor()
+  await dialog.getByText('No other invitations.').waitFor()
+  assert.equal(await dialog.locator('.invite-list li').count(), 0, 'the shown invitation is not listed twice')
+  await ready.getByText('The invitation stays hidden', { exact: false }).waitFor()
+  await ready.getByRole('button', { name: 'Show invite text' }).click()
+  await ready.getByLabel('Invite text').waitFor()
+  assert.equal(await ready.getByText('The invitation stays hidden', { exact: false }).count(), 0, 'no hidden note while visible')
+  await ready.getByRole('button', { name: 'Revoke this invitation' }).click()
+  await ready.getByText('This invitation can no longer be used.', { exact: false }).waitFor()
+  assert.equal(await ready.getByText(/Expires/).count(), 0, 'a revoked invitation shows no expiry')
+  const firstId = (await call(`/projects/${projectId}/invites`)).invites[0].id
+  await ready.getByRole('button', { name: 'Create another invitation' }).click()
+  await ready.getByRole('button', { name: 'Copy invite' }).waitFor()
+  await ready.getByText(/Waiting to be used · Expires in \d+ h/).waitFor()
+  const { invites } = await call(`/projects/${projectId}/invites`)
+  assert.equal(invites.length, 2, 'a fresh operation ID creates a second invitation')
+  assert.equal(invites.find(invite => invite.id === firstId).state, 'revoked')
+  await dialog.locator('.invite-list li', { hasText: 'Revoked' }).waitFor()
+  assert.equal(await dialog.locator('.invite-list li').count(), 1)
+  await dialog.getByRole('button', { name: 'Close' }).click()
+
+  // People → Profile → Close returns to the list, and closing the list returns focus to "+N".
+  await addFixturePeople(client, projectId, [
+    { name: 'Omar', agent: { harnessId: 'cursor', name: 'Cursor (ci)' } },
+    { name: 'Priya', agent: { harnessId: 'openai-codex', name: 'Quill' } },
+  ])
+  const more = page.getByRole('button', { name: /more Actors?\. Show everyone$/ })
+  await more.waitFor({ timeout: 30000 })
+  await more.click()
+  const people = page.getByRole('dialog', { name: 'People in this project' })
+  await people.getByRole('button', { name: 'Omar', exact: true }).click()
+  const profile = page.getByRole('dialog', { name: 'Omar' })
+  await profile.waitFor()
+  await page.keyboard.press('Escape')
+  await people.waitFor()
+  assert.equal(await profile.count(), 0)
+  await people.getByRole('button', { name: 'Close' }).click()
+  await page.waitForFunction(() => /Show everyone$/.test(document.activeElement?.getAttribute('aria-label') ?? ''))
+  assert.deepEqual(errors, [])
+})
