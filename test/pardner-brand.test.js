@@ -21,6 +21,8 @@ it('installs the local package with the pardner executable and matching help', {
     assert.match(stdout, /Pardner/)
     assert.match(stdout, /pardner task create/)
     assert.match(stdout, /PARDNER_ACTOR/)
+    // A client bridge's reconcile needs its agent credential like every other client bridge command.
+    assert.match(stdout, /pardner bridge reconcile [^\n]*\[--token-file FILE\]/)
     assert.doesNotMatch(stdout, /\bmc\b|MC_|Mission Control/)
   } finally {
     await rm(prefix, { recursive: true, force: true })
