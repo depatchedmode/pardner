@@ -90,8 +90,8 @@ const groups = [
     files: names('scripts/selfhost79.py scripts/selfhost79-cloud.js support/selfhost79/checker.py support/selfhost79/probe.mjs support/selfhost79/fixture.json'),
     focused: [{ command: 'node --test test/selfhost79.test.js test/selfhost79-cloud.test.js', note: 'Offline artifact proof only; live attempts remain owner-gated' }],
   },
-  // Browser fixtures: one service, or a hub with two replicas, behind the workspace UI.
-  { name: 'ui-fixtures', scripts: ['test:ui'], files: names('support/ui-workspace.js support/replica-workspace.js') },
+  // Browser fixtures: one service, or a hub with two replicas, behind the workspace UI, standalone or in client mode.
+  { name: 'ui-fixtures', scripts: ['test:ui'], files: names('support/ui-workspace.js support/replica-workspace.js support/client-workspace.js') },
   { name: 'control-runtime', scripts: ['test:control-runtime'], files: names('scripts/control-runtime.py test/control_runtime_test.py') },
   {
     name: 'lifecycle-model', scripts: ['test:runtime'],
