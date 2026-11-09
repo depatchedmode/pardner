@@ -533,3 +533,38 @@ it('explains sign-in, the Git prefill, invitation follow-up and People focus in 
   await page.waitForFunction(() => /Show everyone$/.test(document.activeElement?.getAttribute('aria-label') ?? ''))
   assert.deepEqual(errors, [])
 })
+
+it('shows letter initials and keeps an owner’s Git details off agent profiles in chromium', { timeout: 120000 }, async t => {
+  const { startClient } = await import(serviceModule)
+  const alice = await person(t, startClient, 'Alice', { harnessId: 'anthropic-claude-code', name: 'Alpha' })
+  await alice.call('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+  const { project } = await alice.call('/projects', { name: 'Initials board', operationId: 'create' })
+  await addFixturePeople(alice.client, project.id, [{ name: 'Omar', agent: { harnessId: 'cursor', name: 'Cursor (ci)' } }])
+  const browser = await chromium.launch({ headless: true })
+  t.after(() => browser.close())
+  const errors = []
+  const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
+  page.on('pageerror', error => errors.push(error.message))
+  await page.goto(await alice.open())
+  const stack = page.getByRole('group', { name: 'People in this project' })
+  const cursor = stack.getByRole('button', { name: /^Cursor \(ci\), agent, / })
+  await cursor.waitFor({ timeout: 30000 })
+  assert.equal(await cursor.locator('.avatar-initials').textContent(), 'CC', 'punctuation is not an initial')
+
+  await cursor.click()
+  const agentProfile = page.getByRole('dialog', { name: 'Cursor (ci)' })
+  await agentProfile.getByText('Works for').waitFor()
+  await agentProfile.locator('dd', { hasText: /^Omar$/ }).waitFor()
+  for (const label of ['Name', 'Email', 'Git name', 'Git email']) {
+    assert.equal(await agentProfile.locator('dt', { hasText: new RegExp(`^${label}$`) }).count(), 0, `${label} is not on an agent profile`)
+  }
+  assert.equal(await agentProfile.getByText('omar@example.test').count(), 0, 'the owner’s email is not shown as the agent’s')
+  await page.keyboard.press('Escape')
+
+  await stack.getByRole('button', { name: /^Omar, human, / }).click()
+  const humanProfile = page.getByRole('dialog', { name: 'Omar' })
+  await humanProfile.locator('dt', { hasText: /^Email$/ }).waitFor()
+  await humanProfile.getByText('omar@example.test').waitFor()
+  assert.equal(await humanProfile.locator('dt', { hasText: /^Git (name|email)$/ }).count(), 0)
+  assert.deepEqual(errors, [])
+})
