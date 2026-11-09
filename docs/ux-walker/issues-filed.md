@@ -1,5 +1,7 @@
 # Issues filed by ux-walker
 
+> **Retired story IDs.** STORY numbers in this record refer to the retired 2026-11-07 catalog. The current [catalog](../ux-paths/catalog.md) was regenerated for client mode on 2026-11-09 and uses different numbering.
+
 | Issue | Story | Severity | Title | Findings | URL |
 |---|---|---|---|---|---|
 | #121 | STORY-019 | high | Unsaved drafts are silently discarded by Escape, Actor switch or opening another card | F-019-01, F-019-02, F-008-01, F-014-01, F-027-02, F-133-01, F-017-02 | https://github.com/depatchedmode/pardner/issues/121 |
