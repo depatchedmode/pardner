@@ -12,7 +12,9 @@ import { acquireStorageLease } from '../lib/storage-lease.js'
 
 const execute = promisify(execFile)
 const pardner = async (args, env = {}) => {
-  const { stdout } = await execute(process.execPath, ['bin/pardner.js', ...args], { cwd: process.cwd(), env: { ...process.env, ...env } })
+  const { stdout, stderr } = await execute(process.execPath, ['bin/pardner.js', ...args], { cwd: process.cwd(), env: { ...process.env, ...env } })
+  // Node's node:sqlite ExperimentalWarning is not Pardner output.
+  assert.ok(!stderr.includes('ExperimentalWarning'), stderr)
   const value = JSON.parse(stdout); assert.equal(value.success, true); return value
 }
 const pardnerFailure = async (args, env = {}) => {
@@ -34,8 +36,13 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
   try {
     client = await startClient({ directory, port: 0, setupAgent: { model: 'reported-codex-model', managedBy: 'T3' } })
     const run = async args => {
-      const { stdout } = await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', directory], { cwd: process.cwd() })
-      const value = JSON.parse(stdout); assert.equal(value.success, true); return { value, stdout }
+      const { stdout, stderr } = await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', directory], { cwd: process.cwd() })
+      const value = JSON.parse(stdout); assert.equal(value.success, true); return { value, stdout, stderr }
+    }
+    const refused = async args => {
+      const error = await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', directory], { cwd: process.cwd() }).then(() => null, error => error)
+      assert.ok(error, `Expected client ${args.join(' ')} to fail`)
+      return JSON.parse(error.stdout).error
     }
     await run(['identity', '--name', 'Alice', '--email', 'alice@example.test', '--operation-id', 'identity'])
     const { value: { project } } = await run(['create', '--name', 'CLI board', '--operation-id', 'create'])
@@ -44,6 +51,10 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
     assert.equal(saved.savedLocally, true); assert.notEqual(saved.actorId, project.actorId)
     const { value: replay } = await run(['operation', '--project', project.id, '--request', JSON.stringify(request)])
     assert.equal(replay.replayed, true)
+    assert.deepEqual(await refused(['operation', '--project', project.id, '--request', '{not json']),
+      { code: 'INVALID_ARGUMENT', message: '--request must be valid JSON', details: null })
+    assert.deepEqual(await refused(['operation', '--project', project.id]),
+      { code: 'INVALID_ARGUMENT', message: 'Supply --request with the operation JSON', details: null })
     const grantFile = join(directory, 'agent.json')
     const grantOutput = await run(['agent-grant', '--project', project.id, '--output-file', grantFile])
     const grant = JSON.parse(await readFile(grantFile, 'utf8'))
@@ -60,6 +71,8 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
     const launch = join(directory, 'launch.txt')
     const opened = await run(['open', '--output-file', launch])
     assert.ok((await readFile(launch, 'utf8')).includes('#grant=')); assert.ok(!opened.stdout.includes('#grant='))
+    assert.equal(opened.value.outputFile, launch); assert.equal(opened.value.expiresInSeconds, 60)
+    assert.ok(!opened.stderr.includes('ExperimentalWarning'), opened.stderr)
     const status = await run(['status'])
     assert.ok(!status.stdout.includes(client.registry.read().operatorToken))
     assert.ok(!status.stdout.includes(client.project(project.id).internalToken))
@@ -193,6 +206,7 @@ test('bare pardner starts a detached client service, writes the launch grant to 
     const session = await fetch(`${connection.url}/pardner/client/v1/session`, { headers: { Authorization: `Bearer ${connection.token}` } })
     assert.equal(session.status, 200)
     assert.equal((await stat(join(data, 'client.log'))).mode & 0o777, 0o600)
+    assert.ok(!(await readFile(join(data, 'client.log'), 'utf8')).includes('ExperimentalWarning'))
     // A project runtime child must not keep the service alive after shutdown.
     await pardner(['client', 'identity', '--name', 'Alice', '--email', 'alice@example.test', '--operation-id', 'identity', '--data', data])
     await pardner(['client', 'create', '--name', 'Opened board', '--operation-id', 'create', '--data', data])
