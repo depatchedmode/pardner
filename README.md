@@ -40,11 +40,14 @@ Plans in agent-assisted work are hypotheses, not blueprints. Pardner's vocabular
 
 The [local client onboarding preview](docs/PARDNER-CLIENT.md) adds a private
 identity and project registry, isolated project runtimes, Start/Join, purpose-specific
-invitations and authenticated Actor sessions. `pardner client open` signs the local
-browser in through a one-time link. Git supplies profile defaults; the session
+invitations and authenticated Actor sessions. `pardner open` (or a bare `pardner`)
+starts the client service when it is not running and signs the local browser in
+through a one-time link, with no token screen or Actor picker. Git supplies profile defaults; the session
 determines authorship. The browser can switch projects and show reported Actor
 presence. This preview does not migrate existing standalone installations.
-The local client is the only way people open the board.
+The local client is the only way people open the board. A person can pair a phone
+on a trusted network as a [companion](docs/PARDNER-LAN.md): it browses this
+computer's client service, acts as that person, and is not an offline replica.
 
 The standalone service (`pardner serve`) is an agent and integration service: one
 local service per machine whose attributed operation API agents and integrations use
@@ -83,11 +86,13 @@ side effects still require harness-level idempotency.
 An opt-in [local agent bridge](docs/PARDNER-BRIDGE.md) can receive deliveries
 durably and wake explicitly authorized, dedicated Codex App Server sessions.
 It queues busy work and reconciles uncertain dispatch without model polling.
+It attaches to a standalone service or, with an agent credential from
+`client agent-grant`, to one agent Actor of a client project.
 Real co-host rehearsals cover handoff and archive recovery; other adapters and
 separate-machine qualification remain follow-up work.
 
 The board's **Control** view is a [project control pane](docs/PARDNER-CONTROL-PANE.md)
-for development through T3 Code. It maps existing T3 threads to agent Actors with
+for development through T3 Code, available to people on this computer (not a phone). It maps existing T3 threads to agent Actors with
 explicit task and sender authorization, saves follow-ups before sending them one at
 a time, and keeps intent, run identity, holds, output and verdicts on this host across
 restarts. Execution completion, an independent check and human acceptance are
@@ -189,6 +194,9 @@ client session. For a phone, use the built UI and **Pair a phone**.
 | Record a vein's verdict | `pardner vein update VEIN --status proven --revisions JSON --actor alice` |
 | Goals and their veins | `pardner goals --json`, `pardner goal show GOAL --json` |
 
+An agent Actor of a client project runs the same commands with
+`--token-file FILE` (the credential from `client agent-grant`) instead of `--actor`;
+see the [client guide](docs/PARDNER-CLIENT.md#actors-and-presence).
 Writes require an Actor and field edits require the revisions returned by `show`.
 Use the same request operation ID and identical payload to retry an uncertain write.
 Receipts expose this retry key as `requestId` and a derived `operationId` for history
