@@ -18,25 +18,36 @@ npm ci --prefix ui-prototype
 npm run ui:build
 ```
 
-An existing agent starts the service with its actual harness and name:
+Open Pardner with its setup agent's actual harness and name:
 
 ```sh
-node bin/pardner.js client serve --data .pardner-client \
-  --harness openai-codex --name Alpha --managed-by T3
+node bin/pardner.js open --harness openai-codex --name Alpha --managed-by T3
+```
+
+`pardner open` (or a bare `pardner`) reuses the client service already running for
+its data directory. If none answers, it starts a detached `client serve` with the
+same setup flags, waits up to 15 s, and logs to `client.log` (mode 0600) in that
+directory. The directory is the per-user `~/.pardner/client` unless you pass
+`--data DIR`; every client command accepts the same `--data`. A port that answers
+but is not this client reports `PORT_IN_USE`; nothing is stopped. Stop the
+service with `pardner client stop`, which uses the operator-only shutdown route on
+the loopback surface and waits until the directory is released. An agent or
+supervisor can still run the service in the foreground:
+
+```sh
+node bin/pardner.js client serve --harness openai-codex --name Alpha --managed-by T3
 ```
 
 Supported harness IDs are `openai-codex`, `anthropic-claude-code` and `cursor`.
 Supply `--model` when the agent knows its active model. T3 is management metadata,
-not an execution harness. In another terminal, open the remembered client:
+not an execution harness.
 
-```sh
-node bin/pardner.js client open --data .pardner-client
-```
-
-The command launches a short-lived, one-time browser link without printing its
+`open` launches a short-lived, one-time browser link without printing its
 credential. The UI clears the fragment and remembers an HttpOnly session cookie.
 If a platform has no supported browser launcher, `--output-file FILE` writes the
 private launch URL for the local operator. Normal command output has no grant.
+The local client is the only way people open the board; the standalone
+`pardner serve` is an agent and integration service and serves no board.
 
 Confirm the profile suggested by the local Git configuration. Git name and email
 are profile defaults, not proof of identity; Pardner generates the identity and
@@ -67,7 +78,7 @@ For an agent-managed join, save the invitation in a private file and use a stabl
 operation ID:
 
 ```sh
-node bin/pardner.js client join --data .pardner-client \
+node bin/pardner.js client join \
   --invitation-file /path/to/private-invitation --operation-id join-shared-board
 ```
 
@@ -168,6 +179,10 @@ computer's service, not a replica: it has no offline copy and stops working when
 the service or its network is unavailable. Turning phone access off cancels
 waiting codes and closes phone connections and presence, and keeps paired
 phones, which reconnect when it is turned back on.
+
+**Pair a phone** on the board turns this listener on and shows a pairing QR code;
+the [phone companion guide](PARDNER-LAN.md) covers pairing, naming and revoking
+phones, and its limits.
 
 A reachable private network can provide a direct route to the project authority;
 an HTTPS relay can connect unrelated networks. Automatic discovery, NAT
