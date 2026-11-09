@@ -66,6 +66,50 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
   } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
 })
 
+test('an agent Actor runs coordination commands through the client proxy with --token-file', { timeout: 60000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-token-file-'))
+  let client
+  try {
+    client = await startClient({ directory, port: 0 })
+    const operator = client.registry.read().operatorToken
+    const api = async (path, body) => {
+      const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
+        headers: { Authorization: `Bearer ${operator}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+      assert.equal(response.status, 200); return response.json()
+    }
+    await api('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+    const { project } = await api('/projects', { name: 'Token file board', operationId: 'create' })
+    const grantFile = join(directory, 'agent.json')
+    await pardner(['client', 'agent-grant', '--data', directory, '--project', project.id, '--output-file', grantFile])
+    const grant = JSON.parse(await readFile(grantFile, 'utf8'))
+    assert.equal(grant.apiBase, `${client.url}/pardner/client/v1/projects/${project.id}/api`)
+    const created = await pardner(['task', 'create', '--title', 'Agent task through the proxy', '--token-file', grantFile])
+    assert.equal(created.actorId, grant.actorId)
+    assert.notEqual(created.actorId, project.actorId)
+    const taskId = created.result.taskId
+    const shown = await pardner(['show', taskId, '--token-file', grantFile])
+    assert.equal(shown.history[0].actorId, grant.actorId)
+    // A person mentions the agent; the agent's inbox is its own without naming --actor.
+    const { actors } = await api(`/projects/${project.id}`)
+    const handle = actors.find(actor => actor.id === grant.actorId).handle
+    await api(`/projects/${project.id}/api/automerge/operations`, { type: 'comment.add', operationId: 'mention', payload: { taskId, text: `@${handle} please review` } })
+    const pending = await pardner(['mentions', 'pending', '--token-file', grantFile])
+    assert.equal(pending.mentions.length, 1)
+    const claim = await pardner(['mentions', 'claim-next', '--request-id', 'claim', '--token-file', grantFile])
+    assert.equal(claim.claimed, true)
+    assert.equal((await pardner(['mentions', 'ack', claim.mention.id, '--claim-token', claim.claimToken, '--token-file', grantFile])).acknowledged, true)
+    // A file holding only the token works with an explicit --server; the Actor comes from the client session.
+    const rawFile = join(directory, 'agent-token')
+    await writeFile(rawFile, `${grant.token}\n`, { mode: 0o600 })
+    const comment = await pardner(['comment', taskId, 'Done', '--server', grant.apiBase, '--token-file', rawFile])
+    assert.equal(comment.actorId, grant.actorId)
+    const mismatch = await pardnerFailure(['comment', taskId, 'Pretend', '--actor', project.actorId, '--token-file', grantFile])
+    assert.equal(mismatch.code, 'ACTOR_MISMATCH')
+    const both = await pardnerFailure(['tasks', '--token', grant.token, '--token-file', grantFile])
+    assert.equal(both.code, 'INVALID_ARGUMENT')
+  } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
+})
+
 test('explicit public gateway produces HTTPS invitations while browser origin stays local', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-gateway-'))
   let client
