@@ -1,67 +1,83 @@
-# Companion browsers
+# Phone companion
 
 ## Sub-features
 
-Pairing over LAN, persisted browser credentials and Actor/filter choices,
-cross-client updates, uncertain-save retry, service restart/reconnect, credential
-rotation, forgetting a workspace, and configured same-origin proxy routing.
+Turning phone access on and off on a chosen network, Rebind after an address
+change or failed bind, keyed pairing codes (QR, grouped digits, countdown,
+several waiting at once, cancel), pairing from the scanned link or by typing the
+code, the reduced phone header, edits authored as the computer's human,
+presence showing the phone's name, revoking a phone, signing out on the phone,
+and returning to pairing when the session ends. The older standalone **Pair
+another device** flow is separate (see Gotchas).
 
 ## How to get to it (user POV)
 
-From `/pardner/`, use **Pair another device**, select **Network interface**, and
-**Enable device access**. Restart the same disposable service, reopen pairing,
-and open the generated link in the companion browser. Choose **Actor**,
-**Assigned to**, and **Status filter**. Follow the [LAN guide](../../../../docs/PARDNER-LAN.md)
-for setup, recovery, and the separate physical-phone exercise.
+On the computer, open the local client (`pardner client open`) and a project,
+then **Pair a phone** → choose **Network** if there are several → **Turn on phone
+access** → **New code**. On the phone (same network), scan the QR code or open the
+shown `http://<address>:<port>/pardner/` and type the eight digits. The phone opens
+the board with **You (phone)** in its header; **Sign out this phone** is behind it.
+Back on the computer, **Paired phones** lists the phone with **Revoke**. Follow
+the [phone guide](../../../../docs/PARDNER-LAN.md) for network changes, the
+security model and the real-phone rehearsal.
 
 ## Driving it with Playwright
 
-Run `npm run test:ui` with pinned Chromium and WebKit installed. The phone test
-uses actual non-loopback IPv4 HTTP, enables LAN through the desktop UI, restarts,
-pairs a persistent mobile context from the **Device address** link (not the QR),
-and checks the **Actor** and **Status filter** after browser reopening
-(**Assigned to** persistence is not asserted). It checks that a CLI comment
-reaches the phone live and reads the phone's writes back through the CLI; the
-desktop page is not asserted to receive the phone's writes. The connection tests
-cover failed pairing, credential rotation, and late stale auth responses in
-Chromium and WebKit over LAN, and bootstrap failures and local proxy routing on
-loopback in Chromium only. `test/browser-connection.test.js`,
-`test/lan-server.test.js`, and `test/lan-access.test.js` (storage persistence,
-LAN listeners, single-use and throttled pairing, loopback-only administration)
-run only under the full `node --test`, not `test:ui`.
+Run `npm run test:ui` with pinned Chromium and WebKit installed;
+`test/client-companion-ui.test.js` runs in both. It starts a client with
+`withClientWorkspace(engine, { clientOptions: { interfaces } })`, injecting a
+"LAN" interface on `127.0.0.1` so the phone listener is a second loopback port
+(a separate origin). The computer is a 1440×900 context; each phone is its own
+mobile context (`isMobile`, `hasTouch`, 390×844), so cookies never mix.
 
-Expected: only matching tasks appear, no repeated pairing on normal reopen,
-correct Actor attribution, one write after retry, and recovery after restart.
-Inspect the saved screenshots under `output/playwright/`: only
-`pardner-phone-setup.png` is masked; `pardner-phone-reviews-<engine>.png` is
-unmasked and must show no secret; the connection tests save none. Copy relevant
-ones into the unique verification run directory so later runs cannot replace
-the evidence. Capture traces for new interactions where assertions alone leave
-the failure unclear.
+It checks: the dialog keeps its box while turning on and making a code; the code
+is `NNNN NNNN` with "Use once before … · m:ss left" and a QR image; no Copy
+control; opening `${phoneUrl}#pair=<code>` strips the fragment and opens the board
+without Invite, Pair a phone, Control or Start/join; no horizontal scroll at
+390px; the computer shows **Paired: <name>**; a description edit on the phone is
+readable through the client API with `task.update` authored by the human's
+Actor; the computer's own profile lists the phone's name as a live session; three
+codes wait together and one is typed on a second phone after a refused code
+(which clears the field); **Revoke** returns the first phone to **Pair this
+phone**; **Sign out this phone** does the same for the second; **Turn off phone
+access** asks first; and no code or companion cookie appears in either browser's
+console or the service's stdout/stderr. A second case covers a used link, a failed
+bind on a documentation address (192.0.2.0/24) with **Rebind**, **Use this
+network**, and a changed address followed by **Rebind**.
+
+Pure helpers (`takePairingCode`, `groupPairingCode`, `formatCountdown`,
+`pairingState` and the companion API calls) are unit-tested in
+`test/client-onboarding-ui.test.js`. Routes, throttling, expiry, revocation and
+secret handling at the service are in `test/client-companion.test.js`
+(`test:runtime`).
+
+For manual browser checks, drive the same setup: `startClient({ interfaces })`
+with a test interface, a desktop context signed in with `/open`, and a mobile
+context on the phone URL. Screenshot the dialog in each state (off, bind failed,
+on without a code, code, paired, waiting codes, expired or cancelled, revoke and
+turn-off confirmations, changed address) and the phone's pairing screen, refused
+code, board, settings and revoked notice. Mask the digits and QR code in any
+retained artifact.
 
 ## Gotchas
 
-The LAN tests skip without a suitable non-loopback IPv4 interface; the loopback
-cases always run. Treat a skip as missing evidence when this behavior is affected.
-Pairing is browser and HTTP only; there are no CLI pairing or LAN commands.
-After a token rotation, a connected companion page reports "The service
-credential changed"; a companion reopened afterwards shows the pairing form with
-a connection-failure message instead. Mobile browser contexts do not establish
-physical phone behavior, and a local proxy does not establish public HTTPS.
-The phone test decodes the pairing QR image and asserts nonzero natural width in
-Chromium and WebKit. This establishes image loading under the image policy;
-it does not read the QR payload or show that a phone camera can scan it.
-Payload and scannability need a QR decoder or the physical-phone exercise.
-Mask tokens, one-time pairing codes, pairing links, and QR codes in artifacts.
-Browser traces of pairing capture the credential entry and ticketed WebSocket
-URL; retain only copies produced by `verify:sanitize` (see SKILL.md, Artifact
-privacy). Never run an exercise against the user's existing workspace.
+Loopback stands in for the LAN: it proves the separate surface, origin checks,
+cookie and flow, not Wi-Fi reachability, client isolation or a phone camera
+scanning the QR code. Mobile contexts are not real-phone evidence; that needs the
+manual rehearsal recorded in `docs/evidence/`. Cookies are scoped to the host,
+not the port, so a desktop and a phone context must be separate browser
+contexts. The phone returns to pairing when a poll or reconnect gets
+`AUTH_REQUIRED`, which can take up to the five-second presence poll. Binding a
+non-local address fails quickly with `EADDRNOTAVAIL`; use 192.0.2.x for failure
+cases, never a real interface of the machine. Never run an exercise against the
+user's own client data directory.
 
-Security coverage: `test/markdown-privacy.test.js` covers persisted description and
-comment images, CSP enforcement, formatting, data images, and referrer-free links
-in Chromium and WebKit (`test:ui`). `test/framing.test.js` covers response headers
-and Chromium iframe rejection. `test/vite-security.test.js` covers the development
-listener and filesystem denial; both run through full test discovery.
-`lan-access` and `lan-server` exercise source-address pairing budgets and ignored
-forwarding headers. Insecure listeners stay on numeric loopback; native sync
-still requires enrolled credentials (`automerge-sync-server`, `native-replica-auth`).
+The standalone service's **Pair another device** (shared secret, restart to
+apply) is still covered by `test/pardner-phone.test.js` and the connection tests
+until it is removed; it needs a real non-loopback IPv4 interface and skips
+without one. Treat that skip as missing evidence only for standalone changes.
+
+Security coverage elsewhere: `test/markdown-privacy.test.js` (persisted images,
+CSP, referrer-free links, `test:ui`), `test/framing.test.js` (headers and iframe
+rejection) and `test/vite-security.test.js` (development listener) run through
+full test discovery.
