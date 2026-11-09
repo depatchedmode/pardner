@@ -194,10 +194,11 @@ request or connection data. Report what was checked and how.
 ### Artifact privacy
 
 The acceptance runner (`npm run verify` and `test:acceptance`) starts browser
-tracing before credential entry. Its `browser-N.zip` traces therefore contain
-the disposable service tokens in `Authorization` headers, the credential fill
-action, DOM snapshots of the password field, and WebSocket tickets; the seed
-report carries delivery claim tokens. Treat everything under
+tracing before it opens each board. Its `browser-N.zip` traces therefore contain
+the one-time browser grant in the `/open` URL fragment, the client session
+cookie it is exchanged for, and WebSocket tickets; the seed report carries
+delivery claim tokens. Agent credentials and operator tokens stay in the seed's
+temporary directory, which is deleted afterwards. Treat everything under
 `output/acceptance/` as private. Never copy raw traces into a shared run
 directory, attach them to a PR, or describe them as safe.
 

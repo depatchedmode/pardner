@@ -30,8 +30,10 @@ Expected: unchanged workspace identity, startup under six seconds, locally
 saved offline work with sync pending, and convergence after reconnect. Other
 cases inspect stale acknowledgements, authored conflicts, and SIGKILL recovery.
 
-`npm run verify` also runs one complete acceptance scenario with public CLI and
-browser mutations. Inspect `output/acceptance/<run>/seed-1/report.json`, the intent
+`npm run verify` also runs one complete acceptance scenario on client mode: a hub
+client, Alice's laptop (device invitation) and Bob's laptop (human invitation)
+behind per-laptop network gates, with every mutation through a client project
+API proxy (operator, agent `--token-file` CLI, or browser session). Inspect `output/acceptance/<run>/seed-1/report.json`, the intent
 manifest, per-replica readback, and browser traces. Those traces and the seed
 report contain disposable credentials; retain them only through
 `verify:sanitize` (SKILL.md, Artifact privacy). Required qualification adds
