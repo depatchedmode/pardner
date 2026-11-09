@@ -154,11 +154,13 @@ const MANAGERS = { t3: 'T3' }
 export const harnessLabel = harnessId => harnessId ? HARNESSES[harnessId] ?? harnessId : null
 export const managerLabel = managedBy => managedBy ? MANAGERS[String(managedBy).toLowerCase()] ?? managedBy : null
 
-export function syncLabel(status) {
+// A paired phone keeps no copy: the project is saved on the host computer, so it never reads "locally".
+export function syncLabel(status, { companion = false } = {}) {
+  const where = companion ? 'on your computer' : 'locally'
   if (!status) return 'Status not reported'
   if (status.available === false) return 'Project service unavailable'
-  if (status.storageError) return 'Local save failed'
-  if (!status.savedLocally) return 'Saving locally…'
-  if (status.syncPending || status.hubConnected === false) return 'Saved locally · waiting for hub'
-  return 'Saved locally · synced'
+  if (status.storageError) return companion ? 'Your computer couldn’t save' : 'Local save failed'
+  if (!status.savedLocally) return `Saving ${where}…`
+  if (status.syncPending || status.hubConnected === false) return `Saved ${where} · waiting for hub`
+  return `Saved ${where} · synced`
 }

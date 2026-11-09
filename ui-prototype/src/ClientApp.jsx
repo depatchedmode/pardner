@@ -365,7 +365,7 @@ function hasPendingRequest(project) {
   try { return sessionStorage.getItem(`pardner:${project.id}:${project.actorId}:pending`) !== null } catch { return false }
 }
 
-function ProjectSwitcher({ projects, current, onSelect, onStartOrJoin = null }) {
+function ProjectSwitcher({ projects, current, onSelect, onStartOrJoin = null, companion = false }) {
   const { open, close, buttonProps, menuProps } = useMenu()
   return <div className="menu-anchor">
     <h1 className="project-title">
@@ -377,7 +377,7 @@ function ProjectSwitcher({ projects, current, onSelect, onStartOrJoin = null }) 
       {projects.map(project => <button type="button" key={project.id} role="menuitemradio"
         aria-checked={project.id === current.id} onClick={() => { close(); if (project.id !== current.id) onSelect(project.id) }}>
         <span className="menu-label">{project.name}</span>
-        <span className="menu-detail">{syncLabel(project.status)}{hasPendingRequest(project) ? ' · unconfirmed change' : ''}</span>
+        <span className="menu-detail">{syncLabel(project.status, { companion })}{hasPendingRequest(project) ? ' · unconfirmed change' : ''}</span>
       </button>)}
       {onStartOrJoin && <>
         <div className="menu-separator" role="separator" />
@@ -595,7 +595,7 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
     <div className="client-identity">
       <span className="brand">Pardner</span>
       <ProjectSwitcher projects={session.projects} current={current} onSelect={onSelect}
-        onStartOrJoin={phone ? null : onStartOrJoin} />
+        onStartOrJoin={phone ? null : onStartOrJoin} companion={phone} />
     </div>
     <div className="client-people">
       {participants.length > 0 && <AvatarStack actors={participants} index={index} max={5} label="People in this project"
@@ -621,8 +621,8 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
   const sessionProps = useMemo(() => ({
     actorsById, index, focus: focusByTask(index), onOpenProfile: openProfile, requestedTask,
     onFocusChange: taskIds => reporter.current?.setFocus(taskIds),
-    onTasks: setTasks, onAuthLost, canControl,
-  }), [actorsById, index, openProfile, requestedTask, onAuthLost, canControl])
+    onTasks: setTasks, onAuthLost, canControl, companion: phone,
+  }), [actorsById, index, openProfile, requestedTask, onAuthLost, canControl, phone])
   if (!details) return <main className="connection">
     <h1>{project.name}</h1>
     <p role="status">{failure ? 'This project didn’t open.' : 'Opening project…'}</p>

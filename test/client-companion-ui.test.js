@@ -67,6 +67,7 @@ for (const engine of [chromium, webkit]) it(`pairs, uses, revokes and signs out 
         }
         await switcher.click()
         assert.equal(await phone.getByRole('menuitem', { name: /Start or join/ }).count(), 0)
+        await phone.getByRole('menuitemradio', { name: /Phone board/ }).filter({ hasText: /Saved on your computer/ }).waitFor()
         await phone.keyboard.press('Escape')
         assert.equal(await noHorizontalScroll(phone), true, 'the phone board fits 390px without horizontal scroll')
         await dialog.getByText('Paired: Test phone').waitFor({ timeout: 10000 })
@@ -83,6 +84,11 @@ for (const engine of [chromium, webkit]) it(`pairs, uses, revokes and signs out 
         assert.equal(shown.task.description, 'Edited on the phone')
         assert.deepEqual(shown.history.filter(event => event.type === 'task.update').map(event => event.actorId), [actorId])
         assert.equal(await noHorizontalScroll(phone), true)
+        // The phone keeps no copy, so its save status names the computer instead of claiming a local save.
+        await phone.locator('.header-controls .save-status').filter({ hasText: /^Saved on your computer · (synced|waiting for hub)$/ }).waitFor()
+        await phonePanel.locator('.save-status').filter({ hasText: /^Saved on your computer/ }).waitFor()
+        assert.equal(await phone.getByText(/locally/).count(), 0, 'nothing on the phone claims a local save')
+        await page.locator('.header-controls .save-status').filter({ hasText: /^Saved locally/ }).waitFor()
 
         // A second and third code wait side by side; one is redeemed by typing it on another phone.
         await dialog.getByLabel('Phone name').fill('Second phone')
