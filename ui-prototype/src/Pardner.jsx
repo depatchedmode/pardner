@@ -3,7 +3,6 @@ import ActorMarkdown from './ActorMarkdown.jsx'
 import './pardner.css'
 import { createOperationId } from './operation-id.js'
 import { createConnection, loadConfiguration, websocketUrl } from './connection.js'
-import PhoneAccess from './PhoneAccess.jsx'
 import ControlPane from './ControlPane.jsx'
 import ClientApp from './ClientApp.jsx'
 import { AvatarStack } from './Avatar.jsx'
@@ -189,58 +188,46 @@ export default function Pardner() {
   if (!config) return <main className="connection">
     <h1>Pardner</h1>
     <p role="status">{failure ? failure.message : 'Opening your workspace…'}</p>
-    {failure && <><p>Check that the service is running. If the address changed, open Pair another device on the desktop.</p>
+    {failure && <><p>Check that Pardner is running on your computer. Start it with <code>pardner open</code>, then retry.</p>
       <button onClick={() => reload().catch(setFailure)}>Retry connection</button></>}
   </main>
   if (config.mode === 'client') return <ClientApp config={config} />
-  return <Workspace key={config.workspaceId} config={config} reloadConfiguration={reload} />
+  // A standalone service has no human board: people use the local client.
+  return <main className="connection">
+    <h1>Pardner</h1>
+    <p>This is an agent and integration service. Open Pardner with <code>pardner open</code>.</p>
+  </main>
 }
 
 /**
- * The board. Standalone services authenticate with a token or pairing code; in
- * local client mode `session` is supplied, the cookie authenticates, and the
- * author is the signed-in Actor (there is no author picker).
+ * The board inside the local client. The session cookie authenticates and the
+ * author is the signed-in Actor; `session` carries the client's header, presence
+ * and callbacks.
  */
-export function Workspace({ config, reloadConfiguration, session = null }) {
+export function Workspace({ config, reloadConfiguration, session }) {
   const client = useMemo(() => createConnection(config), [config])
-  // The session prop changes every render (presence, header); effects depend only on the mode.
-  const sessionMode = Boolean(session)
+  // The session prop changes every render (presence, header); callbacks read it through this ref.
   const sessionRef = useRef(session)
-  // In client mode the project grants control to people on this computer; a standalone service shows it to every
-  // connection and keeps settings to its loopback page.
-  const canControl = session ? Boolean(session.canControl) : true
-  const canManage = session ? Boolean(session.canControl) : config.canManageAccess
+  // The project grants control to people on this computer.
+  const canControl = Boolean(session.canControl)
   sessionRef.current = session
   // Task panels open below the client header so people, Invite and the project stay reachable.
   const headerRef = useRef(null)
   const [headerHeight, setHeaderHeight] = useState(0)
   useEffect(() => {
     const element = headerRef.current
-    if (!sessionMode || !element || typeof ResizeObserver !== 'function') return
+    if (!element || typeof ResizeObserver !== 'function') return
     const observer = new ResizeObserver(() => setHeaderHeight(Math.ceil(element.getBoundingClientRect().height)))
     observer.observe(element)
     return () => observer.disconnect()
   })
-  // Let a scanned link validate stored authentication before normal requests begin.
-  const [token, setToken] = useState(() => !session && new URLSearchParams(window.location.hash.slice(1)).has('pair') ? '' : client.credential())
-  const [credential, setCredential] = useState('')
-  const [pairCode, setPairCode] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('pair') ?? '')
-  const [pairBusy, setPairBusy] = useState(false)
-  const [phoneSetup, setPhoneSetup] = useState(false)
-  // { failure, source }: source names the form that failed ('pair' / 'token') or 'open'.
   const [connectionError, setConnectionError] = useState(null)
-  // Failures from before a Forget belong to a workspace the user already left.
-  const connectionGeneration = useRef(0)
-  const credentialSource = useRef(config.canManageAccess ? 'token' : 'pair')
   const connectionAlert = useRef(null)
-  const failConnection = useCallback((failure, source, generation = connectionGeneration.current) => {
-    if (generation === connectionGeneration.current) setConnectionError({ failure, source })
-  }, [])
   const [doc, setDoc] = useState(null)
   const [status, setStatus] = useState(null)
   const [connected, setConnected] = useState(false)
-  const [actor, setActor] = useState(() => session ? config.actorId : client.preferences().actor || '')
-  const [selected, setSelected] = useState(() => session ? client.preferences().selected || null : null)
+  const actor = config.actorId
+  const [selected, setSelected] = useState(() => client.preferences().selected || null)
   const [creating, setCreating] = useState(false)
   // In-memory New task draft ({ fields, tags }); null means the defaults. Never persisted.
   const [newTaskDraft, setNewTaskDraft] = useState(null)
@@ -281,46 +268,14 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
     headingFocusedFor.current = openCount.current
     return true
   }, [])
-  const pairDevice = useCallback(async code => {
-    const generation = connectionGeneration.current
-    credentialSource.current = 'pair'
-    setPairBusy(true)
-    setConnectionError(null)
-    try {
-      if (client.credential()) {
-        try { await client.request('/automerge/status') }
-        catch (failure) { if (failure.code !== 'AUTH_REQUIRED') throw failure }
-      }
-      if (!client.credential()) await client.pair(code)
-      setPairCode('')
-      setToken(client.credential())
-    }
-    catch (failure) { failConnection(failure, 'pair', generation) }
-    finally { setPairBusy(false) }
-  }, [client, failConnection])
-  useEffect(() => {
-    if (sessionMode) return
-    const pairFromUrl = () => {
-      const code = new URLSearchParams(window.location.hash.slice(1)).get('pair')
-      if (code === null) return
-      window.history.replaceState(null, '', window.location.pathname + window.location.search)
-      setPairCode(code)
-      void pairDevice(code)
-    }
-    window.addEventListener('hashchange', pairFromUrl)
-    pairFromUrl()
-    return () => window.removeEventListener('hashchange', pairFromUrl)
-  }, [pairDevice, sessionMode])
-
   useEffect(() => {
     try {
-      client.savePreferences(sessionMode ? { filter, statusFilter, veinFilter, view, selected }
-        : { actor, filter, statusFilter, veinFilter, view })
+      client.savePreferences({ filter, statusFilter, veinFilter, view, selected })
     } catch (failure) { setError(failure) }
-  }, [client, sessionMode, actor, filter, statusFilter, veinFilter, view, selected])
-  const onFocusChange = session?.onFocusChange
+  }, [client, filter, statusFilter, veinFilter, view, selected])
+  const onFocusChange = session.onFocusChange
   useEffect(() => { onFocusChange?.(selected ? [selected] : []) }, [onFocusChange, selected])
-  const requestedTask = session?.requestedTask
+  const requestedTask = session.requestedTask
   // A task opened from a profile is a new open: focus its heading; closing falls back to New task.
   useEffect(() => {
     if (!requestedTask) return
@@ -329,21 +284,15 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
     setSelected(requestedTask.taskId)
     setCreating(false)
   }, [requestedTask])
-  const onTasks = session?.onTasks
+  const onTasks = session.onTasks
   useEffect(() => { if (doc) onTasks?.(doc.tasks) }, [onTasks, doc])
   const request = useCallback(async (path, body) => {
-    const generation = connectionGeneration.current
     try { return await client.request(path, body) } catch (failure) {
-      if (failure.code === 'AUTH_REQUIRED' && sessionRef.current) sessionRef.current.onAuthLost()
-      else if (failure.code === 'AUTH_REQUIRED' && !client.credential()) {
-        setToken('')
-        setDoc(null)
-        failConnection(new Error('The service credential changed. Pair again or enter the current local service token.'), credentialSource.current, generation)
-      }
+      if (failure.code === 'AUTH_REQUIRED') sessionRef.current.onAuthLost()
       if (failure.code === 'WORKSPACE_MISMATCH') await reloadConfiguration()
       throw failure
     }
-  }, [client, reloadConfiguration, failConnection])
+  }, [client, reloadConfiguration])
   const refresh = useCallback(async () => {
     const generation = ++refreshGeneration.current
     const observedDoc = docUpdates.current
@@ -361,7 +310,6 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
     if (observedStatus === statusUpdates.current) setStatus(state)
   }, [request, config.workspaceId, reloadConfiguration])
   useEffect(() => {
-    if (!token || !config) return
     let stopped = false, socket, timer, openingTimer, attempt = 0, connecting = false
     const schedule = () => {
       clearTimeout(timer)
@@ -392,13 +340,13 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
             const message = JSON.parse(event.data)
             if (message.doc && message.doc.workspaceId !== config.workspaceId) {
               socket.close()
-              void reloadConfiguration().catch(failure => { if (!stopped) failConnection(failure, 'open') })
+              void reloadConfiguration().catch(failure => { if (!stopped) setConnectionError(failure) })
               return
             }
             if (message.doc) { docUpdates.current++; setDoc(message.doc) }
             if (message.status) { statusUpdates.current++; setStatus(message.status) }
           } catch {
-            failConnection(new Error('The service sent an unreadable update. Reconnecting…'), 'open')
+            setConnectionError(new Error('The service sent an unreadable update. Reconnecting…'))
             socket.close()
           }
         }
@@ -407,7 +355,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           connecting = false
           if (stopped) return
           setConnected(false)
-          failConnection(new Error('Live updates disconnected. Reconnecting automatically. Check that both service ports are reachable.'), 'open')
+          setConnectionError(new Error('Live updates disconnected. Reconnecting automatically.'))
           schedule()
         }
         socket.onerror = () => socket.close()
@@ -415,7 +363,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
         connecting = false
         if (stopped) return
         setConnected(false)
-        failConnection(failure, failure.code === 'AUTH_REQUIRED' ? credentialSource.current : 'open')
+        setConnectionError(failure)
         if (failure.code !== 'AUTH_REQUIRED') schedule()
       }
     }
@@ -437,13 +385,10 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
       window.removeEventListener('focus', resume)
       document.removeEventListener('visibilitychange', resume)
     }
-  }, [token, config, refresh, request, reloadConfiguration, retryGeneration, failConnection])
+  }, [config, refresh, request, reloadConfiguration, retryGeneration])
   useEffect(() => {
     connectionAlert.current?.scrollIntoView({ block: 'nearest' })
   }, [connectionError])
-  useEffect(() => {
-    if (!sessionMode && doc && actor && !doc.actors[actor]) setActor('')
-  }, [doc, actor, sessionMode])
   // Once a panel unmounts, return focus to its opener, else New task, else the current view's button.
   useEffect(() => {
     const open = Boolean(selected || creating)
@@ -486,10 +431,6 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
     if (inflight.current) return null
     const origin = replay?.payload ?? payload
     setErrorOrigin({ type: replay?.type ?? type, taskId: origin?.taskId, recordId: origin?.veinId ?? origin?.goalId })
-    if (!actor && !replay) {
-      setError({ message: 'Choose the Actor making this change.', preflight: true })
-      return null
-    }
     if (pending && !replay) {
       setError({
         message: 'Resolve the saved request before starting another change.',
@@ -540,86 +481,17 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
     }
   }
   // Each board preset sets every filter, so a stale one never hides its tasks.
-  // Declared before the connection screen's early return: forget() uses it there too.
   const showBoard = ({ assignee = '', status = '', vein = '' }) => {
     setFilter(assignee); setStatusFilter(status); setVeinFilter(vein); setView('board')
   }
-  const forget = () => {
-    try {
-      connectionGeneration.current++
-      client.forget()
-      setToken('')
-      setActor('')
-      setActivityActor('')
-      setActivityShow('changes')
-      setActivityCutoff(null)
-      showBoard({})
-      setPending(null)
-      setNewTaskDraft(null)
-      setDoc(null)
-      setCredential('')
-      setPairCode('')
-      setConnectionError(null)
-      setError(null)
-    } catch (failure) { setError(failure) }
-  }
-  const connectWithToken = event => {
-    event.preventDefault()
-    credentialSource.current = 'token'
-    setConnectionError(null)
-    try {
-      client.remember(credential)
-      setToken(client.credential())
-      setCredential('')
-    } catch (failure) { failConnection(failure, 'token') }
-  }
-  const retryConnection = () => {
-    if (!token) void pairDevice(pairCode)
-    else setRetryGeneration(value => value + 1)
-  }
-  if (session && !doc) return <main className="connection">
+  const retryConnection = () => setRetryGeneration(value => value + 1)
+  if (!doc) return <main className="connection">
     <h1>Pardner</h1>
     <p role="status">{connectionError ? 'The project board isn’t reachable yet.' : 'Opening the project board…'}</p>
-    {connectionError && <div role="alert" className="error" ref={connectionAlert}><p>{connectionError.failure.message}</p>
+    {connectionError && <div role="alert" className="error" ref={connectionAlert}><p>{connectionError.message}</p>
       <button type="button" onClick={retryConnection}>Retry connection</button>
     </div>}
   </main>
-  if (!token || !doc) {
-    // While opening, the error sits under the status; otherwise inside the form that failed.
-    const connectionSlot = !connectionError ? null : token ? 'open' : connectionError.source === 'token' ? 'token' : 'pair'
-    const connectionNotice = connectionError && <div role="alert" className="error" ref={connectionAlert}><p>{connectionError.failure.message}</p>
-      <p>Check that the service is running. For a changed address, reopen Pair another device on the desktop.</p>
-      <button type="button" disabled={pairBusy || (!token && !pairCode)} onClick={retryConnection}>Retry connection</button>
-    </div>
-    return <main className="connection">
-    <h1>Pardner</h1>
-    <p>One workspace for human and agent Actors.</p>
-    {!token && <>
-      <form onSubmit={async event => {
-        event.preventDefault()
-        await pairDevice(pairCode)
-      }}>
-        <label>Pairing code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{8}" maxLength={8} required autoFocus={!config.canManageAccess} disabled={pairBusy} value={pairCode} onChange={event => { setPairCode(event.target.value); setConnectionError(null) }} /></label>
-        <p className="muted">Open Pair another device on the desktop to get a code. This browser will remember your workspace. Use a trusted network: HTTP traffic is unencrypted.</p>
-        {connectionSlot === 'pair' && connectionNotice}
-        <button className="primary" disabled={pairBusy}>{pairBusy ? 'Connecting…' : 'Pair this device'}</button>
-      </form>
-      <details open={config.canManageAccess}>
-        <summary>Connect with a local service token</summary>
-        <form onSubmit={connectWithToken}>
-          <label>Local service token<input type="password" autoComplete="off" required autoFocus={config.canManageAccess} value={credential} onChange={event => { setCredential(event.target.value); setConnectionError(null) }} /></label>
-          <p className="muted">Use the token from the service’s connection.json file. This browser remembers it until you forget the workspace or the secret changes.</p>
-          {connectionSlot === 'token' && connectionNotice}
-          <button className="primary" disabled={pairBusy}>Connect</button>
-        </form>
-      </details>
-    </>}
-    {token && <p role="status">Opening your local workspace…</p>}
-    {connectionSlot === 'open' && connectionNotice}
-    <ErrorNotice error={error} />
-    {token && <button onClick={forget}>Forget this workspace</button>}
-  </main>
-  }
   const actors = doc.actors
   const veins = doc.veins || {}
   const goals = doc.goals || {}
@@ -666,20 +538,15 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   const closeCreate = () => { setCreating(false); setError(null) }
   const closeDetails = () => { setSelected(null); setError(null) }
   return (
-    <div className="app" data-client={sessionMode || undefined}
-      style={sessionMode ? { '--client-header-height': `${headerHeight}px` } : undefined}>
-      <header ref={headerRef} className={session ? 'client-header' : undefined}>
-        {session ? session.header : <div>
-          <h1>Pardner</h1>
-          <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
-        </div>}
+    <div className="app" data-client style={{ '--client-header-height': `${headerHeight}px` }}>
+      <header ref={headerRef} className="client-header">
+        {session.header}
         <div className="header-controls">
-          {session ? <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
-            : <SelectActor actors={actors} value={actor} onChange={setActor} />}
+          <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
           <button
             ref={newTaskButton}
             className="primary"
-            disabled={!actor || busy || Boolean(pending)}
+            disabled={busy || Boolean(pending)}
             onClick={event => openPanel(event.currentTarget, () => {
               setCreating(true)
               setSelected(null)
@@ -698,19 +565,8 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           </button>
         </div>
       )}
-      {phoneSetup && <PhoneAccess canManageAccess={config.canManageAccess} request={request} onClose={() => setPhoneSetup(false)} />}
-      {connectionError && <div className="notice" role="status"><p>{connectionError.failure.message}</p>
+      {connectionError && <div className="notice" role="status"><p>{connectionError.message}</p>
         <button onClick={retryConnection}>Retry connection</button>
-      </div>}
-      {!session && !Object.keys(actors).length && (
-        <div className="notice">
-          Register your first human or agent Actor with{' '}
-          <code>pardner actors register</code> to begin.
-        </div>
-      )}
-      {!session && <div className="workspace-actions">
-        <button onClick={() => setPhoneSetup(true)}>Pair another device</button>
-        <button disabled={busy} onClick={forget}>Forget this workspace</button>
       </div>}
       <nav aria-label="Workspace views" ref={viewNav}>
         <button
@@ -816,7 +672,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
                           Conflicting edits
                         </span>
                       )}
-                      {session?.focus[task.id]?.length > 0 && <FocusMarkers session={session} actorIds={session.focus[task.id]} />}
+                      {session.focus[task.id]?.length > 0 && <FocusMarkers session={session} actorIds={session.focus[task.id]} />}
                     </button>
                   ))}
                 {!tasks.some((task) => task.status === column) && (
@@ -839,7 +695,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
             errorOrigin={errorOrigin}
           />
         ) : view === 'control' && canControl ? (
-          <ControlPane request={request} actors={actors} tasks={doc.tasks} actor={actor} canManage={canManage} />
+          <ControlPane request={request} actors={actors} tasks={doc.tasks} actor={actor} canManage={canControl} />
         ) : (
           <section className="activity">
             <div className="activity-heading">
@@ -1109,7 +965,7 @@ function TaskForm({
       {!editing && (
         <p className="muted" id="new-task-actor">
           {noActor
-            ? 'No Actor chosen. Close this panel and choose one in the header; your draft is kept.'
+            ? 'Your Actor isn’t on this board yet. Wait for the project to sync; your draft is kept.'
             : `Creating as ${labelActor(actors[actor])}`}
         </p>
       )}
@@ -1270,8 +1126,8 @@ function TaskDetail({
   busy,
   status,
   connected,
-  session = null,
-  client = null,
+  session,
+  client,
   errorSlot,
   errorNotice,
   clearError,
@@ -1290,20 +1146,20 @@ function TaskDetail({
   useEffect(() => {
     if (context && heading.current && claimHeadingFocus()) heading.current.focus()
   }, [context, claimHeadingFocus])
-  // In client mode an edit draft survives closing the panel, reloading the tab and
-  // switching projects. It is stored per project, Actor and task, never sent until saved.
-  const [draft, setDraftState] = useState(() => session ? client.draft(taskId) : null)
+  // An edit draft survives closing the panel, reloading the tab and switching
+  // projects. It is stored per project, Actor and task, never sent until saved.
+  const [draft, setDraftState] = useState(() => client.draft(taskId))
   const draftRef = useRef(draft)
   const setDraft = useCallback(value => {
     draftRef.current = value
     setDraftState(value)
-    if (session) try { client.saveDraft(taskId, value) } catch { /* the in-memory draft remains */ }
-  }, [session, client, taskId])
+    try { client.saveDraft(taskId, value) } catch { /* the in-memory draft remains */ }
+  }, [client, taskId])
   const persistDraftEdits = useCallback((edited, tagsText) => {
-    if (!session || !draftRef.current) return
+    if (!draftRef.current) return
     draftRef.current = { ...draftRef.current, edited, tagsText }
     try { client.saveDraft(taskId, draftRef.current) } catch { /* the in-memory draft remains */ }
-  }, [session, client, taskId])
+  }, [client, taskId])
   const [message, setMessage] = useState('')
   const [commentFocused, setCommentFocused] = useState(false)
   const [to, setTo] = useState('')
@@ -1389,13 +1245,13 @@ function TaskDetail({
   const hint = mentionHint(unmatchedHandles(message, actors, { focused: commentFocused }))
   const handoffRevisions = { assignee: revisions.assignee, status: revisions.status }
   const handoffStale = handoffBase && JSON.stringify(handoffBase) !== JSON.stringify(handoffRevisions)
-  const newerFields = session && draft
+  const newerFields = draft
     ? Object.keys(draft.fields).filter(field => JSON.stringify(revisions[field]) !== JSON.stringify(draft.revisions[field]))
     : []
   const newerBy = newerFields.length
     ? [...history].reverse().find(event => event.changes.some(change => newerFields.includes(change.field)))?.actorId
     : null
-  const here = session?.focus[taskId] ? focusedActors(session, session.focus[taskId]) : []
+  const here = session.focus[taskId] ? focusedActors(session, session.focus[taskId]) : []
   // An edit error falls back to the panel top once its form has closed.
   // A handoff error does too while its form is closed, so Retry stays visible.
   const formSlot = (errorSlot === 'task.update' && !draft) || (errorSlot === 'task.handoff' && !handoffOpen)
