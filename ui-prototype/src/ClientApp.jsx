@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Workspace } from './Pardner.jsx'
 import { Avatar, AvatarStack, PeopleDialog, ProfileDialog, actorName, avatarLabel } from './Avatar.jsx'
 import {
-  consumeCapturedGrant, createClientApi, harnessLabel, invitationPurpose, projectConfiguration, syncLabel, takeBootstrapGrant,
+  consumeCapturedGrant, createClientApi, groupPairingCode, harnessLabel, invitationPurpose, pairingDigits, projectConfiguration, syncLabel,
+  takeBootstrapGrant, takePairingCode,
 } from './client-api.js'
+import CompanionDialog from './CompanionDialog.jsx'
 import { createOperationId } from './operation-id.js'
 import { createPresenceReporter, focusByTask, presenceIndex, presenceOf, sortParticipants } from './presence.js'
 
@@ -48,53 +50,133 @@ function Failure({ error, children }) {
 
 export default function ClientApp({ config }) {
   const api = useMemo(() => createClientApi(config), [config])
+  // A phone served by the computer's opt-in phone listener: it signs in with a pairing code, never a grant.
+  const companion = config.companion === true
   const [phase, setPhase] = useState({ name: 'loading' })
   const [session, setSession] = useState(null)
   const [projectId, setProjectId] = useState(() => { try { return localStorage.getItem(LAST_PROJECT) } catch { return null } })
   const [choosing, setChoosing] = useState(false)
-  const open = useCallback(async grant => {
-    let bootstrapFailure = null
-    if (grant) { try { await api.bootstrap(grant) } catch (failure) { bootstrapFailure = failure } }
+  // The scanned code leaves the address bar on the first render, before anything else can read or log it.
+  const entryCode = useRef(undefined)
+  if (entryCode.current === undefined) entryCode.current = companion ? takePairingCode() : null
+  const open = useCallback(async ({ grant = null, code = null } = {}) => {
+    let entryFailure = null
+    if (grant) { try { await api.bootstrap(grant) } catch (failure) { entryFailure = failure } }
+    if (code) {
+      setPhase({ name: 'loading', label: 'Pairing this phone…' })
+      try { await api.redeemCompanion(code) } catch (failure) { entryFailure = failure }
+    }
     try {
       setSession(await api.session())
       setPhase({ name: 'ready' })
     } catch (failure) {
       // A used link is harmless when this browser is already signed in.
       setPhase(failure.code === 'AUTH_REQUIRED' || failure.status === 401
-        ? { name: 'signed-out', failure: bootstrapFailure } : { name: 'error', failure })
+        ? { name: 'signed-out', failure: entryFailure } : { name: 'error', failure })
     }
   }, [api])
   useEffect(() => {
-    void open(consumeCapturedGrant())
-    const onHash = () => { const grant = takeBootstrapGrant(); if (grant) void open(grant) }
+    const code = entryCode.current
+    entryCode.current = null
+    void open({ grant: consumeCapturedGrant(), code })
+    const onHash = () => {
+      const grant = takeBootstrapGrant(), code = companion ? takePairingCode() : null
+      if (grant || code) void open({ grant, code })
+    }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
-  }, [open])
+  }, [open, companion])
   const refreshSession = useCallback(async () => {
     try { const next = await api.session(); setSession(next); return next }
-    catch (failure) { if (failure.code === 'AUTH_REQUIRED') setPhase({ name: 'signed-out' }); throw failure }
+    catch (failure) { if (failure.code === 'AUTH_REQUIRED') setPhase({ name: 'signed-out', reason: 'ended' }); throw failure }
   }, [api])
   const selectProject = useCallback(id => {
     setProjectId(id)
     setChoosing(false)
     try { localStorage.setItem(LAST_PROJECT, id) } catch { /* optional convenience */ }
   }, [])
-  const authLost = useCallback(() => setPhase({ name: 'signed-out' }), [])
+  const authLost = useCallback(() => setPhase({ name: 'signed-out', reason: 'ended' }), [])
+  const signOutPhone = useCallback(async () => {
+    // A pairing that already ended is as signed out as this request would make it.
+    try { await api.logoutCompanion() } catch (failure) { if (failure.code !== 'AUTH_REQUIRED') throw failure }
+    setSession(null)
+    setPhase({ name: 'signed-out', reason: 'signed-out' })
+  }, [api])
+  const paired = useCallback(next => { setSession(next); setPhase({ name: 'ready' }) }, [])
 
-  if (phase.name === 'loading') return <main className="connection"><h1>Pardner</h1><p role="status">Opening your local client…</p></main>
-  if (phase.name === 'signed-out') return <SignedOut failure={phase.failure} retry={() => open(null)} />
+  if (phase.name === 'loading') return <main className="connection"><h1>Pardner</h1>
+    <p role="status">{phase.label ?? (companion ? 'Opening Pardner…' : 'Opening your local client…')}</p></main>
+  if (phase.name === 'signed-out') return companion
+    ? <CompanionPair api={api} failure={phase.failure} reason={phase.reason} onPaired={paired} />
+    : <SignedOut failure={phase.failure} retry={() => open()} />
   if (phase.name === 'error') return <main className="connection">
     <h1>Pardner</h1>
-    <Failure error={phase.failure}><button onClick={() => { setPhase({ name: 'loading' }); void open(null) }}>Retry</button></Failure>
+    <Failure error={phase.failure}><button onClick={() => { setPhase({ name: 'loading' }); void open() }}>Retry</button></Failure>
   </main>
   if (!session.identity) return <IdentityStep api={api} session={session} onDone={next => setSession(next)} />
   const projects = session.projects ?? []
   const current = projects.find(project => project.id === projectId) ?? projects[0]
+  // A phone opens only the projects it was paired for; with none left it pairs again.
+  if (session.companion && !current) return <CompanionPair api={api} reason="no-projects" onPaired={paired} />
   if (choosing || !current) return <Welcome api={api} session={session} current={current}
     onBack={current ? () => setChoosing(false) : null}
     onReady={async project => { await refreshSession().catch(() => {}); selectProject(project.id) }} />
   return <ProjectView key={current.id} api={api} session={session} project={current}
-    onSelect={selectProject} onStartOrJoin={() => setChoosing(true)} onAuthLost={authLost} refreshSession={refreshSession} />
+    onSelect={selectProject} onStartOrJoin={() => setChoosing(true)} onAuthLost={authLost} refreshSession={refreshSession}
+    onSignOutPhone={signOutPhone} />
+}
+
+const PAIR_FAILURES = {
+  PAIRING_INVALID: ['That code didn’t work.', 'It may be mistyped, already used, cancelled or more than 10 minutes old. On the computer, choose New code and enter the new one.'],
+  PAIRING_THROTTLED: ['Too many attempts.', 'Wait a minute, then try again.'],
+  ORIGIN_REJECTED: ['Open the phone address shown on the computer.', 'This page was opened through a different address.'],
+  CLIENT_UNREACHABLE: ['The computer didn’t respond.', 'Check that it’s awake, Pardner is running, and this phone is on the same network.'],
+}
+const PAIR_REASONS = {
+  ended: 'This phone’s pairing ended: it was revoked on the computer or has expired. Pair it again with a new code.',
+  'signed-out': 'This phone is signed out. To use it again, pair it with a new code.',
+  'no-projects': 'This phone has no project it can open. Pair it again from a project on the computer.',
+}
+
+/** A phone without a session: pair with the eight-digit code the computer shows (scanning its QR code fills it in). */
+function CompanionPair({ api, failure: initialFailure = null, reason, onPaired }) {
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState(initialFailure)
+  const field = useRef(null)
+  useEffect(() => { setFailure(initialFailure) }, [initialFailure])
+  const submit = async event => {
+    event.preventDefault()
+    const digits = pairingDigits(code)
+    if (digits.length !== 8) { setFailure({ code: 'INCOMPLETE' }); field.current?.focus(); return }
+    setBusy(true); setFailure(null)
+    try {
+      await api.redeemCompanion(digits)
+      onPaired(await api.session())
+    } catch (error) {
+      setFailure(error)
+      // A refused code can never succeed, so the field is ready for the next one.
+      if (error.code === 'PAIRING_INVALID') setCode('')
+      field.current?.focus()
+    } finally { setBusy(false) }
+  }
+  const [title, hint] = failure?.code === 'INCOMPLETE' ? ['Enter all 8 digits.', null]
+    : failure ? PAIR_FAILURES[failure.code] ?? [failure.message, null] : []
+  return <main className="connection client-entry companion-pair">
+    <h1>Pair this phone</h1>
+    <p className="lead">On the computer running Pardner, open the project and choose Pair a phone. Scan its code with this phone’s camera, or type the 8 digits here.</p>
+    {reason && PAIR_REASONS[reason] && <div className="notice inline-notice" role="status"><p>{PAIR_REASONS[reason]}</p></div>}
+    <form onSubmit={submit} aria-label="Pair this phone">
+      <label>Pairing code<input ref={field} className="pairing-input" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]*"
+        maxLength={9} placeholder="1234 5678" value={code} aria-invalid={failure ? true : undefined}
+        aria-describedby={failure ? 'pair-failure' : undefined} onChange={event => setCode(groupPairingCode(event.target.value))} /></label>
+      {failure && <div id="pair-failure" className="error inline-error" role="alert">
+        <strong>{title}</strong>{hint && <p>{hint}</p>}
+      </div>}
+      <button className="primary" disabled={busy}>{busy ? 'Pairing…' : 'Pair this phone'}</button>
+    </form>
+    <p className="muted small companion-note">The phone connects over unencrypted HTTP, so pair only on a network you trust. It works while the computer is on, running Pardner and reachable on this network; it keeps no copy of the board.</p>
+  </main>
 }
 
 function SignedOut({ failure, retry }) {
@@ -283,7 +365,7 @@ function hasPendingRequest(project) {
   try { return sessionStorage.getItem(`pardner:${project.id}:${project.actorId}:pending`) !== null } catch { return false }
 }
 
-function ProjectSwitcher({ projects, current, onSelect, onStartOrJoin }) {
+function ProjectSwitcher({ projects, current, onSelect, onStartOrJoin = null }) {
   const { open, close, buttonProps, menuProps } = useMenu()
   return <div className="menu-anchor">
     <h1 className="project-title">
@@ -297,10 +379,12 @@ function ProjectSwitcher({ projects, current, onSelect, onStartOrJoin }) {
         <span className="menu-label">{project.name}</span>
         <span className="menu-detail">{syncLabel(project.status)}{hasPendingRequest(project) ? ' · unconfirmed change' : ''}</span>
       </button>)}
-      <div className="menu-separator" role="separator" />
-      <button type="button" role="menuitem" onClick={() => { close(false); onStartOrJoin() }}>
-        <span className="menu-label">Start or join a project…</span>
-      </button>
+      {onStartOrJoin && <>
+        <div className="menu-separator" role="separator" />
+        <button type="button" role="menuitem" onClick={() => { close(false); onStartOrJoin() }}>
+          <span className="menu-label">Start or join a project…</span>
+        </button>
+      </>}
     </div>}
   </div>
 }
@@ -446,7 +530,8 @@ function InviteDialog({ api, project, purpose, returnFocus, onClose }) {
   </dialog>
 }
 
-function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLost, refreshSession }) {
+function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLost, refreshSession, onSignOutPhone }) {
+  const phone = session.companion === true
   const [details, setDetails] = useState(null)
   const [presence, setPresence] = useState(null)
   const [failure, setFailure] = useState(null)
@@ -465,11 +550,13 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
   useEffect(() => {
     let stopped = false
     load().catch(error => { if (!stopped) handle(error) })
+    // A revoked or expired session ends here too, so a phone returns to pairing without waiting for its socket.
+    const lost = error => { if (!stopped && error.code === 'AUTH_REQUIRED') onAuthLost() }
     const presenceTimer = setInterval(() => api.presence(project.id)
-      .then(next => { if (!stopped) setPresence(next) }).catch(() => {}), PRESENCE_POLL_MS)
-    const projectTimer = setInterval(() => load().catch(() => {}), PROJECT_POLL_MS)
+      .then(next => { if (!stopped) setPresence(next) }).catch(lost), PRESENCE_POLL_MS)
+    const projectTimer = setInterval(() => load().catch(lost), PROJECT_POLL_MS)
     return () => { stopped = true; clearInterval(presenceTimer); clearInterval(projectTimer) }
-  }, [api, project.id, load, handle])
+  }, [api, project.id, load, handle, onAuthLost])
   useEffect(() => {
     const instance = createPresenceReporter({ api, projectId: project.id, onError: () => {} })
     reporter.current = instance
@@ -492,7 +579,10 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
   const config = useMemo(() => projectConfiguration(current),
     // The board remounts only when its identity or routes change.
     [current.id, current.apiBase, current.wsPath, current.actorId]) // eslint-disable-line react-hooks/exhaustive-deps
-  const reloadConfiguration = useCallback(async () => projectConfiguration((await load()).project), [load])
+  const reloadConfiguration = useCallback(async () => {
+    try { return projectConfiguration((await load()).project) }
+    catch (error) { if (error.code === 'AUTH_REQUIRED') onAuthLost(); throw error }
+  }, [load, onAuthLost])
   const index = useMemo(() => presenceIndex(presence), [presence])
   const actors = useMemo(() => details?.actors ?? [], [details])
   const actorsById = useMemo(() => Object.fromEntries(actors.map(actor => [actor.id, actor])), [actors])
@@ -505,18 +595,26 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
     <div className="client-identity">
       <span className="brand">Pardner</span>
       <ProjectSwitcher projects={session.projects} current={current} onSelect={onSelect}
-        onStartOrJoin={onStartOrJoin} />
+        onStartOrJoin={phone ? null : onStartOrJoin} />
     </div>
     <div className="client-people">
       {participants.length > 0 && <AvatarStack actors={participants} index={index} max={5} label="People in this project"
         onOpen={openProfile} onMore={element => setDialog({ type: 'people', returnFocus: element })} />}
       {remotePresenceUnavailable && <span className="muted small">Remote presence unavailable</span>}
-      <InviteMenu onChoose={(purpose, element) => setDialog({ type: 'invite', purpose, returnFocus: element })} />
-      <button type="button" className="you" aria-label={`You: ${avatarLabel(me, presenceOf(index, me.id))}. Open your profile`}
-        onClick={event => openProfile(me, event.currentTarget)}>
+      {phone ? <button type="button" className="you" title={session.device.name}
+        aria-label={`You (phone): ${session.device.name}, signed in as ${actorName(me)}. Open phone settings`}
+        onClick={event => setDialog({ type: 'phone', returnFocus: event.currentTarget })}>
         <Avatar actor={me} state={presenceOf(index, me.id)} size="sm" />
-        <span>You: {actorName(me)}</span>
-      </button>
+        <span>You (phone)</span>
+      </button> : <>
+        <InviteMenu onChoose={(purpose, element) => setDialog({ type: 'invite', purpose, returnFocus: element })} />
+        <button type="button" onClick={event => setDialog({ type: 'companion', returnFocus: event.currentTarget })}>Pair a phone</button>
+        <button type="button" className="you" aria-label={`You: ${avatarLabel(me, presenceOf(index, me.id))}. Open your profile`}
+          onClick={event => openProfile(me, event.currentTarget)}>
+          <Avatar actor={me} state={presenceOf(index, me.id)} size="sm" />
+          <span>You: {actorName(me)}</span>
+        </button>
+      </>}
     </div>
   </>
   const canControl = details?.project.controlAvailable === true
@@ -546,5 +644,55 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
       onClose={close} onOpen={(actor, element) => setDialog({ type: 'profile', actorId: actor.id, returnFocus: element })} />}
     {dialog?.type === 'invite' && <InviteDialog api={api} project={current} purpose={dialog.purpose}
       returnFocus={dialog.returnFocus} onClose={() => { close(); void refreshSession().catch(() => {}) }} />}
+    {dialog?.type === 'companion' && <CompanionDialog api={api} project={current} ownerName={session.identity.name}
+      returnFocus={dialog.returnFocus} onClose={close} onAuthLost={onAuthLost} />}
+    {dialog?.type === 'phone' && <PhoneSessionDialog session={session} me={me} returnFocus={dialog.returnFocus}
+      onClose={close} onSignOut={onSignOutPhone} />}
   </>
+}
+
+/** On a paired phone: which phone this is, whose changes it makes, and Sign out. */
+function PhoneSessionDialog({ session, me, returnFocus, onClose, onSignOut }) {
+  const dialog = useRef(null)
+  const cancel = useRef(null)
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState(null)
+  useEffect(() => {
+    dialog.current.showModal()
+    return () => { if (returnFocus?.isConnected) returnFocus.focus() }
+  }, [returnFocus])
+  useEffect(() => { if (confirming) cancel.current?.focus() }, [confirming])
+  const signOut = async () => {
+    setBusy(true); setFailure(null)
+    try { await onSignOut() } catch (error) { setFailure(error); setBusy(false) }
+  }
+  return <dialog ref={dialog} className="profile-dialog" aria-labelledby="phone-session-title"
+    onCancel={event => { event.preventDefault(); onClose() }}>
+    <div className="profile-heading">
+      <div>
+        <h2 id="phone-session-title">{session.device.name}</h2>
+        <p className="profile-kind">This phone</p>
+      </div>
+      <button type="button" className="close" onClick={onClose}>Close</button>
+    </div>
+    <dl className="profile-fields">
+      <dt>Signed in as</dt><dd>{actorName(me)}</dd>
+      <dt>Changes</dt><dd>Saved as {actorName(me)}, through the computer that paired this phone</dd>
+    </dl>
+    <section aria-labelledby="phone-session-sign-out">
+      <h3 id="phone-session-sign-out">Sign out</h3>
+      {confirming ? <div className="companion-confirm" role="group" aria-label="Confirm signing out this phone">
+        <p>Sign out this phone? To use it again, pair it with a new code from the computer.</p>
+        <div className="actions">
+          <button className="danger" disabled={busy} onClick={signOut}>{busy ? 'Signing out…' : 'Sign out'}</button>
+          <button ref={cancel} disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
+        </div>
+      </div> : <>
+        <p className="muted">The pairing ends on the computer too. This phone keeps no copy of the board.</p>
+        <button onClick={() => setConfirming(true)}>Sign out this phone</button>
+      </>}
+      <Failure error={failure} />
+    </section>
+  </dialog>
 }
