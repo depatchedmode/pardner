@@ -1,5 +1,13 @@
 # Redundancy and IA critique
 
+> **Superseded browser entry.** This record describes the standalone browser
+> board (local service token screen, Actor picker, Pair another device, Forget this
+> workspace, `PhoneAccess`). People now open the board only through the local
+> client (`pardner open`), and phones pair through the client's **Pair a phone**
+> companion; see the [client guide](../PARDNER-CLIENT.md) and the
+> [phone companion guide](../PARDNER-LAN.md). The findings and evidence below are
+> kept unchanged.
+
 > **Evidence archived.** Screenshots, per-story and per-page reports from this run were moved out of the repository; the findings below stand on their own text, and filed issues carry the details.
 
 Scope: the Pardner browser UI (`ui-prototype/src/Pardner.jsx`, `PhoneAccess.jsx`, `ui-prototype/index.html`) and the CLI surface (`lib/cli.js`). Lead list: `docs/ux-paths/catalog.md` → "Redundancy Candidates" (line 5211). Heuristics: `simplification-heuristics.md` #8–#16.

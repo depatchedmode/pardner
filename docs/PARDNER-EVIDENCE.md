@@ -66,7 +66,7 @@ operations still use tab storage, scoped to workspace identity.
   delivery/host-contention explanation, but does not establish the phone's cause.
   Device/browser identity and physical restart/reconnect confirmation remain
   outstanding. The procedure
-  is in [companion device and LAN access](PARDNER-LAN.md#verification-and-physical-phone-rehearsal).
+  is in [companion device and LAN access](PARDNER-LAN.md#verification).
 
 ## Persistence and CRDT qualification — 2026-09-04
 
