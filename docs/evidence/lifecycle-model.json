@@ -472,5 +472,81 @@
     "durationMs": 4602,
     "result": "passed",
     "review": "Only the express body-parser error handler changed: the JSON limit is named (100kb, the body-parser default, so admission is unchanged) and an entity.too.large error now answers 413 with a size message instead of the generic 400. The error is raised before any route handler, so no operation is admitted, persisted or acknowledged; body parsing is outside the model. Arrive, UpgradeArrive, StopBegin, IdleConnectionEnds, Respond, ReclaimIdle, ListenerClosed and StoreCloseBegin keep their guard, effect and atomicity; no action, anchor, invariant, witness or mutation changed. Prior mutation and wider-bound records remain historical; not rerun for this candidate."
+  },
+  "standaloneLanRemovalReview": {
+    "recorded": "2026-11-09",
+    "mapping": {
+      "revision": "182a8fb2706e91459a4ee9c15ad64d5d6048b41e",
+      "files": {
+        "automerge-sync-server.js": "4aa96f3c9006acdc5b38813f4fe33673f9eddb7865f8b9b7063f7081002c844d",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "db3eb7b8aaf0a3a2360c13e26439b193931e3e9e22ffc61712b9a1d4caae0a31",
+        "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "durationMs": 4388,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-09T06:59:01.429Z",
+      "finished": "2026-11-09T06:59:23.299Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "automerge-sync-server.js no longer constructs LanAccess or opens LAN listeners: the persisted LAN block in start(), the lanServers entries in stop() and the /pardner/pair and /pardner/access routes are gone, /pardner/config drops canManageAccess, and the loopback admin check for control routes moved unchanged to lib/loopback.js. The listener set stop() closes with Promise.allSettled shrinks to the HTTP and WebSocket listeners; both still pass through listen(), the stopping 503 middleware stays first, and stop() still sets stopping, closes both listeners, terminates WebSocket clients, awaits listenersClosed and only then closes control and the store. Arrive, UpgradeArrive, StopBegin, IdleConnectionEnds, Respond, ReclaimIdle, ListenerClosed and StoreCloseBegin keep their guard, effect and atomicity; no action, anchor, invariant or witness changed. The close-store-before-drain mutation find/replace text dropped its lanServers line. Wider-bound records remain historical; not rerun."
   }
 }
