@@ -12,16 +12,13 @@ already covered. Match the exact assertions to the task's expected result.
   restart, convergence, and competing authored edits.
 - [Handoffs and agent delivery](delivery.md): human/agent handoffs, durable
   receipt, acknowledgement loss, and effect replay.
-- [Phone companion](companion.md): opt-in phone listener, pairing codes, phone
-  authorship and presence, revocation, and sign-out.
 - [Control pane and issue links](control.md): T3 credential, registry, routes,
   queued intent, stale reads, approvals, cancellation, verdicts, and GitHub links.
 - [Client onboarding and presence](client-onboarding.md): authenticated Actor
   sessions, device aggregation, expiry and integration evidence boundaries.
 
 Entries describe the checks that exist in this checkout. When a coverage
-overlay under trial adds assertions (for example both-engine QR image loading
-or tracker receipts), report them as overlay coverage; update the map in the
+overlay under trial adds assertions (for example tracker receipts), report them as overlay coverage; update the map in the
 change that lands the assertions, not in the candidate under trial.
 
 Shared launch/doctor/cleanup and reporting instructions are in

@@ -1,17 +1,15 @@
 # Deliberate qualification
 
 Read only when qualification is explicitly requested, or when reporting the exact
-pending gate. Follow [the acceptance contract](../../../../docs/PARDNER-ACCEPTANCE.md)
-and [LAN requirements](../../../../docs/PARDNER-LAN.md). A merge request alone
-does not invoke this tier.
+pending gate. Follow [the acceptance contract](../../../../docs/PARDNER-ACCEPTANCE.md).
+A merge request alone does not invoke this tier.
 
 ## Preconditions and scope
 
 - Routine verification must pass for the candidate, including behavior-specific
   checks and applicable Chromium/WebKit checks. Resolve relevant skips first.
 - Use Node 24.11.1, matching root/UI dependencies, pinned Chromium and WebKit,
-  and the current UI build. Check actual launches. LAN checks need a real
-  non-loopback IPv4 interface; localhost is not a substitute.
+  and the current UI build. Check actual launches.
 - Record the baseline/current commits, uncommitted diff, environment, and
   candidate fingerprint. Keep the source, tests, dependencies, and build fixed
   through the run. Use a separate checkout if other work is actively editing it.

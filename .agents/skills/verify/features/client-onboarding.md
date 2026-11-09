@@ -76,5 +76,8 @@ screenshots alone establish neither persistence nor remote presence.
 Invitations, browser grants, cookies, enrollment credentials and raw browser
 traces are private. Capture the default hidden invitation state. Do not copy
 private request headers or bootstrap fragments into evidence or screenshots.
-Keep the [phone companion](companion.md) coverage; a new client walkthrough does
-not replace those regression assertions.
+The client listens on loopback only and offers no phone or companion browser.
+Security coverage elsewhere: `test/markdown-privacy.test.js` (persisted images,
+CSP, referrer-free links, `test:ui`), `test/framing.test.js` (headers and iframe
+rejection) and `test/vite-security.test.js` (development listener) run through
+full test discovery.

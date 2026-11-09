@@ -227,9 +227,8 @@ runtime, enrollment authority or remote route is unavailable.
 - **My device:** link the existing human identity and explicitly selected project
   memberships on another machine. Reuse agent identities for matching harnesses.
   Pairing a companion browser remains a separate option and must not be described
-  as creating a persisted replica. *Implemented:* **Pair a phone** on the board pairs
-  a phone companion of the local client ([guide](PARDNER-LAN.md)); it is a
-  companion, not a replica.
+  as creating a persisted replica. *Not implemented:* no companion browser is
+  offered; phone access is planned through the hub over HTTPS.
 
 The prompt should fit in a few sentences, with all routine setup in a supported,
 versioned entry point rather than a pasted shell script. Example copy:
@@ -320,8 +319,6 @@ service. Enrollment and new delivery leases still require the project's hub.
 - **Local service loss:** its browser cannot read/write its replica until the local
   service resumes. A companion browser likewise depends on its host. Cached UI
   assets must not turn a service-dependent browser into a claimed offline replica.
-  *Implemented:* the client phone companion has no offline copy and stops working
-  when the computer's client service or its network is unavailable.
 - **Revocation:** reject future admission and close known live sessions. Offline
   peers retain data already received; revocation cannot erase their disks. Define
   treatment of offline authored operations against the known revocation state
@@ -419,7 +416,7 @@ the onboarding outcome.
 
 - Finish device loss/revocation, export/fresh-install restore and hub replacement
   procedures, with behavior-level checks against the acceptance scenarios below.
-- Update [README](../README.md), [CLI](PARDNER-CLI.md), [LAN](PARDNER-LAN.md),
+- Update [README](../README.md), [CLI](PARDNER-CLI.md),
   rehearsal instructions and feature-map coverage to distinguish shipped behavior
   from future guarantees. Keep screenshots and evidence free of credentials.
 - Run the required routine checks and deliberately requested milestone
@@ -459,8 +456,7 @@ consistency and the diff; do not start services or run regression suites.
 For future implementation, use the [verification skill](../.agents/skills/verify/SKILL.md)
 and update its feature coverage for the scenarios above. Select Node **24.11.1**
 for every command. Prepare matching dependencies, the UI build and pinned
-Chromium/WebKit as required by the [acceptance contract](PARDNER-ACCEPTANCE.md)
-and [LAN guide](PARDNER-LAN.md).
+Chromium/WebKit as required by the [acceptance contract](PARDNER-ACCEPTANCE.md).
 
 - Run affected `npm run test:runtime`, `npm run test:qualification`,
   `npm run test:cli` and `npm run test:ui`, then `npm run verify`.
@@ -475,10 +471,9 @@ and [LAN guide](PARDNER-LAN.md).
   Do not recommend milestone completion/merge until that obligation is satisfied.
 - Preserve existing measured acceptance limits and retry/idempotency assertions.
   Do not weaken them to accommodate the new supervisor or setup path.
-- Inspect desktop and companion browser layouts with pinned Chromium and WebKit.
-  Record actual LAN reachability and skips; loopback success is insufficient.
-  (The companion is now the client's opt-in phone listener; see the
-  [phone companion guide](PARDNER-LAN.md) for its checks.)
+- Inspect desktop browser layouts with pinned Chromium and WebKit. (No companion
+  browser is currently offered; phone access is planned through the hub over
+  HTTPS.)
 - Rehearse Alice/Alpha and Bob/Gamma on separate machines, then Carol/Delta, using
   actual existing agent harnesses. Record the real interactions separately from
   deterministic workers; automation does not prove a real-agent rehearsal ran.

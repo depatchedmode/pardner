@@ -151,10 +151,9 @@ npm run ui:build
 ```
 
 Use existing matching installs when available. A missing prerequisite is a setup
-problem to resolve or report; changing pins, skipping assertions, or substituting
-localhost for LAN does not resolve it. Browser launch must work, not merely an
-executable-path existence check. Read the [LAN guide](../../../docs/PARDNER-LAN.md)
-when companion/browser checks apply.
+problem to resolve or report; changing pins or skipping assertions does not
+resolve it. Browser launch must work, not merely an executable-path existence
+check.
 
 The reusable launch/doctor/drive/cleanup example is:
 
@@ -333,7 +332,7 @@ UI build. Never treat a matching fingerprint as evidence that a command ran.
 - Reproduce unrelated defects and report them separately. Stop for an unresolved
   product decision, inaccessible prerequisite, or unrelated blocker after
   independent work is done.
-- Record every skip and its relevance. A skipped applicable LAN/browser check
+- Record every skip and its relevance. A skipped applicable browser check
   leaves that behavior incomplete even if the command exits zero. A successful
   rerun without an explanation does not erase an intermittent failure: report
   the failing attempt alongside it.

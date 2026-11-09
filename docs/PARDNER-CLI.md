@@ -35,9 +35,7 @@ Actor authors every change, and filters are remembered per project and Actor. No
 token is entered in or compiled into the browser. The standalone service's
 `/pardner/` page serves no board; it points people to `pardner open`.
 
-To use a phone on the same trusted network, choose **Pair a phone** on the board.
-See the [phone companion guide](PARDNER-LAN.md) for HTTP transport limitations,
-revocation and recovery.
+Phone access is not currently offered; it is planned through the hub over HTTPS.
 
 The board, task editor, handoff form, comments, conflict alternatives, explicit
 read receipts, history, and commit evidence use the same operation API as the CLI.
@@ -45,10 +43,10 @@ The browser owns no Automerge database; the client's project runtime persists an
 synchronizes its workspace. Keep the client running for local authoring.
 
 `npm run test:ui` builds the UI and tests client-mode boards in independent
-Chromium and WebKit contexts, phone pairing in mobile contexts, connection
-failures and the session-bound connection. Install pinned engines with `npx
-playwright install chromium webkit` after installing root dependencies. Physical
-phones and the full multi-replica gate are separate qualification steps.
+Chromium and WebKit contexts, connection failures and the session-bound
+connection. Install pinned engines with `npx playwright install chromium webkit`
+after installing root dependencies. The full multi-replica gate is a separate
+qualification step.
 
 ## Start a workspace
 

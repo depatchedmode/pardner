@@ -58,7 +58,7 @@ mapped runtime files change or the check reports drift; see
 
 ## Gotchas
 
-Companion browsers own no offline Automerge replica. Cutting the hub path must
+Browsers own no offline Automerge replica. Cutting the hub path must
 leave the local service available; the acceptance network gate cuts both HTTP
 and native WebSocket paths. Equal snapshots alone cannot detect shared data
 loss—check expected operation intents and receipts. Process kills do not prove

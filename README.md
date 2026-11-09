@@ -45,9 +45,9 @@ starts the client service when it is not running and signs the local browser in
 through a one-time link, with no token screen or Actor picker. Git supplies profile defaults; the session
 determines authorship. The browser can switch projects and show reported Actor
 presence. This preview does not migrate existing standalone installations.
-The local client is the only way people open the board. A person can pair a phone
-on a trusted network as a [companion](docs/PARDNER-LAN.md): it browses this
-computer's client service, acts as that person, and is not an offline replica.
+The local client is the only way people open the board, and it listens on this
+computer's loopback only. Phone access is not currently offered; it is planned
+through the hub over HTTPS.
 
 The standalone service (`pardner serve`) is an agent and integration service: one
 local service per machine whose attributed operation API agents and integrations use
@@ -74,8 +74,8 @@ alternatives, history, and commit evidence, authored by the signed-in Actor. The
 browser authenticates with an HttpOnly session cookie and owns no separate
 Automerge database. Task descriptions and comments support Markdown,
 but images are displayed as alt text to prevent automatic tracking requests.
-The browser image policy permits only same-origin assets and data images (including
-pairing QR codes), and outgoing links do not send a referrer.
+The browser image policy permits only same-origin assets and data images, and
+outgoing links do not send a referrer.
 
 Agent harnesses claim mentions through their local service, which forwards lease
 requests to the hub. They must durably receive a message before acknowledging it.
@@ -92,7 +92,7 @@ Real co-host rehearsals cover handoff and archive recovery; other adapters and
 separate-machine qualification remain follow-up work.
 
 The board's **Control** view is a [project control pane](docs/PARDNER-CONTROL-PANE.md)
-for development through T3 Code, available to people on this computer (not a phone). It maps existing T3 threads to agent Actors with
+for development through T3 Code, available to people on this computer. It maps existing T3 threads to agent Actors with
 explicit task and sender authorization, saves follow-ups before sending them one at
 a time, and keeps intent, run identity, holds, output and verdicts on this host across
 restarts. Execution completion, an independent check and human acceptance are
@@ -151,11 +151,6 @@ The service writes its credentials to `.pardner/connection.json` (mode 0600) for
 CLI and integrations. Install the package to expose `pardner` directly on PATH; `npm
 run sync` also starts the local service.
 
-To use a phone on the same trusted network, choose **Pair a phone** on the board
-opened with `pardner open`. The phone uses your computer's client and keeps no copy
-of the board. See the [phone companion guide](docs/PARDNER-LAN.md) for setup,
-transport, revocation and recovery.
-
 For another machine, enroll a fresh replica with `pardner serve --role replica
 --hub URL --hub-ws URL --hub-token TOKEN`. The hub must be reachable for enrollment;
 its role, addresses, and credentials are then remembered locally. The hub defaults
@@ -174,7 +169,7 @@ origin-bound grant, session cookie and socket tickets work. It is loopback-only 
 serves files only from `ui-prototype`; workspace state in `.pardner` is denied.
 Keep runtime data outside `ui-prototype`, including its `public` directory.
 Do not expose this development server with `--host`: its proxy reaches your
-client session. For a phone, use the built UI and **Pair a phone**.
+client session.
 
 ## Coordination commands
 

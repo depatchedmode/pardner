@@ -120,7 +120,7 @@ the evidence is stored with the review.
 
 | Action | Needs |
 | --- | --- |
-| Every control action | A person signed in to the local client on this computer's loopback page (browser session or the local operator). Agent credentials and paired phones get `FORBIDDEN` |
+| Every control action | A person signed in to the local client on this computer's loopback page (browser session or the local operator). Agent credentials get `FORBIDDEN` |
 | Pair T3, register projects, map threads, change authorization, release holds, resolve unknown outcomes | The same; the client's project runtime treats a proxied call as local administration |
 | Queue follow-ups, cancel, look up an unknown request, record artifacts and verdicts | The same, plus the route's Actor, task and sender check for dispatch |
 

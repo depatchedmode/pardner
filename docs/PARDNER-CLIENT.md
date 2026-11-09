@@ -152,37 +152,8 @@ containing a loopback address works only on the originating machine. The option 
 network reachability. Keep the browser/operator surface private and route only
 the intended enrollment and authenticated replica endpoints.
 
-**Amendment: the opt-in phone companion.** The one exception to the private
-surface is a phone listener that a person on this computer turns on. It is off
-by default, binds only the single IPv4 address of the network interface the
-person chooses (never another interface, and never all interfaces), keeps its
-port across restarts and changes without restarting the service. It serves a
-deny-by-default allowlist; every other route there is 404:
-
-- `GET /pardner/config` (with `companion: true`) and the static UI under `/pardner/`;
-- `POST /pardner/client/v1/companion/redeem` (pairing code, throttled per socket
-  address and globally, same-origin JSON) and `POST …/companion/logout`;
-- `GET …/session` (the phone's view: the person's name, the phone's name and its
-  paired projects only);
-- for paired projects only: `GET …/projects/:id`, its presence, the presence
-  session start/report/end calls, the board API under `…/projects/:id/api/`
-  except control and deliveries, and the project WebSocket with a ticket bound to
-  the phone origin.
-
-The phone listener requires its own Host and Origin, rejects every
-`Authorization` header (the operator, browser and agent credentials never work
-there) and accepts only the companion cookie. The loopback surface refuses
-companion sessions. Turning the network on or off, issuing and cancelling codes,
-and revoking phones are loopback-only person/operator routes, so a phone can
-never mint codes or change network settings. The companion is a browser of this
-computer's service, not a replica: it has no offline copy and stops working when
-the service or its network is unavailable. Turning phone access off cancels
-waiting codes and closes phone connections and presence, and keeps paired
-phones, which reconnect when it is turned back on.
-
-**Pair a phone** on the board turns this listener on and shows a pairing QR code;
-the [phone companion guide](PARDNER-LAN.md) covers pairing, naming and revoking
-phones, and its limits.
+Phone access is not currently offered: the board is served only on this
+computer's loopback. It is planned through the hub over HTTPS.
 
 A reachable private network can provide a direct route to the project authority;
 an HTTPS relay can connect unrelated networks. Automatic discovery, NAT
