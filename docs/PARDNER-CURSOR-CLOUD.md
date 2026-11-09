@@ -42,7 +42,7 @@ mode 0600). It uses the shared private-state helper to reject symlinked or linke
 intent, acceptance receipt, exact agent/run identities, transitions, send counts,
 fresh read timestamps, event cursor/deduplication records, output, owner
 interventions, evidence and verdicts. It does not use workspace operation IDs or
-assume an Automerge schema version. Browser companions own no separate ledger.
+assume an Automerge schema version. Browsers, including paired phones, own no separate ledger.
 
 A separate SQLite file, `cursor-cloud.sqlite.controller`, holds an exclusive OS
 SQLite lock for the controller lifetime. A second controller, even with the same
@@ -134,8 +134,11 @@ A future authorized host composition can supply `control.cloud.transport` using
 at that same boundary. Do not enable this on the live controller before #79's
 access/spending and candidate approvals.
 
-All paths below start with `/pardner/control/cloud`, use the existing shared
-workspace-token admission and return the pane's standard result envelope.
+All paths below start with `/pardner/control/cloud` under the client project API
+and return the pane's standard result envelope. Like the rest of Control, the
+client offers them only to a person signed in on this computer's loopback page and
+binds each route's `fromActorId` (or `actorId` for verdicts) to that person's Actor
+([control authority](PARDNER-CONTROL-PANE.md#authority)).
 
 | POST path | Body | Authority |
 | --- | --- | --- |
@@ -144,7 +147,7 @@ workspace-token admission and return the pane's standard result envelope.
 | `/contexts/release` | `contextId, evidence` | Local admin; fresh known idle context |
 | `/executions` | `executionId, contextId, actorId, taskId, fromActorId, text` | Explicit route |
 | `/executions/cancel` | `executionId, actorId, taskId, fromActorId` | Exact attempt's route |
-| `/executions/reconcile` | `executionId` | Workspace token; no POST/retry to provider |
+| `/executions/reconcile` | `executionId` | Signed-in person; no POST/retry to provider |
 | `/executions/acceptance` | `executionId, actorId, taskId, fromActorId, acceptance, evidence` | Local admin and route; original provider receipt required |
 | `/executions/freeze` | `executionId, actorId, taskId, fromActorId, commit, diff, tests` | Local admin and route |
 | `/executions/verdicts` | `executionId, kind, verdict, actorId, evidence` | Separate checker or human Actor |
