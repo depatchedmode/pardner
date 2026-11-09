@@ -1,0 +1,23 @@
+[
+  {"id":"F-013-01","story_id":"STORY-013","severity":"low","category":"happy-path","criterion":"Labels/copy: self-explanatory and accurate","score":"warn",
+   "description":"When Git provides only user.name, the identity step still says \"Filled in from your Git configuration.\" while Email is empty.",
+   "expected":"Copy reflects what Git actually supplied, e.g. \"Name filled in from Git; enter the email people should see.\"",
+   "actual":"Name prefilled, Email blank, helper text claims both came from Git.",
+   "screenshot":"screenshots/edge-git-name-only.png",
+   "suggested_fix":"Choose the helper sentence from which fields Git returned (both, name only, email only, neither).",
+   "files_likely_involved":["ui-prototype/src/ClientApp.jsx","lib/client-identity.js"]},
+  {"id":"F-013-02","story_id":"STORY-013","severity":"low","category":"happy-path","criterion":"Labels/copy: misleading text","score":"warn",
+   "description":"With no --harness flag (the plain `pardner open` path), the Welcome start form says \"Setup agent (Codex) is registered as your agent\" regardless of which agent actually opened Pardner.",
+   "expected":"Either name the actual harness or use neutral wording when the harness is unknown.",
+   "actual":"\"Setup agent (Codex) is registered as your agent. It shows as offline until it connects…\"",
+   "screenshot":"screenshots/step-5-welcome.png",
+   "suggested_fix":"Default the setup-agent label to \"your setup agent\" when no harness was given, or require the opener to pass its harness.",
+   "files_likely_involved":["ui-prototype/src/ClientApp.jsx","lib/client-service.js"]},
+  {"id":"F-013-03","story_id":"STORY-013","severity":"suggestion","category":"happy-path","criterion":"Labels/copy","score":"warn",
+   "description":"The Start a project form says \"You join as Maya Okafor\" even though she is starting, not joining.",
+   "expected":"\"You'll appear as Maya Okafor.\"",
+   "actual":"\"You join as Maya Okafor.\"",
+   "screenshot":"screenshots/step-5-welcome.png",
+   "suggested_fix":"Use neutral wording on the Start tab.",
+   "files_likely_involved":["ui-prototype/src/ClientApp.jsx"]}
+]

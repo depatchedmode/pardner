@@ -1,0 +1,16 @@
+[
+ {"id":"F-085-01","story_id":"STORY-085","severity":"low","category":"error-handling","criterion":"Error messages: non-technical","score":"warn",
+  "description":"With the local service stopped, the comment error reads 'Failed to fetch' (raw browser text). A second retry control (Retry connection) shows in the page banner at the same time, and the project switcher still says 'Saved locally · synced · unconfirmed change'.",
+  "expected":"'Couldn't reach Pardner on this computer. Your comment is kept and will be sent when you retry.' One retry control; status reads disconnected.",
+  "actual":"'Failed to fetch' plus two retry buttons, and 'synced' in the switcher.",
+  "screenshot":"screenshots/edge-service-down.png",
+  "suggested_fix":"Map network TypeErrors to friendly copy; let one retry action cover both; derive switcher status from connection state.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx","ui-prototype/src/ClientApp.jsx"]},
+ {"id":"F-085-02","story_id":"STORY-085","severity":"low","category":"consistency","criterion":"Information stated once / consistent rules","score":"warn",
+  "description":"Task History omits comment additions but includes comment edits, resolves and deletes ('edited a comment on this task', 'kept one version…', 'This comment was later deleted.').",
+  "expected":"History either covers comment lifecycle events consistently or omits them all (they are in Comments and Activity).",
+  "actual":"Only non-add comment events appear in History.",
+  "screenshot":"screenshots/var-history.png",
+  "suggested_fix":"Apply the same comment-event filter to comment.edit/resolve/delete in History.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx","ui-prototype/src/events.js"]}
+]

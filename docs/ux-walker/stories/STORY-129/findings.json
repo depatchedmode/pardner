@@ -1,0 +1,14 @@
+[
+  {"id": "F-129-01", "story_id": "STORY-129", "severity": "low", "category": "error-handling", "criterion": "Refusal names the correct route", "score": "warn",
+   "description": "An agent credential trying `actors register` (or an actor.register operation) gets `FORBIDDEN: This operation is not available to board credentials`, which does not say how Actors are added.",
+   "expected": "'Actors join through invitations; ask the person to use Invite → Agent or client invite --purpose agent.'",
+   "actual": "Generic refusal.",
+   "screenshot": "cli.log", "suggested_fix": "Special-case actor.* in the board-credential allowlist refusal with an invitation hint.",
+   "files_likely_involved": ["lib/client-proxy.js"]},
+  {"id": "F-129-02", "story_id": "STORY-129", "severity": "low", "category": "consistency", "criterion": "Navigation stays put between views", "score": "warn",
+   "description": "The Tasks/Goals/Activity/Control tab bar sits about 25px higher on Goals than on Tasks (Tasks aligns it with the filter row), so the tabs jump when switching views.",
+   "expected": "The tab bar keeps the same vertical position in every view.",
+   "actual": "y≈132 on Tasks, y≈107 on Goals.",
+   "screenshot": "screenshots/variation-goals.png", "suggested_fix": "Give the view toolbar a fixed height or align tabs to the top in all views.",
+   "files_likely_involved": ["ui-prototype/src/Pardner.jsx"]}
+]

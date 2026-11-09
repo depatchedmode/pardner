@@ -1,0 +1,23 @@
+[
+ {"id":"F-088-01","story_id":"STORY-088","severity":"low","category":"hierarchy","criterion":"Labels self-explanatory / Information stated once","score":"warn",
+  "description":"Conflict alternatives are unlabeled amber blocks with identical author lines, and the comment body above repeats one of them. Nothing explains that two versions were saved concurrently or where each came from.",
+  "expected":"A caption such as 'Saved on two devices at once — keep one', and per-alternative context (time or device).",
+  "actual":"Two 'Marcus Hale · human' blocks, plus the duplicated current text.",
+  "screenshot":"screenshots/step-1-conflict-shown.png",
+  "suggested_fix":"Add a conflict caption and each alternative's timestamp; mark the alternative currently displayed instead of repeating it.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx"]},
+ {"id":"F-088-02","story_id":"STORY-088","severity":"low","category":"happy-path","criterion":"Feedback","score":"warn",
+  "description":"After an edit or resolve the comment keeps its original timestamp and shows no 'edited' marker, though other readers get it flagged New again.",
+  "expected":"An '(edited 11:35 AM)' marker on revised comments.",
+  "actual":"Only the original 11:31:59 AM timestamp is shown.",
+  "screenshot":"screenshots/step-3-resolved.png",
+  "suggested_fix":"Render an edited marker when the comment's revision differs from its creation.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx","ui-prototype/src/comments.js"]},
+ {"id":"F-088-03","story_id":"STORY-088","severity":"low","category":"consistency","criterion":"Component consistency","score":"warn",
+  "description":"Date formats differ in one panel: comments use '11/9/2026, 11:31:59 AM' while History uses 'Nov 9, 2026, 11:35 AM'. Activity quotes show raw Markdown (**bold**, backticks).",
+  "expected":"One date style across comments, History and Activity, and Markdown stripped or rendered in quotes.",
+  "actual":"Mixed formats, and raw Markdown in quotes.",
+  "screenshot":"screenshots/step-5-activity.png",
+  "suggested_fix":"Share one date formatter, and strip Markdown in event quotes.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx","ui-prototype/src/events.js"]}
+]
