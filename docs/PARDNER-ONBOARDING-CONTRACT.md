@@ -119,6 +119,42 @@ explicit Reveal. Join can accept the copied private payload; short agent-facing
 prompt text points to a supported, versioned setup entry point. Never invent a
 published npm package version.
 
+### Phone companion grants
+
+A companion is a phone paired with this computer's person; it is a browser, not a
+replica, and holds no project data of its own.
+
+- **Pairing.** A person on this computer (or the operator) issues a code for one
+  project with `POST /projects/:id/companion/pairings {name?}` →
+  `{id, code, expiresAt, phoneUrl}`. The default name is "<identity name>'s phone".
+  The code is 8 digits, single use, valid 10 minutes, at most 5 wait at once,
+  and several may wait together. Only a salted hash is stored; the plaintext is
+  returned once and never listed, logged or persisted.
+- **Redeeming.** The phone posts `{code}` to `POST /companion/redeem` on the phone
+  listener. Attempts are throttled to 10 per socket address and 100 in total per
+  minute (forwarding headers are ignored); every waiting code is compared in
+  constant time, and every failure is the generic `PAIRING_INVALID`. Success sets
+  `pardner_<client>_companion` (`HttpOnly; SameSite=Strict; Path=/pardner;
+  Max-Age=2592000`, `Secure` over HTTPS) and returns the companion session view.
+  A phone that already holds a live companion cookie gains the project instead of
+  becoming a second phone. Sessions expire 30 days after pairing, enforced by the
+  service, not only by the cookie.
+- **Powers.** A companion acts as the computer's human Actor in its paired
+  projects: it reads and edits the board and reports presence, which shows the
+  phone's own name and device ID. It has no human authority: no invitations,
+  pairing, network settings, revocation, export, agent grants, control pane or
+  deliveries. Membership revocation of the human, or of the project, ends its
+  access through the same binding.
+- **Revocation.** `POST /companion/devices/:id/revoke` (loopback, person or
+  operator) or `POST /companion/logout` (the phone itself) marks the companion
+  revoked, revokes its sessions, closes its WebSockets and ends its presence.
+  Records are kept for the status list.
+- **Status.** `GET /companion` (loopback) returns the saved settings, available
+  interfaces, active binding, `phoneUrl`, staleness, diagnostic, recent pairings
+  without codes and the paired phones. `POST /companion/network {enabled,
+  interfaceName}` applies settings at runtime; saving the settings already in
+  effect changes nothing.
+
 ## Presence module interface
 
 The coordinator supplies `ClientPresence` in `lib/client-presence.js` with an
