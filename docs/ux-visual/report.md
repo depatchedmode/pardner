@@ -1,5 +1,7 @@
 # UX Visual Report — 2026-11-07
 
+> **Evidence archived.** Screenshots, per-story and per-page reports from this run were moved out of the repository; the findings below stand on their own text, and filed issues carry the details.
+
 ## Summary
 | Metric | Value |
 |--------|-------|

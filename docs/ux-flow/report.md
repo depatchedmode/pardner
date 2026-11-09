@@ -1,5 +1,7 @@
 # UX Flow Critique — 2026-11-07
 
+> **Evidence archived.** Screenshots, per-story and per-page reports from this run were moved out of the repository; the findings below stand on their own text, and filed issues carry the details.
+
 ## Run Summary
 | Metric | Value |
 |--------|-------|
@@ -7,19 +9,19 @@
 | Evidence source | Live pass (Playwright/Chromium against a seeded local hub at commit `0768b857`; private empty/LAN services for STORY-001 and STORY-084) |
 | Verdicts | 0 minimal · 4 acceptable · 4 convoluted |
 
-Per-journey critiques: [`journeys/`](journeys/). Cross-cutting findings: [`redundancy.md`](redundancy.md).
+Per-journey critiques were archived with the evidence. Cross-cutting findings: [`redundancy.md`](redundancy.md).
 
 ## Friction Scorecard
 | Journey | Steps (actual/ideal) | Needless decisions | Re-entry | Dead ends | Verdict |
 |---------|----------------------|--------------------|----------|-----------|---------|
-| [STORY-001](journeys/STORY-001.md) First run: empty service → connected → first task | 14/7 (7/3 to connect) | 3 (code vs token, sole Actor, bootstrap `--actor`) | 1 (token copied by hand from `connection.json`) | 2 (root URL returns JSON; disabled **New task** with no reason) | convoluted |
-| [STORY-013](journeys/STORY-013.md) Create a fully specified task | 5/3 | 0 | 0 | 0 (tags have no display surface) | acceptable |
-| [STORY-021](journeys/STORY-021.md) Morning on the board, triage → wrap-up | ~39/~25 actions (+2 CLI detours) | 2 | 1 | 2 (no vein field; no reorder) | convoluted |
-| [STORY-027](journeys/STORY-027.md) Hand off from Task details | 5/4 | 1 (**Handoff status** defaults to Review) | 0 | 0 | acceptable |
-| [STORY-030](journeys/STORY-030.md) Review agent work and close the loop | 8/4 | 1 | 0 | 0 | convoluted |
-| [STORY-046](journeys/STORY-046.md) Goals vein → filtered board | 2/2 (+1 to clear) | 0 | 0 | 1 (details "Veins:" not a link) | acceptable |
-| [STORY-062](journeys/STORY-062.md) STALE_UPDATE while editing | 7/4 | 0 | 1 (draft must be re-typed) | 1 (retry can never succeed — confirmed live) | convoluted |
-| [STORY-084](journeys/STORY-084.md) First enable of device access | 7/3 | 1 (interface select) | 0 | 1 (restart outside the browser) | convoluted (see note) |
+| STORY-001 First run: empty service → connected → first task | 14/7 (7/3 to connect) | 3 (code vs token, sole Actor, bootstrap `--actor`) | 1 (token copied by hand from `connection.json`) | 2 (root URL returns JSON; disabled **New task** with no reason) | convoluted |
+| STORY-013 Create a fully specified task | 5/3 | 0 | 0 | 0 (tags have no display surface) | acceptable |
+| STORY-021 Morning on the board, triage → wrap-up | ~39/~25 actions (+2 CLI detours) | 2 | 1 | 2 (no vein field; no reorder) | convoluted |
+| STORY-027 Hand off from Task details | 5/4 | 1 (**Handoff status** defaults to Review) | 0 | 0 | acceptable |
+| STORY-030 Review agent work and close the loop | 8/4 | 1 | 0 | 0 | convoluted |
+| STORY-046 Goals vein → filtered board | 2/2 (+1 to clear) | 0 | 0 | 1 (details "Veins:" not a link) | acceptable |
+| STORY-062 STALE_UPDATE while editing | 7/4 | 0 | 1 (draft must be re-typed) | 1 (retry can never succeed — confirmed live) | convoluted |
+| STORY-084 First enable of device access | 7/3 | 1 (interface select) | 0 | 1 (restart outside the browser) | convoluted (see note) |
 
 STORY-084 is convoluted mainly because of the service restart. Removing the restart is a local-service design change: it must be checked against the [acceptance contract](../PARDNER-ACCEPTANCE.md) and [LAN guide](../PARDNER-LAN.md) before anyone treats it as UI polish.
 

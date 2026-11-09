@@ -1,8 +1,10 @@
 # Redundancy and IA critique
 
+> **Evidence archived.** Screenshots, per-story and per-page reports from this run were moved out of the repository; the findings below stand on their own text, and filed issues carry the details.
+
 Scope: the Pardner browser UI (`ui-prototype/src/Pardner.jsx`, `PhoneAccess.jsx`, `ui-prototype/index.html`) and the CLI surface (`lib/cli.js`). Lead list: `docs/ux-paths/catalog.md` → "Redundancy Candidates" (line 5211). Heuristics: `simplification-heuristics.md` #8–#16.
 
-Evidence: a seeded hub at `http://127.0.0.1:8004/pardner/`, signed in as Alice, read-only (no tasks created or edited). Screenshots are in `docs/ux-flow/redundancy-screens/`:
+Evidence: a seeded hub at `http://127.0.0.1:8004/pardner/`, signed in as Alice, read-only (no tasks created or edited). Screenshots (now archived outside the repository) were:
 
 | File | Surface |
 |---|---|

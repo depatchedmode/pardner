@@ -1,5 +1,7 @@
 # UX Walker Report — 2026-11-07
 
+> **Evidence archived.** Screenshots, per-story and per-page reports from this run were moved out of the repository; the findings below stand on their own text, and filed issues carry the details.
+
 ## Run Metadata
 | Field | Value |
 |---|---|
@@ -35,7 +37,7 @@
 | visual | 10 |
 | a11y | 5 |
 
-Per-story evidence is under [`stories/`](stories/): `walk-report.md`, `findings.json`, screenshots and videos for each story.
+Per-story evidence (walk reports, findings, screenshots and videos) was archived outside the repository.
 
 ## Quick Fixes Applied (10)
 | Finding | Before | After | Files |
@@ -51,7 +53,7 @@ Per-story evidence is under [`stories/`](stories/): `walk-report.md`, `findings.
 | F-107-03 | With JavaScript off, the shell still shows "Opening your workspace…" and Reload | `<noscript>` style hides both | `ui-prototype/index.html` |
 | (test) | `pardner-ui.test.js` read Alice's unread count once and raced the live update | Waits for "1 unread for alice" | `test/pardner-ui.test.js` |
 
-Regression assertions for the first five were added to `test/pardner-ui.test.js`. Fix reports: [`fixes/`](fixes/). Browser re-verification (all confirmed): [`reverify/`](reverify/).
+Regression assertions for the first five were added to `test/pardner-ui.test.js`. Fix reports and browser re-verification (all confirmed) were archived with the evidence.
 
 **Not merged: F-001-02 (redirect `/` to `/pardner/`).** The fix worked and its test passed. It is held back because editing `automerge-sync-server.js` changes the source hash pinned in `formal/lifecycle/mapping.json`, which fails the lifecycle drift check. Accepting that drift requires reviewing the lifecycle model, which is a decision for the maintainer. It is tracked under #116.
 

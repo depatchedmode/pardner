@@ -1,6 +1,8 @@
 # UX Visual Problem Register — 2026-11-07
 
-Built from the six page audits in [`pages/`](pages/) (121 findings: 0 P0, 27 P1, 64 P2, 30 P3). Single reviewer per page; second opinions skipped (no `OPENROUTER_API_KEY`).
+> **Evidence archived.** Screenshots, per-story and per-page reports from this run were moved out of the repository; the findings below stand on their own text, and filed issues carry the details.
+
+Built from the six page audits (archived outside the repository) (121 findings: 0 P0, 27 P1, 64 P2, 30 P3). Single reviewer per page; second opinions skipped (no `OPENROUTER_API_KEY`).
 
 **Coverage against [`inventory.md`](inventory.md):** every page (P1–P7) and layout (L1–L4) was audited at all four viewports. Gaps:
 - Task-field conflicts (they need a second replica).
