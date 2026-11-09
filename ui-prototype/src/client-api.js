@@ -2,17 +2,50 @@
 // Authentication is an HttpOnly session cookie; nothing here stores a credential.
 
 const GRANT_KEY = 'grant'
+const PAIR_KEY = 'pair'
 let capturedGrant = null
+
+/** Remove one fragment parameter from the address bar, keeping the rest, and return its value. */
+function takeFragmentValue(key, location, history) {
+  const params = new URLSearchParams(location.hash.slice(1))
+  if (!params.has(key)) return null
+  const value = params.get(key)
+  params.delete(key)
+  const rest = params.toString()
+  history.replaceState(null, '', location.pathname + location.search + (rest ? `#${rest}` : ''))
+  return value || null
+}
 
 /** Remove a one-time bootstrap grant from the address bar and return it. */
 export function takeBootstrapGrant(location = window.location, history = window.history) {
-  const params = new URLSearchParams(location.hash.slice(1))
-  if (!params.has(GRANT_KEY)) return null
-  const grant = params.get(GRANT_KEY)
-  params.delete(GRANT_KEY)
-  const rest = params.toString()
-  history.replaceState(null, '', location.pathname + location.search + (rest ? `#${rest}` : ''))
-  return grant || null
+  return takeFragmentValue(GRANT_KEY, location, history)
+}
+
+/** Remove a phone pairing code (`#pair=`, from the computer's QR code) from the address bar and return its digits. */
+export function takePairingCode(location = window.location, history = window.history) {
+  const digits = pairingDigits(takeFragmentValue(PAIR_KEY, location, history))
+  return digits || null
+}
+
+/** The digits of a typed or scanned pairing code, at most eight. */
+export const pairingDigits = text => String(text ?? '').replace(/\D/g, '').slice(0, 8)
+
+/** A pairing code as people read it aloud: "1234 5678". */
+export function groupPairingCode(text) {
+  const digits = pairingDigits(text)
+  return digits.length > 4 ? `${digits.slice(0, 4)} ${digits.slice(4)}` : digits
+}
+
+/** Time left on a pairing code as m:ss, never negative. */
+export function formatCountdown(ms) {
+  const seconds = Math.max(0, Math.ceil(ms / 1000))
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+}
+
+/** A pairing's state as the computer should show it: a pending code past its expiry is expired before the next poll says so. */
+export function pairingState(summary, expiresAt, now) {
+  const state = summary?.state ?? 'pending'
+  return state === 'pending' && expiresAt <= now ? 'expired' : state
 }
 
 /** Called before the first render so the grant never stays visible while config loads. */
@@ -94,6 +127,14 @@ export function createClientApi(config, { fetcher = (...args) => fetch(...args) 
     report: (projectId, sessionId, input) => call(`/projects/${id(projectId)}/sessions/${id(sessionId)}/report`, input),
     endSession: (projectId, sessionId) =>
       call(`/projects/${id(projectId)}/sessions/${id(sessionId)}/end`, {}, { keepalive: true }),
+    // Phone access: managed from the computer, redeemed and signed out from the phone.
+    companion: () => call('/companion'),
+    setCompanionNetwork: ({ enabled, interfaceName }) => call('/companion/network', { enabled, ...(interfaceName ? { interfaceName } : {}) }),
+    createPairing: (projectId, { name } = {}) => call(`/projects/${id(projectId)}/companion/pairings`, name ? { name } : {}),
+    cancelPairing: pairingId => call(`/companion/pairings/${id(pairingId)}/cancel`, {}),
+    revokeCompanion: companionId => call(`/companion/devices/${id(companionId)}/revoke`, {}),
+    redeemCompanion: code => call('/companion/redeem', { code }),
+    logoutCompanion: () => call('/companion/logout', {}),
   }
 }
 

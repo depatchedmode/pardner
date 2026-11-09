@@ -6,7 +6,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { chromium, webkit } from 'playwright'
-import { bootstrapPath, createClientApi, projectConfiguration, takeBootstrapGrant } from '../ui-prototype/src/client-api.js'
+import {
+  bootstrapPath, createClientApi, formatCountdown, groupPairingCode, pairingDigits, pairingState, projectConfiguration, takeBootstrapGrant,
+  takePairingCode,
+} from '../ui-prototype/src/client-api.js'
 import { createConnection } from '../ui-prototype/src/connection.js'
 import { createPresenceReporter, focusByTask, presenceIndex, sortParticipants } from '../ui-prototype/src/presence.js'
 
@@ -69,6 +72,63 @@ it('clears a bootstrap grant from the fragment while keeping other fragment stat
   assert.equal(replaced.at(-1), '/pardner/')
   assert.equal(takeBootstrapGrant({ hash: '#pair=12345678', pathname: '/pardner/', search: '' }, history), null)
   assert.equal(replaced.length, 2, 'a standalone pairing fragment is left for the pairing flow')
+})
+
+it('takes a phone pairing code from the fragment, keeping other fragment state, and groups typed digits', () => {
+  const replaced = []
+  const history = { replaceState: (_state, _title, url) => replaced.push(url) }
+  assert.equal(takePairingCode({ hash: '#pair=12345678&view=board', pathname: '/pardner/', search: '' }, history), '12345678')
+  assert.deepEqual(replaced, ['/pardner/#view=board'])
+  assert.equal(takePairingCode({ hash: '#pair=1234%205678', pathname: '/pardner/', search: '?x=1' }, history), '12345678')
+  assert.equal(replaced.at(-1), '/pardner/?x=1')
+  // An empty or non-numeric code is still removed from the address bar, and nothing is submitted.
+  assert.equal(takePairingCode({ hash: '#pair=', pathname: '/pardner/', search: '' }, history), null)
+  assert.equal(takePairingCode({ hash: '#pair=abc', pathname: '/pardner/', search: '' }, history), null)
+  assert.equal(replaced.length, 4)
+  assert.equal(takePairingCode({ hash: '#grant=abc', pathname: '/pardner/', search: '' }, history), null)
+  assert.equal(replaced.length, 4, 'a sign-in grant is left for the grant flow')
+  assert.equal(pairingDigits(' 1234-5678 9'), '12345678')
+  assert.deepEqual(['', '123', '1234', '12345', '12345678', '1234 5678 90'].map(groupPairingCode), ['', '123', '1234', '1234 5', '1234 5678', '1234 5678'])
+})
+
+it('counts a pairing code down and treats one past its expiry as expired before the service says so', () => {
+  assert.equal(formatCountdown(600000), '10:00')
+  assert.equal(formatCountdown(61001), '1:02')
+  assert.equal(formatCountdown(999), '0:01')
+  assert.equal(formatCountdown(-5000), '0:00')
+  assert.equal(pairingState(undefined, 2000, 1000), 'pending', 'a code not yet in the polled status is waiting')
+  assert.equal(pairingState({ state: 'pending' }, 2000, 2000), 'expired')
+  assert.equal(pairingState({ state: 'redeemed' }, 2000, 5000), 'redeemed')
+  assert.equal(pairingState({ state: 'cancelled' }, 2000, 1000), 'cancelled')
+})
+
+it('calls the phone companion routes with JSON bodies and preserves pairing error codes', async () => {
+  const requests = []
+  const api = createClientApi({ mode: 'client', clientApiBase: CLIENT_API }, { fetcher: async (url, init) => {
+    requests.push([init.method, url, init.body ?? null])
+    if (url.endsWith('/redeem')) return Response.json({ code: 'PAIRING_THROTTLED', error: 'Too many pairing attempts' }, { status: 429 })
+    return Response.json({ ok: true })
+  } })
+  await api.companion()
+  await api.setCompanionNetwork({ enabled: true, interfaceName: 'en0' })
+  await api.setCompanionNetwork({ enabled: false })
+  await api.createPairing('p/1', { name: 'Work phone' })
+  await api.createPairing('p/1')
+  await api.cancelPairing('pair 1')
+  await api.revokeCompanion('phone 1')
+  await api.logoutCompanion()
+  await assert.rejects(api.redeemCompanion('12345678'), { code: 'PAIRING_THROTTLED', status: 429 })
+  assert.deepEqual(requests, [
+    ['GET', `${CLIENT_API}/companion`, null],
+    ['POST', `${CLIENT_API}/companion/network`, '{"enabled":true,"interfaceName":"en0"}'],
+    ['POST', `${CLIENT_API}/companion/network`, '{"enabled":false}'],
+    ['POST', `${CLIENT_API}/projects/p%2F1/companion/pairings`, '{"name":"Work phone"}'],
+    ['POST', `${CLIENT_API}/projects/p%2F1/companion/pairings`, '{}'],
+    ['POST', `${CLIENT_API}/companion/pairings/pair%201/cancel`, '{}'],
+    ['POST', `${CLIENT_API}/companion/devices/phone%201/revoke`, '{}'],
+    ['POST', `${CLIENT_API}/companion/logout`, '{}'],
+    ['POST', `${CLIENT_API}/companion/redeem`, '{"code":"12345678"}'],
+  ])
 })
 
 it('calls the client API with the session cookie only and preserves backend error codes', async () => {
