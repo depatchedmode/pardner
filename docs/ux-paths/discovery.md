@@ -1,5 +1,12 @@
 # App Discovery: Pardner
 
+> **Superseded browser entry.** This record describes the standalone browser
+> board (local service token screen, Actor picker, Pair another device, Forget this
+> workspace, `PhoneAccess`) and its LAN companion devices. People now open the
+> board only through the local client (`pardner open`); see the
+> [client guide](../PARDNER-CLIENT.md). Phone access is not currently offered; it
+> is planned through the hub over HTTPS. The discovery below is kept unchanged.
+
 ## Application Type
 Local-first coordination tool for humans and agents that track tasks together. It has three surfaces sharing one attributed operation API:
 1. **Browser UI**: a single-page React app with no client router, served by the local Node service at `/pardner/` (default `http://127.0.0.1:8004/pardner/`). It also runs as a "companion device" UI on phones, tablets or other desktops over the LAN, using plain HTTP/WS without encryption. The browser keeps no Automerge database of its own.

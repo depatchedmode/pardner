@@ -3,10 +3,9 @@
 > **Superseded browser entry.** This record describes the standalone browser
 > board (local service token screen, Actor picker, Pair another device, Forget this
 > workspace, `PhoneAccess`). People now open the board only through the local
-> client (`pardner open`), and phones pair through the client's **Pair a phone**
-> companion; see the [client guide](../PARDNER-CLIENT.md) and the
-> [phone companion guide](../PARDNER-LAN.md). The findings and evidence below are
-> kept unchanged.
+> client (`pardner open`); see the [client guide](../PARDNER-CLIENT.md). Phone
+> access is not currently offered; it is planned through the hub over HTTPS. The
+> findings and evidence below are kept unchanged.
 
 The repository is public, so narrated videos are stored outside it, in the owner's local Movies folder (`pardner-ux-auto-improve/round-N/`). Commits are on branch `ux-skill-pack-run`, rebased onto `main` (`b3c36fc0`) on 2026-11-08; the SHAs below are the rebased ones (pre-rebase tip kept at `backup/ux-skill-pack-run-pre-rebase`). No pull requests were opened: the branch has not been pushed, and pushing is the owner's call.
 

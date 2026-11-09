@@ -3,8 +3,8 @@
 > **Superseded browser entry.** The standalone browser connection screen (local
 > service token, pairing code, Actor picker, Pair another device and Forget this
 > workspace) described or exercised here was removed; people open the board with
-> `pardner open` and phones pair through **Pair a phone**
-> ([phone companion guide](PARDNER-LAN.md)). The plan below is kept as written.
+> `pardner open` ([client guide](PARDNER-CLIENT.md)); phone access is not
+> currently offered and is planned through the hub over HTTPS. The plan below is kept as written.
 
 Issue: [#51 — Provide supported phone/LAN access and connection setup](https://github.com/depatchedmode/pardner/issues/51)
 
