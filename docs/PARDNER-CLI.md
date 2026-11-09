@@ -29,30 +29,26 @@ device|agent|member --id ID --operation-id ID`, and `export --project ID
 cold backups, fresh-install restoration and authority replacement. A content
 export does not replace the private registry and replica backup.
 
-Build the browser client with `npm ci --prefix ui-prototype` and `npm run ui:build`.
-Start the local service, then open its HTTP address at `/pardner/` (normally
-`http://127.0.0.1:8004/pardner/`). Enter the token from the local connection file
-and select the human or agent Actor making changes. The token is remembered in
-browser local storage without application expiry; no token is compiled into the
-application. Actor selection and filters are remembered by workspace.
+Build the browser client with `npm ci --prefix ui-prototype` and `npm run ui:build`
+before opening it. The board is signed in by the client session: the signed-in
+Actor authors every change, and filters are remembered per project and Actor. No
+token is entered in or compiled into the browser. The standalone service's
+`/pardner/` page serves no board; it points people to `pardner open`.
 
-For a companion device on the same trusted network, use **Pair another device**
-on the desktop. Enable LAN access, restart with the same data directory, then scan the displayed
-QR code to pair automatically, or use the address and code to connect manually.
-See [companion device and LAN access](PARDNER-LAN.md)
-for HTTP transport limitations, secret rotation, disabling access, and recovery.
+To use a phone on the same trusted network, choose **Pair a phone** on the board.
+See the [phone companion guide](PARDNER-LAN.md) for HTTP transport limitations,
+revocation and recovery.
 
 The board, task editor, handoff form, comments, conflict alternatives, explicit
 read receipts, history, and commit evidence use the same operation API as the CLI.
-The browser owns no Automerge database; the local service persists and synchronizes
-its workspace. Keep that service running for local authoring.
+The browser owns no Automerge database; the client's project runtime persists and
+synchronizes its workspace. Keep the client running for local authoring.
 
-`npm run test:ui` builds the UI and tests independent Chromium contexts, mobile
-Chromium/WebKit over LAN HTTP, connection failures, and a local WebSocket proxy.
-Install pinned engines with `npx playwright install chromium webkit` after
-installing root dependencies. LAN cases explicitly skip when no suitable IPv4
-interface exists. Physical phones and the full multi-replica gate are separate
-qualification steps.
+`npm run test:ui` builds the UI and tests client-mode boards in independent
+Chromium and WebKit contexts, phone pairing in mobile contexts, connection
+failures and the session-bound connection. Install pinned engines with `npx
+playwright install chromium webkit` after installing root dependencies. Physical
+phones and the full multi-replica gate are separate qualification steps.
 
 ## Start a workspace
 
