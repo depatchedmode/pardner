@@ -84,16 +84,18 @@ async function openBoard(person, project, page) {
 /**
  * Runs `body` against one client-mode workspace: a local client with a confirmed identity and one project it hosts.
  * `actors` are extra Actors ({ id, handle, kind, displayName }) registered in the project for the test.
+ * `runtimeOptions` is plain data for each project runtime, such as `{ control: { pollMs } }` for its control pane.
  * The body receives { page, newPage, open, operate, doc, task, show, status, call, client, project, actorId, browser }.
  * `open(page?)` signs the page in and waits for the board; it is not called for you.
  */
 export async function withClientWorkspace(engine, options, body) {
-  const { identity = { name: 'Alice' }, actors = [], contextOptions = { viewport: { width: 1440, height: 900 } }, projectName = 'Test board' } = options ?? {}
+  const { identity = { name: 'Alice' }, actors = [], contextOptions = { viewport: { width: 1440, height: 900 } }, projectName = 'Test board',
+    runtimeOptions } = options ?? {}
   const root = await mkdtemp(join(tmpdir(), 'pardner-client-ui-'))
   let person, browser
   const errors = []
   try {
-    person = await participant(join(root, 'client'), identity.name)
+    person = await participant(join(root, 'client'), identity.name, { runtimeOptions })
     await person.call('/identity', { name: identity.name, email: identity.email ?? email(identity.name), operationId: 'identity' })
     const { project } = await person.call('/projects', { name: projectName, operationId: 'create' })
     await registerActors(person, project, actors)
