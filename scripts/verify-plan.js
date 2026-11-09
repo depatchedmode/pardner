@@ -43,7 +43,7 @@ const groups = [
     name: 'acceptance-harness', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'],
     qualification: 'Acceptance measurement or regression gate changed',
     files: names(`scripts/acceptance.js scripts/verify.js support/acceptance/agent-process.js
-      support/acceptance/agent-worker.js support/acceptance/candidate.js support/acceptance/expected-operations.js
+      support/acceptance/agent-worker.js support/acceptance/candidate.js support/acceptance/client-process.js support/acceptance/expected-operations.js
       support/acceptance/network-gate.js test/acceptance-components.test.js`),
   },
   {
