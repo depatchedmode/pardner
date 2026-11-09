@@ -181,9 +181,25 @@ save acknowledgement follows the existing disk barrier; synchronization requires
 the hub's acknowledgement. An outage is any failure that is not an explicit hub
 decision: an unreachable address, a gateway error page, a non-JSON body or a hub
 5xx (including `SERVICE_STOPPING`) all count. Only an explicit `AUTH_REQUIRED` or
-`REVOKED` answer revokes local membership. Each local save on a replica still
-waits for one admission check against the hub, bounded by a 3 s timeout; moving
-that check off the write path is follow-up work. A project runtime that fails
+`REVOKED` answer revokes local membership.
+
+Before a local save on a replica, the client confirms with the hub that the
+writing Actor is still admitted (`/policy`, bounded by a 3 s timeout). A positive
+answer is reused for 10 s per project and Actor; each reuse starts at most one
+background check, so a slow hub does not hold up the save. Once that answer is
+older than 10 s the save waits for a fresh check, except while the project
+runtime reports the hub disconnected: then the last positive answer stands and
+the save is not delayed. With no earlier positive answer the hub is asked as
+before, and an outage still allows the local save. The window this opens is
+bounded: a revocation is enforced from the first check that observes it, which
+for an Actor writing continuously is the next background check, and otherwise is
+at most 10 s after the last positive answer while the hub is reachable. A write
+accepted in that window is saved locally but its Actor's synchronization still
+depends on the hub, which checks the device credential on every sync and
+delivery call. Revoking from this computer clears the cached answers for that
+project, and issuing an agent credential (`agent-grant`) always checks the hub.
+
+A project runtime that fails
 to start is reported as `LOCAL_SERVICE_UNAVAILABLE` and is not restarted again
 for 5 s, so polling cannot fork it repeatedly; a runtime that crashes after
 starting is restarted on the next authenticated request. Native replicas remain
