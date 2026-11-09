@@ -11,8 +11,8 @@ existing GitHub issues without contacting GitHub. See
 
 ## How to get to it (user POV)
 
-Open `/pardner/` through the service computer's loopback address, choose an
-**Actor**, then **Control**. Settings live under **Control settings**. Task issue
+Run `pardner open` (or `control open` for the pinned control runtime) on the
+client's computer, then choose **Control**. Settings live under **Control settings**. Task issue
 links are in a task's **GitHub issues** section, or `pardner issue link TASK
 owner/repo#N` and `pardner issue unlink TASK owner/repo#N --revisions JSON`.
 

@@ -12,8 +12,11 @@ now has a separate [Cloud adapter](PARDNER-CURSOR-CLOUD.md) with live dispatch d
 
 ## Use it
 
-Open the board on the service computer through its loopback address, choose an
-Actor, then choose **Control**. Control settings need that loopback page.
+On the computer running your Pardner client, run `pardner open` (or
+`control open` for the [pinned control runtime](PARDNER-CONTROL-RUNTIME.md)), then
+choose **Control**. You act as yourself; there is no Actor to choose. Control is
+offered only to people on this computer's loopback page; agent credentials and
+other devices are refused.
 
 1. **Pair T3.** Run `t3 auth pairing create`, then enter the T3 address and code.
    Pardner pairs one `approval-required` credential and keeps it in
