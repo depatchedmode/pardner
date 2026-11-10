@@ -225,7 +225,7 @@ The three admission paths match the three kinds of key:
   | A per-agent token limits a machine to one agent Actor | The `agent.delegate` record for that machine |
   | Revoking an admission ends access | `machine.revoke` and `member.remove`, checked at every handshake |
 
-  AGENTS.md says shared-secret admission must not be relaxed. This is a replacement by a stronger proof, not a removal, but it needs the owner's explicit confirmation before step 4 (Q2).
+  AGENTS.md says shared-secret admission must not be relaxed. The owner confirmed (Q2) that this handshake satisfies the rule: admission is per-machine, revocable and checkable by every peer, so it is stronger than a shared secret, not a relaxation. The PR that lands step 4 also rewords the rule in AGENTS.md to "do not weaken admission: every sync connection must authenticate as a certified machine".
 - **Who is served.** A serving peer sends data only to machines certified in its current membership state. The one exception is an enrolling machine that presents a valid join request or `machine.add`. It receives the document only once the operation that admits it is recorded.
 - **Hub-coordinated requests.** Delivery lease and presence requests ride the same authenticated connection. A lease is granted only to a machine delegated for that Actor.
 - **Same code for hub and peer.** A hub and a peer run the same handshake and the same check.
@@ -329,7 +329,7 @@ Delivery leases and presence are about liveness, not authority, so a hub keeps t
 1. **Deterministic writes and shadow signing.** Add sorted map writes, the fixed change header, the machine key and the machine-prefixed actor ID. Machines sign every operation and include their public key. Receivers rebuild, verify and log the result but don't enforce it. Sync stays as it is. Run the acceptance and walker suites, and expect zero failed verifications.
 2. **Membership log.** Add the genesis, member, machine and agent operations, the invitation key, the confirmation-code check and optional forge attestation. Today's admission records are derived from the log and the bearer tokens remain. Update the recovery guide for machine and person keys. This is a breaking change for existing projects, which is acceptable because no migration is needed.
 3. **Enforce over the hub path.** Introduce the change exchange with the verification gate, and the rejected-change log with its board notice and a CLI listing. A rejection must be visible from the first day one can happen. It also adds the revocation witness and its "accepted before the revocation arrived" notice. Bearer tokens still admit connections.
-4. **Machine-key handshake.** Replace the bearer tokens. This step needs Q2 answered.
+4. **Machine-key handshake.** Replace the bearer tokens, and reword the AGENTS.md admission rule in the same PR (Q2, decided).
 5. **Direct peer lane.** Allow the same protocol between two replicas given an explicit address (LAN or tailnet). Validate it on real separate machines, not loopback.
 6. **People-facing surfaces.** Members, machines, agents, revocation, re-admission and agent naming in the board.
 
@@ -408,7 +408,7 @@ Reviewed against AGENTS.md (Local-first), the local-first design skill, README, 
 **Open questions for the owner**
 
 - **Q1 (decided: option A).** Revocation is enforced from arrival, with a signed witness for work merged before it. Section 4.
-- **Q2.** Does replacing bearer tokens with a machine-key handshake satisfy "do not relax shared-secret admission", and should AGENTS.md say so when step 4 lands? Section 7.
+- **Q2 (decided: yes).** The machine-key handshake satisfies the admission rule. The PR that lands step 4 updates AGENTS.md to say so. Section 7.
 - **Q3.** Keep the hub as the only enrollment point, as AGENTS.md requires today, or let any admitted peer record an enrollment once the direct lane is qualified? Section 7.
 - **Q4.** May only the owner remove or demote admins? It prevents mutual removal, but a lost owner key then freezes the admin list. Section 5.
 - **Q5.** May Pardner ever set git's signing configuration, and may the person key be a dedicated key that is not the git signing key when git signs with GPG or another key type? Section 1.
