@@ -57,7 +57,7 @@ The review found that reusing SSH or OpenPGP keys costs more than it buys. It pu
 
 - **Creation.** Pardner generates an Ed25519 person key the first time someone confirms their identity.
   - It is always sealed with a passphrase the person chooses.
-  - It is exported as a recovery file the person keeps somewhere safe (see [Backup, restore and key loss](#backup-restore-and-key-loss)).
+  - It is exported as a recovery file the person keeps somewhere safe (see [Backup, restore and key loss](#backup-restore-and-key-loss)). Creating a project **requires** saving the recovery file once, because a lost owner key freezes the admin list (Q4). Pairing may copy the sealed key to the person's other machines (R6, decided).
 - **Signing.**
   - Pardner unseals the key only for a membership action, after the person types the passphrase. It signs with Node's crypto and discards the unsealed key.
   - The board can complete membership actions itself; there is no terminal detour.
@@ -247,7 +247,7 @@ The three admission paths match the three kinds of key:
   - **Expiry.** Expiry is enforced by the recording peer at the moment of admission, never retroactively by peers, so peer clocks are never trusted. The inviter can also revoke an unused offer.
 - **A new machine for an existing member (high verification, no admin).**
   - **On the new machine.** Pardner generates a machine key and shows a pairing request.
-  - **Approval.** The person approves it with their **person key** on an existing machine, typing its passphrase, after scanning or pasting the request and comparing a confirmation code shown on both screens. Or they approve it on the new machine by importing their recovery file. Whether pairing may also copy the sealed person key to the new machine is open (R6).
+  - **Approval.** The person approves it with their **person key** on an existing machine, typing its passphrase, after scanning or pasting the request and comparing a confirmation code shown on both screens. Or they approve it on the new machine by importing their recovery file. Pairing then offers to copy the sealed person key to the new machine, still passphrase-protected, so either machine can manage membership and losing one computer does not lose the key (R6, decided).
   - **Recording it.** The new machine carries its own `machine.add` to any admitted peer, which verifies it before serving anything.
   - **No key within reach.** If the person key is neither on the new machine nor on a machine at hand, Pardner says so. It does not offer to start a new identity, which is how duplicates arise today.
   - **What this fixes.** There is no invitation to copy, and nobody can link a machine into someone else's identity, because only that person's key can sign `machine.add` (STORY-016).
@@ -655,7 +655,7 @@ These revisit decisions. None is changed until answered.
 - **R3 (decided: scoped delegation).** Presence is softened. The person key grants revocable membership scopes to machines or agents, peers verify the chain, and the log names who acted for whom. Peer-checkable presence is not planned for the first release.
 - **R4 (decided: admission first).** ~~May the first shipped boundary be level 1, with per-change verification staged behind the spike? This narrows what the Goal section promises at first, and README would say so.~~
 - **R5 (decided with R4: surfaces straight after the log).** ~~Should the board's membership surfaces move from step 6 to directly after the membership log?~~
-- **R6 (follows from R1, touches Q4).** The person key would sit on the first machine. Should pairing be able to copy the sealed key to a new machine, so that either can manage membership and losing one computer does not lose the owner key? And should creating a project require exporting the recovery file?
+- **R6 (decided: copy on pairing, recovery file required).** ~~The person key would sit on the first machine. Should pairing be able to copy the sealed key to a new machine, so that either can manage membership and losing one computer does not lose the owner key? And should creating a project require exporting the recovery file?~~
 
 ### Corrections to the text above, whatever is decided
 
