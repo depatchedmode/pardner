@@ -97,7 +97,7 @@ event.signature = Ed25519(machine key, "pardner/op/v1" ‖ canonical(envelope))
   - The prefix ties the change to the machine.
   - The suffix stops two processes that hold the same key (a restored backup, a restart after a crash) from reusing an Automerge sequence number. Automerge refuses a second change with the same actor and sequence number **(checked)**.
   - automerge-repo picks a random actor every time it loads a document. Pardner sets its own after loading, with `handle.update(doc => clone(doc, { actor }))` **(checked)**.
-- **Sorted writes.** Automerge returns map keys in sorted order, so a verifier cannot recover the order an author wrote them in. `prepareOperation` must write every map in sorted key order. Today it writes the payload in request order: 9 of 13 operation types failed to rebuild until payloads were sorted, and then all 13 matched **(checked)**.
+- **Sorted writes.** A peer must be able to verify from the stored document alone, for example when it re-serves a change after a restart. Automerge writes map keys in the order given and reads them back sorted, so a verifier cannot recover the author's order. `prepareOperation` must write every map in sorted key order. Today it writes the payload in request order: with the event read back from a reloaded document, only 4 of the 23 operation types rebuilt to the same hash. With sorted payloads all 23 did **(checked)**.
 - **Fixed change header.** The change's own time is set from `timestamp` and its message is empty, so the header carries nothing unsigned.
 - **Timestamps.** `timestamp` is signed but is only the author's claim. It is used for display and for a new task's default order. No check reads a local clock. A member can misdate their own work; they cannot change anyone else's.
 - **Retries.** The same request retried on another machine produces a second signed event under the same operation ID. Each verifies on its own, and they collapse as they do today.
@@ -121,7 +121,7 @@ The document has exactly one change with no dependencies: the genesis (section 5
 **Why compare hashes, not paths and values.**
 - Pardner stores every string as Automerge text, one Automerge operation per character. A typical Pardner operation is about 1,000 Automerge operations, so comparing writes by path and value is neither simple nor complete.
 - Two changes can show the same values and still differ. With the predecessor stripped from one field write, a change applied cleanly and showed the same value, but left the old value alive as an extra conflict alternative. The hash comparison caught it **(checked)**.
-- Hash equality held for all 13 operation types, for two concurrent edits each checked at its own dependencies, and for a resolve built on their merge **(checked)**.
+- Hash equality held for all 23 operation types, for two concurrent edits each checked at its own dependencies, and for a resolve built on their merge **(checked)**.
 
 **What the check needs from Automerge.**
 - **A true fork at `C.deps`, not `view`.** `getConflicts` on `view(doc, deps)` returns today's conflicts, not the ones at `deps` **(checked)**. `prepareOperation` reads conflicts for same-field alternatives and for retries, so a replay on a view gives wrong answers. A `clone` of the view is a true fork, but the objects it has already read keep answering from the old document until its first change **(checked)**.
