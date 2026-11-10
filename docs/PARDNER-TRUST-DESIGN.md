@@ -47,18 +47,31 @@ Git is a hard requirement; no code forge is. Each step down the hierarchy costs 
 
 | Key | What it is | Who holds it | Used for | Ceremony |
 |---|---|---|---|---|
-| **Person key** | The person's git SSH signing key: `user.signingkey` with `gpg.format=ssh`, Ed25519 (or `sk-ed25519` on a hardware key) | The person: ssh-agent, a key file or a hardware token | Certifying a new machine, profile changes, membership actions an owner or admin takes | Rare, deliberate. A touch or passphrase prompt is fine |
+| **Person key** | An SSH key (Ed25519, or `sk-ed25519` on a hardware key) or an OpenPGP signing key. Pardner reuses the key git already signs commits with when there is one | The person: ssh-agent, gpg-agent, a key file, a smartcard or a hardware token | Certifying a new machine, profile changes, membership actions an owner or admin takes | Rare, deliberate. A touch or passphrase prompt is fine |
 | **Machine key** | An Ed25519 key that Pardner generates per machine | The client service, in the client directory (mode 0600; the OS keychain later) | Signing every operation made on that machine, by the person or by the agents delegated there | None after setup |
 | **Agent delegation** | No new key: a signed record letting a machine act as an agent Actor | The machine key signs it | Creating an agent under the person's existing machine credential | Cheap: no person-key prompt |
 
-**Person key, from git.**
-- **Which key.** Pardner reads `user.signingkey` when `gpg.format=ssh`. It accepts two key types, `ssh-ed25519` and `sk-ssh-ed25519@openssh.com` (hardware), so every peer verifies the same way.
-- **No suitable key.** If git signs with GPG, with another SSH key type, or not at all, Pardner offers to create a dedicated Ed25519 key (`ssh-keygen -t ed25519`). It never replaces an existing signing setup (Q5). Nothing is uploaded anywhere.
-- **Signing.** Pardner signs with `ssh-keygen -Y sign -n pardner` (SSHSIG), so the private key never enters Pardner. This works from a key file, and from ssh-agent given only the public key **(checked)**.
-- **Where signing can happen.** A passphrase-protected key file needs a terminal; without one, signing fails **(checked)**. The background client service cannot prompt. Person-key actions therefore finish in the foreground CLI, or through ssh-agent. The board can start one and show the command that completes it.
-- **Hardware keys.** Each signature needs a touch, and the signature wraps a flag and a counter. This path was not tested in review.
-- **Verifying.** Peers parse the SSHSIG and verify it in-process with Node's crypto **(checked** for `ssh-ed25519`**)**. No peer, including a hub, needs `ssh-keygen` to verify. Verification is offline, against the public key pinned in the membership log.
-- **Commits.** When the person key is also the git signing key, Pardner can check that a linked commit was signed by the person who claims it.
+**Person key: SSH or OpenPGP.**
+
+Commit signing is rare: about 6–10% of developers sign their own commits, and about 99% of those signatures are OpenPGP. So the person key is not required to be git's signing key, and Pardner accepts both families from the start.
+
+- **Which key.**
+  - Pardner first reuses git's signing key: `user.signingkey` with `gpg.format=ssh` or `gpg.format=openpgp`.
+  - If that key isn't an accepted type, or git doesn't sign, the person brings one, or Pardner offers to create a dedicated Ed25519 key (`ssh-keygen -t ed25519`).
+  - **Pardner never edits git's configuration (decided).** When it would help to sign commits with the person key, it shows the git commands instead.
+- **Accepted types.** Peers verify only these, so every peer reaches the same verdict:
+  - **SSH:** `ssh-ed25519` and `sk-ssh-ed25519@openssh.com` (hardware).
+  - **OpenPGP:** v4 signing keys or signing subkeys using Ed25519, ECDSA P-256 or RSA of 3072 bits or more.
+- **Signing.** The private key never enters Pardner.
+  - SSH keys sign with `ssh-keygen -Y sign -n pardner` (SSHSIG). This works from a key file, and from ssh-agent given only the public key **(checked)**.
+  - OpenPGP keys sign with `gpg --detach-sign` over the same domain-separated bytes, through gpg-agent or a smartcard (not yet checked).
+- **Where signing can happen.** A passphrase-protected key needs a terminal or an agent prompt. The background client service cannot prompt; without one, signing fails **(checked** for SSH**)**. Person-key actions therefore finish in the foreground CLI, or through ssh-agent or gpg-agent. The board can start one and show the command that completes it.
+- **Hardware keys.** Each signature needs a touch. An SSH `sk-` signature also wraps a flag and a counter. Neither path was tested in review.
+- **Verifying.**
+  - Peers verify in-process, offline, against the exact public key pinned in the membership log. No peer, including a hub, needs `ssh-keygen` or `gpg` to verify.
+  - SSHSIG is parsed with Node's crypto **(checked** for `ssh-ed25519`**)**. OpenPGP needs a pinned verification library, which is a new dependency.
+  - For OpenPGP, Pardner pins the specific signing key or subkey fingerprint at admission. OpenPGP expiry dates, keyserver state and revocation certificates are **not** consulted, because they would make verdicts depend on time and on network state. Pardner's own `member.remove` and person-key replacement govern instead.
+- **Commits.** When the person key is also the key git signs commits with (SSH or OpenPGP), Pardner can check that a linked commit was signed by the person who claims it. For a dedicated Pardner key this link is unavailable, which is fine.
 
 **Machine key.**
 - The machine ID is `machine-<base32(sha256(pubkey))[:26]>`.
@@ -75,7 +88,7 @@ Git is a hard requirement; no code forge is. Each step down the hierarchy costs 
 - **Duplicates.** Membership is keyed by the person key, so one key is one person. A person who makes a second key on a second computer would still appear twice. The new-machine path (section 6) therefore never offers to create a person key on a computer that is joining an existing identity (STORY-018).
 - **Identity checks at admission.** When someone is admitted, the inviter establishes that the person key belongs to the human they think it does. They use either, or both, of:
   - **A confirmation code.** Both screens show a short code derived from the offer, both person keys and the new machine key, compared face to face, by voice or in chat. This works with no forge at all. The join request is also signed with the invitation's own key (section 6), so a relay that never saw the invitation cannot swap in its own keys and search for a pair that produces the same short code.
-  - **Forge attestation (optional, any forge).** The person names forge accounts such as `github.com/maya`, `gitlab.com/maya` or `codeberg.org/maya`. A checking machine confirms online, once, that the person key is published there. Most forges list a user's public SSH keys at `https://<forge>/<login>.keys`; GitHub also exposes signing keys through its API. The result is recorded in the log as an attestation (`forge`, `login`, `checkedAt`, `checkedBy`). It is that machine's claim, which other peers cannot re-check later. It strengthens trust and shows as a badge, and it is never required.
+  - **Forge attestation (optional, any forge).** The person names forge accounts such as `github.com/maya`, `gitlab.com/maya` or `codeberg.org/maya`. A checking machine confirms online, once, that the person key is published there. Most forges list a user's public SSH keys at `https://<forge>/<login>.keys` and OpenPGP keys at `https://<forge>/<login>.gpg`; GitHub also exposes SSH signing keys through its API. The result is recorded in the log as an attestation (`forge`, `login`, `checkedAt`, `checkedBy`). It is that machine's claim, which other peers cannot re-check later. It strengthens trust and shows as a badge, and it is never required.
 - **Offline thereafter.** Every later verification is offline, against the keys pinned in the membership log. No forge token is ever used or shared.
 
 ### 3. Signed operation envelope
@@ -268,7 +281,7 @@ Consequences:
 
 ## Backup, restore and key loss
 
-- **What a cold backup holds.** The client directory, now including the machine key. A backup is a credential, as it is today. The person key is not in it: it lives with the person's git and SSH setup and needs its own backup.
+- **What a cold backup holds.** The client directory, now including the machine key. A backup is a credential, as it is today. The person key is not in it: it lives with the person's SSH or GnuPG setup and needs its own backup.
 - **Restoring.** A restored client is the same machine and resumes signing. Because each process picks its own actor suffix, a restored copy and its original cannot corrupt each other's Automerge history even if both run.
 - **Two live copies.** Running both is still a duplicated credential. No guard against it exists today (#165, STORY-142). A peer that sees two sessions for one machine reports it, and the remedy is `machine.revoke` plus a fresh machine key.
 - **A stale backup.** Revocations live in the document on every peer, so restoring an old backup cannot roll them back. That removes a hazard the [recovery guide](PARDNER-CLIENT-RECOVERY.md) warns about for the authority host today. The delivery lease ledger still needs its own current backup.
@@ -285,7 +298,7 @@ The recovery guide is updated in the same step that introduces machine keys.
 | Service | Needed for | While it is down | Replacing it |
 |---|---|---|---|
 | Hub | Enrollment (until the direct lane is qualified; Q3), new delivery leases, presence relay, and sync between machines that cannot reach each other | Enrolled replicas reopen, verify, edit and save locally with only their machine key. Accepted work continues. New dispatch and presence are unavailable and say so | Restore its cold backup at the same origin. Peers resupply the document, including membership and revocations. The lease ledger needs the backup |
-| git and OpenSSH | Person-key actions: admitting a person, adding a machine, profile and membership changes | Board work, agents and sync are unaffected. They use only the machine key | Any OpenSSH that offers `ssh-keygen -Y sign` |
+| git, plus OpenSSH or GnuPG | Person-key actions: admitting a person, adding a machine, profile and membership changes | Board work, agents and sync are unaffected. They use only the machine key | Any OpenSSH that offers `ssh-keygen -Y sign`, or any GnuPG that can make a detached signature |
 | A forge | Optional attestation | The `code` check still admits people | Not needed |
 
 Delivery leases and presence are about liveness, not authority, so a hub keeps them for now. Correctness (who wrote what, and whether it was allowed) never depends on the hub.
@@ -374,7 +387,7 @@ This is a plan. None of these scenarios has been run.
 Three stand as decided; revocation was revised after the review showed the strict rule could not converge.
 
 - **One owner plus admins (decided).** The genesis person is the single owner. Admins share membership authority. Ownership transfer is out of scope for this version. Only the owner removes or demotes admins, and a lost owner key freezes the admin list (Q4, accepted).
-- **Git required, forges optional (decided).** The person key is the git SSH signing key. Forge attestation (GitHub, GitLab, Codeberg/Forgejo or any `/<login>.keys` host) is optional and recorded when used. Without it, admission rests on a confirmation code. *See Q5.*
+- **Git required, forges optional (decided).** The person key is an SSH or OpenPGP key, reusing git's signing key when there is one; Pardner never edits git's configuration (Q5, decided). Forge attestation (GitHub, GitLab, Codeberg/Forgejo or any `/<login>.keys` host) is optional and recorded when used. Without it, admission rests on a confirmation code. *See Q5.*
 - **Ceremony by tier (decided).** A new person or a new machine needs the person key. A new agent on an existing machine needs only the machine key. *See Q6.*
 - **Revocation is enforced from arrival (decided, revised).** Each peer refuses a revoked party's changes from the moment it learns of the revocation. Work already merged stays, is named by a signed witness and listed for an admin to undo. Rejections are logged and shown, never silently dropped. This replaces the original strict rule, which could not converge on Automerge.
 
@@ -411,6 +424,6 @@ Reviewed against AGENTS.md (Local-first), the local-first design skill, README, 
 - **Q2 (decided: yes).** The machine-key handshake satisfies the admission rule. The PR that lands step 4 updates AGENTS.md to say so. Section 7.
 - **Q3 (decided: hub-only now, peers later).** The hub stays the only enrollment point. Once the direct lane is qualified, admitted owner and admin peers may enroll too, with an AGENTS.md update. Section 7.
 - **Q4 (decided: owner only, freeze accepted).** Only the owner removes or demotes admins. A lost owner key freezes the admin list; that limitation is documented, not engineered around. Section 5.
-- **Q5.** May Pardner ever set git's signing configuration, and may the person key be a dedicated key that is not the git signing key when git signs with GPG or another key type? Section 1.
+- **Q5 (decided: SSH and OpenPGP now).** The person key may be SSH or OpenPGP, reusing git's signing key when possible or a dedicated key otherwise. Pardner never edits git's configuration. Section 1.
 - **Q6.** Is a person key that ssh-agent will use without confirmation acceptable for membership actions, or must they always need a passphrase, confirmation or touch? The local trust zone.
 - **Q7.** Should strings be stored as plain values instead of Automerge text, a schema change, to make verification and loading affordable at 10,000 operations? Rollout step 0.
