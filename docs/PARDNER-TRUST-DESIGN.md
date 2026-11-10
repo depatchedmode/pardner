@@ -219,7 +219,7 @@ The three admission paths match the three kinds of key:
   - **What this fixes.** There is no invitation to copy, and nobody can link a machine into someone else's identity, because only that person's key can sign `machine.add` (STORY-016).
 - **A new agent on an existing machine (low ceremony).** `agent.delegate`, signed by the machine key, takes effect immediately and needs no network beyond normal sync. The agent is named and owned at creation, for example "Maya's Codex" (#150).
 - **Recovery after revocation.** A revoked machine is replaced by a fresh machine key through the new-machine path. A revoked agent is re-created with a fresh `agent.delegate`. A removed person is re-admitted with a new invitation. There are no dead ends (STORY-043, STORY-130).
-- **Lost person key.** The owner or an admin can `member.remove` the old key and admit the person's new key through a fresh invitation. The person's past work stays attributed to the old key. A lost **owner** key cannot be replaced in this version, so the design asks owners to keep a second person key (for example on a hardware token) registered as an `admin`.
+- **Lost keys.** See [Backup, restore and key loss](#backup-restore-and-key-loss).
 
 ### 7. Transport admission (who may read and sync)
 
@@ -257,60 +257,123 @@ What stays the same:
 
 The protocol is transport-agnostic: WebSocket to a hub, a direct WebSocket or QUIC connection between peers, or a file for backup. It gives up the compactness of Automerge's own sync messages, which is acceptable at this scale. The spike should also try the alternative of running Automerge sync into a staging document and verifying from there.
 
-### What stays hub-coordinated
+## The local trust zone
 
-These are about liveness, not authority, so a hub keeps them for now:
-- **Delivery leases.** Mention claims need one coordinator.
-- **Presence relay.**
+Peer verification proves which **machine** signed a change. Everything inside one machine rests on the local client service and the OS user account.
 
-Both are documented as unavailable in a pure peer-to-peer session. Correctness (who wrote what, and whether it was allowed) never depends on the hub.
+| Question | Who can answer it | Strength |
+|---|---|---|
+| Which machine made this change? | Any peer, from the signature | Cryptographic |
+| Was that machine allowed to act as this Actor? | Any peer, from the membership and delegation records | Cryptographic |
+| Was it the person or one of their agents on that machine? | Only that machine's client service (cookie, operator token, agent grant) | Local. Peers take the machine's word |
+
+Consequences:
+- A rule such as "only the author may delete a comment" holds between people and between machines. Between a person and their own agent on one machine, it holds only as far as the local service enforces it.
+- Any process running as the same OS user can read the machine key file and the operator token. An agent with shell access is such a process. Agent grants limit a cooperative agent. They are not a security boundary against a hostile one.
+- The person-key tier is a real boundary only when using the key takes a deliberate act: a passphrase, an ssh-agent confirmation or a hardware touch. A key loaded in ssh-agent without confirmation can be used silently by anything running as that user (Q6).
+- A build box or shared host should be its own machine with scope `agents-only`, so it never holds human authority.
+- The cookie, operator token and agent grants work as they do today and never leave the machine.
+
+## Backup, restore and key loss
+
+- **What a cold backup holds.** The client directory, now including the machine key. A backup is a credential, as it is today. The person key is not in it: it lives with the person's git and SSH setup and needs its own backup.
+- **Restoring.** A restored client is the same machine and resumes signing. Because each process picks its own actor suffix, a restored copy and its original cannot corrupt each other's Automerge history even if both run.
+- **Two live copies.** Running both is still a duplicated credential. No guard against it exists today (#165, STORY-142). A peer that sees two sessions for one machine reports it, and the remedy is `machine.revoke` plus a fresh machine key.
+- **A stale backup.** Revocations live in the document on every peer, so restoring an old backup cannot roll them back. That removes a hazard the [recovery guide](PARDNER-CLIENT-RECOVERY.md) warns about for the authority host today. The delivery lease ledger still needs its own current backup.
+- **Fresh install with no backup.** The computer joins as a new machine with the person key. It fetches the document from any peer and verifies it from the genesis, needing only the project ID.
+- **Lost machine.** Its person revokes it from another machine, or the owner or an admin does.
+- **Lost person key.** The owner or an admin removes the old key and admits the person's new key through a fresh invitation. The person's past work stays attributed to the old key.
+- **Lost owner key.** It cannot be replaced in this version. An owner should register a second person key, for example on a hardware token, as an `admin`. That keeps ordinary membership manageable, but it cannot remove or demote admins (Q4).
+- **Export.** The readable export is unchanged. It is not a replica and holds no keys.
+
+The recovery guide is updated in the same step that introduces machine keys.
+
+## Required services and outages
+
+| Service | Needed for | While it is down | Replacing it |
+|---|---|---|---|
+| Hub | Enrollment (Q3), new delivery leases, presence relay, and sync between machines that cannot reach each other | Enrolled replicas reopen, verify, edit and save locally with only their machine key. Accepted work continues. New dispatch and presence are unavailable and say so | Restore its cold backup at the same origin. Peers resupply the document, including membership and revocations. The lease ledger needs the backup |
+| git and OpenSSH | Person-key actions: admitting a person, adding a machine, profile and membership changes | Board work, agents and sync are unaffected. They use only the machine key | Any OpenSSH that offers `ssh-keygen -Y sign` |
+| A forge | Optional attestation | The `code` check still admits people | Not needed |
+
+Delivery leases and presence are about liveness, not authority, so a hub keeps them for now. Correctness (who wrote what, and whether it was allowed) never depends on the hub.
+
+## Direct peer lane: feasibility
+
+| Aspect | Assessment |
+|---|---|
+| Platforms | The Node client service on desktop computers. No phone or browser replica |
+| Discovery | None. A person supplies the address. Automatic discovery is out of scope |
+| Reachability | The same LAN, or a tailnet. Across NAT without a tailnet it does not work, and a relay would be a new service to run |
+| Exposure | The client listens on loopback only today. A direct lane needs a second listener on a chosen interface, off by default, that speaks only the handshake and the change exchange. OS firewall prompts apply |
+| Background running | Both services must be up at the same time. Nothing stores and forwards without a hub |
+| Unavailable without a hub | New delivery leases, presence, and enrollment (Q3) |
+| Evidence needed | Two real machines on separate networks. A loopback test shows nothing about reachability |
+
+**Decision.** Offer the direct lane as an explicit opt-in once the hub path enforces the same rule (rollout step 5). It adds a lane; it does not replace the hub.
 
 ## How this addresses the walk's findings
 
 | Finding (latest report) | Resolution |
 |---|---|
-| Built-in agents are all "Setup agent" (#150) | `agent.delegate` records the owner login, name and harness. The UI labels agents as "Maya's Codex" |
+| Built-in agents are all "Setup agent" (#150) | `agent.delegate` records the owner, name and harness. The UI labels agents as "Maya's Codex" |
 | My device invitation adopts another identity silently (STORY-016) | Only the person's own key can sign `machine.add`, so a machine can't be linked into someone else's identity. Approval shows a confirmation code on both screens |
-| Identity can't be edited, duplicates are possible (STORY-014, STORY-018) | The person key is the identity, so a person is unique per project. Name and email come from git and stay editable through `member.profile` |
-| Comment delete has no author check (STORY-090) | The rule moves into `prepareOperation`, and every peer enforces it by replay |
-| Membership is CLI-only, revoked parties look offline, no re-admission (STORY-043, STORY-130) | Membership operations are replicated and have UI. Revoked state is explicit. Re-admission works with a new key |
-| Revocation shown as "signed out" (STORY-005, STORY-140) | Revocation is a project-level record, distinct from local browser sessions |
-| Loopback-only invitations (STORY-041) | Invitations list checked routes and refuse unreachable ones |
-| Unremovable stuck request after FORBIDDEN (STORY-089) | Authorization refusals become definitive, so the pending request clears |
+| Identity can't be edited, duplicates are possible (STORY-014, STORY-018) | One person key is one person. Name and email come from git and stay editable through `member.profile`. A second computer joins through the new-machine path, which never creates a second identity |
+| Comment delete has no author check (STORY-090) | The rule moves into `prepareOperation`, and every peer enforces it by replay. A person and their own agent on one machine are told apart only locally |
+| Membership is CLI-only, revoked parties look offline, no re-admission (STORY-043, STORY-130) | Membership operations are replicated and get UI in step 6. Revoked state is explicit. Re-admission works through a fresh statement or a new key |
+| Revocation shown as "signed out" (STORY-005, STORY-140) | Revocation is a project-level record, distinct from local browser sessions. The board still has to show it as such |
+| Loopback-only invitations (STORY-041) | Invitations refuse loopback-only routes and report which routes failed |
+| Unremovable stuck request after FORBIDDEN (STORY-089) | Not fixed by this design. A local refusal is already final; the stuck request is a board defect tracked in #151 and #160 |
 
 ## Rollout (each step lands on its own)
 
-0. **Spike.** Prove the exactness check in practice:
-   - compare the path and value writes of a received change with a replay at its `deps`, across every operation type;
-   - measure the verification cost on a 10k-operation project;
-   - confirm how the client sets Automerge actor IDs.
+0. **Spike.** The review showed that the rebuild check works for every operation type and for concurrent edits once payload keys are sorted. Still to prove:
+   - a cheap, correct fork at `deps` for concurrent changes;
+   - verification time and memory on a 10,000-operation project, including a new replica's first full verification;
+   - whether strings must be stored as plain values rather than Automerge text to make that affordable (Q7);
+   - signing and verifying with a hardware key.
 
-   This is the main technical risk.
-1. **Shadow signing.** Devices sign every operation. Receivers verify and log the result but don't enforce it. Run the acceptance and walker suites, and expect zero failed verifications.
-2. **Membership log.** Add the genesis, member, machine and agent operations, the confirmation-code check and optional forge attestation. Today's admission records are derived from the log and the bearer tokens remain. This is a breaking change for existing projects, which is acceptable because no migration is needed.
-3. **Enforce over the hub path.** Introduce the change-exchange protocol and the machine-key handshake, remove the bearer tokens, and add the rejected-change log. Hub and replicas now verify each other.
-4. **Direct peer lane.** Allow the same protocol between two replicas given an explicit address (LAN or tailnet). Validate it on real separate machines, not loopback.
-5. **People-facing surfaces.** Members, machines, agents, revocation, re-admission, the rejected-change log and agent naming in the board.
+   Verification cost is now the main technical risk.
+1. **Deterministic writes and shadow signing.** Add sorted map writes, the fixed change header, the machine key and the machine-prefixed actor ID. Machines sign every operation and include their public key. Receivers rebuild, verify and log the result but don't enforce it. Sync stays as it is. Run the acceptance and walker suites, and expect zero failed verifications.
+2. **Membership log.** Add the genesis, member, machine and agent operations, the invitation key, the confirmation-code check and optional forge attestation. Today's admission records are derived from the log and the bearer tokens remain. Update the recovery guide for machine and person keys. This is a breaking change for existing projects, which is acceptable because no migration is needed.
+3. **Enforce over the hub path.** Introduce the change exchange with the verification gate, and the rejected-change log with its board notice and a CLI listing. A rejection must be visible from the first day one can happen. This step needs Q1 answered. Bearer tokens still admit connections.
+4. **Machine-key handshake.** Replace the bearer tokens. This step needs Q2 answered.
+5. **Direct peer lane.** Allow the same protocol between two replicas given an explicit address (LAN or tailnet). Validate it on real separate machines, not loopback.
+6. **People-facing surfaces.** Members, machines, agents, revocation, re-admission and agent naming in the board.
 
-Steps 3 and 4 are storage, sync and delivery milestones: they need the lifecycle model check and the 20-seed acceptance qualification.
+Qualification:
+- Steps 1, 3, 4 and 5 change `automerge-sync-server.js`, `lib/workspace.js` or `lib/workspace-runtime.js`, so each needs the lifecycle model check.
+- Steps 3, 4 and 5 are storage, sync and delivery milestones and need the 20-seed acceptance qualification.
+- Step 3 ends "native replicas are trusted full document writers". README and the acceptance contract change with it.
 
 ## Validation plan
+
+This is a plan. None of these scenarios has been run.
 
 | Scenario | Expected |
 |---|---|
 | A forged `actorId` in a change from an admitted machine | Rejected by every peer, over the hub or direct |
-| A signed event copied into a change that writes extra fields | Rejected by the exactness check |
+| A signed event copied into a change that writes extra fields, drops a predecessor or alters the header | Rejected by the exactness check |
+| A client sends payload keys in unsorted order | The change still rebuilds to the same hash on every peer |
 | A non-author deletes a comment | Refused locally, and rejected on receipt if forced |
+| An enrolled replica reopens with the hub unreachable, edits and restarts | It opens, signs with its machine key and saves locally. No person key, forge or hub is needed, and the edits survive the restart |
+| The same field is edited on two disconnected machines | Both changes verify at their own dependencies. Both alternatives are kept for explicit resolution, as today |
+| An exchange is interrupted mid-batch and retried; the same request is retried on a second machine | No change is applied twice, the retried operation collapses to one, and acknowledged edits survive |
 | A machine revoked, then still syncing old offline work | Work in the revocation's causal past is kept; everything else from that machine is rejected on every peer and listed in the rejected-change log |
-| Two replicas converge directly while the hub is down | Identical documents and identical verification results to the hub path |
+| A peer applies a machine's change before that machine's revocation arrives | Every peer ends with the same document and a visible record, by the rule chosen in Q1 |
+| An old `machine.add` statement is replayed after the machine was revoked | Rejected: the statement ID was already used |
+| Two different join requests use one offer | Both are shown; neither person is admitted until one is chosen |
+| Two replicas converge directly, on two real machines on separate networks, while the hub is down | Identical documents and identical verification results to the hub path. Leases and presence report as unavailable |
 | A revoked machine reconnects | Handshake refused; no new data served |
 | Someone tries to add their machine under another person's identity | Refused: `machine.add` needs that person's own key |
-| Fresh install restored from backup | The machine key is in the backup; it verifies, and runs as the same machine only once (the duplicate-copy guard from STORY-142) |
+| Fresh install restored from a cold backup | The machine key is in the backup. The restored copy verifies and signs as the same machine. If the original also runs, history stays intact and the duplicate is reported |
+| Fresh install with no backup | The computer joins as a new machine and verifies the whole history from the project ID alone |
+| An Automerge upgrade | Recorded histories re-verify with identical verdicts before the upgrade ships |
 
 ## Later
 
-- **End-to-end encryption.** A project key wrapped to each certified machine key, recorded in the membership log and rotated on removal. Relays that hold no key store and forward ciphertext by change hash. The signing and verification above don't change.
-- **Phones.** First through a trusted hub over HTTPS. The phone browser holds its own non-extractable WebCrypto Ed25519 key and is certified with `machine.add`, so even a hub that relays its changes can't forge its writes. A native app then becomes a full replica with its key in the Secure Enclave.
+- **End-to-end encryption.** A project key wrapped to each certified machine key, recorded in the membership log and rotated on removal. Relays that hold no key store and forward ciphertext by change hash. They cannot verify, so they cannot reject; every peer that holds the key still does. The signing and verification above don't change.
+- **Phones.** First through a trusted hub over HTTPS. The phone browser holds its own non-extractable WebCrypto Ed25519 key and is certified with `machine.add`. A change is fully determined by the signed envelope and the document at `deps`, so the hub can build the change the phone signed, every peer can verify it, and the hub cannot forge the phone's writes. A native app then becomes a full replica with its key in the Secure Enclave.
 - **Discovery and NAT traversal** for the direct lane (mDNS on LAN, a relay that sees only ciphertext once encryption exists).
 - **Moving machine keys into the OS keychain.**
 
