@@ -275,7 +275,12 @@ Peer verification proves which **machine** signed a change. Everything inside on
 Consequences:
 - A rule such as "only the author may delete a comment" holds between people and between machines. Between a person and their own agent on one machine, it holds only as far as the local service enforces it.
 - Any process running as the same OS user can read the machine key file and the operator token. An agent with shell access is such a process. Agent grants limit a cooperative agent. They are not a security boundary against a hostile one.
-- The person-key tier is a real boundary only when using the key takes a deliberate act: a passphrase, an ssh-agent confirmation or a hardware touch. A key loaded in ssh-agent without confirmation can be used silently by anything running as that user (Q6).
+- The person-key tier is a real boundary only when using the key takes a deliberate act: a passphrase, an ssh-agent confirmation or a hardware touch. A key loaded in ssh-agent or gpg-agent without confirmation can be used silently by anything running as that user (Q6).
+- **Presence is required for membership actions (decided, Q6).** Admitting a person, adding or revoking a machine, and changing roles must be signed with a deliberate act. Profile edits may sign silently. Pardner enforces this in three layers:
+  - **Verifiable by every peer.** A hardware `sk-ssh-ed25519` signature carries a user-presence flag inside the signed data. Peers check it, and it cannot be forged by software on the person's machine. This is the strongest option and the one Pardner recommends for owners and admins.
+  - **Local guard.** Pardner starts membership signatures only from the foreground CLI with a terminal. It shows the action in plain words and requires a typed confirmation before invoking `ssh-keygen` or `gpg`. It refuses when run without a terminal (for example from an agent's shell or the background service).
+  - **Recommended agent settings.** Load the person key with confirmation (`ssh-add -c`, or a gpg-agent pinentry for every signature) or keep it passphrase-protected. Pardner checks what it can (for example whether the key file is unencrypted) and warns.
+  - **The limit.** The local guard and agent settings stop accidents and well-behaved agents, not a hostile process running as the same user, which could call the agent directly. Only a hardware touch defends against that, and only it is visible to other peers.
 - A build box or shared host should be its own machine with scope `agents-only`, so it never holds human authority.
 - The cookie, operator token and agent grants work as they do today and never leave the machine.
 
@@ -388,7 +393,7 @@ Three stand as decided; revocation was revised after the review showed the stric
 
 - **One owner plus admins (decided).** The genesis person is the single owner. Admins share membership authority. Ownership transfer is out of scope for this version. Only the owner removes or demotes admins, and a lost owner key freezes the admin list (Q4, accepted).
 - **Git required, forges optional (decided).** The person key is an SSH or OpenPGP key, reusing git's signing key when there is one; Pardner never edits git's configuration (Q5, decided). Forge attestation (GitHub, GitLab, Codeberg/Forgejo or any `/<login>.keys` host) is optional and recorded when used. Without it, admission rests on a confirmation code. *See Q5.*
-- **Ceremony by tier (decided).** A new person or a new machine needs the person key. A new agent on an existing machine needs only the machine key. *See Q6.*
+- **Ceremony by tier (decided).** A new person or a new machine needs the person key. A new agent on an existing machine needs only the machine key. Membership actions need a deliberate act, verifiable by peers when the person key is a hardware `sk-` key (Q6, decided).
 - **Revocation is enforced from arrival (decided, revised).** Each peer refuses a revoked party's changes from the moment it learns of the revocation. Work already merged stays, is named by a signed witness and listed for an admin to undo. Rejections are logged and shown, never silently dropped. This replaces the original strict rule, which could not converge on Automerge.
 
 ## Review notes
@@ -425,5 +430,5 @@ Reviewed against AGENTS.md (Local-first), the local-first design skill, README, 
 - **Q3 (decided: hub-only now, peers later).** The hub stays the only enrollment point. Once the direct lane is qualified, admitted owner and admin peers may enroll too, with an AGENTS.md update. Section 7.
 - **Q4 (decided: owner only, freeze accepted).** Only the owner removes or demotes admins. A lost owner key freezes the admin list; that limitation is documented, not engineered around. Section 5.
 - **Q5 (decided: SSH and OpenPGP now).** The person key may be SSH or OpenPGP, reusing git's signing key when possible or a dedicated key otherwise. Pardner never edits git's configuration. Section 1.
-- **Q6.** Is a person key that ssh-agent will use without confirmation acceptable for membership actions, or must they always need a passphrase, confirmation or touch? The local trust zone.
+- **Q6 (decided: require presence for membership).** Membership actions need a deliberate act: a hardware touch (verifiable by peers), or a local terminal confirmation plus agent confirmation or passphrase. Profile edits may sign silently. The local trust zone.
 - **Q7.** Should strings be stored as plain values instead of Automerge text, a schema change, to make verification and loading affordable at 10,000 operations? Rollout step 0.
