@@ -1,0 +1,68 @@
+[
+  {
+    "id": "F-046-01",
+    "story_id": "STORY-046",
+    "severity": "medium",
+    "category": "flow",
+    "criterion": "One way per task",
+    "score": "warn",
+    "description": "The CLI can create invitations but cannot list or revoke them: `client invites` → INVALID_ARGUMENT usage list. An agent asked to \"check tomorrow whether he used it\" must ask a human to open the browser dialog.",
+    "expected": "`client invites --project ID` and `client invite-revoke` (or `client revoke --kind invite`).",
+    "actual": "Browser-only state and revocation.",
+    "screenshot": "screenshots/step-7-browser-history.png",
+    "suggested_fix": "Add CLI wrappers over the existing GET /invites and POST /invites/:id/revoke routes.",
+    "files_likely_involved": [
+      "lib/client-cli.js"
+    ]
+  },
+  {
+    "id": "F-046-02",
+    "story_id": "STORY-046",
+    "severity": "medium",
+    "category": "layout",
+    "criterion": "Scroll necessity",
+    "score": "warn",
+    "description": "The history list is unbounded and oldest-first. With 20 invites the whole dialog scrolls (scrollHeight 1161 vs clientHeight 866 at 1440x900); title, Close and Create invitation scroll out of view and the newest invite is at the very bottom.",
+    "expected": "History scrolls inside its own region (or paginates), newest first, with the dialog header fixed.",
+    "actual": "Whole-dialog scroll to reach the newest row.",
+    "screenshot": "screenshots/step-7-browser-history-bottom.png",
+    "suggested_fix": "Cap the list height with overflow:auto, reverse the order, collapse non-issued rows.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx",
+      "ui-prototype/src/pardner.css"
+    ]
+  },
+  {
+    "id": "F-046-03",
+    "story_id": "STORY-046",
+    "severity": "low",
+    "category": "error-handling",
+    "criterion": "Output readability",
+    "score": "warn",
+    "description": "CLI output: expiresAt is a raw epoch in ms (1794338581508); every command prints Node's \"ExperimentalWarning: SQLite is an experimental feature\" on stderr; failures print the error twice (JSON line plus \"CODE: message\").",
+    "expected": "ISO timestamp, no Node warnings, one error representation per stream.",
+    "actual": "Noisy, machine-only output.",
+    "screenshot": "",
+    "suggested_fix": "Format expiresAt as ISO, suppress the SQLite warning, print the plain line only to stderr.",
+    "files_likely_involved": [
+      "lib/client-cli.js",
+      "bin/pardner.js"
+    ]
+  },
+  {
+    "id": "F-046-04",
+    "story_id": "STORY-046",
+    "severity": "suggestion",
+    "category": "error-handling",
+    "criterion": "Secret hygiene",
+    "score": "warn",
+    "description": "When re-running the original invite command after a browser revoke returns REVOKED \"Invitation revoked\", the previously written --output-file with the dead invitation stays on disk and the CLI does not mention it.",
+    "expected": "Mention the stale file (or remove it) on REVOKED.",
+    "actual": "Stale secret file left silently.",
+    "screenshot": "",
+    "suggested_fix": "Add a hint to the REVOKED output.",
+    "files_likely_involved": [
+      "lib/client-cli.js"
+    ]
+  }
+]

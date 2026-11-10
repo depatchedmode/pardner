@@ -50,6 +50,20 @@ it('keeps an uncertain operation when a request is rejected', async () => {
   assert.equal(client.pending().operationId, 'keep-this')
 })
 
+it('reports an unreachable client in plain words and keeps the pending operation', async () => {
+  const cause = new TypeError('Failed to fetch')
+  const client = createConnection(config, { storage: storage(), drafts: storage(), fetcher: async () => { throw cause } })
+  client.savePending({ operationId: 'retry-this' })
+  await assert.rejects(client.request('/automerge/operations', { operationId: 'retry-this' }), error => {
+    assert.equal(error.code, 'CLIENT_UNREACHABLE')
+    assert.equal(error.cause, cause)
+    assert.match(error.message, /local Pardner client did not respond/)
+    assert.doesNotMatch(error.message, /Failed to fetch/)
+    return true
+  })
+  assert.equal(client.pending().operationId, 'retry-this')
+})
+
 it('reports malformed responses and configuration instead of silently spinning', async () => {
   await assert.rejects(loadConfiguration(async () => new Response('<html>failed</html>')), /unreadable response/)
   await assert.rejects(loadConfiguration(async () => Response.json(null)), /unreadable response/)

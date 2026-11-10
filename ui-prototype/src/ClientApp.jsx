@@ -102,9 +102,9 @@ function SignedOut({ failure, retry }) {
     <h1>Pardner</h1>
     <p className="lead">This browser isn’t signed in to your local Pardner client.</p>
     {failure && <div className="notice inline-notice" role="status">
-      <p>The sign-in link was already used or has expired. Links from your agent work once.</p>
+      <p>This sign-in link was already used or is more than 60 seconds old. Links work once.</p>
     </div>}
-    <p>Ask your agent to open Pardner for you. It runs <code>pardner client open</code>, which signs this browser in without showing you a key.</p>
+    <p>Run <code>pardner open</code> on this computer, or ask your agent to. It signs this browser in without showing you a key.</p>
     <button onClick={retry}>Check again</button>
   </main>
 }
@@ -116,7 +116,10 @@ function IdentityStep({ api, session, onDone }) {
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState(null)
   const attempt = useRef(null)
-  const fromGit = Boolean(suggested.name || suggested.email)
+  const gitNote = suggested.name && suggested.email ? 'Filled in from your Git configuration. '
+    : suggested.name ? 'Name filled in from your Git configuration; enter your email. '
+      : suggested.email ? 'Email filled in from your Git configuration; enter your name. '
+        : 'Git didn’t provide a name and email here, so enter them once. '
   const submit = async event => {
     event.preventDefault()
     const input = { name: name.trim(), email: email.trim() }
@@ -146,7 +149,7 @@ function IdentityStep({ api, session, onDone }) {
       <label>Name<input required autoComplete="name" value={name} onChange={event => setName(event.target.value)} /></label>
       <label>Email<input required type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} /></label>
       <p className="muted small">
-        {fromGit ? 'Filled in from your Git configuration. ' : 'Git didn’t provide a name and email here, so enter them once. '}
+        {gitNote}
         Your profile shows these to project members. They don’t sign you in, and Pardner never changes your Git settings.
       </p>
       <Failure error={failure} />
@@ -388,8 +391,16 @@ function InviteDialog({ api, project, purpose, returnFocus, onClose }) {
       await loadInvites()
     } catch (error) { setFailure(error) } finally { setBusy(false) }
   }
+  const createAnother = () => {
+    operationId.current = createOperationId()
+    setCreated(null)
+    void create()
+  }
   const createdState = created && effectiveState(created.invite, now)
   const usable = createdState === 'issued' && Boolean(shareText)
+  // The invitation shown above is not repeated in the history list.
+  const history = invites?.filter(invite => invite.id !== created?.invite.id)
+  const revokeLabel = invite => `Revoke ${INVITES[invite.purpose]?.menu ?? invite.purpose} invitation, ${formatExpiry(invite.expiresAt, now)}`
   return <dialog ref={dialog} className="invite-dialog" aria-labelledby="invite-title"
     onCancel={event => { event.preventDefault(); onClose() }}>
     <div className="profile-heading">
@@ -404,7 +415,7 @@ function InviteDialog({ api, project, purpose, returnFocus, onClose }) {
       <button className="primary" disabled={busy} onClick={create}>{busy ? 'Creating…' : 'Create invitation'}</button>
     </div> : <section className="invite-ready" aria-label="New invitation">
       <p className="invite-state" data-state={createdState}>
-        <strong>{STATE_LABELS[createdState]}</strong> · {formatExpiry(created.invite.expiresAt, now)}
+        <strong>{STATE_LABELS[createdState]}</strong>{createdState === 'issued' && ` · ${formatExpiry(created.invite.expiresAt, now)}`}
       </p>
       {usable ? <>
         <div className="actions">
@@ -412,33 +423,38 @@ function InviteDialog({ api, project, purpose, returnFocus, onClose }) {
           <button aria-expanded={revealed} aria-controls="invite-text" onClick={() => setRevealed(value => !value)}>
             {revealed ? 'Hide invite text' : 'Show invite text'}
           </button>
-          <button disabled={busy} onClick={() => revoke(created.invite.id)}>Revoke</button>
+          <button disabled={busy} aria-label="Revoke this invitation" onClick={() => revoke(created.invite.id)}>Revoke</button>
         </div>
         <p className="muted small" role="status">
           {copied === 'done' ? 'Copied. Treat it like a password and send it privately; it works once.'
             : copied === 'failed' ? 'This browser blocked copying. Use Show invite text and copy it manually.'
-              : 'The invitation stays hidden so it can’t be read from a shared screen.'}
+              : revealed ? '' : 'The invitation stays hidden so it can’t be read from a shared screen.'}
         </p>
         {revealed && <div id="invite-text" className="reveal">
           <p className="warning-text">Visible on screen. Stop sharing your screen before copying.</p>
           <textarea readOnly rows={5} spellCheck={false} aria-label="Invite text" value={shareText}
-            onFocus={event => event.target.select()} />
+            onFocus={event => event.target.select()} onClick={event => event.currentTarget.select()} />
         </div>}
-      </> : <p className="muted">This invitation can no longer be used. Create a new one if you still need it.</p>}
+      </> : <>
+        <p className="muted">This invitation can no longer be used. Create a new one if you still need it.</p>
+        <div className="actions">
+          <button className="primary" disabled={busy} onClick={createAnother}>Create another invitation</button>
+        </div>
+      </>}
     </section>}
     <Failure error={failure} />
     <section aria-labelledby="invite-history">
       <h3 id="invite-history">Invitations for this project</h3>
-      {invites === null ? <p className="muted">Loading…</p> : !invites.length ? <p className="muted">None yet.</p> :
+      {history === undefined ? <p className="muted">Loading…</p> : !history.length ? <p className="muted">{created ? 'No other invitations.' : 'None yet.'}</p> :
         <ul className="invite-list">
-          {invites.map(invite => {
+          {history.map(invite => {
             const state = effectiveState(invite, now)
             return <li key={invite.id}>
               <span>{INVITES[invite.purpose]?.menu ?? invite.purpose}</span>
               <span className="invite-state" data-state={state}>{STATE_LABELS[state] ?? state}</span>
               <span className="muted">{state === 'issued' ? formatExpiry(invite.expiresAt, now) : ''}</span>
               {state === 'issued' && <button disabled={busy} onClick={() => revoke(invite.id)}
-                aria-label={`Revoke ${INVITES[invite.purpose]?.menu ?? invite.purpose} invitation`}>Revoke</button>}
+                aria-label={revokeLabel(invite)}>Revoke</button>}
             </li>
           })}
         </ul>}
@@ -545,10 +561,11 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
       session={{ ...sessionProps, header }} />
     {dialog?.type === 'profile' && actorsById[dialog.actorId] && <ProfileDialog actor={actorsById[dialog.actorId]}
       actors={actors} entry={index.get(dialog.actorId)} tasks={tasks} currentActorId={current.actorId}
-      returnFocus={dialog.returnFocus} onClose={close}
+      returnFocus={dialog.returnFocus}
+      onClose={dialog.from === 'people' ? () => setDialog({ type: 'people', returnFocus: dialog.returnFocus }) : close}
       onOpenTask={taskId => { close(); setRequestedTask({ taskId, at: Date.now() }) }} />}
     {dialog?.type === 'people' && <PeopleDialog actors={participants} index={index} returnFocus={dialog.returnFocus}
-      onClose={close} onOpen={(actor, element) => setDialog({ type: 'profile', actorId: actor.id, returnFocus: element })} />}
+      onClose={close} onOpen={actor => setDialog({ type: 'profile', actorId: actor.id, returnFocus: dialog.returnFocus, from: 'people' })} />}
     {dialog?.type === 'invite' && <InviteDialog api={api} project={current} purpose={dialog.purpose}
       returnFocus={dialog.returnFocus} onClose={() => { close(); void refreshSession().catch(() => {}) }} />}
   </>

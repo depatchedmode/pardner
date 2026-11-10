@@ -1,0 +1,23 @@
+[
+ {"id":"F-092-01","story_id":"STORY-092","severity":"low","category":"error-handling","criterion":"Error messages: specific","score":"warn",
+  "description":"The concurrent-change notice reads 'This task changed while you were writing: now Priya Raman · human · Review.' It does not say who changed it or which field changed. The name shown is the assignee (here the viewer herself).",
+  "expected":"'Marcus Hale changed Status: In progress → Review while you were writing. Your draft is preserved.'",
+  "actual":"An assignee/status summary that names the viewer.",
+  "screenshot":"screenshots/step-2-changed-notice.png",
+  "suggested_fix":"Describe the diff between the captured base and the current task, with the author of the newer revision.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx","ui-prototype/src/handoff.js"]},
+ {"id":"F-092-02","story_id":"STORY-092","severity":"low","category":"hierarchy","criterion":"Information stated once","score":"warn",
+  "description":"When the change lands mid-submit, two notices show at once (blue 'task changed' and red 'This field changed since it was read…'). After Use latest task details resolves it, the red notice stays until Dismiss is clicked.",
+  "expected":"One notice. Using the latest details clears the stale-update error.",
+  "actual":"Two stacked notices, and a lingering red error after recovery.",
+  "screenshot":"screenshots/var-after-stale-recover.png",
+  "suggested_fix":"Clear the STALE_UPDATE error when the handoff base is refreshed; suppress the generic error when the handoff-changed notice is visible.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx"]},
+ {"id":"F-092-03","story_id":"STORY-092","severity":"low","category":"consistency","criterion":"Component consistency","score":"warn",
+  "description":"The Recipient option order differs between clients (Marcus: Priya, Marcus, Setup agent, Setup agent, Cursor reviewer; Priya: Priya, Marcus, Cursor reviewer, Setup agent, Setup agent), so the same choice sits in a different place for each person.",
+  "expected":"A stable, sorted order (humans, then agents, alphabetical).",
+  "actual":"Order follows local map ordering.",
+  "screenshot":"screenshots/step-1-draft.png",
+  "suggested_fix":"Sort recipients by kind and display name.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx"]}
+]

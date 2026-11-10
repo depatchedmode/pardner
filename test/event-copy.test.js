@@ -132,6 +132,13 @@ describe('task copy', () => {
     assert.equal(say(ev('task.link-vein', { result: { taskId: 't1', veinId: 'v1' } })), 'Alice Moreno added Fix login to vein Auth')
     assert.equal(say(ev('task.unlink-vein', { result: { taskId: 't1', veinId: 'v1' } })), 'Alice Moreno removed Fix login from vein Auth')
   })
+  it('task.link-issue and unlink-issue name the issue', () => {
+    const issue = { taskId: 't1', repository: 'acme/lantern-checkout', number: 418 }
+    assert.equal(say(ev('task.link-issue', { result: issue })), 'Alice Moreno linked issue acme/lantern-checkout#418 to Fix login')
+    assert.equal(say(ev('task.unlink-issue', { result: issue })), 'Alice Moreno unlinked issue acme/lantern-checkout#418 from Fix login')
+    assert.equal(say(ev('task.link-issue', { payload: issue })), 'Alice Moreno linked issue acme/lantern-checkout#418 to Fix login')
+    assert.doesNotMatch(say(ev('task.link-issue', { result: issue })), /recorded/)
+  })
 })
 
 describe('comments and reads', () => {

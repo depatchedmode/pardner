@@ -1,0 +1,85 @@
+[
+  {
+    "id": "F-036-01",
+    "story_id": "STORY-036",
+    "severity": "medium",
+    "category": "error-handling",
+    "criterion": "Error messages / feedback",
+    "score": "fail",
+    "description": "Creating an invitation on a client started without --public-url gives no warning. The invite silently carries the loopback endpoint http://127.0.0.1:<port>/pardner/client/v1/enroll (decoded from the envelope), which no other computer can reach.",
+    "expected": "When the issuing client has no reachable public route, the dialog warns before or at creation that the invite only works on this computer and says how to fix it (restart with --public-url).",
+    "actual": "Dialog shows the normal \"Waiting to be used · Expires in 24 h\" state and \"Copied…\" message; nothing mentions the address. The failure surfaces only on the recipient as a misleading \"retry\" error (STORY-041).",
+    "screenshot": "../STORY-041/screenshots/step-0-caseA-priya-created.png",
+    "suggested_fix": "Expose whether the gateway is loopback-only in the session and show an inline warning (and a disabled-by-default state for Human/My device invites) in InviteDialog.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx",
+      "lib/client-service.js",
+      "lib/client-invites.js"
+    ]
+  },
+  {
+    "id": "F-036-02",
+    "story_id": "STORY-036",
+    "severity": "medium",
+    "category": "hierarchy",
+    "criterion": "Information stated once",
+    "score": "warn",
+    "description": "After Create invitation the same invite is shown twice in one dialog: the \"New invitation\" block (\"Waiting to be used · Expires in 24 h · Nov 10, 11:02 AM\" + Revoke) and the history row with identical state, expiry and a second Revoke button.",
+    "expected": "One representation of the new invite; the history row for it is highlighted or merged with the new-invitation actions.",
+    "actual": "Two Revoke buttons and two identical state/expiry lines for one invite.",
+    "screenshot": "screenshots/step-4-created.png",
+    "suggested_fix": "Hide the newly created invite from the history list while the New invitation block is shown, or mark the row \"This invitation\" and drop the duplicate Revoke.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  },
+  {
+    "id": "F-036-03",
+    "story_id": "STORY-036",
+    "severity": "low",
+    "category": "layout",
+    "criterion": "Control labels / wrap quality",
+    "score": "warn",
+    "description": "In the history list the state \"Waiting to be used\" wraps to two lines at 1440x900, and the wrap point differs per row (\"Waiting to / be used\" vs \"Waiting to be / used\") because each row sizes its own columns; the expiry column start drifts between x=667 and x=683.",
+    "expected": "Rows share fixed column widths (grid/table) so state labels sit on one line and columns align.",
+    "actual": "Wrapped, misaligned state column in a 520px dialog.",
+    "screenshot": "screenshots/step-6-copied.png",
+    "suggested_fix": "Render history as a CSS grid with shared column tracks, or shorten the label to \"Waiting\".",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx",
+      "ui-prototype/src/pardner.css"
+    ]
+  },
+  {
+    "id": "F-036-04",
+    "story_id": "STORY-036",
+    "severity": "low",
+    "category": "a11y",
+    "criterion": "Keyboard nav / accessible names",
+    "score": "warn",
+    "description": "The New invitation Revoke button has no accessible name beyond \"Revoke\", and every issued history row has the same name \"Revoke Human invitation\"; with several rows a screen-reader user cannot tell which invite a button revokes.",
+    "expected": "Accessible names include a distinguishing detail (expiry time or creation time).",
+    "actual": "Tab order observed: Show invite text, Revoke, Revoke Human invitation, Revoke Human invitation.",
+    "screenshot": "../STORY-037/screenshots/kbd-focus.png",
+    "suggested_fix": "aria-label=\"Revoke Human invitation expiring Nov 10, 11:02 AM\".",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  },
+  {
+    "id": "F-036-05",
+    "story_id": "STORY-036",
+    "severity": "suggestion",
+    "category": "flow",
+    "criterion": "Step count",
+    "score": "warn",
+    "description": "Ideal path is 3 (Invite, Human, Copy). Actual is 4: Create invitation is a separate click, and after Close the invite can never be copied again (reopening shows only the history row), so a lost clipboard means revoke and recreate.",
+    "expected": "Choosing Human creates the invite and offers Copy at once.",
+    "actual": "Invite → Human → Create invitation → Copy invite.",
+    "screenshot": "screenshots/var-reopen.png",
+    "suggested_fix": "Create on open (operation ID already exists per dialog), keep Copy available for the session.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  }
+]

@@ -1,0 +1,103 @@
+[
+ {
+  "id": "F-014-01",
+  "story_id": "STORY-014",
+  "severity": "high",
+  "category": "flow",
+  "criterion": "Recovery: easy to undo or go back",
+  "score": "fail",
+  "description": "A saved identity cannot be edited anywhere. The profile has no edit control, and `client identity` with corrected values returns IDENTITY_EXISTS. A typo such as a missing domain suffix is permanent unless the person discards the whole client directory and its projects.",
+  "expected": "A way to correct the display name and email (at least before any project exists, ideally anytime, propagated to project profiles).",
+  "actual": "Profile dialog shows only Close; CLI returns IDENTITY_EXISTS \"Identity already initialized; linking requires My device\".",
+  "screenshot": "screenshots/step-4b-profile-no-edit.png",
+  "suggested_fix": "Add an identity update operation (UI Edit in the You dialog plus `client identity --update`), or at minimum allow replacing the identity while no project exists.",
+  "files_likely_involved": [
+   "lib/client-service.js",
+   "lib/client-identity.js",
+   "ui-prototype/src/Avatar.jsx"
+  ]
+ },
+ {
+  "id": "F-014-02",
+  "story_id": "STORY-014",
+  "severity": "medium",
+  "category": "error-handling",
+  "criterion": "Form validation: helpful",
+  "score": "warn",
+  "description": "Email validation accepts \"tomas@fernhill\" (no dot in the domain), in both the browser and the server, so an obvious typo is saved silently.",
+  "expected": "Warn or reject a domain without a dot, or ask the person to confirm.",
+  "actual": "Saved as tomas@fernhill with no warning.",
+  "screenshot": "screenshots/step-4-welcome.png",
+  "suggested_fix": "Require a dot in the domain part (or show a soft 'Did you mean…?' warning) in profile() and the form.",
+  "files_likely_involved": [
+   "lib/client-identity.js",
+   "ui-prototype/src/ClientApp.jsx"
+  ]
+ },
+ {
+  "id": "F-014-03",
+  "story_id": "STORY-014",
+  "severity": "medium",
+  "category": "error-handling",
+  "criterion": "Error messages: specific, actionable",
+  "score": "warn",
+  "description": "IDENTITY_EXISTS reads \"Identity already initialized; linking requires My device\", which is irrelevant to someone trying to correct their email.",
+  "expected": "State that the identity is already set, show the current values, and say how (or whether) it can be changed.",
+  "actual": "\"IDENTITY_EXISTS: Identity already initialized; linking requires My device\"",
+  "screenshot": "screenshots/step-4-welcome.png",
+  "suggested_fix": "Reword it to e.g. \"This client already has an identity (Tomás Rivera, tomas@fernhill). To use another computer as the same person, link it with a My device invitation.\"",
+  "files_likely_involved": [
+   "lib/client-service.js"
+  ]
+ },
+ {
+  "id": "F-014-04",
+  "story_id": "STORY-014",
+  "severity": "medium",
+  "category": "layout",
+  "criterion": "Long content: layout absorbs the longest value",
+  "score": "fail",
+  "description": "A long unbroken name makes the Continue button label (\"Continue as …\") and the form grow past the viewport: pageOverflowX 1048 px, spills on #root, main.client-entry and form.",
+  "expected": "The button label truncates with an ellipsis (or wraps), and the form stays within its column.",
+  "actual": "Inputs, error box and button run off the right edge; horizontal page scroll.",
+  "screenshot": "screenshots/edge-long-name.png",
+  "suggested_fix": "Give the client-entry form min-width:0 / max-width, and give the button label overflow:hidden; text-overflow:ellipsis (or overflow-wrap:anywhere).",
+  "files_likely_involved": [
+   "ui-prototype/src/ClientApp.jsx",
+   "ui-prototype/src/pardner.css"
+  ]
+ },
+ {
+  "id": "F-014-05",
+  "story_id": "STORY-014",
+  "severity": "low",
+  "category": "error-handling",
+  "criterion": "Error messages: specific",
+  "score": "warn",
+  "description": "A name over 200 characters is rejected with \"Supply a name\", which doesn't mention the length limit and contradicts what the person typed.",
+  "expected": "\"Use a name of 200 characters or fewer.\" (and maxLength on the input).",
+  "actual": "\"Supply a name\"",
+  "screenshot": "screenshots/edge-long-name.png",
+  "suggested_fix": "Return a length-specific message and add maxLength to the inputs.",
+  "files_likely_involved": [
+   "lib/client-identity.js",
+   "ui-prototype/src/ClientApp.jsx"
+  ]
+ },
+ {
+  "id": "F-014-06",
+  "story_id": "STORY-014",
+  "severity": "low",
+  "category": "happy-path",
+  "criterion": "Labels/copy: accurate",
+  "score": "warn",
+  "description": "The profile labels typed values as \"Git name\" / \"Git email\" even when Git provided nothing and the person entered them by hand.",
+  "expected": "\"Name\" / \"Email\" (optionally noting their source).",
+  "actual": "\"Git name Tomás Rivera\", \"Git email tomas@fernhill\"",
+  "screenshot": "screenshots/step-4b-profile-no-edit.png",
+  "suggested_fix": "Rename the labels to Name / Email.",
+  "files_likely_involved": [
+   "ui-prototype/src/Avatar.jsx"
+  ]
+ }
+]

@@ -1,0 +1,56 @@
+[
+ {
+  "id": "F-018-01",
+  "story_id": "STORY-018",
+  "severity": "high",
+  "category": "flow",
+  "criterion": "Dead ends / Recovery",
+  "score": "fail",
+  "description": "Once an identity is confirmed (one click on the dominant Continue button), there is no in-app way to link the computer as an existing identity: the Link this device path disappears, the Join form returns IDENTITY_MISMATCH for the person's own My device invitation, and identity cannot be replaced or removed. Recovery needs stopping the client and starting a new --data directory.",
+  "expected": "While the client has no projects, offer 'Link this computer to my existing identity instead' (replacing the fresh unused identity), or let a My device invitation replace an identity that has no projects.",
+  "actual": "\"Destination already belongs to another identity\"; CLI identity returns IDENTITY_EXISTS; only a new client directory works.",
+  "screenshot": "screenshots/step-3-identity-mismatch.png",
+  "suggested_fix": "Allow identity replacement when the registry has zero projects, and surface 'Link this device' on Welcome when no project exists.",
+  "files_likely_involved": [
+   "ui-prototype/src/ClientApp.jsx",
+   "lib/client-projects.js",
+   "lib/client-invites.js",
+   "lib/client-service.js"
+  ]
+ },
+ {
+  "id": "F-018-02",
+  "story_id": "STORY-018",
+  "severity": "medium",
+  "category": "error-handling",
+  "criterion": "Error messages: non-technical, actionable",
+  "score": "warn",
+  "description": "The IDENTITY_MISMATCH headline \"Destination already belongs to another identity\" is internal jargon, and the hint explains the rule without saying what to do on this computer now.",
+  "expected": "\"This computer already has its own identity (Grace Liu, created just now), so it can't be linked as another identity. …\" plus the actual recovery step.",
+  "actual": "\"Destination already belongs to another identity\" + rule explanation.",
+  "screenshot": "screenshots/step-3-identity-mismatch.png",
+  "suggested_fix": "Rewrite the message and add a recovery action.",
+  "files_likely_involved": [
+   "lib/client-invites.js",
+   "ui-prototype/src/ClientApp.jsx"
+  ]
+ },
+ {
+  "id": "F-018-03",
+  "story_id": "STORY-018",
+  "severity": "medium",
+  "category": "consistency",
+  "criterion": "Identification of Actors",
+  "score": "warn",
+  "description": "When the same person joins with a second identity, the project shows two identical 'GL Grace Liu' avatars and two identical 'Grace Liu · human' entries in Assigned to, with no way to tell them apart except the device list inside each profile.",
+  "expected": "Disambiguation (email or device suffix), or a warning to the inviter/joiner that a person with the same name and email is already a member.",
+  "actual": "Duplicate, indistinguishable entries.",
+  "screenshot": "screenshots/var-duplicate-grace-on-hub.png",
+  "suggested_fix": "Warn on join when name+email matches an existing member; disambiguate duplicate display names in lists.",
+  "files_likely_involved": [
+   "lib/client-invites.js",
+   "ui-prototype/src/Avatar.jsx",
+   "ui-prototype/src/Pardner.jsx"
+  ]
+ }
+]

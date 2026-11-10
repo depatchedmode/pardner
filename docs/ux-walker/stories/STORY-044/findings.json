@@ -1,0 +1,18 @@
+[
+  {
+    "id": "F-044-01",
+    "story_id": "STORY-044",
+    "severity": "low",
+    "category": "consistency",
+    "criterion": "Error messages are consistent",
+    "score": "warn",
+    "description": "Marcus trying to revoke the hub creator's own device (5af6a22d…) gets NOT_FOUND \"Admission not found\", while revoking another replica member's device gets FORBIDDEN \"Device belongs to another human\". Same intent, different and less clear answer.",
+    "expected": "FORBIDDEN \"Device belongs to another human\" for any device not owned by the caller.",
+    "actual": "NOT_FOUND for the creator's device.",
+    "screenshot": "",
+    "suggested_fix": "Check ownership before admission lookup.",
+    "files_likely_involved": [
+      "lib/client-service.js"
+    ]
+  }
+]
