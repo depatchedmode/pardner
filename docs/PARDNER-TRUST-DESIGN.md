@@ -52,15 +52,18 @@ Git is a hard requirement; no code forge is. Each step down the hierarchy costs 
 | **Agent delegation** | No new key: a signed record letting a machine act as an agent Actor | The machine key signs it | Creating an agent under the person's existing machine credential | Cheap: no person-key prompt |
 
 **Person key, from git.**
-- If git has no SSH signing key configured, Pardner offers to create one (`ssh-keygen -t ed25519`) and set `gpg.format=ssh` and `user.signingkey`. Nothing is uploaded anywhere.
-- Pardner signs with `ssh-keygen -Y sign -n pardner` (SSHSIG). That works through ssh-agent and hardware keys, and the private key never enters Pardner.
-- Verification is offline, against the public key pinned in the membership log.
-- The same key signs the person's commits, so Pardner can check that a linked commit was signed by the person who claims it.
+- **Which key.** Pardner reads `user.signingkey` when `gpg.format=ssh`. It accepts two key types, `ssh-ed25519` and `sk-ssh-ed25519@openssh.com` (hardware), so every peer verifies the same way.
+- **No suitable key.** If git signs with GPG, with another SSH key type, or not at all, Pardner offers to create a dedicated Ed25519 key (`ssh-keygen -t ed25519`). It never replaces an existing signing setup (Q5). Nothing is uploaded anywhere.
+- **Signing.** Pardner signs with `ssh-keygen -Y sign -n pardner` (SSHSIG), so the private key never enters Pardner. This works from a key file, and from ssh-agent given only the public key **(checked)**.
+- **Where signing can happen.** A passphrase-protected key file needs a terminal; without one, signing fails **(checked)**. The background client service cannot prompt. Person-key actions therefore finish in the foreground CLI, or through ssh-agent. The board can start one and show the command that completes it.
+- **Hardware keys.** Each signature needs a touch, and the signature wraps a flag and a counter. This path was not tested in review.
+- **Verifying.** Peers parse the SSHSIG and verify it in-process with Node's crypto **(checked** for `ssh-ed25519`**)**. No peer, including a hub, needs `ssh-keygen` to verify. Verification is offline, against the public key pinned in the membership log.
+- **Commits.** When the person key is also the git signing key, Pardner can check that a linked commit was signed by the person who claims it.
 
 **Machine key.**
 - The machine ID is `machine-<base32(sha256(pubkey))[:26]>`.
-- On one machine, browsers, the CLI and agents keep authenticating to the local client with today's cookie, operator token and agent grants. That local trust boundary is the OS user account. The client service signs their operations with the machine key.
-- No private key ever lives in a browser or agent process.
+- On one machine, browsers, the CLI and agents keep authenticating to the local client with today's cookie, operator token and agent grants. The client service signs their operations with the machine key.
+- Pardner never hands a private key to a browser or an agent. [The local trust zone](#the-local-trust-zone) says what that does and does not protect.
 
 **Agents.**
 - Starting a new agent on a machine the person already uses is a single `agent.delegate`, signed by that machine's key and scoped to that machine. There is no person-key prompt.
@@ -68,10 +71,11 @@ Git is a hard requirement; no code forge is. Each step down the hierarchy costs 
 
 ### 2. Identity: git-native, with forge links optional
 
-- **What a person is.** A person *is* their person key. Their display name and email default to git's `user.name` and `user.email`, published as an editable `member.profile` record signed by the person key. This fixes the uneditable-identity dead end (STORY-014). A person can't be duplicated within a project, because membership is keyed by the person key.
-- **Identity checks at admission.** When someone is admitted, the admitting peer establishes that the person key belongs to the human it thinks it does. It uses either, or both, of:
-  - **A confirmation code.** Both screens show a short code derived from both keys, compared face to face, by voice or in chat. This works with no forge at all.
-  - **Forge attestation (optional, any forge).** The person names forge accounts such as `github.com/maya`, `gitlab.com/maya` or `codeberg.org/maya`. The admitting peerice checks online, once, that the person key is published there. Most forges list a user's public SSH keys at `https://<forge>/<login>.keys`; GitHub also exposes signing keys through its API. The result is recorded in the log as an attestation (`forge`, `login`, `checkedAt`, `checkedBy`). It strengthens trust and shows as a badge, and it is never required.
+- **What a person is.** A person *is* their person key. Their display name and email default to git's `user.name` and `user.email`, published as an editable `member.profile` record signed by the person key. This fixes the uneditable-identity dead end (STORY-014).
+- **Duplicates.** Membership is keyed by the person key, so one key is one person. A person who makes a second key on a second computer would still appear twice. The new-machine path (section 6) therefore never offers to create a person key on a computer that is joining an existing identity (STORY-018).
+- **Identity checks at admission.** When someone is admitted, the inviter establishes that the person key belongs to the human they think it does. They use either, or both, of:
+  - **A confirmation code.** Both screens show a short code derived from the offer, both person keys and the new machine key, compared face to face, by voice or in chat. This works with no forge at all. The join request is also signed with the invitation's own key (section 6), so a relay that never saw the invitation cannot swap in its own keys and search for a pair that produces the same short code.
+  - **Forge attestation (optional, any forge).** The person names forge accounts such as `github.com/maya`, `gitlab.com/maya` or `codeberg.org/maya`. A checking machine confirms online, once, that the person key is published there. Most forges list a user's public SSH keys at `https://<forge>/<login>.keys`; GitHub also exposes signing keys through its API. The result is recorded in the log as an attestation (`forge`, `login`, `checkedAt`, `checkedBy`). It is that machine's claim, which other peers cannot re-check later. It strengthens trust and shows as a badge, and it is never required.
 - **Offline thereafter.** Every later verification is offline, against the keys pinned in the membership log. No forge token is ever used or shared.
 
 ### 3. Signed operation envelope
@@ -161,22 +165,35 @@ Two consequences of the verification rule:
 
 ### 5. Membership log (authorization)
 
-Membership operations live in the same document and pass the same verification. They are new `prepareOperation` types with their own authority rules:
+Membership operations live in the same document and pass the same verification. They are new `prepareOperation` types with their own authority rules.
 
-| Operation | Signed by | Effect |
+**Two signatures.** A membership operation travels like any other, in a change signed by a certified machine (the carrier). Its authority comes from *statements* inside the payload, each signed with a person key.
+- A statement names the project, the action, its subject and a unique statement ID.
+- A statement ID is accepted once. An old `machine.add` or `member.add` statement cannot be replayed to undo a later revocation.
+- A machine may carry the operation that certifies it, so a new machine does not wait for another one to write on its behalf.
+
+| Operation | Authority | Effect |
 |---|---|---|
-| `project.genesis` | The creator's person key and machine key (first change) | Sets the single owner (person key) and the first machine. `projectId = base32(sha256(ownerPersonPubkey ‖ nonce))`, so anyone holding the project ID can check the genesis without asking anyone |
-| `member.add` | An owner's or admin's person key, plus the new member's person key (both) | Admits a person key with role `admin` or `member`, the identity check used (code and/or forge attestations), and the person's first machine |
-| `member.remove` / `member.role` | An owner's or admin's person key | Removes or re-roles a member from that causal point on. The owner can't be removed; ownership doesn't transfer in this version |
-| `machine.add` | The member's own person key (**high verification**) | Certifies a new machine key for that person, with scope `full` or `agents-only`. No admin is needed for a member's own machines |
-| `machine.revoke` | That person's person key, or an owner's or admin's | Revokes a machine from that causal point on |
-| `agent.delegate` / `agent.revoke` | A machine key of the owning person (**low ceremony**) | Creates or retires an agent Actor owned by that person, with a name and harness, that only this machine may act as. Moving or sharing it to another machine needs that machine's own delegation |
+| `project.genesis` | The creator's person key; carried by the first machine in the root change | Sets the single owner (person key) and the first machine. `projectId = base32(sha256(ownerPersonPubkey ‖ nonce))`, so anyone holding the project ID can check the genesis without asking anyone |
+| `member.add` | An owner's or admin's person key, plus the new member's person key (both) | Admits a person key with role `admin` or `member`, the identity check used (code and/or forge attestations), and the person's first machine. Creates their human Actor |
+| `member.remove` / `member.role` | The owner's person key for anyone; an admin's for members only | Removes or re-roles a member from that causal point on. The owner can't be removed; ownership doesn't transfer in this version |
+| `machine.add` | The member's own person key (**high verification**) | Certifies a new machine key for that person, with scope `full`, `agents-only` or `relay`. No admin is needed for a member's own machines |
+| `machine.revoke` | That person's person key, or the key of someone who may remove that person | Revokes a machine from that causal point on |
+| `agent.delegate` / `agent.revoke` | A machine key of the owning person (**low ceremony**); no statement | Creates or retires an agent Actor owned by that person, with a name and harness, that only this machine may act as. Moving or sharing it to another machine needs that machine's own delegation |
 | `member.profile` | The member's person key | Display name, email and forge links (defaulting to git's `user.name` and `user.email`) |
 
 Roles are minimal: one `owner` (the genesis person), any number of `admin`s, and `member`s.
 - All three may do board work.
 - Only the owner and admins admit, remove or re-role members.
 - Machines act for their person and that person's delegated agents. Agents act only as themselves and never change membership.
+
+Rules the table implies:
+- **Removal runs downhill only.** The owner acts on anyone, an admin on members, and each person on their own machines and agents. Two admins can therefore never remove each other at the same moment, which would leave no deterministic outcome (Q4).
+- **A removal against a concurrent action by its target** follows the strict revocation rule and Q1.
+- **Where the state lives.** Membership operations write `members`, `machines`, `agents` and the used statement IDs into the document. The exactness check means only a verified membership operation can write there. "Membership at `C.deps`" is those maps on the fork.
+- **A deterministic genesis.** The root change is built from the genesis statement alone, with the fixed header, so any peer can rebuild it. Today `repo.create` stamps the wall-clock time, and two builds of the same data have different hashes **(checked)**.
+- **Actors.** `member.add` and `agent.delegate` create Actors. `actor.register` and its first-Actor exception are retired.
+- **The hub's own machine.** A hub is a certified machine like any other. Today it is a member's computer running the client in the hub role. A headless hub is certified by the person who operates it, with scope `relay`: it may sync and serve, and never authors board work.
 
 These records replace today's hub-held admissions (`actorIds`, `humanAllowed`) with records that every peer replicates and checks.
 
@@ -185,15 +202,20 @@ These records replace today's hub-held admissions (`actorIds`, `humanAllowed`) w
 The three admission paths match the three kinds of key:
 
 - **A new person (invitation, high verification).**
-  - **The offer.** The owner or an admin issues a signed, single-use offer: `{projectId, role, inviterPersonKey, nonce, routes[], expiresAt}`. `routes` lists the ways to reach an admitting peer: an HTTPS hub URL, a LAN address, or a direct-peer address.
-  - **Route check.** The issuer checks that at least one route is reachable from outside its own loopback. If none is, it says so instead of issuing an invite that can never work (STORY-041).
-  - **The join request.** The newcomer's client produces a join request signed by their person key and their new machine key, with their profile and any forge links.
-  - **Admission.** An **online** owner or admin countersigns `member.add` after the identity check: confirmation code and/or forge attestation. The hub does this automatically only when the inviter pre-approved the forge login on the invitation (for example "invite `github.com/marcus`"). Otherwise it waits for the code check.
-  - **Expiry.** Expiry is enforced by the admitting peer at the moment of admission, never retroactively by peers, so peer clocks are never trusted.
+  - **The offer.** The owner or an admin creates a one-time invitation key pair and signs an offer with their person key: `{projectId, offerId, role, invitePublicKey, identityCheck, routes[], expiresAt}`. The invitation text carries the offer and the invitation's private key. It is the shared secret that admits a newcomer, as today's invitation secret is, and no hub needs to see it. `routes` lists the ways to reach an admitted peer: an HTTPS hub URL, a LAN address, or a direct-peer address.
+  - **Route check.** The issuer refuses to issue an invitation whose only routes are loopback, and checks that each route answers. It cannot prove a route is reachable from the recipient's network, so the recipient's client reports which routes failed (STORY-041).
+  - **The join request.** The newcomer's client produces a join request signed by the invitation key, their person key and their new machine key, with their profile and any forge links.
+  - **The identity check**, chosen by the inviter in the offer:
+    - `forge`: the inviter named a forge login (for example "invite `github.com/marcus`"). Their client fetched that login's keys when issuing and pinned them in the offer. The join request must be signed by one of them. Nobody needs to be online to approve.
+    - `code`: the inviter or another admin compares the confirmation code and signs an approval with their person key. This needs an admin online at the same time.
+  - **Recording it.** `member.add` holds the offer, the join request and any approval. Every peer verifies it offline from those signatures. A hub can record it, and holds no authority of its own.
+  - **Single use.** The offer ID is recorded in the document. If two different join requests use one offer on peers that have not yet synced, both are shown to the owner and admins, and neither person is admitted until one is chosen.
+  - **Expiry.** Expiry is enforced by the recording peer at the moment of admission, never retroactively by peers, so peer clocks are never trusted. The inviter can also revoke an unused offer.
 - **A new machine for an existing member (high verification, no admin).**
   - **On the new machine.** Pardner generates a machine key and shows a pairing request.
   - **Approval.** The person approves it with their **person key**: on the new machine, if their git signing key is there or on a hardware token they carry; or on an existing machine, scanning or pasting the request, with a confirmation code shown on both screens.
-  - **Recording it.** Any admitted peer that is online records the `machine.add`.
+  - **Recording it.** The new machine carries its own `machine.add` to any admitted peer, which verifies it before serving anything.
+  - **No key within reach.** If the person key is neither on the new machine nor on a machine at hand, Pardner says so. It does not offer to start a new identity, which is how duplicates arise today.
   - **What this fixes.** There is no invitation to copy, and nobody can link a machine into someone else's identity, because only that person's key can sign `machine.add` (STORY-016).
 - **A new agent on an existing machine (low ceremony).** `agent.delegate`, signed by the machine key, takes effect immediately and needs no network beyond normal sync. The agent is named and owned at creation, for example "Maya's Codex" (#150).
 - **Recovery after revocation.** A revoked machine is replaced by a fresh machine key through the new-machine path. A revoked agent is re-created with a fresh `agent.delegate`. A removed person is re-admitted with a new invitation. There are no dead ends (STORY-043, STORY-130).
@@ -201,10 +223,22 @@ The three admission paths match the three kinds of key:
 
 ### 7. Transport admission (who may read and sync)
 
-- **Handshake.** A sync connection, to a hub or to a peer, opens with a mutual challenge-response signed by machine keys. This replaces `deviceToken` and `replicaToken` bearers.
-- **Who is served.** A serving peer sends data only to machines certified in its current membership view. The one exception is an enrolling machine presenting a valid invitation, and that device is limited to enrollment.
+- **Handshake.** A sync connection, to a hub or to a peer, opens with a mutual challenge-response signed by machine keys. Each side signs a fresh challenge from the other together with the connection's own identity, so a recorded or relayed answer is useless elsewhere.
+- **What it replaces.** Today's bearer `deviceToken` and `replicaToken`. Each thing they separate today keeps a counterpart:
+
+  | Today | With machine keys |
+  |---|---|
+  | A device token admits a machine to the hub API | The handshake proves the machine key |
+  | A separate replica token admits a full document writer | A certified machine with scope `full`, `agents-only` or `relay` |
+  | A per-agent token limits a machine to one agent Actor | The `agent.delegate` record for that machine |
+  | Revoking an admission ends access | `machine.revoke` and `member.remove`, checked at every handshake |
+
+  AGENTS.md says shared-secret admission must not be relaxed. This is a replacement by a stronger proof, not a removal, but it needs the owner's explicit confirmation before step 4 (Q2).
+- **Who is served.** A serving peer sends data only to machines certified in its current membership state. The one exception is an enrolling machine that presents a valid join request or `machine.add`. It receives the document only once the operation that admits it is recorded.
+- **Hub-coordinated requests.** Delivery lease and presence requests ride the same authenticated connection. A lease is granted only to a machine delegated for that Actor.
 - **Same code for hub and peer.** A hub and a peer run the same handshake and the same check.
-- **Confidentiality.** Without end-to-end encryption, read confidentiality depends on every serving peer applying this check. That is the same trust we place in the hub today, now applied uniformly.
+- **Enrollment point.** Any admitted, reachable peer could record an enrollment. AGENTS.md currently requires the hub for enrollment, so the hub stays the enrollment point until the direct lane is qualified (Q3).
+- **Confidentiality.** Without end-to-end encryption, read confidentiality depends on every serving peer applying this check. That is the same trust we place in the hub today, now applied uniformly. A revoked machine keeps what it already downloaded, as today.
 - **Encryption on the wire.** Hub routes stay HTTPS. A direct peer route runs over an authenticated channel keyed by the machine keys (a Noise handshake, or TLS with pinned raw public keys). This means no certificate authority and no self-signed certificate prompts.
 
 ### 8. Change exchange
