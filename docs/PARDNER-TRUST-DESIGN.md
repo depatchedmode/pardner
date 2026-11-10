@@ -201,6 +201,36 @@ Rules the table implies:
 
 These records replace today's hub-held admissions (`actorIds`, `humanAllowed`) with records that every peer replicates and checks.
 
+### 5a. Encoding delegations as UCAN 1.0 (decided)
+
+The membership operations above form a delegation chain, so they are encoded as real [UCAN 1.0](https://ucan.xyz/specification/) delegations. Outside UCAN tooling can then read and check them. The causal membership log stays the source of order: it is where delegations and revocations are stored and replicated, and what every peer verifies against.
+
+| Pardner record | UCAN 1.0 delegation |
+|---|---|
+| `project.genesis` | The owner's person key (`did:key`, Ed25519) is the root issuer and the subject for project authority, with command `/` |
+| `member.add` / `member.role` | Owner or admin → the new person key, with command `/pardner/member/...` or `/pardner/board`, attenuated to the role |
+| `machine.add` | Person key → machine key, with `/pardner/board` and, when scoped, membership commands; `agents-only` attenuates to agent commands |
+| `agent.delegate` | Machine key → agent Actor key or identifier, attenuated to `/pardner/board` acting as that one Actor |
+| `scope.grant` | Person key → machine or agent, with the named `/pardner/member/...` commands (R3) |
+| `*.revoke`, `member.remove`, `scope.revoke` | A UCAN revocation (`ucan/revoke`, naming the delegation's CID), stored in the log |
+
+- **Envelope and keys.**
+  - The spec requires DAG-CBOR for signing, a Varsig header, SHA-256 CIDs, and `did:key` identities.
+  - Ed25519 is the recommended algorithm, and P-256 is also required by the spec. That keeps a later passkey person key (P-256) inside the same format.
+- **No clocks.**
+  - Every delegation sets `exp: null`, which the spec allows for tokens that never expire, and omits `nbf`. So validity never depends on a peer's clock.
+  - The spec's ±60 s drift guidance never applies.
+  - Invitation expiry stays outside the token and is checked only by the admitting device (section 6).
+- **Revocation.**
+  - UCAN revocation is an immutable `ucan/revoke` record that verifiers keep in a cache. The spec says it may run in eventually consistent systems, and that a CRDT may store revocations at a well-known path. The membership log is that place.
+  - The Q1 rule (enforce from arrival, with a signed witness for work already merged) sits on top. UCAN itself notes that revocation cannot undo actions already taken.
+- **Chain resolution.** The spec fails validation when a proof cannot be dereferenced. Every peer holds the full log, so every proof CID resolves locally and offline.
+- **Operations.** Board operations keep the lightweight signed envelope from section 3, which names the CID of the signing machine's delegation as its proof. Encoding each operation as a UCAN invocation (`ucan/inv`) is possible later, but would add a DAG-CBOR encode per write. The spike measures that cost before anything is decided.
+- **Risks the spike must clear.**
+  - *Dependencies.* DAG-CBOR, Varsig and multiformats become runtime dependencies that every peer must agree on, pinned like Automerge. Their footprint and audit surface need to be measured.
+  - *Library maturity.* A JavaScript library that implements the final 1.0 envelope must be confirmed. `iso-ucan` is a candidate; `@ucanto/*` and `ts-ucan` predate 1.0 or target older drafts. Otherwise, a small in-repo encoder and verifier must be checked against the spec's test vectors.
+  - *Spec status.* The spec's published pages differ on whether `exp` is required and do not all state a version. Pin the exact spec revision.
+
 ### 6. Invitations and enrollment
 
 The three admission paths match the three kinds of key:
@@ -339,6 +369,7 @@ Delivery leases and presence are about liveness, not authority, so a hub keeps t
 ## Rollout (each step lands on its own)
 
 0. **Spike.** The review showed that the rebuild check works for every operation type and for concurrent edits once payload keys are sorted. Still to prove:
+   - UCAN 1.0 delegations ([section 5a](#5a-encoding-delegations-as-ucan-10-decided)): a pinned library or in-repo verifier passes the spec's test vectors, dependency footprint, and verification cost per chain;
    - a cheap, correct fork at `deps` for concurrent changes;
    - verification time and memory on a 10,000-operation project, including a new replica's first full verification;
    - whether strings should be stored as plain values rather than Automerge text (Q7: measure first, decided). See [Cost in context](#cost-in-context);
