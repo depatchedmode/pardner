@@ -379,8 +379,46 @@ This is a plan. None of these scenarios has been run.
 
 ## Decisions
 
-- **One owner plus admins (decided).** The genesis person is the single owner. Admins share membership authority. Ownership transfer is out of scope for this version.
-- **Git required, forges optional (decided).** The person key is the git SSH signing key. Forge attestation (GitHub, GitLab, Codeberg/Forgejo or any `/<login>.keys` host) is optional and recorded when used. Without it, admission rests on a confirmation code.
-- **Ceremony by tier (decided).** A new person or a new machine needs the person key. A new agent on an existing machine needs only the machine key.
+All four stand. The review raised a question against each rather than changing it.
 
-- **Revocation is strict (decided).** Any change from a revoked machine or person that isn't in the revocation's causal past is rejected on every peer. Rejections are logged and shown, never silently dropped.
+- **One owner plus admins (decided).** The genesis person is the single owner. Admins share membership authority. Ownership transfer is out of scope for this version. *See Q4.*
+- **Git required, forges optional (decided).** The person key is the git SSH signing key. Forge attestation (GitHub, GitLab, Codeberg/Forgejo or any `/<login>.keys` host) is optional and recorded when used. Without it, admission rests on a confirmation code. *See Q5.*
+- **Ceremony by tier (decided).** A new person or a new machine needs the person key. A new agent on an existing machine needs only the machine key. *See Q6.*
+- **Revocation is strict (decided).** Any change from a revoked machine or person that isn't in the revocation's causal past is rejected on every peer. Rejections are logged and shown, never silently dropped. *See Q1: as written this cannot converge.*
+
+## Review notes
+
+Reviewed against AGENTS.md (Local-first), the local-first design skill, README, the client, recovery and acceptance docs, the latest walk report and the code named in the brief. The reference sync branch `cursor/native-automerge-ws-sync-cda6` is an ancestor of this branch, so the two do not differ. Checks were throwaway scripts outside the repository; no product code changed.
+
+**What changed, and why**
+
+- **Exactness is now "rebuild the change and compare hashes".** Path-and-value comparison missed a tampered change that showed the same values, and strings are stored as per-character text.
+- **Sorted map writes are required.** Without them only 4 of 23 operation types rebuild from a stored document.
+- **Replay runs on a true fork, not `view`.** `getConflicts` ignores a view's heads, and `prepareOperation` depends on it.
+- **The Automerge actor ID is machine prefix plus a per-process suffix.** It binds the change to the machine without risking a reused sequence number after a restore or crash.
+- **The signature fixes the whole change.** The header time and message are fixed too, so a valid signature cannot be wrapped in a different change.
+- **Measured costs replace the "measure it" placeholder.** Signatures are cheap; the rebuild costs as much as authoring, and forking for concurrent changes is the unsolved part.
+- **The change exchange has a real fetch step.** Heads alone do not reveal missing ancestors. Rejected hashes are remembered, and receipt is confirmed only after verify and save.
+- **Membership operations carry person-signed statements inside a machine-signed change.** Statements are single-use, so an old one cannot undo a revocation.
+- **Removal authority runs downhill only.** Otherwise two admins removing each other at once has no deterministic outcome.
+- **Genesis is deterministic, and the document has one root.** Today's creation change embeds the wall-clock time.
+- **The hub has an identity.** It is a certified machine; a headless one gets scope `relay`.
+- **Invitations use a one-time key and a pre-signed offer.** The earlier text had the hub admit people automatically, which needed the hub to hold an admin's authority.
+- **The confirmation code is bound to the invitation key.** A code derived from two static keys alone can be matched by a relay that tries many keys.
+- **Person-key signing is specified.** Accepted key types, in-process verification, the need for a terminal or ssh-agent, and never overwriting an existing git signing setup.
+- **Bearer tokens are mapped one for one to machine-key checks**, and their removal became its own rollout step.
+- **New sections: local trust zone, backup and key loss, required services and outages, direct peer feasibility.** The skill and AGENTS.md ask for each; the trust zone states plainly that peers verify machines, not which Actor on a machine.
+- **The backup row no longer cites a duplicate-copy guard.** None exists; STORY-142 is the open finding (#165).
+- **Rollout reordered.** Deterministic writes come before shadow signing; the rejected-change notice lands with enforcement, not two steps later.
+- **The STORY-089 claim was removed.** That defect is in the board, not in authorization.
+- **The validation plan gained the skill's scenarios**: offline reopen, concurrent same-field edits, interrupted exchange, real-network direct sync, restore with and without a backup.
+
+**Open questions for the owner**
+
+- **Q1.** Strict revocation cannot converge on Automerge as written. Adopt option A (strict at the gate, cut at the witness) or option B (rebuild and discard dependent honest work)? Section 4.
+- **Q2.** Does replacing bearer tokens with a machine-key handshake satisfy "do not relax shared-secret admission", and should AGENTS.md say so when step 4 lands? Section 7.
+- **Q3.** Keep the hub as the only enrollment point, as AGENTS.md requires today, or let any admitted peer record an enrollment once the direct lane is qualified? Section 7.
+- **Q4.** May only the owner remove or demote admins? It prevents mutual removal, but a lost owner key then freezes the admin list. Section 5.
+- **Q5.** May Pardner ever set git's signing configuration, and may the person key be a dedicated key that is not the git signing key when git signs with GPG or another key type? Section 1.
+- **Q6.** Is a person key that ssh-agent will use without confirmation acceptable for membership actions, or must they always need a passphrase, confirmation or touch? The local trust zone.
+- **Q7.** Should strings be stored as plain values instead of Automerge text, a schema change, to make verification and loading affordable at 10,000 operations? Rollout step 0.
