@@ -183,6 +183,7 @@ Membership operations live in the same document and pass the same verification. 
 | `machine.add` | The member's own person key (**high verification**) | Certifies a new machine key for that person, with scope `full`, `agents-only` or `relay`. No admin is needed for a member's own machines |
 | `machine.revoke` | That person's person key, or the key of someone who may remove that person | Revokes a machine from that causal point on |
 | `agent.delegate` / `agent.revoke` | A machine key of the owning person (**low ceremony**); no statement | Creates or retires an agent Actor owned by that person, with a name and harness, that only this machine may act as. Moving or sharing it to another machine needs that machine's own delegation |
+| `scope.grant` / `scope.revoke` | The person's person key (passphrase, once) | Lets one of that person's machines or agents perform a named set of that person's membership actions with its machine key, until revoked (R3) |
 | `member.profile` | The member's person key | Display name, email and forge links (defaulting to git's `user.name` and `user.email`) |
 
 Roles are minimal: one `owner` (the genesis person), any number of `admin`s, and `member`s.
@@ -274,9 +275,13 @@ Consequences:
 - A rule such as "only the author may delete a comment" holds between people and between machines. Between a person and their own agent on one machine, it holds only as far as the local service enforces it.
 - Any process running as the same OS user can read the machine key file and the operator token. An agent with shell access is such a process. Agent grants limit a cooperative agent. They are not a security boundary against a hostile one.
 - The person-key tier is a real boundary only when using the key takes a deliberate act. Pardner's person key is always sealed with a passphrase, so every use needs the person to type it.
-- **Presence is required for membership actions (decided, Q6).** Admitting a person, adding or revoking a machine, and changing roles each need the passphrase, typed at the moment of the action, in the board or the CLI. Profile edits may reuse a short unlock. Pardner never keeps the unsealed key in a long-running process, and never accepts the passphrase from an agent or a non-interactive call.
-  - **What it guarantees.** It stops accidents, and stops agents that hold only the machine key or a local grant. It is a local guarantee: a hostile process running as the same user could capture the passphrase as it is typed. Other peers can't check that it happened.
-  - **Presence peers can check (later).** A hardware-backed key type (a passkey, or an `sk-` SSH key) whose signature carries a user-presence flag. Note that the OpenSSH shipped with macOS has no FIDO provider, so an `sk-` key needs extra setup there. Whether owners and admins must have this from the first release is open (R3).
+- **Membership authority can be delegated (decided, R3; softens Q6).** People routinely hand management to an agent, so a per-action passphrase costs more than it guarantees.
+  - **The grant.** Once, with the passphrase, the person key signs a revocable scope, "may manage membership", for one of their machines or agents. The scope can be narrowed, for example to "may add machines and agents" or "may admit members".
+  - **Using it.** That machine or agent then signs membership actions with its machine key. There is no per-action prompt.
+  - **Verifying it.** Peers verify the chain person key → scope → machine. The log records who acted and for whom, for example "added by Maya's Codex for Maya".
+  - **Revoking it.** Revoking the scope, or the machine, ends it from that causal point on.
+  - **What stays guarded.** The person key itself stays sealed at rest. It is needed only to grant or revoke scopes, to certify machines, and to manage the person's own membership, so a stolen disk or backup still holds no membership authority.
+  - **Peer-checkable presence.** No longer planned for the first release. The key-type field leaves room for hardware keys or passkeys later.
 - A build box or shared host should be its own machine with scope `agents-only`, so it never holds human authority.
 - The cookie, operator token and agent grants work as they do today and never leave the machine.
 
@@ -409,7 +414,7 @@ Three stand as decided; revocation was revised after the review showed the stric
 
 - **One owner plus admins (decided).** The genesis person is the single owner. Admins share membership authority. Ownership transfer is out of scope for this version. Only the owner removes or demotes admins, and a lost owner key freezes the admin list (Q4, accepted).
 - **Git required, forges optional (decided).** Pardner relies on git being installed, and never edits its configuration. The person key is created and sealed by Pardner (R1, decided, replacing Q5). SSH and OpenPGP keys may be linked later as badges for commit linking and forge attestation, never as part of verification. Without a forge, admission rests on a confirmation code.
-- **Ceremony by tier (decided).** A new person or a new machine needs the person key. A new agent on an existing machine needs only the machine key. Membership actions need the person key's passphrase each time (Q6, decided); presence that peers can check comes with a later hardware key type (R3, open).
+- **Ceremony by tier (decided).** A new person or a new machine needs the person key. A new agent on an existing machine needs only the machine key. Membership authority can be delegated once, by a scope the person key signs, to a machine or agent that then acts without prompts (R3, decided).
 - **Revocation is enforced from arrival (decided, revised).** Each peer refuses a revoked party's changes from the moment it learns of the revocation. Work already merged stays, is named by a signed witness and listed for an admin to undo. Rejections are logged and shown, never silently dropped. This replaces the original strict rule, which could not converge on Automerge.
 
 ## Review notes
@@ -446,7 +451,7 @@ Reviewed against AGENTS.md (Local-first), the local-first design skill, README, 
 - **Q3 (decided: hub-only now, peers later).** The hub stays the only enrollment point. Once the direct lane is qualified, admitted owner and admin peers may enroll too, with an AGENTS.md update. Section 7.
 - **Q4 (decided: owner only, freeze accepted).** Only the owner removes or demotes admins. A lost owner key freezes the admin list; that limitation is documented, not engineered around. Section 5.
 - **Q5 (superseded by R1).** Was: SSH or OpenPGP person keys. Replaced by a Pardner-made, passphrase-sealed person key, with SSH and OpenPGP as optional linked keys. Section 1.
-- **Q6 (decided: require presence for membership).** Membership actions need a deliberate act: a hardware touch (verifiable by peers), or a local terminal confirmation plus agent confirmation or passphrase. Profile edits may sign silently. The local trust zone.
+- **Q6 (superseded by R3).** Was: a deliberate act for every membership action. Replaced by delegable, revocable membership scopes signed once by the person key. The local trust zone.
 - **Q7 (decided: measure first).** Keep Automerge text unless the spike's numbers, read against how often each cost is paid, cross the decision rule in [Cost in context](#cost-in-context). Rollout step 0.
 
 ## Simplification review (proposal)
@@ -585,7 +590,7 @@ These revisit decisions. None is changed until answered.
 
 - **R1 (decided: adopted).** The person key is a key Pardner creates and seals. SSH and OpenPGP keys become optional linked keys that produce badges and never enter the verification rule. Section 1 now says this.
 - **R2 (clarifies "git is a hard requirement").** Does this mean Pardner may rely on git being installed, for name and email defaults and for commit evidence? Or that identity must be rooted in a key git uses? The recommendation satisfies the first reading only.
-- **R3 (revisits Q6).** Is a passphrase required at every membership action enough for now, described as a local guarantee? Or must owners and admins have presence that peers can check from the first release? If the second, a hardware key type has to be in stage 1, and the OpenSSH that macOS ships cannot use one.
+- **R3 (decided: scoped delegation).** Presence is softened. The person key grants revocable membership scopes to machines or agents, peers verify the chain, and the log names who acted for whom. Peer-checkable presence is not planned for the first release.
 - **R4 (revisits the rollout).** May the first shipped boundary be level 1, with per-change verification staged behind the spike? This narrows what the Goal section promises at first, and README would say so.
 - **R5 (revisits the rollout).** Should the board's membership surfaces move from step 6 to directly after the membership log?
 - **R6 (follows from R1, touches Q4).** The person key would sit on the first machine. Should pairing be able to copy the sealed key to a new machine, so that either can manage membership and losing one computer does not lose the owner key? And should creating a project require exporting the recovery file?
