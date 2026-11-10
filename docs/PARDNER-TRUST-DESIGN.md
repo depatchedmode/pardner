@@ -229,7 +229,7 @@ The three admission paths match the three kinds of key:
 - **Who is served.** A serving peer sends data only to machines certified in its current membership state. The one exception is an enrolling machine that presents a valid join request or `machine.add`. It receives the document only once the operation that admits it is recorded.
 - **Hub-coordinated requests.** Delivery lease and presence requests ride the same authenticated connection. A lease is granted only to a machine delegated for that Actor.
 - **Same code for hub and peer.** A hub and a peer run the same handshake and the same check.
-- **Enrollment point.** Any admitted, reachable peer could record an enrollment. AGENTS.md currently requires the hub for enrollment, so the hub stays the enrollment point until the direct lane is qualified (Q3).
+- **Enrollment point.** Any admitted, reachable peer could record an enrollment. AGENTS.md currently requires the hub for enrollment, so the hub stays the only enrollment point for now (Q3, decided). Once the direct lane is qualified on real separate machines, any admitted, reachable owner or admin peer may record enrollments, and AGENTS.md is updated in that PR.
 - **Confidentiality.** Without end-to-end encryption, read confidentiality depends on every serving peer applying this check. That is the same trust we place in the hub today, now applied uniformly. A revoked machine keeps what it already downloaded, as today.
 - **Encryption on the wire.** Hub routes stay HTTPS. A direct peer route runs over an authenticated channel keyed by the machine keys (a Noise handshake, or TLS with pinned raw public keys). This means no certificate authority and no self-signed certificate prompts.
 
@@ -284,7 +284,7 @@ The recovery guide is updated in the same step that introduces machine keys.
 
 | Service | Needed for | While it is down | Replacing it |
 |---|---|---|---|
-| Hub | Enrollment (Q3), new delivery leases, presence relay, and sync between machines that cannot reach each other | Enrolled replicas reopen, verify, edit and save locally with only their machine key. Accepted work continues. New dispatch and presence are unavailable and say so | Restore its cold backup at the same origin. Peers resupply the document, including membership and revocations. The lease ledger needs the backup |
+| Hub | Enrollment (until the direct lane is qualified; Q3), new delivery leases, presence relay, and sync between machines that cannot reach each other | Enrolled replicas reopen, verify, edit and save locally with only their machine key. Accepted work continues. New dispatch and presence are unavailable and say so | Restore its cold backup at the same origin. Peers resupply the document, including membership and revocations. The lease ledger needs the backup |
 | git and OpenSSH | Person-key actions: admitting a person, adding a machine, profile and membership changes | Board work, agents and sync are unaffected. They use only the machine key | Any OpenSSH that offers `ssh-keygen -Y sign` |
 | A forge | Optional attestation | The `code` check still admits people | Not needed |
 
@@ -299,7 +299,7 @@ Delivery leases and presence are about liveness, not authority, so a hub keeps t
 | Reachability | The same LAN, or a tailnet. Across NAT without a tailnet it does not work, and a relay would be a new service to run |
 | Exposure | The client listens on loopback only today. A direct lane needs a second listener on a chosen interface, off by default, that speaks only the handshake and the change exchange. OS firewall prompts apply |
 | Background running | Both services must be up at the same time. Nothing stores and forwards without a hub |
-| Unavailable without a hub | New delivery leases, presence, and enrollment (Q3) |
+| Unavailable without a hub | New delivery leases and presence; enrollment until the direct lane is qualified (Q3) |
 | Evidence needed | Two real machines on separate networks. A loopback test shows nothing about reachability |
 
 **Decision.** Offer the direct lane as an explicit opt-in once the hub path enforces the same rule (rollout step 5). It adds a lane; it does not replace the hub.
@@ -409,7 +409,7 @@ Reviewed against AGENTS.md (Local-first), the local-first design skill, README, 
 
 - **Q1 (decided: option A).** Revocation is enforced from arrival, with a signed witness for work merged before it. Section 4.
 - **Q2 (decided: yes).** The machine-key handshake satisfies the admission rule. The PR that lands step 4 updates AGENTS.md to say so. Section 7.
-- **Q3.** Keep the hub as the only enrollment point, as AGENTS.md requires today, or let any admitted peer record an enrollment once the direct lane is qualified? Section 7.
+- **Q3 (decided: hub-only now, peers later).** The hub stays the only enrollment point. Once the direct lane is qualified, admitted owner and admin peers may enroll too, with an AGENTS.md update. Section 7.
 - **Q4.** May only the owner remove or demote admins? It prevents mutual removal, but a lost owner key then freezes the admin list. Section 5.
 - **Q5.** May Pardner ever set git's signing configuration, and may the person key be a dedicated key that is not the git signing key when git signs with GPG or another key type? Section 1.
 - **Q6.** Is a person key that ssh-agent will use without confirmation acceptable for membership actions, or must they always need a passphrase, confirmation or touch? The local trust zone.
