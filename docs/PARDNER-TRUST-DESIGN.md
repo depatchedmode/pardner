@@ -129,22 +129,14 @@ The document has exactly one change with no dependencies: the genesis (section 5
 
 **Outcomes.**
 - **Accept.** All five checks pass.
-- **Reject.** Any check fails, or the strict revocation rule applies: a change from a revoked machine or person that is not in the revocation's causal past is rejected, including offline work that never saw the revocation. A rejected change is never applied, and neither is any change that depends on it.
+- **Reject.** Any check fails, or the revocation rule applies: a peer that holds the revocation `R` of a machine or person never applies a not-yet-applied change from them that is outside `R`'s causal past. That includes offline work that never saw the revocation. A rejected change is never applied, and neither is any change that depends on it.
+- **Revocation is enforced from arrival (decided, option A).** A change from the revoked party that a peer had already merged before `R` reached it stays in the document. Automerge cannot un-apply it, and other people may have built on it. That peer records a small signed acknowledgement naming such changes (the witness), so every peer converges on the same document. The notice lists them as "accepted before the revocation arrived", with who, what and when, and an admin can undo any of them with ordinary operations. Revocation therefore takes effect as each peer learns of it, not at one global instant.
 
 Rejection is **visible, not silent**, as AGENTS.md requires:
 - The receiving peer keeps the change in a local rejected-change log with its reason, its author and what it would have done.
 - The board shows a notice to owners and admins.
 - A lost-then-found machine's legitimate offline work must be re-entered by its person from a certified machine. The log shows what it was.
-- This is a deliberate policy (decided), not an oversight.
-
-> **Open question Q1: strict revocation cannot converge as written.**
-> A peer can apply a change `X` from machine `A`, and other people can build on it, before the revocation `R` of `A` reaches that peer. Once `R` arrives, the rule says `X` is rejected. Automerge cannot remove an applied change, and a change whose dependency is missing is held back, never applied **(checked)**. Peers that saw `X` first and peers that saw `R` first would then hold different documents for good.
->
-> The race is narrow when everyone syncs through one hub, and wide on a direct peer lane or after long offline periods. Two ways to close it:
-> - **A. Strict at the gate, cut at the witness (recommended).** A peer that holds `R` never applies a not-yet-applied change from `A`. A change from `A` outside `R`'s causal past is kept only if an unrevoked machine had already built on it. A peer that merged such changes before `R` arrived records a small signed acknowledgement naming them, which is that witness. The notice lists them as "accepted before the revocation arrived", and an admin undoes any of them with ordinary operations. Every peer reaches the same document. The cost: revocation takes effect when each peer learns of it, not at one global instant.
-> - **B. Strict to the letter.** On learning `R`, each peer rebuilds its document without `X` and without everything built on `X`, including valid work by unrevoked people. That work goes to the rejected-change log to be re-entered. This needs a document rebuild that automerge-repo does not offer, and it throws out honest work, visibly.
->
-> Step 3 of the rollout needs this answered. Until then the text above states the decided rule.
+- Changes merged before the revocation arrived are listed separately, as above, for an admin to review.
 
 Two consequences of the verification rule:
 - Adding a rule to `prepareOperation`, such as "only the author may delete a comment", enforces it on **every peer** at once. There is no second rule engine to drift out of sync.
@@ -189,7 +181,7 @@ Roles are minimal: one `owner` (the genesis person), any number of `admin`s, and
 
 Rules the table implies:
 - **Removal runs downhill only.** The owner acts on anyone, an admin on members, and each person on their own machines and agents. Two admins can therefore never remove each other at the same moment, which would leave no deterministic outcome (Q4).
-- **A removal against a concurrent action by its target** follows the strict revocation rule and Q1.
+- **A removal against a concurrent action by its target** follows the revocation rule: whichever arrives first at a peer decides there, and the witness keeps every peer on the same document.
 - **Where the state lives.** Membership operations write `members`, `machines`, `agents` and the used statement IDs into the document. The exactness check means only a verified membership operation can write there. "Membership at `C.deps`" is those maps on the fork.
 - **A deterministic genesis.** The root change is built from the genesis statement alone, with the fixed header, so any peer can rebuild it. Today `repo.create` stamps the wall-clock time, and two builds of the same data have different hashes **(checked)**.
 - **Actors.** `member.add` and `agent.delegate` create Actors. `actor.register` and its first-Actor exception are retired.
@@ -336,7 +328,7 @@ Delivery leases and presence are about liveness, not authority, so a hub keeps t
    Verification cost is now the main technical risk.
 1. **Deterministic writes and shadow signing.** Add sorted map writes, the fixed change header, the machine key and the machine-prefixed actor ID. Machines sign every operation and include their public key. Receivers rebuild, verify and log the result but don't enforce it. Sync stays as it is. Run the acceptance and walker suites, and expect zero failed verifications.
 2. **Membership log.** Add the genesis, member, machine and agent operations, the invitation key, the confirmation-code check and optional forge attestation. Today's admission records are derived from the log and the bearer tokens remain. Update the recovery guide for machine and person keys. This is a breaking change for existing projects, which is acceptable because no migration is needed.
-3. **Enforce over the hub path.** Introduce the change exchange with the verification gate, and the rejected-change log with its board notice and a CLI listing. A rejection must be visible from the first day one can happen. This step needs Q1 answered. Bearer tokens still admit connections.
+3. **Enforce over the hub path.** Introduce the change exchange with the verification gate, and the rejected-change log with its board notice and a CLI listing. A rejection must be visible from the first day one can happen. It also adds the revocation witness and its "accepted before the revocation arrived" notice. Bearer tokens still admit connections.
 4. **Machine-key handshake.** Replace the bearer tokens. This step needs Q2 answered.
 5. **Direct peer lane.** Allow the same protocol between two replicas given an explicit address (LAN or tailnet). Validate it on real separate machines, not loopback.
 6. **People-facing surfaces.** Members, machines, agents, revocation, re-admission and agent naming in the board.
@@ -359,8 +351,8 @@ This is a plan. None of these scenarios has been run.
 | An enrolled replica reopens with the hub unreachable, edits and restarts | It opens, signs with its machine key and saves locally. No person key, forge or hub is needed, and the edits survive the restart |
 | The same field is edited on two disconnected machines | Both changes verify at their own dependencies. Both alternatives are kept for explicit resolution, as today |
 | An exchange is interrupted mid-batch and retried; the same request is retried on a second machine | No change is applied twice, the retried operation collapses to one, and acknowledged edits survive |
-| A machine revoked, then still syncing old offline work | Work in the revocation's causal past is kept; everything else from that machine is rejected on every peer and listed in the rejected-change log |
-| A peer applies a machine's change before that machine's revocation arrives | Every peer ends with the same document and a visible record, by the rule chosen in Q1 |
+| A machine revoked, then still syncing old offline work | Work in the revocation's causal past is kept; later work is rejected by every peer that holds the revocation, and listed in the rejected-change log |
+| A peer applies a machine's change before that machine's revocation arrives | The change stays, a signed witness names it, every peer ends with the same document, and the notice lists it as accepted before the revocation arrived |
 | An old `machine.add` statement is replayed after the machine was revoked | Rejected: the statement ID was already used |
 | Two different join requests use one offer | Both are shown; neither person is admitted until one is chosen |
 | Two replicas converge directly, on two real machines on separate networks, while the hub is down | Identical documents and identical verification results to the hub path. Leases and presence report as unavailable |
@@ -379,12 +371,12 @@ This is a plan. None of these scenarios has been run.
 
 ## Decisions
 
-All four stand. The review raised a question against each rather than changing it.
+Three stand as decided; revocation was revised after the review showed the strict rule could not converge.
 
 - **One owner plus admins (decided).** The genesis person is the single owner. Admins share membership authority. Ownership transfer is out of scope for this version. *See Q4.*
 - **Git required, forges optional (decided).** The person key is the git SSH signing key. Forge attestation (GitHub, GitLab, Codeberg/Forgejo or any `/<login>.keys` host) is optional and recorded when used. Without it, admission rests on a confirmation code. *See Q5.*
 - **Ceremony by tier (decided).** A new person or a new machine needs the person key. A new agent on an existing machine needs only the machine key. *See Q6.*
-- **Revocation is strict (decided).** Any change from a revoked machine or person that isn't in the revocation's causal past is rejected on every peer. Rejections are logged and shown, never silently dropped. *See Q1: as written this cannot converge.*
+- **Revocation is enforced from arrival (decided, revised).** Each peer refuses a revoked party's changes from the moment it learns of the revocation. Work already merged stays, is named by a signed witness and listed for an admin to undo. Rejections are logged and shown, never silently dropped. This replaces the original strict rule, which could not converge on Automerge.
 
 ## Review notes
 
@@ -415,7 +407,7 @@ Reviewed against AGENTS.md (Local-first), the local-first design skill, README, 
 
 **Open questions for the owner**
 
-- **Q1.** Strict revocation cannot converge on Automerge as written. Adopt option A (strict at the gate, cut at the witness) or option B (rebuild and discard dependent honest work)? Section 4.
+- **Q1 (decided: option A).** Revocation is enforced from arrival, with a signed witness for work merged before it. Section 4.
 - **Q2.** Does replacing bearer tokens with a machine-key handshake satisfy "do not relax shared-secret admission", and should AGENTS.md say so when step 4 lands? Section 7.
 - **Q3.** Keep the hub as the only enrollment point, as AGENTS.md requires today, or let any admitted peer record an enrollment once the direct lane is qualified? Section 7.
 - **Q4.** May only the owner remove or demote admins? It prevents mutual removal, but a lost owner key then freezes the admin list. Section 5.
