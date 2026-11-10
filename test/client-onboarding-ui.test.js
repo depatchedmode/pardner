@@ -67,8 +67,8 @@ it('clears a bootstrap grant from the fragment while keeping other fragment stat
   assert.deepEqual(replaced, ['/pardner/?x=1#view=board'])
   assert.equal(takeBootstrapGrant({ hash: '#grant=only', pathname: '/pardner/', search: '' }, history), 'only')
   assert.equal(replaced.at(-1), '/pardner/')
-  assert.equal(takeBootstrapGrant({ hash: '#pair=12345678', pathname: '/pardner/', search: '' }, history), null)
-  assert.equal(replaced.length, 2, 'a standalone pairing fragment is left for the pairing flow')
+  assert.equal(takeBootstrapGrant({ hash: '#view=board', pathname: '/pardner/', search: '' }, history), null)
+  assert.equal(replaced.length, 2, 'a fragment without a grant is left in place')
 })
 
 it('calls the client API with the session cookie only and preserves backend error codes', async () => {
@@ -109,17 +109,13 @@ it('keeps session-authenticated drafts and retries bound to project and Actor wi
   assert.equal(bobHere.draft('task-1'), null)
   assert.equal(otherProject.draft('task-1'), null)
   assert.equal(otherProject.pending(), null)
-  alice.remember('ignored')
-  assert.equal(alice.credential(), 'session')
+  alice.savePreferences({ view: 'board' })
   assert.equal([...local.values.keys()].some(key => key.endsWith(':credential')), false)
   await assert.rejects(alice.request('/automerge/doc'), { code: 'AUTH_REQUIRED' })
   assert.equal(sent.headers.Authorization, undefined)
   assert.equal(sent.headers['X-Pardner-Workspace'], 'project-a')
   assert.equal(sent.credentials, 'same-origin')
   assert.equal(alice.pending().operationId, 'op-1', 'an uncertain request survives an authentication failure')
-  // Standalone services keep their original storage keys.
-  const standalone = createConnection({ workspaceId: 'project-a', apiBase: '', wsPath: '/' }, { storage: local, drafts, fetcher })
-  assert.equal(standalone.pending(), null)
 })
 
 it('reports browser activity only after real interaction and ends the activity lease with the idle window', async () => {

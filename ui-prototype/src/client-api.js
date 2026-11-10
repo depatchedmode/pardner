@@ -4,15 +4,20 @@
 const GRANT_KEY = 'grant'
 let capturedGrant = null
 
-/** Remove a one-time bootstrap grant from the address bar and return it. */
-export function takeBootstrapGrant(location = window.location, history = window.history) {
+/** Remove one fragment parameter from the address bar, keeping the rest, and return its value. */
+function takeFragmentValue(key, location, history) {
   const params = new URLSearchParams(location.hash.slice(1))
-  if (!params.has(GRANT_KEY)) return null
-  const grant = params.get(GRANT_KEY)
-  params.delete(GRANT_KEY)
+  if (!params.has(key)) return null
+  const value = params.get(key)
+  params.delete(key)
   const rest = params.toString()
   history.replaceState(null, '', location.pathname + location.search + (rest ? `#${rest}` : ''))
-  return grant || null
+  return value || null
+}
+
+/** Remove a one-time bootstrap grant from the address bar and return it. */
+export function takeBootstrapGrant(location = window.location, history = window.history) {
+  return takeFragmentValue(GRANT_KEY, location, history)
 }
 
 /** Called before the first render so the grant never stays visible while config loads. */

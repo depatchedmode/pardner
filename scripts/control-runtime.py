@@ -1,5 +1,5 @@
 #!/usr/bin/python3 -I
-"""Operate an explicitly provisioned, private macOS Pardner control runtime."""
+"""Operate an explicitly provisioned, private macOS Pardner control runtime in client mode."""
 import argparse
 import datetime
 import fcntl
@@ -13,10 +13,15 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 LABEL = 'app.pardner.control'
-LAUNCH_KEYS = ['sha', 'release', 'data', 'node', 'role', 'httpPort', 'wsPort']
+LAUNCH_KEYS = ['sha', 'release', 'data', 'node', 'httpPort', 'agents']
+CLIENT_API = '/pardner/client/v1'
+# Stable operation IDs make first-run provisioning a replay, not a duplicate, when it is retried.
+IDENTITY_OPERATION = 'control-runtime-identity'
+PROJECT_OPERATION = 'control-runtime-project'
 LOCKFILES = ['package-lock.json', 'ui-prototype/package-lock.json',
              'node_modules/.package-lock.json', 'ui-prototype/node_modules/.package-lock.json']
 LAUNCHCTL = '/bin/launchctl'
@@ -53,7 +58,7 @@ class Controller:
         c = self.config
         if not isinstance(c, dict):
             raise ControlError('Config must be a JSON object')
-        for key in LAUNCH_KEYS + ['workspaceId', 'replicaId']:
+        for key in LAUNCH_KEYS:
             if key not in c:
                 raise ControlError(f'Missing config field: {key}')
         for key in ['release', 'data', 'node']:
@@ -61,16 +66,14 @@ class Controller:
                 raise ControlError(f'Config {key} must be an absolute path')
         if not isinstance(c['sha'], str) or not re.fullmatch('[0-9a-f]{40}', c['sha']):
             raise ControlError('Config sha must be an exact Git revision')
-        if c['role'] not in ['hub', 'replica']:
-            raise ControlError('Config role must be hub or replica')
-        for key in ['httpPort', 'wsPort']:
-            if type(c[key]) is not int or not 1 <= c[key] <= 65535:
-                raise ControlError(f'Config {key} must be a fixed TCP port')
-        if c['httpPort'] == c['wsPort']:
-            raise ControlError('HTTP and WebSocket ports must differ')
-        for key in ['workspaceId', 'replicaId']:
-            if not isinstance(c[key], str) or not c[key]:
-                raise ControlError(f'Config {key} must name the enrolled identity')
+        if type(c['httpPort']) is not int or not 1 <= c['httpPort'] <= 65535:
+            raise ControlError('Config httpPort must be a fixed TCP port')
+        agents = c['agents']
+        if not isinstance(agents, list) or not agents or len(set(agents)) != len(agents) or \
+                any(not isinstance(a, str) or not re.fullmatch('[a-z0-9-]+', a) for a in agents):
+            raise ControlError('Config agents must list the harness IDs of this client\'s agent Actors')
+        if 'projectId' in c and (not isinstance(c['projectId'], str) or not c['projectId']):
+            raise ControlError('Config projectId must name an existing client project')
         self.release = Path(c['release']).resolve()
         self.data = Path(c['data']).resolve()
         if self.data != self.home / 'data':
@@ -81,6 +84,8 @@ class Controller:
             raise ControlError('Release must be inside this installation\'s releases directory')
         self.service = f'gui/{os.getuid()}/{LABEL}'
         self.url = f'http://127.0.0.1:{c["httpPort"]}'
+        self.project_file = self.home / 'project.json'
+        self.credentials = self.home / 'credentials'
 
     def command(self, argv, **kwargs):
         env = environment()
@@ -99,18 +104,18 @@ class Controller:
             raise ControlError('Control release has changes; preserve it and investigate')
         if self.command([self.config['node'], '--version'], check=True).stdout.strip() != 'v24.11.1':
             raise ControlError('Control runtime requires Node 24.11.1')
-        manifest = json.loads((self.data / 'workspace.json').read_text())
-        if not isinstance(manifest, dict) or any(manifest.get(key) != self.config[key] for key in ['workspaceId', 'replicaId', 'role']):
-            raise ControlError('Control storage identity or role mismatch')
         # Read the pinned declaration without importing app code or opening storage.
         source = (self.release / 'lib/workspace-schema.js').read_text()
         versions = re.findall(r'^export const SCHEMA_VERSION = ([1-9][0-9]*)\s*;?$', source, re.MULTILINE)
         if len(versions) != 1:
             raise ControlError('Cannot establish release schema; preserve storage and inspect the pinned source')
-        version = manifest.get('schemaVersion')
-        if type(version) is not int or version != int(versions[0]):
-            raise ControlError('Storage schema is incompatible with the release; preserve this installation '
-                               'and choose a separate workspace or an explicitly reviewed migration')
+        # Each client project keeps its own workspace; a fresh client has none yet.
+        for path in sorted((self.data / 'projects').glob('*/workspace.json')):
+            manifest = json.loads(path.read_text())
+            version = manifest.get('schemaVersion') if isinstance(manifest, dict) else None
+            if type(version) is not int or version != int(versions[0]):
+                raise ControlError('Storage schema is incompatible with the release; preserve this installation '
+                                   'and choose a separate workspace or an explicitly reviewed migration')
 
     def artifacts(self):
         dist = self.release / 'ui-prototype/dist'
@@ -149,24 +154,55 @@ class Controller:
                 'deployment': digest(self.home / 'deployment.json'),
                 'controller': digest(self.home / 'control')}
 
+    def project_id(self):
+        """The configured project, or the one this installation created on its first start."""
+        if 'projectId' in self.config:
+            return self.config['projectId']
+        try:
+            value = json.loads(self.project_file.read_text()).get('projectId')
+        except FileNotFoundError:
+            return None
+        if not isinstance(value, str) or not value:
+            raise ControlError('project.json is invalid; preserve it and inspect the installation')
+        return value
+
+    def operator_token(self):
+        connection = json.loads((self.data / 'client-connection.json').read_text())
+        token = connection['token']
+        if not isinstance(token, str) or not token or '\n' in token or '\r' in token:
+            raise ValueError()
+        return token
+
+    def request(self, path, token, body=None):
+        """Calls the client API on the configured loopback port, ignoring the connection file's URL and all proxies."""
+        data = None if body is None else json.dumps(body).encode()
+        headers = {'Authorization': f'Bearer {token}', **({} if body is None else {'Content-Type': 'application/json'})}
+        request = urllib.request.Request(self.url + CLIENT_API + path, data=data, headers=headers, method='GET' if body is None else 'POST')
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=30) as response:
+            value = json.load(response)
+        if not isinstance(value, dict):
+            raise ValueError()
+        return value
+
     def api_status(self):
         try:
-            connection = json.loads((self.data / 'connection.json').read_text())
-            token = connection['token']
-            if not isinstance(token, str) or not token or '\n' in token or '\r' in token:
-                raise ValueError()
+            token = self.operator_token()
         except (OSError, ValueError, KeyError, TypeError):
             return False, None, {'code': 'CONNECTION_METADATA_INVALID'}
-        request = urllib.request.Request(self.url + '/automerge/status', headers={'Authorization': f'Bearer {token}'})
         try:
-            with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=5) as response:
-                live = json.load(response)
-            if not isinstance(live, dict):
-                raise ValueError()
+            project_id = self.project_id()
+        except ControlError:
+            return False, None, {'code': 'PROJECT_METADATA_INVALID'}
+        try:
+            session = self.request('/session', token)
+            projects = [p.get('id') for p in session.get('projects', [])]
+            live = {'identity': bool(session.get('identity')), 'projectId': project_id, 'projects': projects, 'status': None}
+            if project_id in projects:
+                live['status'] = self.request(f'/projects/{urllib.parse.quote(project_id, safe="")}/api/automerge/status', token)
             return True, live, None
         except urllib.error.HTTPError as error:
             return True, None, {'code': f'HTTP_{error.code}'}
-        except (ValueError, UnicodeError):
+        except (ValueError, UnicodeError, AttributeError):
             return True, None, {'code': 'INVALID_STATUS_JSON'}
         except (OSError, urllib.error.URLError):
             return False, None, {'code': 'SERVICE_UNREACHABLE'}
@@ -195,15 +231,16 @@ class Controller:
             errors['launch'] = 'Launch record is missing or invalid'
         checks['listeners'] = bool(checks['owner'] and job['pid'] and all(self.command(
             [LSOF, '-nP', '-a', '-p', str(job['pid']), f'-iTCP:{port}', '-sTCP:LISTEN']
-        ).returncode == 0 for port in [self.config['httpPort'], self.config['wsPort']]))
+        ).returncode == 0 for port in [self.config['httpPort']]))
         responding, live, api_error = False, None, None
         if checks['listeners']:
             responding, live, api_error = self.api_status()
         else:
             api_error = {'code': 'MANAGED_LISTENERS_UNAVAILABLE'}
+        workspace = (live or {}).get('status') or {}
         checks['authenticated'] = live is not None
-        checks['identity'] = live is not None and all(live.get(key) == self.config[key] for key in ['workspaceId', 'replicaId', 'role'])
-        checks['saved'] = live is not None and live.get('savedLocally') is True and not live.get('storageError')
+        checks['project'] = bool(live and live['projectId'] and workspace.get('workspaceId') == live['projectId'])
+        checks['saved'] = checks['project'] and workspace.get('savedLocally') is True and not workspace.get('storageError')
         if api_error:
             errors['api'] = api_error
         return {'checkedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -238,9 +275,28 @@ class Controller:
             status = self.status()
             if status['healthy']:
                 return status
+            if status['checks']['authenticated'] and not status['live']['projectId']:
+                self.provision(status['live'])
+                continue
             if time.monotonic() >= deadline:
                 raise ControlError('Runtime did not become healthy; inspect status and private service logs')
             time.sleep(0.2)
+
+    def provision(self, live):
+        """On the first start, confirms the client identity and creates this installation's project."""
+        if live['projects']:
+            raise ControlError('This client already has projects; name the one to manage in config.projectId')
+        token = self.operator_token()
+        if not live['identity']:
+            identity = self.config.get('identity')
+            if not isinstance(identity, dict) or not all(isinstance(identity.get(key), str) and identity[key] for key in ['name', 'email']):
+                raise ControlError('Record the person this client acts for in config.identity (name and email) before the first start')
+            self.request('/identity', token, {'name': identity['name'], 'email': identity['email'], 'operationId': IDENTITY_OPERATION})
+        name = self.config.get('projectName')
+        if not isinstance(name, str) or not name.strip():
+            raise ControlError('Record the project to create in config.projectName before the first start')
+        project = self.request('/projects', token, {'name': name, 'operationId': PROJECT_OPERATION})['project']
+        atomic_json(self.project_file, {'projectId': project['id']})
 
     def run(self):
         job = self.job()
@@ -249,27 +305,59 @@ class Controller:
         self.verify_release()
         atomic_json(self.home / 'running.json', {'pid': os.getpid(), 'launch': self.launch_identity()})
         os.chdir(self.release)
-        env = environment(self.config['node'])
-        env.update(PARDNER_BIND_HOST='127.0.0.1', PARDNER_ALLOWED_ORIGINS=f'http://localhost:{self.config["httpPort"]},http://127.0.0.1:{self.config["httpPort"]}')
-        self.exec_node(['serve', '--data', str(self.data), '--role', self.config['role'],
-                        '--http-port', str(self.config['httpPort']), '--ws-port', str(self.config['wsPort'])], env)
+        # The client binds loopback only. The first agent harness is the client's setup agent when its data is fresh.
+        self.exec_node(['client', 'serve', '--data', str(self.data), '--http-port', str(self.config['httpPort']),
+                        '--harness', self.config['agents'][0]], environment(self.config['node']))
 
     def exec_node(self, argv, env):
         os.execve(self.config['node'], [self.config['node'], str(self.release / 'bin/pardner.js'), *argv], env)
 
-    def cli(self, argv, actor):
-        if not argv or argv[0].startswith('--') or argv[0] in ['serve', 'bridge']:
-            raise ControlError('Supply a coordination command; lifecycle and bridge commands are not Actor entrypoints')
-        protected = {'--data', '--server', '--token', '--role', '--hub', '--hub-ws', '--hub-token', '--http-port', '--ws-port'}
-        if protected.intersection(argv) or (actor and '--actor' in argv):
-            raise ControlError('The control installation selects connection settings and the entrypoint Actor')
+    def require_service(self):
         status = self.status()
         if not all(value for key, value in status['checks'].items() if key != 'saved'):
             raise ControlError('The selected managed service cannot be verified; inspect control status')
-        options = ['--data', str(self.data), '--server', self.url]
-        if actor:
-            options += ['--actor', actor]
-        self.exec_node([*options, *argv], environment(self.config['node']))
+        return status
+
+    def credential(self, agent):
+        """The agent's private client credential (the client agent-grant JSON), granted on first use."""
+        project_id = self.project_id()
+        path = self.credentials / f'{agent}.json'
+        api_base = f'{self.url}{CLIENT_API}/projects/{urllib.parse.quote(project_id, safe="")}/api'
+        try:
+            saved = json.loads(path.read_text())
+            if isinstance(saved, dict) and saved.get('projectId') == project_id and saved.get('apiBase') == api_base:
+                return path, api_base
+        except FileNotFoundError:
+            pass
+        grant = self.request(f'/projects/{urllib.parse.quote(project_id, safe="")}/agent-grant', self.operator_token(), {'harnessId': agent})
+        self.credentials.mkdir(mode=0o700, exist_ok=True)
+        self.credentials.chmod(0o700)
+        atomic_json(path, {**grant, 'apiBase': api_base})
+        return path, api_base
+
+    def cli(self, argv, agent):
+        if not argv or argv[0].startswith('--') or argv[0] in ['serve', 'bridge', 'client', 'open']:
+            raise ControlError('Supply a coordination command; lifecycle, client and bridge commands are not Actor entrypoints')
+        protected = {'--data', '--server', '--token', '--token-file', '--actor', '--agent', '--role', '--hub', '--hub-ws',
+                     '--hub-token', '--http-port', '--ws-port'}
+        if protected.intersection(argv):
+            raise ControlError('The control installation selects connection settings and the entrypoint Actor')
+        if agent not in self.config['agents']:
+            raise ControlError('Name an agent harness from config.agents; people use control open')
+        self.require_service()
+        try:
+            path, api_base = self.credential(agent)
+        except urllib.error.HTTPError as error:
+            raise ControlError(f'The client refused an agent credential for {agent} (HTTP {error.code}); '
+                               'only the client\'s enrolled agent harnesses have one')
+        self.exec_node(['--data', str(self.data), '--server', api_base, '--token-file', str(path), *argv],
+                       environment(self.config['node']))
+
+    def open(self, argv):
+        if argv and (len(argv) != 2 or argv[0] != '--output-file'):
+            raise ControlError('open accepts only --output-file FILE')
+        self.require_service()
+        self.exec_node(['client', 'open', '--data', str(self.data), *argv], environment(self.config['node']))
 
     def seal(self):
         job = self.job()
@@ -280,13 +368,10 @@ class Controller:
 
     def entrypoints(self):
         self.verify_release()
-        actors = self.config.get('actors')
-        if not isinstance(actors, list) or not actors or any(not isinstance(a, str) or not re.fullmatch('[A-Za-z0-9_-]+', a) for a in actors):
-            raise ControlError('Record filename-safe existing Actor IDs in config.actors first')
-        for actor in actors:
-            path = self.home / f'pardner-{actor}'
+        for agent in self.config['agents']:
+            path = self.home / f'pardner-{agent}'
             script = '#!/bin/sh\ncontrol_home=$(CDPATH= cd -P "$(/usr/bin/dirname "$0")" && /bin/pwd -P) || exit 1\n'
-            script += f'exec /usr/bin/python3 -I "$control_home/control" cli --home "$control_home" --actor {shlex.quote(actor)} -- "$@"\n'
+            script += f'exec /usr/bin/python3 -I "$control_home/control" cli --home "$control_home" --agent {shlex.quote(agent)} -- "$@"\n'
             temporary = path.with_name(f'.{path.name}-{os.getpid()}')
             try:
                 temporary.write_text(script)
@@ -301,12 +386,14 @@ def main(argv=None):
     separator = argv.index('--') if '--' in argv else len(argv)
     forwarded = argv[separator + 1:]
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['start', 'status', 'stop', 'restart', 'run', 'cli', 'seal', 'entrypoints'])
+    parser.add_argument('action', choices=['start', 'status', 'stop', 'restart', 'run', 'cli', 'open', 'seal', 'entrypoints'])
     parser.add_argument('--home', type=Path)
-    parser.add_argument('--actor')
+    parser.add_argument('--agent')
     args = parser.parse_args(argv[:separator])
-    if args.action != 'cli' and (forwarded or args.actor):
-        parser.error('Only cli accepts --actor and arguments after --')
+    if args.action != 'cli' and args.agent:
+        parser.error('Only cli accepts --agent')
+    if args.action not in ['cli', 'open'] and forwarded:
+        parser.error('Only cli and open accept arguments after --')
     home = args.home or os.environ.get('PARDNER_CONTROL_HOME') or Path(__file__).resolve().parent
     try:
         control = Controller(home)
@@ -318,7 +405,10 @@ def main(argv=None):
             control.run()
             return 0
         if args.action == 'cli':
-            control.cli(forwarded, args.actor)
+            control.cli(forwarded, args.agent)
+            return 0
+        if args.action == 'open':
+            control.open(forwarded)
             return 0
         with (control.home / 'control.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

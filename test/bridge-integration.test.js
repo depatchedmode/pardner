@@ -10,6 +10,8 @@ import AutomergeSyncServer from '../automerge-sync-server.js'
 import { AgentBridge, BridgeSource, bridgeConfig, openBridgeInbox, runBridgeCommand } from '../lib/agent-bridge.js'
 import { acquireStorageLease } from '../lib/storage-lease.js'
 import { withWorkspaceServer } from '../support/workspace-test.js'
+import { startClient } from '../lib/client-service.js'
+import { projectPaths } from '../lib/client-proxy.js'
 
 async function eventually(check, timeout = 5000) {
   const deadline = Date.now() + timeout
@@ -84,6 +86,77 @@ for (const mode of ['co-worktree', 'co-host', 'replica']) {
     }
   }))
 }
+
+it('dispatches a mention through a client project with an agent credential', { timeout: 30000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-bridge-client-'))
+  let client, bridge, inbox
+  try {
+    client = await startClient({ directory: join(root, 'client'), port: 0 })
+    const operator = client.registry.read().operatorToken
+    const api = async (path, body) => {
+      const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
+        headers: { Authorization: `Bearer ${operator}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+      assert.equal(response.status, 200, await response.clone().text()); return response.json()
+    }
+    await api('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+    const { project } = await api('/projects', { name: 'Bridge board', operationId: 'create' })
+    const grant = await api(`/projects/${project.id}/agent-grant`, {})
+    const credentialFile = join(root, 'agent.json')
+    await writeFile(credentialFile, JSON.stringify({ ...grant, apiBase: `${client.url}${projectPaths(project.id).apiBase}` }), { mode: 0o600 })
+    const operate = (type, operationId, payload) => api(`/projects/${project.id}/api/automerge/operations`, { type, operationId, payload })
+    const created = await operate('task.create', 'task', { title: 'Bridge through the client' })
+    const taskId = created.taskId ?? created.result?.taskId
+    assert.ok(taskId, JSON.stringify(created))
+    const worktree = join(root, 'agent-worktree')
+    await mkdir(worktree, { recursive: true })
+    const mapping = { actorId: grant.actorId, enabled: true, adapter: 'codex-app-server', sessionOwner: 'bridge',
+      expectedPolicy: { approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: { type: 'readOnly' } },
+      endpoint: 'ws://127.0.0.1:9001', threadId: 'dedicated-thread', worktree, allowedTaskIds: [taskId], allowedFromActorIds: [project.actorId] }
+    const path = join(root, 'bridge.json')
+    await writeFile(path, JSON.stringify({ workspaceId: project.id, inboxDirectory: join(root, 'bridge'), mappings: [mapping] }))
+    // The CLI's --token-file names the credential; the configuration then needs no service data directory.
+    const config = await bridgeConfig(path, { credentialFile })
+    assert.equal(config.credentialFile, credentialFile)
+    assert.equal(config.replicaId, 'client')
+    // Without the credential this is an incomplete standalone configuration.
+    await assert.rejects(bridgeConfig(path), /Bridge configuration requires/)
+    await writeFile(path, JSON.stringify({ workspaceId: 'another-project', inboxDirectory: join(root, 'bridge'), mappings: [mapping] }))
+    await assert.rejects(bridgeConfig(path, { credentialFile }), { code: 'WORKSPACE_MISMATCH' })
+    await writeFile(path, JSON.stringify({ workspaceId: project.id, inboxDirectory: join(root, 'bridge'), mappings: [{ ...mapping, actorId: project.actorId }] }))
+    await assert.rejects(bridgeConfig(path, { credentialFile }), { code: 'ACTOR_MISMATCH' })
+    inbox = await openBridgeInbox(config)
+    const harness = new EventEmitter(), calls = []
+    Object.assign(harness, { availability: async () => 'ready', reconcile: async () => null, close() {},
+      dispatch: async (target, prompt) => { calls.push({ mapping: target, prompt }); return `turn-${calls.length}` } })
+    const source = new BridgeSource(config)
+    assert.equal((await source.verify()).workspaceId, project.id)
+    // The long fallback interval establishes that the client project socket drives dispatch.
+    bridge = new AgentBridge({ config, inbox, source, adapterFactory: () => harness, retryMs: 60000 })
+    await bridge.start()
+    await eventually(() => source.socket?.readyState === 1)
+    const handle = (await api(`/projects/${project.id}`)).actors.find(actor => actor.id === grant.actorId).handle
+    const began = performance.now()
+    await operate('comment.add', 'mention', { taskId, text: `@${handle} review through the client` })
+    await eventually(() => calls.length === 1, 5000)
+    assert.ok(performance.now() - began < 5000)
+    assert.equal(inbox.rows()[0].state, 'accepted')
+    assert.equal(inbox.rows()[0].mention.toActorId, grant.actorId)
+    assert.ok(calls[0].prompt.includes('review through the client'))
+    assert.ok(calls[0].prompt.includes(`--token-file`) && calls[0].prompt.includes(credentialFile))
+    assert.ok(!calls[0].prompt.includes(grant.token), 'The credential never enters a prompt')
+    assert.equal((await source.pending(grant.actorId)).mentions.length, 0)
+    await bridge.stop(); bridge = null
+    await writeFile(path, JSON.stringify({ workspaceId: project.id, inboxDirectory: join(root, 'bridge'), mappings: [mapping] }))
+    inbox.close(); inbox = null
+    const status = await runBridgeCommand('status', { config: path, 'token-file': credentialFile })
+    assert.equal(status.workspaceId, project.id)
+    assert.deepEqual(status.deliveries.map(row => row.state), ['accepted'])
+    assert.ok(!JSON.stringify(status).includes(grant.token))
+  } finally {
+    await bridge?.stop(); inbox?.close(); await client?.stop()
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 it('configuration and CLI status require explicit authority, and reconciliation respects the process lock', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pardner-bridge-config-'))

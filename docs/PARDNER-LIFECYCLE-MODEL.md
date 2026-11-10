@@ -78,14 +78,14 @@ and one WebSocket upgrade. Each request records its connection (`none`, `active`
 | `PersistRun` | yes | `DurableRepo.enqueue` chain runs one job at a time; `persistDocument` saves the current document and updates `persistedHeads`; a failing flush rethrows | a job's save is atomic and either persists the whole current document or nothing. `storageFailures` bounds how many jobs may fail |
 | `Respond` | yes | `res.json(...)` of the receipt or acknowledgement; `res.once('finish')` | writing the response and the socket becoming idle (keep-alive) or closed are one step |
 | `ReclaimIdle` | yes | `listen()` finish hook: `if (this.stopping) setImmediate(() => server.closeIdleConnections())` | the `setImmediate` callback eventually runs (fair); modeled for any idle connection while stopping, which also covers the idle connections `server.close()` closed itself |
-| `ListenerClosed` | yes | `server.close` callbacks settle (`listenersClosed`) | fires once no connection is active, idle or upgraded; one listener stands for the HTTP, WebSocket and LAN listeners, which `stop()` closes together with `Promise.allSettled` |
+| `ListenerClosed` | yes | `server.close` callbacks settle (`listenersClosed`) | fires once no connection is active, idle or upgraded; one listener stands for the HTTP and WebSocket listeners, which `stop()` closes together with `Promise.allSettled` |
 | `StoreCloseBegin` | yes | `await this.store.close()` after `listenersClosed`; `closeResources`: `abort()`, `await workspace.queue`, `repo.shutdown()` sets `closing` | `workspace.queue` is already drained because every operation arrives through a drained listener. The upstream `Repo.shutdown()` flush is a no-op once `closing` is set, so the model does not persist anything here |
 | `StoreCloseComplete` | yes | `await this.persistenceQueue`, then `lease.close()` and `closed = true` in `finally` | the queue drains before ownership is released |
 | `ReplicaReceive` | yes | `synchronizeAcknowledgement`: first guard `getHeads(doc) == requestedHeads && hasHeads(doc, hubHeads)`; errors only set `lastSyncError` | the response is consumed atomically up to the guard; the local flush that follows is a separate step |
 | `ReplicaAckCommit` | yes | second guard after the local flush; `acknowledgedHeads = requestedHeads` | the guard and the assignment are synchronous; the recorded value is the requested snapshot, never the current heads |
 
 What the model does not contain: Automerge merge semantics (heads are counters),
-the replica's own storage, the delivery ledger, LAN pairing, ticket minting,
+the replica's own storage, the delivery ledger, ticket minting,
 origin and token checks, express body parsing, and the JSON UI subscription
 socket. Each of those is either orthogonal to the five properties or handled by
 other regression suites.
@@ -241,7 +241,7 @@ for them:
   it because the guard is the only protection for an upgrade parsed on an
   already-accepted keep-alive connection, and the mirrored model mutation shows
   the invariant would detect its removal.
-- One listener stands for the loopback HTTP, WebSocket and LAN listeners. They
+- One listener stands for the HTTP and WebSocket listeners. They
   share `listen()`, the middleware and `stop()`; the model does not explore
   listener-specific interleavings.
 - The drift check compares whole files. Any edit to a mapped file, including a
@@ -297,3 +297,23 @@ Fresh default check: 174614 states, 679456 transitions, all four invariants and
 `ShutdownCompletes` hold; all ten witnesses remain reachable. Prior wider-bound
 and mutation evidence above is historical, not freshly rerun for this candidate.
 See `oversizeRequestMessageReview` in `docs/evidence/lifecycle-model.json`.
+
+## Standalone LAN removal mapping review (2026-11-09)
+
+The current mapping records source revision `182a8fb2706e91459a4ee9c15ad64d5d6048b41e`.
+Only `automerge-sync-server.js` changed: the standalone service no longer opens
+LAN listeners or serves `/pardner/pair` and `/pardner/access`, and the loopback
+check for control routes moved unchanged to `lib/loopback.js`. The listener set
+that `stop()` closes together shrinks to the HTTP and WebSocket listeners. Both
+still pass through `listen()`, the stopping 503 middleware stays first, and
+`stop()` still closes the listeners, terminates WebSocket clients and awaits
+`listenersClosed` before it closes the store. No model action, invariant or
+witness changed; the `close-store-before-drain` mutation text dropped its
+`lanServers` line.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught by their implementation
+check, reported as drift and reproduced as a model counterexample, with the
+working tree unchanged. Prior wider-bound evidence above is historical. See
+`standaloneLanRemovalReview` in `docs/evidence/lifecycle-model.json`.

@@ -82,7 +82,10 @@ integration already in that head. This did not import unrelated old-main changes
 ## Local-first and trust decision
 
 The local service still owns the persisted replica. Browser pages, including LAN
-companions, have no independent database and need that service. Existing enrolled
+companions, have no independent database and need that service. (Since the client
+cutover the board opens only through the local client on loopback; the LAN
+companion has been removed and phone access is planned through the hub over
+HTTPS. This decision is unchanged.) Existing enrolled
 replicas can reopen/save offline; online sync now additionally needs an enrolled
 replica credential. The hub remains required for enrollment and new delivery
 leases; accepted work may continue saving locally during a hub outage.

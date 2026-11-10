@@ -1,4 +1,12 @@
 # UX Path Catalog: Pardner
+
+> **Superseded browser entry.** This record describes the standalone browser
+> board (local service token screen, Actor picker, Pair another device, Forget this
+> workspace, `PhoneAccess`). People now open the board only through the local
+> client (`pardner open`); see the [client guide](../PARDNER-CLIENT.md). Phone
+> access is not currently offered; it is planned through the hub over HTTPS. The
+> findings and evidence below are kept unchanged.
+
 Generated: 2026-11-07
 Total Stories: 138
 Coverage: 75 / 77 (97%)

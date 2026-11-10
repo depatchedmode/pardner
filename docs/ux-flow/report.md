@@ -1,5 +1,12 @@
 # UX Flow Critique — 2026-11-07
 
+> **Superseded browser entry.** This record describes the standalone browser
+> board (local service token screen, Actor picker, Pair another device, Forget this
+> workspace, `PhoneAccess`). People now open the board only through the local
+> client (`pardner open`); see the [client guide](../PARDNER-CLIENT.md). Phone
+> access is not currently offered; it is planned through the hub over HTTPS. The
+> findings and evidence below are kept unchanged.
+
 > **Evidence archived.** Screenshots, per-story and per-page reports from this run were moved out of the repository; the findings below stand on their own text, and filed issues carry the details.
 
 ## Run Summary
@@ -23,7 +30,7 @@ Per-journey critiques were archived with the evidence. Cross-cutting findings: [
 | STORY-062 STALE_UPDATE while editing | 7/4 | 0 | 1 (draft must be re-typed) | 1 (retry can never succeed — confirmed live) | convoluted |
 | STORY-084 First enable of device access | 7/3 | 1 (interface select) | 0 | 1 (restart outside the browser) | convoluted (see note) |
 
-STORY-084 is convoluted mainly because of the service restart. Removing the restart is a local-service design change: it must be checked against the [acceptance contract](../PARDNER-ACCEPTANCE.md) and [LAN guide](../PARDNER-LAN.md) before anyone treats it as UI polish.
+STORY-084 is convoluted mainly because of the service restart. Removing the restart is a local-service design change: it must be checked against the [acceptance contract](../PARDNER-ACCEPTANCE.md) and the LAN guide (since removed) before anyone treats it as UI polish.
 
 ## Redundancy Map
 Condensed from [`redundancy.md`](redundancy.md).

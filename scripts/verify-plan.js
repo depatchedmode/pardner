@@ -31,7 +31,10 @@ const groups = [
     name: 'cli', scripts: ['test:cli'],
     files: names('bin/pardner.js lib/cli.js lib/cli-trace.js lib/agent-trace.js lib/github-remote.js support/cli-resources.js'),
   },
-  { name: 'lan', scripts: ['test:ui', 'test:runtime'], files: ['lib/lan-access.js'] },
+  {
+    name: 'loopback', scripts: ['test:runtime'], files: ['lib/loopback.js'],
+    focused: [{ command: 'node --test test/loopback.test.js', note: 'Loopback peer, listener, host and origin checks for local administration' }],
+  },
   {
     name: 'bridge', scripts: ['test:runtime', 'test:cli'],
     files: names(`lib/agent-bridge.js lib/codex-bridge-adapter.js lib/bridge-paths.js lib/bridge-retirement.js
@@ -43,7 +46,7 @@ const groups = [
     name: 'acceptance-harness', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'],
     qualification: 'Acceptance measurement or regression gate changed',
     files: names(`scripts/acceptance.js scripts/verify.js support/acceptance/agent-process.js
-      support/acceptance/agent-worker.js support/acceptance/candidate.js support/acceptance/expected-operations.js
+      support/acceptance/agent-worker.js support/acceptance/candidate.js support/acceptance/client-process.js support/acceptance/expected-operations.js
       support/acceptance/network-gate.js test/acceptance-components.test.js`),
   },
   {
@@ -73,7 +76,7 @@ const groups = [
     qualification: 'Private client persistence, authenticated admission and resumable project enrollment',
     files: names(`lib/client-identity.js lib/client-registry.js lib/client-runtime.js lib/client-runtime-child.js
       lib/client-auth.js lib/client-invites.js lib/client-projects.js lib/client-proxy.js lib/client-service.js lib/client-cli.js`),
-    focused: [{ command: 'node --test test/client-registry.test.js test/client-onboarding.test.js test/client-cli.test.js test/client-recovery.test.js test/client-shutdown.test.js test/onboarding-flow.test.js',
+    focused: [{ command: 'node --test test/client-registry.test.js test/client-onboarding.test.js test/client-cli.test.js test/client-recovery.test.js test/client-shutdown.test.js test/client-control.test.js test/onboarding-flow.test.js test/client-admission-cache.test.js',
       note: 'Real client enrollment, authority boundaries, CLI privacy, cold restoration, revocation, offline restart and project isolation' }],
   },
   {
@@ -90,8 +93,8 @@ const groups = [
     files: names('scripts/selfhost79.py scripts/selfhost79-cloud.js support/selfhost79/checker.py support/selfhost79/probe.mjs support/selfhost79/fixture.json'),
     focused: [{ command: 'node --test test/selfhost79.test.js test/selfhost79-cloud.test.js', note: 'Offline artifact proof only; live attempts remain owner-gated' }],
   },
-  // Browser fixtures: one service, or a hub with two replicas, behind the workspace UI.
-  { name: 'ui-fixtures', scripts: ['test:ui'], files: names('support/ui-workspace.js support/replica-workspace.js') },
+  // Browser fixtures: the local client with one or more people's replicas behind the workspace UI.
+  { name: 'ui-fixtures', scripts: ['test:ui'], files: names('support/client-workspace.js') },
   { name: 'control-runtime', scripts: ['test:control-runtime'], files: names('scripts/control-runtime.py test/control_runtime_test.py') },
   {
     name: 'lifecycle-model', scripts: ['test:runtime'],
@@ -111,7 +114,7 @@ export function classifyPath(path) {
     return { name: 'ui', scripts: ['test:ui'] }
   }
   if (/^test\/[^/]+\.test\.js$/.test(path)) {
-    if (/pardner-(ui|phone|connection-ui|control-ui)|client-onboarding-ui|browser-connection|lan-/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
+    if (/pardner-(ui|control-ui)|client-onboarding-ui|browser-connection/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
     if (/storage|conflict|ticket/.test(path)) return { name: 'qualification-test', scripts: ['test:qualification'], qualification: 'Persistence or conflict regression evidence changed' }
     if (/pardner-cli|pardner-brand/.test(path)) return { name: 'cli-test', scripts: ['test:cli'] }
     return { name: 'regression-test', scripts: ['test:runtime'] }

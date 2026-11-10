@@ -1,15 +1,33 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { request as httpRequest } from 'node:http'
+import { createServer, request as httpRequest } from 'node:http'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startClient } from '../lib/client-service.js'
 import { invitationData } from '../lib/client-invites.js'
+import { acquireStorageLease } from '../lib/storage-lease.js'
 
 const execute = promisify(execFile)
+const pardner = async (args, env = {}) => {
+  const { stdout } = await execute(process.execPath, ['bin/pardner.js', ...args], { cwd: process.cwd(), env: { ...process.env, ...env } })
+  const value = JSON.parse(stdout); assert.equal(value.success, true); return value
+}
+const pardnerFailure = async (args, env = {}) => {
+  const error = await execute(process.execPath, ['bin/pardner.js', ...args], { cwd: process.cwd(), env: { ...process.env, ...env } }).then(() => null, error => error)
+  assert.ok(error, `Expected pardner ${args.join(' ')} to fail`)
+  return JSON.parse(error.stdout).error
+}
+const connectionOf = async directory => JSON.parse(await readFile(join(directory, 'client-connection.json'), 'utf8'))
+const alive = pid => { try { process.kill(pid, 0); return true } catch { return false } }
+// Spawned client services are detached, so every test stops them even when an assertion fails.
+async function stopSpawned(directory, env = {}) {
+  try { await pardner(['client', 'stop', '--data', directory], env) } catch {
+    try { const { pid } = await connectionOf(directory); if (pid !== process.pid) process.kill(pid, 'SIGTERM') } catch { /* nothing was started */ }
+  }
+}
 test('CLI performs real identity/create/agent save and writes private launch/invite material only to files', { timeout: 30000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-cli-client-'))
   let client
@@ -48,6 +66,50 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
   } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
 })
 
+test('an agent Actor runs coordination commands through the client proxy with --token-file', { timeout: 60000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-token-file-'))
+  let client
+  try {
+    client = await startClient({ directory, port: 0 })
+    const operator = client.registry.read().operatorToken
+    const api = async (path, body) => {
+      const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
+        headers: { Authorization: `Bearer ${operator}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+      assert.equal(response.status, 200); return response.json()
+    }
+    await api('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+    const { project } = await api('/projects', { name: 'Token file board', operationId: 'create' })
+    const grantFile = join(directory, 'agent.json')
+    await pardner(['client', 'agent-grant', '--data', directory, '--project', project.id, '--output-file', grantFile])
+    const grant = JSON.parse(await readFile(grantFile, 'utf8'))
+    assert.equal(grant.apiBase, `${client.url}/pardner/client/v1/projects/${project.id}/api`)
+    const created = await pardner(['task', 'create', '--title', 'Agent task through the proxy', '--token-file', grantFile])
+    assert.equal(created.actorId, grant.actorId)
+    assert.notEqual(created.actorId, project.actorId)
+    const taskId = created.result.taskId
+    const shown = await pardner(['show', taskId, '--token-file', grantFile])
+    assert.equal(shown.history[0].actorId, grant.actorId)
+    // A person mentions the agent; the agent's inbox is its own without naming --actor.
+    const { actors } = await api(`/projects/${project.id}`)
+    const handle = actors.find(actor => actor.id === grant.actorId).handle
+    await api(`/projects/${project.id}/api/automerge/operations`, { type: 'comment.add', operationId: 'mention', payload: { taskId, text: `@${handle} please review` } })
+    const pending = await pardner(['mentions', 'pending', '--token-file', grantFile])
+    assert.equal(pending.mentions.length, 1)
+    const claim = await pardner(['mentions', 'claim-next', '--request-id', 'claim', '--token-file', grantFile])
+    assert.equal(claim.claimed, true)
+    assert.equal((await pardner(['mentions', 'ack', claim.mention.id, '--claim-token', claim.claimToken, '--token-file', grantFile])).acknowledged, true)
+    // A file holding only the token works with an explicit --server; the Actor comes from the client session.
+    const rawFile = join(directory, 'agent-token')
+    await writeFile(rawFile, `${grant.token}\n`, { mode: 0o600 })
+    const comment = await pardner(['comment', taskId, 'Done', '--server', grant.apiBase, '--token-file', rawFile])
+    assert.equal(comment.actorId, grant.actorId)
+    const mismatch = await pardnerFailure(['comment', taskId, 'Pretend', '--actor', project.actorId, '--token-file', grantFile])
+    assert.equal(mismatch.code, 'ACTOR_MISMATCH')
+    const both = await pardnerFailure(['tasks', '--token', grant.token, '--token-file', grantFile])
+    assert.equal(both.code, 'INVALID_ARGUMENT')
+  } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
+})
+
 test('explicit public gateway produces HTTPS invitations while browser origin stays local', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-gateway-'))
   let client
@@ -72,6 +134,29 @@ test('explicit public gateway produces HTTPS invitations while browser origin st
   } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
 })
 
+test('a public gateway may be plain HTTP only on loopback', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-loopback-gateway-'))
+  let client
+  try {
+    for (const publicUrl of ['http://pardner.example.test', 'http://192.168.1.20:8443', 'https://pardner.example.test/path', 'ftp://127.0.0.1']) {
+      await assert.rejects(startClient({ directory, port: 0, publicUrl }), /explicit HTTPS origin, or an HTTP origin on loopback/)
+    }
+    client = await startClient({ directory, port: 0, publicUrl: 'http://127.0.0.1:47123' })
+    const operator = { Authorization: `Bearer ${client.registry.read().operatorToken}`, 'Content-Type': 'application/json' }
+    const api = async (path, body) => {
+      const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: 'POST', headers: operator, body: JSON.stringify(body) })
+      assert.equal(response.status, 200); return response.json()
+    }
+    await api('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+    const { project } = await api('/projects', { name: 'Loopback gateway', operationId: 'create' })
+    const { invitation } = await api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
+    assert.equal(invitationData(invitation).endpoint, 'http://127.0.0.1:47123/pardner/client/v1/enroll')
+    await client.stop()
+    client = await startClient({ directory, port: 0, publicUrl: 'http://localhost:47124' })
+    assert.equal(client.gatewayUrl, 'http://localhost:47124')
+  } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
+})
+
 test('programmatic client started from Node input-type mode launches isolated file-based runtimes', { timeout: 30000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-inline-client-'))
   try {
@@ -92,4 +177,90 @@ test('programmatic client started from Node input-type mode launches isolated fi
     const { stdout } = await execute(process.execPath, ['--input-type=module', '-e', source, directory])
     assert.equal(JSON.parse(stdout).savedLocally, true)
   } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('bare pardner starts a detached client service, writes the launch grant to a file and client stop ends it', { timeout: 60000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-open-'))
+  const data = join(directory, 'client')
+  try {
+    const launchFile = join(directory, 'launch.txt')
+    const opened = await pardner(['--data', data, '--output-file', launchFile])
+    const launch = await readFile(launchFile, 'utf8')
+    const connection = await connectionOf(data)
+    assert.ok(launch.startsWith(`${connection.url}/pardner/#grant=`)); assert.ok(!JSON.stringify(opened).includes('#grant='))
+    assert.equal(opened.localUrl, `${connection.url}/pardner/`)
+    assert.notEqual(connection.pid, process.pid); assert.ok(alive(connection.pid))
+    const session = await fetch(`${connection.url}/pardner/client/v1/session`, { headers: { Authorization: `Bearer ${connection.token}` } })
+    assert.equal(session.status, 200)
+    assert.equal((await stat(join(data, 'client.log'))).mode & 0o777, 0o600)
+    // A project runtime child must not keep the service alive after shutdown.
+    await pardner(['client', 'identity', '--name', 'Alice', '--email', 'alice@example.test', '--operation-id', 'identity', '--data', data])
+    await pardner(['client', 'create', '--name', 'Opened board', '--operation-id', 'create', '--data', data])
+    assert.deepEqual(await pardner(['client', 'stop', '--data', data]), { success: true, stopped: true, running: false })
+    for (let i = 0; i < 50 && alive(connection.pid); i++) await new Promise(resolve => setTimeout(resolve, 100))
+    assert.equal(alive(connection.pid), false, 'the serve process exits after shutdown')
+    await assert.rejects(fetch(`${connection.url}/pardner/client/v1/session`, { signal: AbortSignal.timeout(2000) }))
+    assert.deepEqual(await pardner(['client', 'stop', '--data', data]), { success: true, stopped: false, running: false })
+  } finally { await stopSpawned(data); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('pardner open reuses the running client in the per-user default directory', { timeout: 60000 }, async () => {
+  const home = await mkdtemp(join(tmpdir(), 'pardner-home-'))
+  const data = join(home, '.pardner', 'client'), env = { HOME: home }
+  try {
+    await pardner(['open', '--output-file', join(home, 'first.txt')], env)
+    const first = await connectionOf(data)
+    await pardner(['open', '--output-file', join(home, 'second.txt')], env)
+    assert.equal((await connectionOf(data)).pid, first.pid)
+    const log = await readFile(join(data, 'client.log'), 'utf8')
+    assert.equal(log.match(/"serving":true/g).length, 1, 'only one client service was started')
+    assert.notEqual(await readFile(join(home, 'first.txt'), 'utf8'), await readFile(join(home, 'second.txt'), 'utf8'))
+    assert.equal((await pardner(['client', 'stop'], env)).stopped, true)
+  } finally { await stopSpawned(data, env); await rm(home, { recursive: true, force: true }) }
+})
+
+test('client shutdown accepts only the operator token, never a browser session', { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-shutdown-'))
+  let client
+  try {
+    client = await startClient({ directory, port: 0 })
+    const operator = { Authorization: `Bearer ${client.registry.read().operatorToken}`, 'Content-Type': 'application/json' }
+    const call = (path, headers) => fetch(`${client.url}/pardner/client/v1${path}`, { method: 'POST', headers, body: '{}' })
+    const { url } = await (await call('/open', operator)).json()
+    const bootstrap = await fetch(`${client.url}/pardner/client/v1/bootstrap`, { method: 'POST',
+      headers: { Origin: client.url, 'Content-Type': 'application/json' }, body: JSON.stringify({ grant: new URL(url).hash.slice('#grant='.length) }) })
+    assert.equal(bootstrap.status, 200)
+    const cookie = bootstrap.headers.get('set-cookie').split(';')[0]
+    const human = await call('/shutdown', { Cookie: cookie, Origin: client.url, 'Content-Type': 'application/json' })
+    assert.equal(human.status, 403); assert.equal((await human.json()).code, 'FORBIDDEN')
+    assert.equal((await call('/shutdown', { 'Content-Type': 'application/json', Origin: client.url })).status, 401)
+    assert.equal(client.stopping, undefined)
+    const stopped = await call('/shutdown', operator)
+    assert.deepEqual(await stopped.json(), { stopping: true })
+    await client.stopPromise
+  } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('pardner open reports PORT_IN_USE for a stale port held by another process and starts nothing', { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-stale-'))
+  const other = createServer((_req, res) => res.writeHead(401).end())
+  try {
+    await new Promise(resolve => other.listen(0, '127.0.0.1', resolve))
+    const url = `http://127.0.0.1:${other.address().port}`
+    await writeFile(join(directory, 'client-connection.json'), JSON.stringify({ url, token: 'stale-token' }), { mode: 0o600 })
+    const error = await pardnerFailure(['open', '--data', directory, '--output-file', join(directory, 'launch.txt')])
+    assert.equal(error.code, 'PORT_IN_USE'); assert.ok(error.message.includes(url))
+    assert.equal((await pardnerFailure(['client', 'stop', '--data', directory])).code, 'PORT_IN_USE')
+    await assert.rejects(stat(join(directory, 'client.log')), { code: 'ENOENT' })
+    assert.equal(other.listening, true)
+  } finally { other.close(); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('pardner open surfaces why a started client service exited', { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-in-use-'))
+  const lease = await acquireStorageLease(directory)
+  try {
+    const error = await pardnerFailure(['open', '--data', directory, '--output-file', join(directory, 'launch.txt')])
+    assert.equal(error.code, 'STORAGE_IN_USE')
+  } finally { lease.close(); await stopSpawned(directory); await rm(directory, { recursive: true, force: true }) }
 })

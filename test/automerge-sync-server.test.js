@@ -4,7 +4,6 @@ import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { request, createServer as createHttpServer } from 'node:http'
-import { LanAccess } from '../lib/lan-access.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import { WebSocket } from 'ws'
 
@@ -190,30 +189,6 @@ it('rechecks changed configuration before startup and at each listener', async (
     assert.equal(server.httpServer, null)
     await assert.rejects(server.listen(listener, 0, '0.0.0.0'), /numeric loopback/)
     assert.equal(listener.listening, false)
-  } finally {
-    await server.stop()
-    cleanupTempDir(directory)
-  }
-})
-
-it('keeps persisted LAN access disabled when the loopback service has no token', async () => {
-  const directory = createTempDir('pardner-insecure-lan-')
-  const options = { interfaces: () => [{ name: 'wifi', address: '192.168.1.5' }] }
-  const initial = createServer(directory)
-  await initial.store.init()
-  await initial.stop()
-  const saved = new LanAccess(directory, options)
-  await saved.load()
-  await saved.configure({ enabled: true, interfaceName: 'wifi' })
-  const access = new LanAccess(directory, options)
-  const server = createServer(directory, { access, apiToken: '', allowInsecureLocal: true })
-  try {
-    await server.start()
-    assert.equal(access.saved.enabled, true)
-    assert.equal(access.active, null)
-    assert.equal(server.lanServers.length, 0)
-    assert.match(access.diagnostic, /token-protected loopback/)
-    assert.equal((await fetch(httpUrl(server, '/automerge/doc'))).status, 200)
   } finally {
     await server.stop()
     cleanupTempDir(directory)

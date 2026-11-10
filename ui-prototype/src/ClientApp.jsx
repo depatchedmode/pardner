@@ -465,11 +465,13 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
   useEffect(() => {
     let stopped = false
     load().catch(error => { if (!stopped) handle(error) })
+    // A revoked or expired session ends here too, without waiting for the board's socket.
+    const lost = error => { if (!stopped && error.code === 'AUTH_REQUIRED') onAuthLost() }
     const presenceTimer = setInterval(() => api.presence(project.id)
-      .then(next => { if (!stopped) setPresence(next) }).catch(() => {}), PRESENCE_POLL_MS)
-    const projectTimer = setInterval(() => load().catch(() => {}), PROJECT_POLL_MS)
+      .then(next => { if (!stopped) setPresence(next) }).catch(lost), PRESENCE_POLL_MS)
+    const projectTimer = setInterval(() => load().catch(lost), PROJECT_POLL_MS)
     return () => { stopped = true; clearInterval(presenceTimer); clearInterval(projectTimer) }
-  }, [api, project.id, load, handle])
+  }, [api, project.id, load, handle, onAuthLost])
   useEffect(() => {
     const instance = createPresenceReporter({ api, projectId: project.id, onError: () => {} })
     reporter.current = instance
@@ -492,7 +494,10 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
   const config = useMemo(() => projectConfiguration(current),
     // The board remounts only when its identity or routes change.
     [current.id, current.apiBase, current.wsPath, current.actorId]) // eslint-disable-line react-hooks/exhaustive-deps
-  const reloadConfiguration = useCallback(async () => projectConfiguration((await load()).project), [load])
+  const reloadConfiguration = useCallback(async () => {
+    try { return projectConfiguration((await load()).project) }
+    catch (error) { if (error.code === 'AUTH_REQUIRED') onAuthLost(); throw error }
+  }, [load, onAuthLost])
   const index = useMemo(() => presenceIndex(presence), [presence])
   const actors = useMemo(() => details?.actors ?? [], [details])
   const actorsById = useMemo(() => Object.fromEntries(actors.map(actor => [actor.id, actor])), [actors])
@@ -519,11 +524,12 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
       </button>
     </div>
   </>
+  const canControl = details?.project.controlAvailable === true
   const sessionProps = useMemo(() => ({
     actorsById, index, focus: focusByTask(index), onOpenProfile: openProfile, requestedTask,
     onFocusChange: taskIds => reporter.current?.setFocus(taskIds),
-    onTasks: setTasks, onAuthLost,
-  }), [actorsById, index, openProfile, requestedTask, onAuthLost])
+    onTasks: setTasks, onAuthLost, canControl,
+  }), [actorsById, index, openProfile, requestedTask, onAuthLost, canControl])
   if (!details) return <main className="connection">
     <h1>{project.name}</h1>
     <p role="status">{failure ? 'This project didn’t open.' : 'Opening project…'}</p>

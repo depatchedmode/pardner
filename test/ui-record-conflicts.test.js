@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
-import { withReplicaWorkspace } from '../support/replica-workspace.js'
+import { withClientReplicas } from '../support/client-workspace.js'
 import { FIELD_LABELS, conflictGroups, disputedStatusText } from '../ui-prototype/src/record-conflicts.js'
 
 const choice = (operationId, actorId, value) => ({ operationId, actorId, value })
@@ -44,50 +44,60 @@ async function capture(page, name) {
   await page.setViewportSize(original)
 }
 
-const doc = async (context, i) => (await context(i, '/automerge/doc')).doc
 const isDisputed = (doc, collection, id, field) => doc[collection][id].conflicts[field]?.length === 2
 
-async function seed({ replicas, operate, eventually }, goals = ['Ship the pilot'], vein = 'Edge caching') {
+// Carol's client hosts the project; Alice and Bob write from their own replica clients and the browser is Alice's.
+async function withConflicts(body) {
+  await withClientReplicas(chromium, { humans: ['Carol', 'Alice', 'Bob'] }, async ({ people: [, alice, bob], newPage, ...harness }) => {
+    const page = await newPage()
+    await alice.open(page)
+    await body({ ...harness, page, alice, bob, replicas: [alice, bob] })
+  })
+}
+
+async function seed({ alice, replicas, settled, eventually }, goals = ['Ship the pilot'], vein = 'Edge caching') {
   const goalIds = []
-  for (const title of goals) goalIds.push((await operate(0, 'alice', 'goal.create', { title })).result.goalId)
-  const { result: { veinId } } = await operate(0, 'alice', 'vein.create', { title: vein, goalId: goalIds[0] })
-  await eventually(() => replicas.every(replica => {
-    const current = replica.store.workspace.handle.doc()
-    return current.veins[veinId] && goalIds.every(id => current.goals[id])
-  }))
-  // Stopping the hub while replicas still push their seed writes can hang the stop.
-  await eventually(() => replicas.every(replica => !replica.store.status().syncPending))
+  for (const title of goals) goalIds.push((await alice.operate('goal.create', { title })).result.goalId)
+  const { result: { veinId } } = await alice.operate('vein.create', { title: vein, goalId: goalIds[0] })
+  await eventually(async () => {
+    for (const replica of replicas) {
+      const current = await replica.doc()
+      if (!current.veins[veinId] || !goalIds.every(id => current.goals[id])) return false
+    }
+    // Stopping the hub while replicas still push their seed writes can hang the stop.
+    return settled()
+  })
   return { goalIds, veinId }
 }
 
 // Two actors write `field` from the same base on different replicas while the hub is down.
 async function disagree(harness, collection, id, field, [[aliceValue], [bobValue]], kind) {
-  const { operate, context, partition, replicas } = harness
-  const base = (await doc(context, 0))[collection][id].revisions[field]
-  const update = (i, actorId, value) => operate(i, actorId, `${kind}.update`, {
+  const { alice, bob, partition, replicas } = harness
+  const base = (await alice.doc())[collection][id].revisions[field]
+  const update = (person, value) => person.operate(`${kind}.update`, {
     [`${kind}Id`]: id, updates: { [field]: value }, expectedRevisions: { [field]: base },
   })
   await partition(async () => {
-    await update(0, 'alice', aliceValue)
-    await update(1, 'bob', bobValue)
+    await update(alice, aliceValue)
+    await update(bob, bobValue)
   }, async () => {
-    for (const i of [0, 1]) if (!isDisputed(await doc(context, i), collection, id, field)) return false
-    return replicas.every(replica => !replica.store.status().syncPending)
+    for (const replica of replicas) if (!isDisputed(await replica.doc(), collection, id, field)) return false
+    return true
   })
 }
 
 async function converged(harness, check) {
   await harness.eventually(async () => {
-    for (const i of [0, 1]) if (!check(await doc(harness.context, i))) return false
-    return harness.replicas.every(replica => !replica.store.status().syncPending)
+    for (const replica of harness.replicas) if (!check(await replica.doc())) return false
+    return harness.settled()
   })
 }
 
 const focused = page => page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.className ?? null)
 
 describe('goal and vein conflicts in the Goals view', () => {
-  it('discloses a vein status conflict and keeps one value', { timeout: 45000 }, async () => {
-    await withReplicaWorkspace(chromium, async harness => {
+  it('discloses a vein status conflict and keeps one value', { timeout: 90000 }, async () => {
+    await withConflicts(async harness => {
       const { page } = harness
       const { veinId, goalIds } = await seed(harness)
       await disagree(harness, 'veins', veinId, 'status', [['proven'], ['dead-end']], 'vein')
@@ -104,8 +114,8 @@ describe('goal and vein conflicts in the Goals view', () => {
       await capture(page, 'vein-closed')
       await details.locator('summary').click()
       assert.equal(await details.getByText('Status: both edits are kept until you choose one.').count(), 1)
-      assert.ok(await details.getByText('alice', { exact: false }).count() >= 1)
-      assert.ok(await details.getByText('bob', { exact: false }).count() >= 1)
+      assert.ok(await details.getByText('Alice', { exact: false }).count() >= 1)
+      assert.ok(await details.getByText('Bob', { exact: false }).count() >= 1)
       await capture(page, 'vein-open')
       assert.equal(await details.getByRole('button').count(), 2)
       await details.getByRole('button', { name: 'Keep Dead end for vein Edge caching' }).click()
@@ -116,12 +126,12 @@ describe('goal and vein conflicts in the Goals view', () => {
       await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Status of vein Edge caching')
       assert.equal(await focused(page), 'Status of vein Edge caching')
       await capture(page, 'vein-after-keep')
-      assert.deepEqual((await doc(harness.context, 1)).veins[veinId].goalIds, [goalIds[0]])
+      assert.deepEqual((await harness.bob.doc()).veins[veinId].goalIds, [goalIds[0]])
     })
   })
 
-  it('discloses a goal status conflict and keeps one value', { timeout: 45000 }, async () => {
-    await withReplicaWorkspace(chromium, async harness => {
+  it('discloses a goal status conflict and keeps one value', { timeout: 90000 }, async () => {
+    await withConflicts(async harness => {
       const { page } = harness
       const { goalIds: [goalId] } = await seed(harness)
       await disagree(harness, 'goals', goalId, 'status', [['achieved'], ['abandoned']], 'goal')
@@ -142,12 +152,12 @@ describe('goal and vein conflicts in the Goals view', () => {
     })
   })
 
-  it('lists a vein under both goals it may pursue and keeps one goal', { timeout: 45000 }, async () => {
-    await withReplicaWorkspace(chromium, async harness => {
+  it('lists a vein under both goals it may pursue and keeps one goal', { timeout: 90000 }, async () => {
+    await withConflicts(async harness => {
       const { page } = harness
       const { goalIds: [, goalA, goalB], veinId } = await seed(harness, ['Starting goal', 'Goal A', 'Goal B'])
       await disagree(harness, 'veins', veinId, 'goalId', [[goalA], [goalB]], 'vein')
-      const current = (await doc(harness.context, 0)).veins[veinId]
+      const current = (await harness.alice.doc()).veins[veinId]
       assert.deepEqual([...current.goalIds].sort(), [goalA, goalB].sort())
       await page.getByRole('button', { name: 'Goals', exact: true }).click()
       const underA = page.locator(`.goal[data-goal-id="${goalA}"] li[data-vein-id="${veinId}"]`)
@@ -160,8 +170,8 @@ describe('goal and vein conflicts in the Goals view', () => {
       assert.equal(await underA.getByText('Goal: both edits are kept until you choose one.').count(), 1)
       await underA.getByRole('button', { name: 'Keep Goal B for vein Edge caching' }).click()
       await converged(harness, doc => doc.veins[veinId].goalIds.length === 1)
-      assert.deepEqual((await doc(harness.context, 0)).veins[veinId].goalIds, [goalB])
-      assert.deepEqual((await doc(harness.context, 1)).veins[veinId].goalIds, [goalB])
+      assert.deepEqual((await harness.alice.doc()).veins[veinId].goalIds, [goalB])
+      assert.deepEqual((await harness.bob.doc()).veins[veinId].goalIds, [goalB])
       await underA.waitFor({ state: 'detached' })
       await underB.waitFor()
       await page.waitForFunction(() => document.activeElement?.closest('li[data-vein-id]')?.closest('.goal')?.getAttribute('aria-label') === 'Goal B')
@@ -169,9 +179,9 @@ describe('goal and vein conflicts in the Goals view', () => {
     })
   })
 
-  it('shows an alert in the row, or removes the disclosure, when the conflict was resolved elsewhere', { timeout: 45000 }, async () => {
-    await withReplicaWorkspace(chromium, async harness => {
-      const { page, operate, context } = harness
+  it('shows an alert in the row, or removes the disclosure, when the conflict was resolved elsewhere', { timeout: 90000 }, async () => {
+    await withConflicts(async harness => {
+      const { page, alice, bob } = harness
       const { veinId } = await seed(harness)
       await disagree(harness, 'veins', veinId, 'status', [['proven'], ['dead-end']], 'vein')
       await page.getByRole('button', { name: 'Goals', exact: true }).click()
@@ -180,14 +190,14 @@ describe('goal and vein conflicts in the Goals view', () => {
       await details.locator('summary').click()
       const keepProven = details.getByRole('button', { name: 'Keep Proven for vein Edge caching' })
       await keepProven.waitFor()
-      const before = (await doc(context, 1)).veins[veinId]
-      await operate(1, 'bob', 'vein.resolve', { veinId, field: 'status', value: 'dead-end', expectedRevisions: before.revisions.status })
+      const before = (await bob.doc()).veins[veinId]
+      await bob.operate('vein.resolve', { veinId, field: 'status', value: 'dead-end', expectedRevisions: before.revisions.status })
       await converged(harness, current => current.veins[veinId].status === 'dead-end' && !current.veins[veinId].conflicts.status)
       const clicked = await keepProven.click({ timeout: 1500 }).then(() => true, () => false)
       if (clicked) await row.getByRole('alert').waitFor()
       else await details.waitFor({ state: 'detached' })
-      assert.equal((await doc(context, 0)).veins[veinId].status, 'dead-end')
-      const history = (await context(0, `/automerge/vein/${veinId}/context`)).history
+      assert.equal((await alice.doc()).veins[veinId].status, 'dead-end')
+      const history = (await alice.show('vein', veinId)).history
       assert.ok(history.filter(event => event.type === 'vein.update').length >= 2, 'both competing edits stay in history')
     })
   })

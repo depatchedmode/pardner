@@ -11,8 +11,8 @@ existing GitHub issues without contacting GitHub. See
 
 ## How to get to it (user POV)
 
-Open `/pardner/` through the service computer's loopback address, choose an
-**Actor**, then **Control**. Settings live under **Control settings**. Task issue
+Run `pardner open` (or `control open` for the pinned control runtime) on the
+client's computer, then choose **Control**. Settings live under **Control settings**. Task issue
 links are in a task's **GitHub issues** section, or `pardner issue link TASK
 owner/repo#N` and `pardner issue unlink TASK owner/repo#N --revisions JSON`.
 
@@ -39,7 +39,7 @@ links through the API, two merged replicas and the CLI.
 The fake T3 models the qualified behavior; it does not establish live T3 or
 provider behavior. Live qualification is `npm run test:t3-qualification`, and live
 human approval belongs to #79. Settings and owner decisions need a loopback page,
-so a LAN browser sees the pane but not its settings. Control records are
+so a non-loopback browser sees the pane but not its settings. Control records are
 host-local and never synchronize; issue links do.
 
 ## Cursor Cloud
