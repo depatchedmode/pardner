@@ -452,3 +452,150 @@ Reviewed against AGENTS.md (Local-first), the local-first design skill, README, 
 - **Q5 (decided: SSH and OpenPGP now).** The person key may be SSH or OpenPGP, reusing git's signing key when possible or a dedicated key otherwise. Pardner never edits git's configuration. Section 1.
 - **Q6 (decided: require presence for membership).** Membership actions need a deliberate act: a hardware touch (verifiable by peers), or a local terminal confirmation plus agent confirmation or passphrase. Profile edits may sign silently. The local trust zone.
 - **Q7 (decided: measure first).** Keep Automerge text unless the spike's numbers, read against how often each cost is paid, cross the decision rule in [Cost in context](#cost-in-context). Rollout step 0.
+
+## Simplification review (proposal)
+
+Status: **proposal from a second review**. It answers the owner's question "are we overcomplicating the person-key direction?". It changes no decided section above. Where it disagrees with a decision, the disagreement is put as a question in [Questions for the owner](#questions-for-the-owner), and the decision stands until the owner answers.
+
+### Verdict
+
+Partly, yes.
+
+- **Keep the three tiers.** Person, machine and agent, with ceremony that falls at each step, is the right shape. A person key separate from the machine key is worth having (see [Is a person key needed at all?](#is-a-person-key-needed-at-all)).
+- **The overbuilt part is where the person key comes from.** Making it an SSH or OpenPGP key puts two external toolchains and a second signature format inside the rule every peer must agree on. The benefit that justifies this, linking commits to people, reaches at most the 6–10% of developers who sign commits, and it can be had without putting those formats in the verification rule.
+- **The plan's order is overbuilt for the current stage.** Everything, including the board surfaces that fix the walk's findings, waits behind the riskiest unknown (the replay check). The findings need far less.
+
+### What this review checked
+
+Throwaway scripts outside the repository, on macOS with its bundled OpenSSH 10.5 and Node 24. No product code changed. Nothing here was run on Linux or with GnuPG or a hardware key.
+
+| Check | Result |
+|---|---|
+| A key loaded in ssh-agent, signing from a process with no terminal, given only the public key | Signs silently **(checked)** |
+| The same key loaded with confirmation (`ssh-add -c`), on a machine with no askpass program, which is the macOS default | The agent refuses. Nothing is signed and nothing is asked **(checked)** |
+| Creating an `sk-ssh-ed25519` key with the OpenSSH that macOS ships | Fails: "No FIDO SecurityKeyProvider specified". Hardware keys need a different OpenSSH build or a provider library **(checked)** |
+| GnuPG on the review machine | Not installed, so no OpenPGP path could be tried. This is itself a data point about developer machines |
+| A Pardner-made Ed25519 key, sealed with a passphrase using only Node's built-in crypto (scrypt and AES-256-GCM) | About 20 lines. Opening takes about 0.3 s, a wrong passphrase is refused, and verification takes 0.11 ms **(checked)** |
+| SSHSIG verification for `ssh-ed25519` in Node | Works, as the first review found **(checked)** |
+| The `openpgp` package on npm | 17 MB unpacked, against five runtime dependencies today. Not installed or run |
+
+### Is a person key needed at all?
+
+Yes, but a small one.
+
+**Machine keys alone do not quite work.** If a person is simply the set of their machines, there are two ways to arrange them, and each has a flaw:
+- **Flat.** Any of a person's machines may add or revoke another. A stolen laptop can then revoke the good one while the good one revokes it, and no rule decides the outcome. This is the problem "removal runs downhill only" solved for admins.
+- **Rooted at the first machine.** This has a clear outcome, but the first machine's key is now a person key by another name. It must stay unencrypted, because the service signs with it all day. It cannot be exported apart from the machine. Losing that one computer loses the person, and for the owner it freezes the project.
+
+A separate person key fixes both. It is used rarely, so it can be sealed with a passphrase, and it can be exported.
+
+**What the person key protects against, by where it is kept:**
+
+| Where the person key lives | Someone with the disk or a backup | An agent or other process running as the same user | Visible to other peers |
+|---|---|---|---|
+| Unencrypted file, or loaded in an agent without confirmation | Has it | Can use it silently | No |
+| Sealed with a passphrase, never cached | Does not have it | Cannot use it without capturing the passphrase | No |
+| Hardware token with touch | Does not have it | Cannot use it | Yes, for `sk-` SSH keys only |
+
+With SSH or OpenPGP keys, Pardner cannot tell which row a person is in. gpg-agent caches a passphrase for ten minutes by default (from GnuPG's documentation; not tested), macOS pinentry can store it in the keychain, and ssh-agent signs silently unless the key was added with `-c`. With a key Pardner makes, Pardner can require the second row for everyone.
+
+### Comparison of the alternatives
+
+"Walk findings" means the identity findings: takeover through a My device invitation (#155), duplicate people (#156), revocation and re-admission (#153, #154, #175), and no board control to remove members (#152).
+
+| Alternative | Walk findings | Protection it adds | Build and test cost | Ceremony | Local-first and peer-verifiable |
+|---|---|---|---|---|---|
+| **(a) Machine keys only**, new machines approved from an existing one | Fixed, given a pairing flow with a code on both screens | None between tiers. Flat sets have no deterministic outcome for mutual revocation; a rooted set makes the first machine an unsealed person key | Lowest | Lowest: confirm a code | Fully in-process and offline |
+| **(b) A Pardner-made person key**, sealed with a passphrase, exportable | Fixed, and the board can complete membership actions itself | A stolen disk, a backup or a local agent does not hold membership authority. Not visible to peers | Low: Node crypto only, one format, testable in the existing suites | A passphrase at rare actions; one recovery file to keep | Fully in-process and offline. No external tool |
+| **(c) SSH keys only** | Fixed, but every membership action ends in a terminal (Q6) | Depends on the person's agent setup, which Pardner cannot observe. Visible to peers only with a hardware token | Medium: `ssh-keygen` as a subprocess; file, agent, confirmation and hardware paths to test | Varies. `ssh-add -c` fails on a default macOS; hardware keys need a non-system OpenSSH | Verifies in-process. Signing needs OpenSSH |
+| **(d) SSH or OpenPGP keys** (the current decision) | As (c) | As (c). OpenPGP never gives peers evidence of presence, even from a smartcard | Highest: adds an OpenPGP verifier every peer must agree with, and gpg-agent, pinentry and smartcard paths | As (c), plus pinentry failures when there is no terminal | As (c). Signing needs OpenSSH or GnuPG; verifying needs a pinned OpenPGP library |
+| **(e) Option (b) now, with room for more key types**, and git keys linked as badges | As (b) | As (b) now. Presence that peers can check arrives later through a hardware key type | As (b) now. Each later key type is priced when it is wanted | As (b) | As (b) |
+
+Two observations about (c) and (d):
+
+- **(c) is the weakest choice, not a middle one.** If the point of reuse is the key git already signs with, SSH-only reuse reaches about 1% of the 6–10% who sign: roughly one developer in a thousand. The owner's reasoning for Q5 was sound: if Pardner reuses signing keys, it must take OpenPGP. The real choice is between (d) and no reuse.
+- **Under (d), reuse and presence pull against each other.** Agents work fast and commit often. A git signing key that agents can use at that speed is, by construction, a key that signs without a deliberate act: the first row of the table above. A signing key that does demand a touch or a prompt for every signature stops agents from signing commits. So the people for whom reuse works smoothly are the people for whom Q6 means least.
+
+### Does reusing git's signing key buy anything real?
+
+Less than it costs, when the key is the root of identity.
+
+- **Commit-to-person linking does not need the person key to be the git key.** Checking a commit's signature needs the commit object, so it already happens beside a git checkout, with git at hand. It is a local check that produces a badge, as forge attestation does. It never needs to be part of the rule all peers must agree on.
+- **A link is enough.** A person publishes "my git signing key is this fingerprint" in their profile, and the git key signs a statement naming the person. A machine that has git, `ssh-keygen` or `gpg` checks both and records an attestation, as section 2 already does for forges. Other peers show the badge and never verify it. This works for OpenPGP and SSH alike, with no OpenPGP library inside Pardner, and it serves the same 6–10%.
+- **Forge-pinned invitations** ("invite `github.com/marcus`") are the one feature that needs the person's own key to be an SSH key. It is optional in the design, and the walk found no problem it solves. Leaked invitations (STORY-043) are already covered by the confirmation code.
+- **"The private key never enters Pardner"** is a real property of reuse and is lost under (b). Pardner already holds the machine key and every token, so the loss is small.
+
+### Is OpenPGP from the start justified?
+
+Not as a person-key format.
+
+- **It joins the rule every peer must agree on.** If two versions of the verifier ever disagree about one membership statement, peers split: one admits a person and the other rejects everything that person writes. A library upgrade, including a security fix, becomes a protocol change, as an Automerge upgrade already is.
+- **The format invites disagreement.** Each of these is a rule Pardner would have to fix and test: v4 against the newer and mutually incompatible v5 and v6 keys; primary keys against signing subkeys; signature subpackets that are not covered by the signature; accepted hash algorithms; three public-key algorithms. Ignoring expiry and keyservers is the right call and removes only part of this.
+- **It is used rarely.** A person signs with this key a handful of times per project: at genesis or admission, for each new machine, and for the occasional role change or removal.
+- **It cannot be tested where the suites run.** Neither GnuPG nor a FIDO provider was present on the review machine. The first review also left OpenPGP signing and hardware keys untested.
+
+### What happens to presence (Q6)?
+
+| Alternative | What "a deliberate act" means |
+|---|---|
+| (a) | The local service checks that a human session clicked Confirm. The same service holds the key, so this stops accidents only |
+| (b), (e) | The person key is always sealed, so every membership action needs the passphrase, typed in the terminal or in the board. Pardner enforces this for everyone. It stops agents, accidents and a stolen disk. It does not stop a process that can capture the passphrase |
+| (c), (d) | One of three different guarantees, depending on agent settings Pardner cannot see. Only a hardware `sk-` key is strong, and only it is visible to peers |
+
+**The simplest honest version:** membership actions need the person-key passphrase, every time. That is a local guarantee, and the document should say so plainly. Presence that peers can check is an optional hardening for owners and admins, added as a hardware-backed key type when someone wants it. Two candidates, neither tested:
+- `sk-ssh-ed25519`, as designed above. It needs a FIDO token and an OpenSSH that supports one.
+- A passkey (WebAuthn) created in the board. The laptop's own fingerprint reader would do, and the signed data carries presence and user-verification flags that peers can check with Node's crypto. The client serves on `127.0.0.1` today; WebAuthn is expected to need the name `localhost` instead. To be checked before proposing it.
+
+### Is the rest of the plan overbuilt for this stage?
+
+The verification rule delivers three separate properties. The document treats them as one, so the cheapest waits for the dearest.
+
+| Level | What every peer can decide alone | What it needs | Open risk |
+|---|---|---|---|
+| **1. Admission** | Whether a machine may connect and sync, and who may change membership | Machine keys, the person key, signed membership statements, the handshake (section 7) | None found. It is signature checks only |
+| **2. Authentic changes** | Which machine made each change, even when another peer relays it | A signature per change, and an exchange that verifies before applying (section 8) | The exchange replaces automerge-repo's sync between replicas |
+| **3. Allowed changes** | That each change is a legal operation by an Actor that machine may act as | Replay and exact rebuild, sorted writes, a pinned Automerge, a true fork at `deps` | A concurrent change costs about 4 s today, an in-order one about 10 ms, and 10,000 operations are unmeasured |
+
+- **The walk's identity findings need level 1 and board surfaces, nothing more.** The comment-delete rule (#160) is one check in `prepareOperation`, which the local service and the hub already enforce on every API write. Agent naming (#150, 18 stories) needs no trust work at all. In the current rollout these land at step 6, behind every other step.
+- **Level 1 is a firm boundary, honestly stated.** "Certified machines are trusted writers, and everyone else is out." That is today's README posture ("native replicas are trusted full document writers"), made per-machine, revocable and checkable by every peer. It is enough for a direct peer lane: two certified machines can run the handshake and then ordinary Automerge sync, with no custom exchange.
+- **Level 1 has limits that must be written down.**
+  - A certified machine can still write anything, including a change that claims another Actor.
+  - A relayed change is vouched for by the machine that relayed it.
+  - A revoked machine is refused at the handshake, which matches "enforced from arrival" (Q1) for everything it sends directly. The witness arrives with level 2.
+  - A trusted writer could delete a membership statement from the document. Each peer must therefore treat valid statements as grow-only: once seen, never forgotten. Membership is the result of verifying statements, never the current content of a map.
+- **Membership does not need replay.** Statements are signed by person keys and are single-use, so they certify themselves.
+- **Level 2 may not need replay either.** A machine could sign the hash of the change itself, with the signature carried beside the change in the exchange frame. That proves the change is exactly what the machine made without rebuilding it, so it needs no sorted writes and no pinned Automerge. The cost is that signatures must be stored, served again and backed up next to the document. The document chose to sign the intent "so there is no circularity", and did not weigh this option. The spike should.
+- **Replay stays worth pursuing.** One rule engine enforced by every peer is the best property in this design. It should arrive last and be gated by the spike, not gate everything else.
+- **The step 0 spike is the right work in the wrong place.** Run it alongside level 1, as the gate for level 3 only. Its hardware-key item goes away under (b).
+
+### Recommended direction
+
+1. **Adopt (e).** The person key is an Ed25519 key that Pardner creates, always sealed with a passphrase and exportable as a recovery file. Each key record in the membership log carries a type, so hardware-backed types can be added later as a protocol version.
+2. **Take SSH and OpenPGP out of the verification rule.** Offer them later as linked keys, checked locally and shown as badges, for commit linking and forge attestation. "Pardner never edits git's configuration" stays, and is satisfied trivially.
+3. **Stage the rollout by level.**
+   - **Now, with no trust work:** name agents by owner (#150), add the comment author check (#160), refuse loopback-only invitations (#162).
+   - **Stage 1, admission:** machine keys, the person key, the signed membership log, the pairing flow for a new machine, and the board surfaces for members, machines, agents, revocation and re-admission (#152–#156, #175). Then the machine-key handshake, replacing the bearer tokens.
+   - **Stage 2, direct lane:** the handshake plus ordinary Automerge sync between two certified machines, validated on real separate networks.
+   - **Stage 3, after the spike:** authentic changes, then allowed changes.
+4. **State each level's guarantee in README as it lands**, so no stage claims more than it enforces.
+
+**What this removes:** OpenSSH and GnuPG as required services, the OpenPGP library, the key-selection rules, the agent and pinentry guidance, and the terminal detour for every membership action.
+
+**What it gives up:** forge-pinned invitations with no admin online; the property that Pardner never holds the person's private key; presence that peers can check, until a hardware key type is added; and, for the few who have one, using the hardware key they already own on day one.
+
+### Questions for the owner
+
+These revisit decisions. None is changed until answered.
+
+- **R1 (revisits Q5).** Should the person key be a key Pardner creates and seals, with SSH and OpenPGP keys demoted to optional linked keys that produce badges and never enter the verification rule?
+- **R2 (clarifies "git is a hard requirement").** Does this mean Pardner may rely on git being installed, for name and email defaults and for commit evidence? Or that identity must be rooted in a key git uses? The recommendation satisfies the first reading only.
+- **R3 (revisits Q6).** Is a passphrase required at every membership action enough for now, described as a local guarantee? Or must owners and admins have presence that peers can check from the first release? If the second, a hardware key type has to be in stage 1, and the OpenSSH that macOS ships cannot use one.
+- **R4 (revisits the rollout).** May the first shipped boundary be level 1, with per-change verification staged behind the spike? This narrows what the Goal section promises at first, and README would say so.
+- **R5 (revisits the rollout).** Should the board's membership surfaces move from step 6 to directly after the membership log?
+- **R6 (follows from R1, touches Q4).** The person key would sit on the first machine. Should pairing be able to copy the sealed key to a new machine, so that either can manage membership and losing one computer does not lose the owner key? And should creating a project require exporting the recovery file?
+
+### Corrections to the text above, whatever is decided
+
+- "Design in one paragraph" still says each person holds "a git SSH signing key". Q5 widened this to SSH or OpenPGP.
+- The Q6 guidance to load the person key with `ssh-add -c` should say that it needs an askpass program, which macOS does not provide by default. Without one the agent refuses to sign.
+- The hardware-key recommendation should say that the OpenSSH shipped with macOS has no FIDO provider.
