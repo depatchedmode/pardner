@@ -180,7 +180,7 @@ Roles are minimal: one `owner` (the genesis person), any number of `admin`s, and
 - Machines act for their person and that person's delegated agents. Agents act only as themselves and never change membership.
 
 Rules the table implies:
-- **Removal runs downhill only.** The owner acts on anyone, an admin on members, and each person on their own machines and agents. Two admins can therefore never remove each other at the same moment, which would leave no deterministic outcome (Q4).
+- **Removal runs downhill only.** The owner acts on anyone, an admin on members, and each person on their own machines and agents. Two admins can therefore never remove each other at the same moment, which would leave no deterministic outcome. Only the owner removes or demotes admins (Q4, decided).
 - **A removal against a concurrent action by its target** follows the revocation rule: whichever arrives first at a peer decides there, and the witness keeps every peer on the same document.
 - **Where the state lives.** Membership operations write `members`, `machines`, `agents` and the used statement IDs into the document. The exactness check means only a verified membership operation can write there. "Membership at `C.deps`" is those maps on the fork.
 - **A deterministic genesis.** The root change is built from the genesis statement alone, with the fixed header, so any peer can rebuild it. Today `repo.create` stamps the wall-clock time, and two builds of the same data have different hashes **(checked)**.
@@ -275,7 +275,7 @@ Consequences:
 - **Fresh install with no backup.** The computer joins as a new machine with the person key. It fetches the document from any peer and verifies it from the genesis, needing only the project ID.
 - **Lost machine.** Its person revokes it from another machine, or the owner or an admin does.
 - **Lost person key.** The owner or an admin removes the old key and admits the person's new key through a fresh invitation. The person's past work stays attributed to the old key.
-- **Lost owner key.** It cannot be replaced in this version. An owner should register a second person key, for example on a hardware token, as an `admin`. That keeps ordinary membership manageable, but it cannot remove or demote admins (Q4).
+- **Lost owner key.** It cannot be replaced in this version. An owner should register a second person key, for example on a hardware token, as an `admin`. That keeps ordinary membership manageable. Losing the owner key freezes the admin list: no admin can then be removed or demoted. This is an accepted, documented limitation of this version (Q4, decided); the remedy is a new project.
 - **Export.** The readable export is unchanged. It is not a replica and holds no keys.
 
 The recovery guide is updated in the same step that introduces machine keys.
@@ -373,7 +373,7 @@ This is a plan. None of these scenarios has been run.
 
 Three stand as decided; revocation was revised after the review showed the strict rule could not converge.
 
-- **One owner plus admins (decided).** The genesis person is the single owner. Admins share membership authority. Ownership transfer is out of scope for this version. *See Q4.*
+- **One owner plus admins (decided).** The genesis person is the single owner. Admins share membership authority. Ownership transfer is out of scope for this version. Only the owner removes or demotes admins, and a lost owner key freezes the admin list (Q4, accepted).
 - **Git required, forges optional (decided).** The person key is the git SSH signing key. Forge attestation (GitHub, GitLab, Codeberg/Forgejo or any `/<login>.keys` host) is optional and recorded when used. Without it, admission rests on a confirmation code. *See Q5.*
 - **Ceremony by tier (decided).** A new person or a new machine needs the person key. A new agent on an existing machine needs only the machine key. *See Q6.*
 - **Revocation is enforced from arrival (decided, revised).** Each peer refuses a revoked party's changes from the moment it learns of the revocation. Work already merged stays, is named by a signed witness and listed for an admin to undo. Rejections are logged and shown, never silently dropped. This replaces the original strict rule, which could not converge on Automerge.
@@ -410,7 +410,7 @@ Reviewed against AGENTS.md (Local-first), the local-first design skill, README, 
 - **Q1 (decided: option A).** Revocation is enforced from arrival, with a signed witness for work merged before it. Section 4.
 - **Q2 (decided: yes).** The machine-key handshake satisfies the admission rule. The PR that lands step 4 updates AGENTS.md to say so. Section 7.
 - **Q3 (decided: hub-only now, peers later).** The hub stays the only enrollment point. Once the direct lane is qualified, admitted owner and admin peers may enroll too, with an AGENTS.md update. Section 7.
-- **Q4.** May only the owner remove or demote admins? It prevents mutual removal, but a lost owner key then freezes the admin list. Section 5.
+- **Q4 (decided: owner only, freeze accepted).** Only the owner removes or demotes admins. A lost owner key freezes the admin list; that limitation is documented, not engineered around. Section 5.
 - **Q5.** May Pardner ever set git's signing configuration, and may the person key be a dedicated key that is not the git signing key when git signs with GPG or another key type? Section 1.
 - **Q6.** Is a person key that ssh-agent will use without confirmation acceptable for membership actions, or must they always need a passphrase, confirmation or touch? The local trust zone.
 - **Q7.** Should strings be stored as plain values instead of Automerge text, a schema change, to make verification and loading affordable at 10,000 operations? Rollout step 0.
