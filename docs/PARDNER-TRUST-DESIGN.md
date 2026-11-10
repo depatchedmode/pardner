@@ -33,9 +33,11 @@ Each person holds a git SSH signing key (the person key), and each machine runni
 1. the signature is valid;
 2. the signing machine was certified for an admitted person, and allowed to act as that Actor, at the change's causal position;
 3. replaying the signed request through `prepareOperation` at the change's dependencies succeeds, so every authorization rule passes;
-4. the change writes exactly what that replay writes, and nothing more.
+4. rebuilding the change from that replay gives the same change hash, so the change is exactly what the signed request produces.
 
 Membership (who may sign, and as which Actors) is itself a set of signed operations in the same document, rooted in a self-certifying project ID. The check is a pure function of the document, so it gives the same answer whether the change arrived through a hub or directly from a peer.
+
+Claims marked **(checked)** were tested during review with throwaway scripts against the pinned `@automerge/automerge` 3.2.3 and `@automerge/automerge-repo` 2.5.1. Nothing else has been run.
 
 ## Building blocks
 
@@ -78,45 +80,84 @@ Git is a hard requirement; no code forge is. Each step down the hierarchy costs 
 
 ```
 envelope = {
-  v: 1, projectId, requestId, type, actorId, payload,   // the request, as today
-  machineId, automergeActor, deps,                        // where and by whom it was made
-  timestamp                                              // advisory only
+  v: 1, projectId, requestId, type, actorId, payload,   // the request; payload keys in sorted order
+  machineId, changeActor, deps,                          // where and by whom it was made
+  timestamp                                              // the author's claim; never used to authorize
 }
 event.signature = Ed25519(machine key, "pardner/op/v1" ‖ canonical(envelope))
 ```
 
-- **Binding to one change.** `deps` are the document heads the machine built on, and `automergeActor` is the Automerge actor ID of the change that carries the event. Together they bind the signature to a single change position.
-- **What the signature covers.** It covers the *intent*, not the change bytes, so there is no circularity. The replay check in section 4 binds the change to the intent.
+- **Binding to one change.** `deps` are the document heads the machine built on, and `changeActor` is the Automerge actor ID of the change that carries the event. With the rebuild check in section 4, the signed envelope and the document at `deps` determine the change byte for byte. Nobody can wrap a valid signature in a different change.
+- **What the signature covers.** It covers the *intent*, not the change bytes, so there is no circularity.
+- **Automerge actor IDs.** `changeActor` is the machine ID's bytes followed by 8 random bytes chosen at each process start.
+  - The prefix ties the change to the machine.
+  - The suffix stops two processes that hold the same key (a restored backup, a restart after a crash) from reusing an Automerge sequence number. Automerge refuses a second change with the same actor and sequence number **(checked)**.
+  - automerge-repo picks a random actor every time it loads a document. Pardner sets its own after loading, with `handle.update(doc => clone(doc, { actor }))` **(checked)**.
+- **Sorted writes.** Automerge returns map keys in sorted order, so a verifier cannot recover the order an author wrote them in. `prepareOperation` must write every map in sorted key order. Today it writes the payload in request order: 9 of 13 operation types failed to rebuild until payloads were sorted, and then all 13 matched **(checked)**.
+- **Fixed change header.** The change's own time is set from `timestamp` and its message is empty, so the header carries nothing unsigned.
+- **Timestamps.** `timestamp` is signed but is only the author's claim. It is used for display and for a new task's default order. No check reads a local clock. A member can misdate their own work; they cannot change anyone else's.
+- **Retries.** The same request retried on another machine produces a second signed event under the same operation ID. Each verifies on its own, and they collapse as they do today.
 - **Domain separation.** The `pardner/op/v1` prefix means a signature can never be reused as a git commit signature or an SSH login, and vice versa.
 
 ### 4. Verification rule (identical on every peer)
 
-For each incoming change `C`, in causal order:
+A peer receives each change `C` together with its signed event `E`, and checks them in causal order:
 
-1. **Shape.** `C` adds exactly one `operations[opId]` event `E` and its `operationRequests` entry.
-2. **Authenticity.**
-   - `E.signature` verifies against the public key of `E.machineId`.
-   - `E.automergeActor = C.actor` and `E.deps = C.deps`.
-3. **Authority at the causal point.** In the membership view at `C.deps`, all of the following hold:
+1. **Header.** Every dependency of `C` is already accepted. `C.deps = E.deps`, `C.actor = E.changeActor`, and that actor ID starts with `E.machineId`.
+2. **Authenticity.** `E.signature` verifies against the key recorded for `E.machineId`.
+3. **Authority at the causal point.** In the membership state at `C.deps`, all of the following hold:
    - `E.machineId` is certified for an admitted person (and that person's machine scope allows `E.actorId`);
    - it is delegated for `E.actorId`;
    - it is not revoked in `C`'s causal past.
-4. **Replay.** `prepareOperation(view(doc, C.deps), request(E), { replicaId: E.replicaId, timestamp: E.timestamp })` succeeds, so every existing rule passes.
-5. **Exactness.** The writes in `C`, compared by path and value, equal the writes the replay produces.
+4. **Replay.** On a fork of the document at `C.deps`, `prepareOperation(request(E), …)` succeeds and reports a new operation, so every existing rule passes.
+5. **Exactness.** Applying that replay on the fork, with `C.actor` and the fixed header, produces a change whose hash equals `C`'s hash.
 
-Outcomes:
+The document has exactly one change with no dependencies: the genesis (section 5). Any other root is rejected.
+
+**Why compare hashes, not paths and values.**
+- Pardner stores every string as Automerge text, one Automerge operation per character. A typical Pardner operation is about 1,000 Automerge operations, so comparing writes by path and value is neither simple nor complete.
+- Two changes can show the same values and still differ. With the predecessor stripped from one field write, a change applied cleanly and showed the same value, but left the old value alive as an extra conflict alternative. The hash comparison caught it **(checked)**.
+- Hash equality held for all 13 operation types, for two concurrent edits each checked at its own dependencies, and for a resolve built on their merge **(checked)**.
+
+**What the check needs from Automerge.**
+- **A true fork at `C.deps`, not `view`.** `getConflicts` on `view(doc, deps)` returns today's conflicts, not the ones at `deps` **(checked)**. `prepareOperation` reads conflicts for same-field alternatives and for retries, so a replay on a view gives wrong answers. A `clone` of the view is a true fork, but the objects it has already read keep answering from the old document until its first change **(checked)**.
+- **Stable operation generation.** The rebuild relies on Automerge producing the same operations for the same writes. The Automerge version is part of what `v` names. An upgrade is a protocol change: it ships only after re-verifying recorded histories with the new version.
+
+**Outcomes.**
 - **Accept.** All five checks pass.
-- **Reject.** Any check fails, or the change comes from a machine (or person) whose revocation is not in the change's causal future. In other words, every change a revoked machine made that isn't in the revocation's causal past is rejected, including offline work that never saw the revocation. A rejected change is never applied, and every change that depends on it is rejected too.
+- **Reject.** Any check fails, or the strict revocation rule applies: a change from a revoked machine or person that is not in the revocation's causal past is rejected, including offline work that never saw the revocation. A rejected change is never applied, and neither is any change that depends on it.
 
-  Rejection is **visible, not silent**, as AGENTS.md requires:
-  - The receiving peer keeps the change in a local rejected-change log with its reason, its author and what it would have done.
-  - The board shows a notice to owners and admins.
-  - A lost-then-found machine's legitimate offline work must be re-entered by its person from a certified machine; the log shows what it was.
-  - This is a deliberate policy (decided), not an oversight.
+Rejection is **visible, not silent**, as AGENTS.md requires:
+- The receiving peer keeps the change in a local rejected-change log with its reason, its author and what it would have done.
+- The board shows a notice to owners and admins.
+- A lost-then-found machine's legitimate offline work must be re-entered by its person from a certified machine. The log shows what it was.
+- This is a deliberate policy (decided), not an oversight.
 
-Two consequences:
+> **Open question Q1: strict revocation cannot converge as written.**
+> A peer can apply a change `X` from machine `A`, and other people can build on it, before the revocation `R` of `A` reaches that peer. Once `R` arrives, the rule says `X` is rejected. Automerge cannot remove an applied change, and a change whose dependency is missing is held back, never applied **(checked)**. Peers that saw `X` first and peers that saw `R` first would then hold different documents for good.
+>
+> The race is narrow when everyone syncs through one hub, and wide on a direct peer lane or after long offline periods. Two ways to close it:
+> - **A. Strict at the gate, cut at the witness (recommended).** A peer that holds `R` never applies a not-yet-applied change from `A`. A change from `A` outside `R`'s causal past is kept only if an unrevoked machine had already built on it. A peer that merged such changes before `R` arrived records a small signed acknowledgement naming them, which is that witness. The notice lists them as "accepted before the revocation arrived", and an admin undoes any of them with ordinary operations. Every peer reaches the same document. The cost: revocation takes effect when each peer learns of it, not at one global instant.
+> - **B. Strict to the letter.** On learning `R`, each peer rebuilds its document without `X` and without everything built on `X`, including valid work by unrevoked people. That work goes to the rejected-change log to be re-entered. This needs a document rebuild that automerge-repo does not offer, and it throws out honest work, visibly.
+>
+> Step 3 of the rollout needs this answered. Until then the text above states the decided rule.
+
+Two consequences of the verification rule:
 - Adding a rule to `prepareOperation`, such as "only the author may delete a comment", enforces it on **every peer** at once. There is no second rule engine to drift out of sync.
 - Hub and direct peer paths run the same function on the same document, so they cannot disagree.
+
+**Cost** (one laptop, 1,000 operations of about 120 characters each) **(checked)**:
+
+| Step | Measured |
+|---|---|
+| Ed25519 verification | 0.14 ms |
+| Rebuild in causal order on one kept document (`deps` equal its heads) | About 10 ms per operation, close to the 8 ms it costs to author one. All 1,000 hashes matched |
+| Rebuild of a concurrent change, forking by save and reload | About 4 s per change. Not usable |
+| The document itself | About 1 million Automerge operations, 480 KiB saved, 1.6 s to load |
+
+- The signature is cheap. The rebuild costs as much as authoring, and both grow with the document because strings are stored as text. A 10,000-operation project was not measured.
+- A peer verifies each change once and stores the verdict by change hash. Only a new replica verifies the whole history, and it needs a progress display.
+- A cheap, correct fork for concurrent changes is unproven. Reading conflicts inside the change callback of a cloned view gave the right answer in a small test **(checked)**, but a full replay done that way was not measured.
 
 ### 5. Membership log (authorization)
 
@@ -168,12 +209,19 @@ The three admission paths match the three kinds of key:
 
 ### 8. Change exchange
 
-The verification rule needs changes one at a time and in causal order. The generic automerge-repo sync message would apply them before Pardner could check them, so it doesn't fit. Peers instead exchange changes over a small protocol:
-- **Advertise.** Each side sends its heads, and the other side replies with the hashes it is missing.
-- **Verify, then apply.** The receiver verifies each change in causal order with `Automerge.decodeChange` and `view`, then applies only the accepted ones.
-- **Rejected changes.** These are kept in a separate local rejected-change log with their reason, so they can be shown. They never enter the board document.
+The verification rule needs changes one at a time and in causal order. automerge-repo applies an incoming sync message inside `receiveSyncMessage`, with no hook before the changes land **(checked)**, so it doesn't fit. Peers instead exchange changes over a small protocol:
+- **Advertise.** Each side sends its heads.
+- **Fetch.** A receiver asks for the heads it lacks, then for any dependencies it lacks, until what it has received connects to its own history. Heads alone do not say which ancestors are missing, so this takes more than one round. Frames and batches have size limits.
+- **Frame.** Each frame carries one change and its signed event.
+- **Verify, then apply.** The receiver verifies each change in causal order (section 4) and applies only the accepted ones, through `handle.update(doc => applyChanges(doc, accepted))` **(checked)**.
+- **Rejected changes.** These are kept in a separate local rejected-change log with their reason, so they can be shown. They never enter the board document, and their hashes are remembered so they are not fetched again.
+- **Retries.** A change is identified by its hash, so a repeated or interrupted exchange is harmless.
 
-The protocol is transport-agnostic: WebSocket to a hub, a direct WebSocket or QUIC connection between peers, or a file for backup. This replaces the native automerge-repo WebSocket sync between replicas; local storage stays as it is.
+What stays the same:
+- automerge-repo remains the storage layer. The board document simply has no automerge-repo network adapter between replicas.
+- The disk persistence barrier is unchanged. A peer confirms receipt to the sender only after the accepted changes are verified and saved, so "saved locally" and "acknowledged by the hub" stay distinct.
+
+The protocol is transport-agnostic: WebSocket to a hub, a direct WebSocket or QUIC connection between peers, or a file for backup. It gives up the compactness of Automerge's own sync messages, which is acceptable at this scale. The spike should also try the alternative of running Automerge sync into a staging document and verifying from there.
 
 ### What stays hub-coordinated
 
