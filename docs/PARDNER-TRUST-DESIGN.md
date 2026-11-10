@@ -368,7 +368,7 @@ Delivery leases and presence are about liveness, not authority, so a hub keeps t
 
 ## Rollout (each step lands on its own)
 
-0. **Spike.** The review showed that the rebuild check works for every operation type and for concurrent edits once payload keys are sorted. Still to prove:
+0. **Spike (gates stage 3 only, plus the UCAN library check before stage 1).** The review showed that the rebuild check works for every operation type and for concurrent edits once payload keys are sorted. Still to prove:
    - UCAN 1.0 delegations ([section 5a](#5a-encoding-delegations-as-ucan-10-decided)): a pinned library or in-repo verifier passes the spec's test vectors, dependency footprint, and verification cost per chain;
    - a cheap, correct fork at `deps` for concurrent changes;
    - verification time and memory on a 10,000-operation project, including a new replica's first full verification;
@@ -396,17 +396,48 @@ Delivery leases and presence are about liveness, not authority, so a hub keeps t
    - the document opens in under 3 seconds.
 
    Otherwise switch to plain values. If character-level merging of concurrent text edits is wanted later, it is a separate feature (splice-based edits), not a reason to keep today's storage.
-1. **Deterministic writes and shadow signing.** Add sorted map writes, the fixed change header, the machine key and the machine-prefixed actor ID. Machines sign every operation and include their public key. Receivers rebuild, verify and log the result but don't enforce it. Sync stays as it is. Run the acceptance and walker suites, and expect zero failed verifications.
-2. **Membership log.** Add the genesis, member, machine and agent operations, the invitation key, the confirmation-code check and optional forge attestation. Today's admission records are derived from the log and the bearer tokens remain. Update the recovery guide for machine and person keys. This is a breaking change for existing projects, which is acceptable because no migration is needed.
-3. **Enforce over the hub path.** Introduce the change exchange with the verification gate, and the rejected-change log with its board notice and a CLI listing. A rejection must be visible from the first day one can happen. It also adds the revocation witness and its "accepted before the revocation arrived" notice. Bearer tokens still admit connections.
-4. **Machine-key handshake.** Replace the bearer tokens, and reword the AGENTS.md admission rule in the same PR (Q2, decided).
-5. **Direct peer lane.** Allow the same protocol between two replicas given an explicit address (LAN or tailnet). Validate it on real separate machines, not loopback.
-6. **People-facing surfaces.** Members, machines, agents, revocation, re-admission and agent naming in the board.
+The rollout is staged by what each stage guarantees (R4, decided). README states each stage's guarantee as it lands, so no stage claims more than it enforces.
+
+**Stage 0: fixes that need no trust work.** Ship now, in parallel:
+- name agents by owner (#150);
+- add the comment author check (#160);
+- refuse loopback-only invitations (#162).
+
+**Stage 1: admission.** The guarantee: certified machines are the only writers, and everyone else is out. Admission is per-machine, revocable and checkable by every peer. Until stage 3, a certified machine can still write anything, and README says so.
+1. **Keys and membership log.**
+   - Machine keys and the Pardner person key (section 1).
+   - UCAN 1.0 membership delegations and revocations in the causal log (sections 5 and 5a).
+   - The invitation key, the confirmation-code check and optional forge attestation.
+   - Today's admission records are derived from the log while the bearer tokens remain.
+   - Update the recovery guide for machine and person keys.
+   - This is a breaking change for existing projects, which is acceptable because no migration is needed.
+2. **People-facing surfaces, straight after the log (R5, decided with R4).** In the board:
+   - members, machines and agents, with agent naming;
+   - membership scopes (R3);
+   - revocation and re-admission;
+   - pairing a new machine.
+3. **Machine-key handshake.** Replace the bearer tokens, and reword the AGENTS.md admission rule in the same PR (Q2, decided). Enrollment stays on the hub (Q3).
+
+**Stage 2: direct peer lane.**
+
+4. **Direct peer lane.** The machine-key handshake plus ordinary Automerge sync between two certified machines, given an explicit address (LAN or tailnet). Validate it on real separate machines, not loopback. After this, admitted owner and admin peers may enroll (Q3).
+
+**Stage 3: per-change verification, after the spike.**
+
+5. **Deterministic writes and shadow signing.**
+   - Add sorted map writes, the fixed change header, and the machine-prefixed actor ID.
+   - Machines sign every operation; receivers verify and log the result without enforcing it.
+   - The spike also weighs signing each change's hash, which proves authenticity without a rebuild, against the full replay.
+6. **Enforce authenticity, then authority.**
+   - Introduce the change exchange with the verification gate.
+   - Add the rejected-change log, with its board notice and a CLI listing. A rejection must be visible from the first day one can happen.
+   - Add the revocation witness (Q1) and its "accepted before the revocation arrived" notice.
+   - Enforce first that changes are authentic, then, by replay, that they are allowed.
 
 Qualification:
-- Steps 1, 3, 4 and 5 change `automerge-sync-server.js`, `lib/workspace.js` or `lib/workspace-runtime.js`, so each needs the lifecycle model check.
-- Steps 3, 4 and 5 are storage, sync and delivery milestones and need the 20-seed acceptance qualification.
-- Step 3 ends "native replicas are trusted full document writers". README and the acceptance contract change with it.
+- Steps 3, 4, 5 and 6 change `automerge-sync-server.js`, `lib/workspace.js` or `lib/workspace-runtime.js`, so each needs the lifecycle model check.
+- Steps 3, 4 and 6 are storage, sync and delivery milestones and need the 20-seed acceptance qualification.
+- Step 6 ends "native replicas are trusted full document writers". README and the acceptance contract change with it.
 
 ## Validation plan
 
@@ -622,8 +653,8 @@ These revisit decisions. None is changed until answered.
 - **R1 (decided: adopted).** The person key is a key Pardner creates and seals. SSH and OpenPGP keys become optional linked keys that produce badges and never enter the verification rule. Section 1 now says this.
 - **R2 (clarifies "git is a hard requirement").** Does this mean Pardner may rely on git being installed, for name and email defaults and for commit evidence? Or that identity must be rooted in a key git uses? The recommendation satisfies the first reading only.
 - **R3 (decided: scoped delegation).** Presence is softened. The person key grants revocable membership scopes to machines or agents, peers verify the chain, and the log names who acted for whom. Peer-checkable presence is not planned for the first release.
-- **R4 (revisits the rollout).** May the first shipped boundary be level 1, with per-change verification staged behind the spike? This narrows what the Goal section promises at first, and README would say so.
-- **R5 (revisits the rollout).** Should the board's membership surfaces move from step 6 to directly after the membership log?
+- **R4 (decided: admission first).** ~~May the first shipped boundary be level 1, with per-change verification staged behind the spike? This narrows what the Goal section promises at first, and README would say so.~~
+- **R5 (decided with R4: surfaces straight after the log).** ~~Should the board's membership surfaces move from step 6 to directly after the membership log?~~
 - **R6 (follows from R1, touches Q4).** The person key would sit on the first machine. Should pairing be able to copy the sealed key to a new machine, so that either can manage membership and losing one computer does not lose the owner key? And should creating a project require exporting the recovery file?
 
 ### Corrections to the text above, whatever is decided
