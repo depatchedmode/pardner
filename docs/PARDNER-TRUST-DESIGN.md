@@ -340,10 +340,30 @@ Delivery leases and presence are about liveness, not authority, so a hub keeps t
 0. **Spike.** The review showed that the rebuild check works for every operation type and for concurrent edits once payload keys are sorted. Still to prove:
    - a cheap, correct fork at `deps` for concurrent changes;
    - verification time and memory on a 10,000-operation project, including a new replica's first full verification;
-   - whether strings must be stored as plain values rather than Automerge text to make that affordable (Q7);
+   - whether strings should be stored as plain values rather than Automerge text (Q7: measure first, decided). See [Cost in context](#cost-in-context);
    - signing and verifying with a hardware key.
 
    Verification cost is now the main technical risk.
+
+   <a id="cost-in-context"></a>**Cost in context (what the spike must measure).**
+
+   Today Pardner never edits text in place. Every edit writes a whole new value into a field register (`register(change.new, …)` in `lib/workspace-commands.js`), and concurrent edits to one field become explicit alternatives. Automerge text therefore adds per-character operations without providing character-level merging. The owner wants to keep Automerge text if the numbers allow, because agents work fast. So the spike measures both storage modes and reports each cost alongside **how often it is paid**:
+
+   | Cost | When it is paid | Measure at 1k / 10k / 50k operations |
+   |---|---|---|
+   | Signature check | Once per incoming change, per peer | Time per change |
+   | In-order rebuild | Once per incoming change, per peer (verdict cached by hash) | Time per change, as a share of authoring time, and peer CPU at a realistic agent write rate (e.g. 1, 10 and 50 operations per second) |
+   | Concurrent-change rebuild (fork at `deps`) | Only for changes concurrent with local heads: simultaneous human and agent edits, or after offline work | Time per change, and the share of changes that are concurrent in a realistic mixed human-and-agent session (taken from the acceptance and walker workloads) |
+   | Document open | Every runtime start | Load time and memory |
+   | First full verification | Once per new machine joining | Total time and memory, and how a progress display would read |
+   | Document growth | Continuously | Bytes and Automerge operations per typical edit (short title, 2,000-character description, comment) |
+
+   **Decision rule.** Keep Automerge text if, at 10,000 operations:
+   - in-order verification stays under the authoring time;
+   - concurrent-change verification stays under a second at the measured concurrency rate;
+   - the document opens in under 3 seconds.
+
+   Otherwise switch to plain values. If character-level merging of concurrent text edits is wanted later, it is a separate feature (splice-based edits), not a reason to keep today's storage.
 1. **Deterministic writes and shadow signing.** Add sorted map writes, the fixed change header, the machine key and the machine-prefixed actor ID. Machines sign every operation and include their public key. Receivers rebuild, verify and log the result but don't enforce it. Sync stays as it is. Run the acceptance and walker suites, and expect zero failed verifications.
 2. **Membership log.** Add the genesis, member, machine and agent operations, the invitation key, the confirmation-code check and optional forge attestation. Today's admission records are derived from the log and the bearer tokens remain. Update the recovery guide for machine and person keys. This is a breaking change for existing projects, which is acceptable because no migration is needed.
 3. **Enforce over the hub path.** Introduce the change exchange with the verification gate, and the rejected-change log with its board notice and a CLI listing. A rejection must be visible from the first day one can happen. It also adds the revocation witness and its "accepted before the revocation arrived" notice. Bearer tokens still admit connections.
@@ -431,4 +451,4 @@ Reviewed against AGENTS.md (Local-first), the local-first design skill, README, 
 - **Q4 (decided: owner only, freeze accepted).** Only the owner removes or demotes admins. A lost owner key freezes the admin list; that limitation is documented, not engineered around. Section 5.
 - **Q5 (decided: SSH and OpenPGP now).** The person key may be SSH or OpenPGP, reusing git's signing key when possible or a dedicated key otherwise. Pardner never edits git's configuration. Section 1.
 - **Q6 (decided: require presence for membership).** Membership actions need a deliberate act: a hardware touch (verifiable by peers), or a local terminal confirmation plus agent confirmation or passphrase. Profile edits may sign silently. The local trust zone.
-- **Q7.** Should strings be stored as plain values instead of Automerge text, a schema change, to make verification and loading affordable at 10,000 operations? Rollout step 0.
+- **Q7 (decided: measure first).** Keep Automerge text unless the spike's numbers, read against how often each cost is paid, cross the decision rule in [Cost in context](#cost-in-context). Rollout step 0.
