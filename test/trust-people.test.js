@@ -79,6 +79,7 @@ test('the People view shows each person’s role, machines, agents and who let t
   assert.equal(aliceLaptop.shortId.length, 6)
   assert.deepEqual(row(owner, 'Bob').machines.map(machine => machine.name).sort(), ['Bob desktop laptop', 'Bob laptop'])
   assert.deepEqual(row(owner, 'Bob').machines.find(machine => machine.name === 'Bob desktop laptop').admittedBy, { personId: bob.personId, name: 'Bob' })
+  assert.deepEqual(row(owner, 'Bob').machines.map(machine => [machine.name, machine.paired]).sort(), [['Bob desktop laptop', true], ['Bob laptop', false]])
   assert.ok(row(owner, 'Alice').agents.every(agent => agent.machines[0].name === 'Alice laptop'))
   // The owner may do everything except remove or re-role herself, remove her hub, or leave.
   assert.deepEqual(owner.actions.invite, { allowed: true, reason: null, roles: ['member', 'admin'] })
@@ -93,11 +94,11 @@ test('the People view shows each person’s role, machines, agents and who let t
   const admin = await people(bob, project)
   assert.deepEqual(admin.actions.invite.roles, ['member'])
   assert.equal(admin.actions.leave.allowed, true)
-  assert.equal(row(admin, 'Alice').actions.remove.allowed, false)
-  assert.equal(row(admin, 'Alice').actions.remove.reason, 'The owner can’t be removed.')
-  assert.equal(row(admin, 'Alice').actions.changeRole, undefined, 'only the owner changes roles')
+  // Only the owner manages the owner's entry, so an admin is shown why instead of controls.
+  assert.deepEqual(row(admin, 'Alice').actions, { note: 'Only the owner manages the owner’s machines. The owner can’t be removed.' })
   assert.deepEqual([row(admin, 'Alice').machines[0].name, row(admin, 'Alice').machines[0].hostsProject, row(admin, 'Alice').machines[0].status], ['Alice laptop', true, 'online'])
-  assert.equal(row(admin, 'Alice').machines[0].actions.remove.reason, 'This machine hosts the project, so it can’t be removed.')
+  assert.deepEqual(row(admin, 'Alice').machines[0].actions, {})
+  assert.equal(aliceLaptop.actions.remove.reason, 'Hosts the project, so it can’t be removed.')
   assert.equal(row(admin, 'Carol').actions.remove.allowed, true)
   assert.equal(row(admin, 'Carol').actions.pairMachine.allowed, true)
   const bobsOwn = row(admin, 'Bob')

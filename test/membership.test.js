@@ -466,6 +466,9 @@ test('who admitted and who removed each person and machine is the same in every 
   assert.deepEqual(person('member').admittedBy, { machineId: f.admin.machineId, personId: 'admin' }, 'the removed admin’s admission stays attributed')
   assert.equal(expected.machines.find(machine => machine.id === f.owner.machineId).admittedBy, null)
   assert.deepEqual(expected.formerMachines.find(machine => machine.id === second.machineId).admittedBy, { machineId: f.member.machineId, personId: 'member' })
+  // A machine paired to an existing person is marked; one admitted with its person is not.
+  assert.equal(expected.formerMachines.find(machine => machine.id === second.machineId).paired, true)
+  assert.equal(expected.machines.find(machine => machine.id === f.member.machineId).paired, undefined)
   assert.deepEqual(expected.formerPeople.map(entry => [entry.id, entry.role, entry.admittedBy.personId]), [['admin', 'admin', 'owner']])
   assert.deepEqual(expected.removals.map(entry => [entry.kind, entry.subject, entry.by.personId, entry.left]).sort(),
     [['machine.remove', second.machineId, 'member', false], ['member.remove', 'admin', 'owner', false]].sort())
