@@ -317,3 +317,19 @@ demonstration was rerun: all eight mutations were caught by their implementation
 check, reported as drift and reproduced as a model counterexample, with the
 working tree unchanged. Prior wider-bound evidence above is historical. See
 `standaloneLanRemovalReview` in `docs/evidence/lifecycle-model.json`.
+
+
+## Plain string storage mapping review (2026-11-11)
+
+For #208, workspace reads unwrap immutable strings and membership write-back
+encodes string values. Re-reviewed `ReplicaEdit`, `SyncDown`, `ReplicaSendAck`,
+`Handle`, `Respond`, `StoreCloseBegin`, `StoreCloseComplete`, `ReplicaReceive`
+and `ReplicaAckCommit`: guards, effects, persistence barriers and atomicity are
+unchanged. Only the membership write-back source anchor changed; no model
+transition, invariant, witness or mutation needed changing.
+
+Fresh default check: 174,614 states, 679,456 transitions, all invariants,
+progress and witnesses pass. All eight mutation demonstrations were caught by
+implementation checks, reported as drift and reproduced by model counterexamples.
+See `plainStringStorageReview` in the evidence JSON. The model still excludes
+field merge semantics; those are covered by the operation and conflict tests.
