@@ -15,7 +15,7 @@ import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js
 import { quickStatusEditable } from './task-status.js'
 import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
-import { activityRows, changedBySomeoneElse, describeChange, describeRecord, needsReview, reviewNotice, signerLine, taskRows } from './attribution.js'
+import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, needsReview, reviewNotice, signerLine, taskRows } from './attribution.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const StatusOptions = ({ values = STATUSES }) => values.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
@@ -729,6 +729,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
             showVein={showVein}
             actor={actor}
             actors={actors}
+            attribution={doc.attribution ?? null}
             submit={submit}
             busy={busy}
             pending={pending}
@@ -857,7 +858,7 @@ function RecordStatusSelect({ kind, record, statuses, submit, disabled }) {
   )
 }
 
-function Goals({ goals, veins, showVein, actor, actors, submit, busy, pending, errorNotice, errorOrigin }) {
+function Goals({ goals, veins, showVein, actor, actors, attribution = null, submit, busy, pending, errorNotice, errorOrigin }) {
   const list = Object.values(goals).sort((a, b) =>
     GOAL_STATUSES.indexOf(a.status) - GOAL_STATUSES.indexOf(b.status) || a.created_at.localeCompare(b.created_at))
   const veinsByGoal = {}
@@ -898,6 +899,7 @@ function Goals({ goals, veins, showVein, actor, actors, submit, busy, pending, e
     <RecordConflicts
       kind={kind} record={record} actors={actors} goals={goals} labels={LABELS} labelActor={labelActor}
       submit={submit} disabled={!actor || disabled} onDone={keptRecord}
+      changedBy={(field, operationId) => alternativeChangedBySomeoneElse(attribution, `${kind}Fields`, `${record.id}:${field}`, operationId)}
     />
   )
   // The notice sits by its record: under a goal's heading, or in the first row that lists a vein.
@@ -1294,17 +1296,19 @@ function TaskDetail({
   const newerFields = draft
     ? Object.keys(draft.fields).filter(field => JSON.stringify(revisions[field]) !== JSON.stringify(draft.revisions[field]))
     : []
-  // Credit each newer field to the Actor whose History event last changed it.
+  // Credit each newer field to the Actor recorded in the newest History entry that changed it, from that entry's
+  // signed content; when that entry needs review, the name is marked unconfirmed.
   const newerGroups = []
   for (const field of newerFields) {
-    const by = [...history].reverse().find(event => event.changes.some(change => change.field === field))?.actorId ?? null
-    const group = newerGroups.find(candidate => candidate.by === by)
+    const last = historyRows.find(row => (row.changes ?? []).some(change => change?.field === field))
+    const by = last?.actorId ?? null, unconfirmed = Boolean(last?.entry.review)
+    const group = newerGroups.find(candidate => candidate.by === by && candidate.unconfirmed === unconfirmed)
     if (group) group.fields.push(field)
-    else newerGroups.push({ by, fields: [field] })
+    else newerGroups.push({ by, unconfirmed, fields: [field] })
   }
   const listFields = fields => fields.length < 2 ? fields.join('') : `${fields.slice(0, -1).join(', ')} and ${fields.at(-1)}`
-  const newerNotice = newerGroups.map(({ by, fields }) =>
-    `${by ? labelActor(actors[by]) : 'Someone'} saved ${fields.length === 1 && fields[0] === 'tags' ? '' : 'a '}newer ${listFields(fields)}`).join('; ')
+  const newerNotice = newerGroups.map(({ by, unconfirmed, fields }) =>
+    `${by ? `${labelActor(actors[by])}${unconfirmed ? ' (unconfirmed, see Activity)' : ''}` : 'Someone'} saved ${fields.length === 1 && fields[0] === 'tags' ? '' : 'a '}newer ${listFields(fields)}`).join('; ')
   const here = session.focus[taskId] ? focusedActors(session, session.focus[taskId]) : []
   // An edit error falls back to the panel top once its form has closed.
   // A handoff error does too while its form is closed, so Retry stays visible.
@@ -1490,6 +1494,8 @@ function TaskDetail({
           {choices.map((choice) => (
             <div key={choice.operationId}>
               <strong>{labelActor(actors[choice.actorId])}</strong>
+              {alternativeChangedBySomeoneElse(lookups.attribution, 'taskFields', `${taskId}:${field}`, choice.operationId)
+                && <p className="comment-changed" role="note">Changed by someone other than {labelActor(actors[choice.actorId])}. See Activity.</p>}
               <p>
                 {typeof choice.value === 'string'
                   ? choice.value
@@ -1632,6 +1638,8 @@ function TaskDetail({
             {comment.conflicts.map((choice) => (
               <div className="conflict" key={choice.operationId}>
                 <strong>{labelActor(actors[choice.actorId])}</strong>
+                {alternativeChangedBySomeoneElse(lookups.attribution, 'commentBodies', comment.id, choice.operationId)
+                  && <p className="comment-changed" role="note">Changed by someone other than {labelActor(actors[choice.actorId])}. See Activity.</p>}
                 <p>{choice.value}</p>
                 <button
                   disabled={!canWrite || comment.actorId !== actor}

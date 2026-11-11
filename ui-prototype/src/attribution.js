@@ -183,3 +183,11 @@ export function reviewNotice(attribution) {
  * Activity, where that change has its own entry under its own signer.
  */
 export const changedBySomeoneElse = (attribution, commentId) => Boolean(own(attribution?.comments, commentId)?.changedBy?.length)
+
+/**
+ * Likewise for one alternative of a field or comment with concurrent values (`map` is taskFields, goalFields,
+ * veinFields or commentBodies; `key` the field or comment key): whether the change that wrote it, or wrote into it,
+ * is anything but the operation it records by the Actor it names.
+ */
+export const alternativeChangedBySomeoneElse = (attribution, map, key, operationId) =>
+  Boolean(own(own(attribution?.registers, `${map}:${key}`), operationId)?.changedBy?.length)

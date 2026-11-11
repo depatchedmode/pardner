@@ -1483,11 +1483,11 @@
   "attributionReviewTwoActivity": {
     "recorded": "2026-11-11",
     "mapping": {
-      "revision": "05925da8c5b02659979619502e18b99522856c3d",
+      "revision": "638a6216ee23224c982c9f298d46f6719ab9fb76",
       "files": {
         "automerge-sync-server.js": "4ea7545bbea2ec334a0b09a139ff51e12833ffeb0b44b95991675ae2cf46d69e",
         "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
-        "lib/workspace-runtime.js": "d38d325328c58784faee88201e9bcc270592e0ec24bcbe20c780037583a315e4",
+        "lib/workspace-runtime.js": "ef514e4ab61f4b0877e76f4cadf822f125b7ed6e05aab4870b34fb1318408b93",
         "lib/workspace.js": "15bdd68343563c2cfef67bbaf3f0ad376aa83e426cc2f6130268dcbaa86bbc6d"
       }
     },
@@ -1498,8 +1498,8 @@
     "result": "passed",
     "mutationDemonstration": {
       "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
-      "started": "2026-11-11T21:18:39.015Z",
-      "finished": "2026-11-11T21:19:02.046Z",
+      "started": "2026-11-11T21:41:34.470Z",
+      "finished": "2026-11-11T21:41:57.235Z",
       "workingTreeUnchanged": true,
       "ok": true,
       "mutations": [
@@ -1553,6 +1553,6 @@
         }
       ]
     },
-    "review": "Activity derived from each change (attribution review two). Drift: lib/workspace-runtime.js. getDoc now adds Activity, every entry derived from the change that wrote it (lib/change-log.js, lib/activity.js), and attributionView is rebuilt on it, with read-only views of current comment authorship and deletions; nothing there writes or waits. The standalone service, which signs nothing, derives its Activity in memory: a heads-changed listener notes new changes and derives a small batch in that same synchronous step, and larger ones in setImmediate slices; nothing waits on the disk, and closeResources clears the slice timer and the listener before it drains the operation queue. ReplicaEdit, Handle: a local change is still made through boardChange before the flush; deriving its entry is synchronous work in the change step, like signing. ReplicaSendAck, ReplicaReceive, ReplicaAckCommit, SyncDown, StoreCloseBegin, StoreCloseComplete: the mapped code is unchanged. No anchor, guard, effect, atomicity assumption, invariant, witness or mutation text changed."
+    "review": "Activity derived from each change (attribution review two). Drift: lib/workspace-runtime.js. getDoc now adds Activity, every entry derived from the change that wrote it (lib/change-log.js, lib/activity.js), and attributionView is rebuilt on it, with read-only views of current comment authorship, deletions and the authorship of each alternative of a conflicted field or comment (re-reviewed again when that last view was added); nothing there writes or waits. The standalone service, which signs nothing, derives its Activity in memory: a heads-changed listener notes new changes and derives a small batch in that same synchronous step, and larger ones in setImmediate slices; nothing waits on the disk, and closeResources clears the slice timer and the listener before it drains the operation queue. ReplicaEdit, Handle: a local change is still made through boardChange before the flush; deriving its entry is synchronous work in the change step, like signing. ReplicaSendAck, ReplicaReceive, ReplicaAckCommit, SyncDown, StoreCloseBegin, StoreCloseComplete: the mapped code is unchanged. No anchor, guard, effect, atomicity assumption, invariant, witness or mutation text changed."
   }
 }

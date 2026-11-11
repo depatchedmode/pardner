@@ -2,7 +2,7 @@ import { FIELD_LABELS, conflictGroups } from './record-conflicts.js'
 
 // The closed-by-default disclosure for a goal or vein with competing edits.
 // Every distinct value gets one Keep button; nothing is dropped until one is chosen.
-export default function RecordConflicts({ kind, record, actors, goals, labels, labelActor, submit, disabled, onDone }) {
+export default function RecordConflicts({ kind, record, actors, goals, labels, labelActor, submit, disabled, onDone, changedBy = () => false }) {
   const fields = Object.keys(record.conflicts)
   const valueText = (field, value) => field === 'status' ? (labels[value] ?? String(value))
     : field === 'goalId' ? (goals[value]?.title ?? 'Unknown goal') : String(value ?? '')
@@ -30,6 +30,7 @@ export default function RecordConflicts({ kind, record, actors, goals, labels, l
                 <div className="record-choice" key={group.operationIds[0]}>
                   <strong>{authors}</strong>
                   <span className="record-choice-value" data-field={field}>{value}</span>
+                  {group.operationIds.some(id => changedBy(field, id)) && <span className="comment-changed" role="note">Changed by someone other than {authors}. See Activity.</span>}
                   <button
                     type="button"
                     aria-label={`${visible} for ${kind} ${record.title}`}

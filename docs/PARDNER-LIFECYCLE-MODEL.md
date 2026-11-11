@@ -625,7 +625,9 @@ Deriving every Activity entry from the change that wrote it changed
 `ReplicaReceive` and `ReplicaAckCommit`; each was re-reviewed against the diff:
 - `getDoc` adds Activity (`lib/change-log.js`, `lib/activity.js`) and
   `attributionView` is rebuilt on it, with read-only views of current comment
-  authorship and deletions. Nothing there writes or waits.
+  authorship, deletions and the authorship of each alternative of a conflicted
+  field or comment (re-reviewed again when that last view was added). Nothing
+  there writes or waits.
 - The standalone service, which signs nothing, derives its Activity in memory: a
   `heads-changed` listener notes new changes and derives a small batch in that
   same synchronous step, and larger ones in `setImmediate` slices. Nothing waits

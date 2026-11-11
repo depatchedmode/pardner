@@ -183,3 +183,35 @@ it('every ordinary operation type and every record flow is shown on every peer a
     }
   }, { hubOptions: { actors: [] } })
 })
+
+it('a field alternative another member’s change wrote in someone else’s name is said to be changed by someone else; the real author’s is not', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey))
+    const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
+    await register({ id: owner, handle: 'owner', kind: 'human' })
+    await register({ id: member, handle: 'member-zero', kind: 'human' })
+    const alice = await replica(0)
+    const created = await alice.execute({ operationId: randomUUID(), actorId: member, type: 'task.create', payload: { title: 'Original title' } })
+    const taskId = created.result.taskId, key = `${taskId}:title`
+    const bob = await bare(1)
+    await eventually(() => bob.board.doc().taskFields?.[key], 'Bob never synced')
+    // Bob's client prepares a title value in Alice's name, concurrent with her own edit below, and signs it.
+    const fork = A.change(A.clone(bob.board.doc(), { actor: machineActor(bob.key) }), doc => {
+      doc.taskFields[key] = storageValue({ value: 'Forged title', operationId: 'op-forged', actorId: member, replicaId: 'r', timestamp: new Date().toISOString() })
+    })
+    const [forged] = A.getHeads(fork)
+    const revisions = alice.workspace.taskContext(taskId).revisions
+    const edited = await alice.execute({ operationId: randomUUID(), actorId: member, type: 'task.update', payload: { taskId, updates: { title: 'Alice’s title' }, expectedRevisions: { title: revisions.title } } })
+    bob.board.update(doc => A.merge(doc, fork))
+    sign(bob, project.projectId, forged)
+    await settled([server.store, alice], [forged, A.getHeads(alice.workspace.handle.doc())[0]])
+    for (const runtime of [server.store, alice]) {
+      const doc = runtime.getDoc()
+      assert.equal(doc.tasks[taskId].conflicts.title.length, 2, 'both values are kept for explicit resolution')
+      const listed = await eventually(() => runtime.getDoc().attribution.registers?.[`taskFields:${key}`], `${runtime.role} never listed the alternative`)
+      assert.deepEqual(Object.keys(listed), ['op-forged'], 'only the value Alice did not write is listed')
+      assert.equal(listed['op-forged'].changedBy[0].change, forged)
+      assert.ok(doc.tasks[taskId].conflicts.title.some(choice => choice.operationId === edited.operationId))
+    }
+  }, { hubOptions: { actors: [] } })
+})
