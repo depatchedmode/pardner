@@ -357,3 +357,31 @@ progress and witnesses pass. All eight mutation demonstrations were caught by
 implementation checks, reported as drift and reproduced by model counterexamples.
 See `plainStringStorageReview` in the evidence JSON. The model still excludes
 field merge semantics; those are covered by the operation and conflict tests.
+
+## Trust stage 1 integration mapping review (2026-11-11)
+
+The current mapping records source revision `925898299a680da92a8e49106388696455b90676`,
+the integration of #210, #211, #213 and #214. All three mapped runtime files had
+changed since the handshake review. In `lib/workspace.js` and
+`lib/workspace-runtime.js`, #211's reads unwrap immutable strings, and both
+membership writes (the harvest write-back and the hub's record gate) now encode
+records with `storageValue`. Each is still one `handle.change`. The write-back is
+a local edit without a request (`ReplicaEdit`); the gate joins the operation
+queue and answers after `repo.flush` (`Arrive(op)`, `Handle(op)`, `Respond(op)`).
+A hub's status also reports its live sync sessions (`syncPeers`), and a
+replica's `hubRefusal` keeps the refusal's details. Both are in-memory reporting
+that touch neither persistence nor acknowledgement. In `automerge-sync-server.js`,
+a removed machine that presents the key it held completes the handshake
+signatures. It is then refused in `admit`, before any welcome, so it never
+reaches `registerSyncSession` or the Automerge adapter. A native upgrade is still
+a WebSocket client at `handleUpgrade`, which `stop()` terminates (`UpgradeArrive`).
+The signed-session routes still never touch the persistence queue. No action
+guard, effect, atomicity note, invariant, witness or mutation text changed; only
+the gate anchor followed its line.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught by their implementation
+check, reported as drift and reproduced as a model counterexample, with the
+working tree unchanged. See `trustStageOneIntegrationReview` in
+`docs/evidence/lifecycle-model.json`.

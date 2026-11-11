@@ -799,5 +799,81 @@
     "progress": true,
     "allWitnesses": true,
     "mutationDemonstration": "All eight implementation mutations caught, source drift reported, and mirrored model counterexamples found; working tree unchanged."
+  },
+  "trustStageOneIntegrationReview": {
+    "recorded": "2026-11-11",
+    "issue": 201,
+    "mapping": {
+      "revision": "925898299a680da92a8e49106388696455b90676",
+      "files": {
+        "automerge-sync-server.js": "1e1d3938fd73dfdae433e564bf767b1dcf3a331d6f66aed2f1ead71367d78441",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "dc7da68fcf966396ef5d3d63dd0e853644c85d0a5372a1932d8fb883b21c538a",
+        "lib/workspace.js": "15803b62df46222217e15e406768478c369505cf7459db7dad9af969fb582af1"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-11T11:22:05.657Z",
+      "finished": "2026-11-11T11:22:26.479Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "Integration of #210, #211, #213 and #214. lib/workspace.js and lib/workspace-runtime.js: reads unwrap immutable strings (#211); the harvest write-back (ReplicaEdit) and the hub's record gate (Arrive/Handle/Respond(op)) encode records with storageValue inside the same single handle.change, and the gate still answers only after repo.flush. Hub status reports in-memory syncPeers and a replica keeps hubRefusal details; neither touches persistence or acknowledgement. automerge-sync-server.js: a removed machine presenting its former key completes the handshake signatures and is refused in admit before any welcome, so it never reaches registerSyncSession or the Automerge adapter; native upgrades still become WebSocket clients at handleUpgrade, terminated by stop() (UpgradeArrive); session routes never touch the persistence queue; reportSyncPeer is in-memory status. No action guard, effect, atomicity, invariant, witness or mutation text changed; only the gate anchor followed its line."
   }
 }
