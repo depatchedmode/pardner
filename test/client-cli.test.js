@@ -80,6 +80,11 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
     const machineId = client.registry.machineKey.machineId
     assert.equal(status.value.device.machineId, machineId)
     assert.ok(!status.stdout.includes(client.registry.machineKey.publicKey) && !status.stdout.includes('PRIVATE KEY'))
+    const { value: shown } = await run(['show', '--project', project.id])
+    assert.equal(shown.membership.projectId, project.id)
+    assert.deepEqual(shown.membership.machines.map(machine => machine.id), [machineId])
+    assert.equal(shown.membership.people[0].role, 'owner')
+    assert.deepEqual(shown.membership.notStored, [])
   } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
 })
 

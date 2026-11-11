@@ -8,6 +8,7 @@ import { getLastLocalChange, save } from '@automerge/automerge'
 import { DurableRepo } from '../lib/durable-repo.js'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
 import { Workspace, createWorkspaceData } from '../lib/workspace.js'
+import { testGenesis } from '../support/genesis.js'
 import { resolveActor } from '../lib/workspace-schema.js'
 
 const actors = [
@@ -22,7 +23,7 @@ async function withWorkspaces(run) {
   const create = async (source, storageOptions) => {
     const directory = await mkdtemp(join(tmpdir(), 'pardner-commands-'))
     const repo = new DurableRepo({ storage: new NodeFSStorageAdapter(directory, storageOptions) })
-    const handle = source ? repo.import(save(source.handle.doc())) : repo.create(createWorkspaceData({ actors }))
+    const handle = source ? repo.import(save(source.handle.doc())) : repo.create(createWorkspaceData({ actors, genesis: testGenesis() }))
     const workspace = new Workspace({ repo, handle, replicaId: `replica-${resources.length}` })
     resources.push({ directory, repo })
     return workspace
@@ -290,7 +291,7 @@ describe('shared workspace operations', () => {
         { id: 'other', handle: 'actor-carol', kind: 'agent' },
       ]) {
         await assert.rejects(command(workspace, 'actor.register', payload), { code: 'ALREADY_EXISTS' })
-        assert.throws(() => createWorkspaceData({ actors: [{ id: 'actor-carol', handle: 'carol', kind: 'human' }, payload] }), { code: 'ALREADY_EXISTS' })
+        assert.throws(() => createWorkspaceData({ actors: [{ id: 'actor-carol', handle: 'carol', kind: 'human' }, payload], genesis: testGenesis() }), { code: 'ALREADY_EXISTS' })
       }
       assert.equal(resolveActor(workspace.handle.doc(), 'carol').id, 'actor-carol')
     })
@@ -356,7 +357,7 @@ describe('shared workspace operations', () => {
     await withWorkspaces(async workspace => {
       const old = workspace.repo.create({ tasks: {} })
       assert.throws(() => new Workspace({ repo: workspace.repo, handle: old, replicaId: 'old' }), { code: 'INCOMPATIBLE_SCHEMA' })
-      const handle = workspace.repo.create(createWorkspaceData())
+      const handle = workspace.repo.create(createWorkspaceData({ genesis: testGenesis() }))
       const fresh = new Workspace({ repo: workspace.repo, handle, replicaId: 'fresh' })
       await command(fresh, 'actor.register', { id: 'alice', handle: 'Alice', kind: 'human' })
       await command(fresh, 'actor.register', { id: 'builder', handle: 'builder', kind: 'agent' })

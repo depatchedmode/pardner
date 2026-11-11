@@ -38,6 +38,12 @@ test('two real clients create, invite, join, save and share authenticated presen
   const { result: joined } = await bob.api('/join', { invitation: invitation.invitation, operationId: 'join' })
   assert.equal(joined.project.id, project.id)
   assert.notEqual(joined.project.actorId, project.actorId)
+  // Bob's replica verifies and stores the genesis it synced. Admission is still by bearer credential, so Bob's
+  // own machine appears in the records only once invitations write them.
+  const { result: { device: aliceDevice } } = await alice.api('/session')
+  const { result: { membership } } = await bob.api(`/projects/${project.id}`)
+  assert.deepEqual(membership.machines.map(machine => machine.id), [aliceDevice.machineId])
+  assert.equal(membership.people.find(person => person.role === 'owner').displayName, 'Alice')
   const path = `/projects/${project.id}/api/automerge/operations`
   const request = { type: 'task.create', operationId: 'bob-task', payload: { title: 'Saved by Bob' } }
   const { result: saved } = await bob.api(path, request)
