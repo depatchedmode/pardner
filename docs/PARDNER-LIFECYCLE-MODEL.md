@@ -79,7 +79,7 @@ and one WebSocket upgrade. Each request records its connection (`none`, `active`
 | `Respond` | yes | `res.json(...)` of the receipt or acknowledgement; `res.once('finish')` | writing the response and the socket becoming idle (keep-alive) or closed are one step |
 | `ReclaimIdle` | yes | `listen()` finish hook: `if (this.stopping) setImmediate(() => server.closeIdleConnections())` | the `setImmediate` callback eventually runs (fair); modeled for any idle connection while stopping, which also covers the idle connections `server.close()` closed itself |
 | `ListenerClosed` | yes | `server.close` callbacks settle (`listenersClosed`) | fires once no connection is active, idle or upgraded; one listener stands for the HTTP and WebSocket listeners, which `stop()` closes together with `Promise.allSettled` |
-| `StoreCloseBegin` | yes | `await this.store.close()` after `listenersClosed`; `closeResources`: `abort()`, `await workspace.queue`, `repo.shutdown()` sets `closing` | `workspace.queue` is already drained because every operation arrives through a drained listener. The upstream `Repo.shutdown()` flush is a no-op once `closing` is set, so the model does not persist anything here |
+| `StoreCloseBegin` | yes | `await this.store.close()` after `listenersClosed`; `closeResources`: `abort()`, `await workspace.queue`, a pending hub-state write settles, `repo.shutdown()` sets `closing` | `workspace.queue` is already drained because every operation arrives through a drained listener. The upstream `Repo.shutdown()` flush is a no-op once `closing` is set, so the model does not persist anything here |
 | `StoreCloseComplete` | yes | `await this.persistenceQueue`, then `lease.close()` and `closed = true` in `finally` | the queue drains before ownership is released |
 | `ReplicaReceive` | yes | `synchronizeAcknowledgement`: first guard `getHeads(doc) == requestedHeads && hasHeads(doc, hubHeads)`; errors only set `lastSyncError` | the response is consumed atomically up to the guard; the local flush that follows is a separate step |
 | `ReplicaAckCommit` | yes | second guard after the local flush; `acknowledgedHeads = requestedHeads` | the guard and the assignment are synchronous; the recorded value is the requested snapshot, never the current heads |
@@ -403,3 +403,30 @@ Fresh default check: 174614 states, 679456 transitions, all four invariants and
 demonstration was rerun: all eight mutations were caught, reported as drift and
 reproduced as a model counterexample, with the working tree unchanged. See
 `membershipConsentReview` in `docs/evidence/lifecycle-model.json`.
+
+## Durable restored-hub state mapping review (2026-11-11)
+
+The mapping records source revision `d20c2a9086d821064481be320afde3a8fa395cb4`.
+A hub that waits after a restore now saves that state durably. In
+`lib/workspace-runtime.js`, `startHubState` writes the waiting state, its fixed
+comparison point and the newest checkpoint seen together with the new file
+identity, in one atomic write before the repository opens; `noteCheckpoint`
+saves a newly learned waiting state or a newer checkpoint before it answers,
+and does nothing once the runtime is stopping; `resumeHub` saves before it
+returns. These writes go through one serialized chain, and `closeResources`
+lets a pending write settle before `repo.shutdown()` and the lease release.
+That is a new anchor in `StoreCloseBegin`; it admits no request and touches no
+document persistence, so its guard and effect are unchanged. In
+`automerge-sync-server.js`, the handshake's screen awaits `noteCheckpoint`; it
+still runs before any welcome and never reaches the Automerge adapter
+(`UpgradeArrive`). The `lease-before-drain` mutation's text follows the new
+`closeResources` body; what it mutates is unchanged. No other action guard,
+effect, atomicity note, invariant or witness changed. The hub's own waiting
+state is outside the model's state; its kill and restart behaviour is checked
+by `test/hub-restore.test.js`.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught, reported as drift and
+reproduced as a model counterexample, with the working tree unchanged. See
+`durableHubStateReview` in `docs/evidence/lifecycle-model.json`.

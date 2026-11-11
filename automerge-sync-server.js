@@ -493,8 +493,8 @@ class AutomergeSyncServer {
     try {
       const { initiator } = await respondHandshake(ws, { key: this.store.machineKey, projectId: this.store.manifest.workspaceId, role: 'hub',
         acceptRoute: route => this.routes().ws.includes(route),
-        screen: hello => {
-          vouches = this.store.noteCheckpoint(hello.checkpoint)
+        screen: async hello => {
+          vouches = await this.store.noteCheckpoint(hello.checkpoint)
           // A removed machine holding its key finishes the signatures, so that only it is told who removed it (admit).
           const { machineId, publicKey } = hello.initiator
           if (!this.store.hubStatus()?.waiting && this.memberKey(machineId) !== publicKey && this.formerKey(machineId) !== publicKey) throw this.notMember(machineId)

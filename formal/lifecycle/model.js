@@ -307,6 +307,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
       { file: RUNTIME, anchor: 'this.stopController.abort()' },
       { file: RUNTIME, anchor: 'await this.workspace?.queue', note: 'operation queue is already empty: every operation and record gate request arrives through a drained listener' },
       { file: RUNTIME, anchor: 'await this.harvests', note: 'a pending membership harvest settles before the repo closes; it admits no request' },
+      { file: RUNTIME, anchor: 'await this.hubStateWrites?.catch(() => {})', note: 'a pending write of the hub’s own waiting state settles before the repo closes and the lease is released; it admits no request' },
       { file: REPO, anchor: 'this.closing = true' },
     ],
     apply: state => {

@@ -37,7 +37,7 @@ const groups = [
     // Retired paths stay listed (lib/native-peer-client.js, support/replica-credentials.js) so the change removing them is classified.
     files: names(`automerge-sync-server.js lib/local-service.js lib/workspace-runtime.js lib/machine-handshake.js lib/machine-session.js
       lib/sync-client.js lib/ticket-network-adapter.js lib/validated-websocket-server-adapter.js
-      support/resources.js support/workspace-service-process.js support/machines.js lib/native-peer-client.js support/replica-credentials.js`),
+      support/resources.js support/workspace-service-process.js support/machines.js support/hub-state-process.js lib/native-peer-client.js support/replica-credentials.js`),
   },
   {
     name: 'delivery', scripts: ['test:runtime', 'test:cli'], qualification: 'Durable delivery, leases, or replay',

@@ -951,5 +951,81 @@
       ]
     },
     "review": "lib/workspace-runtime.js: the standalone service's throwaway genesis now names the person ID derived from its one-time key (personIdFor), since a genesis whose subject is not derived from its key is no root. The change is inside standaloneGenesis, a pure record builder called in init before the record store, repository or any listener exists; it touches no request, persistence barrier, acknowledgement or shutdown step. Every other change in this commit is in lib/membership.js, lib/enrollment.js and the client, outside the mapped files. No action guard, effect, atomicity note, invariant, witness or mutation text changed; no anchor moved."
+  },
+  "durableHubStateReview": {
+    "recorded": "2026-11-11",
+    "issue": 201,
+    "mapping": {
+      "revision": "d20c2a9086d821064481be320afde3a8fa395cb4",
+      "files": {
+        "automerge-sync-server.js": "014a7674b7c88d18d0cae27d99c0f6b7a961cf2cca267a214720a53e13caafd5",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "f1e4605edbd43378b327951308303d6f88c3eb7f313ede80800b6c457549a903",
+        "lib/workspace.js": "15803b62df46222217e15e406768478c369505cf7459db7dad9af969fb582af1"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-11T12:55:21.948Z",
+      "finished": "2026-11-11T12:55:42.721Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "lib/workspace-runtime.js: startHubState saves the waiting state with its fixed comparison point (since) and the newest checkpoint seen, together with the new record-store file identity, in one atomic write before the repository opens; a hub with a document but no state file waits (state-missing). noteCheckpoint is async: it saves a newly learned waiting state or a newer checkpoint before answering, compares with the fixed point while waiting, and returns false once stopping. resumeHub saves before returning. All hub-state writes are serialized; closeResources awaits a pending one before repo.shutdown() and the lease release (new StoreCloseBegin anchor; admits no request, no document persistence). automerge-sync-server.js: the handshake screen awaits noteCheckpoint, still before any welcome or the Automerge adapter (UpgradeArrive). The lease-before-drain mutation text follows the new closeResources body. No other guard, effect, atomicity note, invariant or witness changed."
   }
 }
