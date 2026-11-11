@@ -95,7 +95,8 @@ named. The hub answers every handshake alike and judges a machine only once it
 has proved its key, so nobody can learn without the private key whether a key was
 ever certified; a removed machine that proves its key is told who removed it. Every other request between machines is signed by the machine key within a
 short session opened the same way, and a replayed request is refused. When the hub
-applies a removal it closes that machine's sync and signed sessions at once. The
+applies a removal it closes that machine's proven sync and signed sessions at once.
+Unproven pending sessions expire uniformly, so revocation does not reveal membership. The
 Actors a machine may act as come from its records. A write checks this machine's
 own records locally and never waits on the hub. A hub restored from a backup, or
 shown by a member that it fell behind, serves no other machine until a member that
