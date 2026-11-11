@@ -86,8 +86,8 @@ and one WebSocket upgrade. Each request records its connection (`none`, `active`
 
 What the model does not contain: Automerge merge semantics (heads are counters),
 the replica's own storage, the delivery ledger, ticket minting,
-origin and token checks, express body parsing, and the JSON UI subscription
-socket. Each of those is either orthogonal to the five properties or handled by
+origin and token checks, the machine handshake and signed-request checks, express
+body parsing, and the JSON UI subscription socket. Each of those is either orthogonal to the five properties or handled by
 other regression suites.
 
 ## Bounds, initial state, failures and assumptions
@@ -317,3 +317,28 @@ demonstration was rerun: all eight mutations were caught by their implementation
 check, reported as drift and reproduced as a model counterexample, with the
 working tree unchanged. Prior wider-bound evidence above is historical. See
 `standaloneLanRemovalReview` in `docs/evidence/lifecycle-model.json`.
+
+## Machine handshake mapping review (2026-11-11)
+
+The current mapping records source revision `ff19342b18c8847b6981a31e0bdeb71fa9b5d63d`.
+`automerge-sync-server.js` and `lib/workspace-runtime.js` changed (#199). The
+acknowledgement route is still reached only after the stopping middleware and
+admission; admission now accepts the local API token or a request signed by a
+member machine's key within a session, and a refused signature is a failed
+acknowledgement (`ReplicaReceive`). The new `/session` routes and
+`/automerge/hub/resume` sit behind the same middleware and listener drain and never
+touch the persistence queue. A native upgrade still becomes a WebSocket client at
+`handleUpgrade`, which `stop()` terminates; it reaches Automerge only after the
+machine handshake. On the replica, the socket opens with the handshake and the
+acknowledgement request is signed; `synchronizeAcknowledgement`'s guards and
+`closeResources` are unchanged. Records offered in a welcome or a membership
+exchange join the grow-only store and are written back by the existing harvest.
+No action guard, effect, atomicity, invariant, witness or mutation text changed;
+the notes on `Arrive(ack)` and `UpgradeArrive` describe the new admission.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught by their implementation
+check, reported as drift and reproduced as a model counterexample, with the
+working tree unchanged. Prior wider-bound evidence above is historical. See
+`machineHandshakeReview` in `docs/evidence/lifecycle-model.json`.

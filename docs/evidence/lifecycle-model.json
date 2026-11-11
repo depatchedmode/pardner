@@ -702,5 +702,82 @@
       ]
     },
     "review": "lib/workspace-runtime.js: addRecords is the hub's gate for new membership records. It refuses before the runtime is ready or once closeResources aborted, joins the workspace operation queue, checks every record with maySign against the stored membership plus the batch so far, saves the batch to the grow-only record store, writes the records the document lacks with handle.change, and answers only after repo.flush, raising STORAGE_FAILED when the flush fails. automerge-sync-server.js adds POST /automerge/membership/records after the stopping and admission middleware and lists it among the mutation routes. The gate is a hub-authored operation answered after the disk barrier, so it maps onto the existing Arrive(op), Handle(op) and Respond(op) actions, which gain its anchors; StoreCloseBegin's note now covers gate requests drained with the operation queue. The harvest write-back keeps its ReplicaEdit anchor; the gate's loop variable differs so each anchor occurs once. No action, invariant or witness changed, and no mutation find text changed. A conformance check (test/lifecycle-conformance.test.js) observes that the gate's answer waits for the storage barrier and that a failed barrier advances no persisted heads. Wider-bound records remain historical; not rerun."
+  },
+  "machineHandshakeReview": {
+    "recorded": "2026-11-11",
+    "issue": 199,
+    "mapping": {
+      "revision": "ff19342b18c8847b6981a31e0bdeb71fa9b5d63d",
+      "files": {
+        "automerge-sync-server.js": "6686b1facdcbbc77cb6499b27582fc8237237e3209bf7704717a2477d8d649bd",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "14cda0f88469bc4a709a91fa321b900d981285390191ef813b083acdd1c6f43c",
+        "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "durationMs": 4498,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-11T10:27:48.829Z",
+      "finished": "2026-11-11T10:28:09.755Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "automerge-sync-server.js: /automerge/sync-ack is still reached only after the stopping middleware and admission, which now accepts either the local API token or a request signed by a member machine's key within a session (lib/machine-session.js); a refused signature answers 401/403/503 like any failed acknowledgement, which ReplicaReceive covers. The new /session routes and /automerge/hub/resume sit behind the same stopping middleware and listener drain and never touch the persistence queue. A native upgrade still becomes a WebSocket client at handleUpgrade, which stop() terminates; it reaches the Automerge adapter only after the machine handshake. stop() clears signed sessions synchronously before any await. lib/workspace-runtime.js: the replica opens its socket with the handshake and signs its acknowledgement request through requestHub; synchronizeAcknowledgement's guards are unchanged. Records offered in a welcome or a membership exchange are admitted to the grow-only store and written back by the existing harvest; admitRecords and resumeHub refuse once closeResources aborted. closeResources is unchanged. No action guard, effect, atomicity, invariant, witness or mutation text changed; the notes on Arrive(ack) and UpgradeArrive describe the new admission."
   }
 }
