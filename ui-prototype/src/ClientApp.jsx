@@ -4,7 +4,10 @@ import { Avatar, AvatarStack, PeopleDialog, ProfileDialog, actorName, avatarLabe
 import {
   consumeCapturedGrant, createClientApi, harnessLabel, invitationPreview, projectConfiguration, syncLabel, takeBootstrapGrant,
 } from './client-api.js'
+import { Failure } from './Failure.jsx'
+import { INVITES, InviteDialog } from './Invitations.jsx'
 import { createOperationId } from './operation-id.js'
+import { PeoplePanel } from './PeoplePanel.jsx'
 import { createPresenceReporter, focusByTask, presenceIndex, presenceOf, sortParticipants } from './presence.js'
 
 const LAST_PROJECT = 'pardner:client:last-project'
@@ -21,38 +24,11 @@ const writeJson = (store, key, value) => {
   try { value === null ? store.removeItem(key) : store.setItem(key, JSON.stringify(value)) } catch { /* optional convenience */ }
 }
 
-const JOIN_HINTS = {
-  INVITE_EXPIRED: 'Ask for a new invitation; this one has expired.',
-  REVOKED: 'This invitation was revoked, or this computer was removed from the project. A removed computer can join again only from a fresh client directory.',
-  INVITE_USED: 'This invitation was already used by someone else. Ask for a new one.',
-  INVALID_INVITATION: 'Check that you pasted the whole invitation, exactly as it was sent.',
-  IDENTITY_MISMATCH: 'A My device invitation links a computer that has no identity yet, or already has this person’s. To link this computer as someone else, start Pardner with a fresh client directory. To join as yourself, use a Human invitation.',
-  JOIN_REJECTED: 'Nobody was admitted. Ask for a new invitation if you still need to join.',
-  REQUEST_EXPIRED: 'Approval didn’t come in time. Ask for a new invitation.',
-  MACHINE_REMOVED: 'Start Pardner with a fresh client directory on this computer, then join from there.',
-  PERSON_REMOVED: 'Start Pardner with a fresh client directory, then join with a new Human invitation as a new person.',
-  ALREADY_MEMBER: 'Open the project from the project switcher instead.',
-  TOO_MANY_REQUESTS: 'Ask the person who invited you to clear the waiting requests, or for a new invitation.',
-  DEVICE_INVITATION_REQUIRED: 'Linking this device needs a My device invitation from your own client. Human and Agent invitations work after you confirm your identity.',
-  HUB_UNAVAILABLE: 'The project’s hub is unreachable, so this can’t finish yet. Retry when it is back; nothing was lost.',
-  HUB_REQUIRED: 'This computer can’t create invitations for this project yet. Ask the person who started the project, or retry later.',
-  CLIENT_UNREACHABLE: 'Your local Pardner client may have stopped. Ask your agent to reopen it, then retry.',
-}
-
 async function digest(text) {
   try {
     const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
     return Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, '0')).join('')
   } catch { return null }
-}
-
-function Failure({ error, children }) {
-  if (!error) return null
-  return <div className="error inline-error" role="alert">
-    <strong>{error.message}</strong>
-    {JOIN_HINTS[error.code] && <p>{JOIN_HINTS[error.code]}</p>}
-    {children}
-  </div>
 }
 
 export default function ClientApp({ config }) {
@@ -98,12 +74,72 @@ export default function ClientApp({ config }) {
   </main>
   if (!session.identity) return <IdentityStep api={api} session={session} onDone={next => setSession(next)} />
   const projects = session.projects ?? []
-  const current = projects.find(project => project.id === projectId) ?? projects[0]
+  // A project this computer was removed from stays visible as removed, never as "signed out" or gone (#154).
+  const removedProjects = (session.removedProjects ?? []).map(project => ({ ...project, removed: true }))
+  const current = projects.find(project => project.id === projectId) ?? removedProjects.find(project => project.id === projectId)
+    ?? projects[0] ?? removedProjects[0]
   if (choosing || !current) return <Welcome api={api} session={session} current={current}
     onBack={current ? () => setChoosing(false) : null}
     onReady={async project => { await refreshSession().catch(() => {}); selectProject(project.id) }} />
-  return <ProjectView key={current.id} api={api} session={session} project={current}
-    onSelect={selectProject} onStartOrJoin={() => setChoosing(true)} onAuthLost={authLost} refreshSession={refreshSession} />
+  const switcher = { projects: [...projects, ...removedProjects], onSelect: selectProject, onStartOrJoin: () => setChoosing(true) }
+  if (current.removed) return <RemovedProject project={current} switcher={switcher} />
+  return <ProjectView key={current.id} api={api} session={session} project={current} switcher={switcher}
+    onAuthLost={authLost} refreshSession={refreshSession} />
+}
+
+/** Shown on a computer removed from a project, or whose person was removed or left: what happened and how to come back. */
+function RemovedProject({ project, switcher }) {
+  const removal = project.removal
+  const by = removal?.by?.name
+  const machine = removal?.kind === 'machine'
+  const title = removal?.left ? `You left “${project.name}”`
+    : machine ? `This computer was removed from “${project.name}”`
+      : removal?.kind === 'person' ? `You were removed from “${project.name}”` : `This computer is no longer in “${project.name}”`
+  const lead = removal?.left ? 'You chose to leave this project.'
+    : by ? `${by} removed ${machine ? 'this computer' : 'you'}.` : 'Its removal was recorded by the project.'
+  const [copied, setCopied] = useState(null)
+  const exportCommand = `pardner client export --project ${project.id} --output-file board.json`
+  const copyCommand = async () => { try { await navigator.clipboard.writeText(exportCommand); setCopied('done') } catch { setCopied('failed') } }
+  // The page scrolls as a document: this screen has no board to keep in view.
+  return <div className="removed-app" data-client>
+    <header className="client-header">
+      <div className="client-identity">
+        <span className="brand">Pardner</span>
+        <ProjectSwitcher {...switcher} current={project} />
+      </div>
+    </header>
+    <main className="connection client-entry removed-project" aria-labelledby="removed-title">
+      <p className="tag removed-tag">{removal?.left ? 'Left' : 'Removed'}</p>
+      <h1 id="removed-title">{title}</h1>
+      <p className="lead">{lead} {machine ? 'You may still be a member on your other machines.' : ''}</p>
+      <section aria-labelledby="removed-means">
+        <h2 id="removed-means">What this means</h2>
+        <ul>
+          <li>This computer no longer syncs with the project, and nothing new from it reaches the others.</li>
+          <li>{machine ? 'Work done from this computer stays in the project under your name.' : 'Your earlier work stays in the project under your name.'}</li>
+          <li>The copy on this computer stays saved here. It isn’t updated any more.</li>
+        </ul>
+      </section>
+      <section aria-labelledby="removed-back">
+        <h2 id="removed-back">To come back</h2>
+        {machine ? <p>Ask for a My device invitation from one of your other machines in the project, or from the owner or an admin.
+          Then start Pardner on this computer with a fresh client directory, for example <code>pardner open --data ~/.pardner/client-2</code>, and join from there.
+          This computer then joins as a new machine of yours.</p>
+          : <p>Ask the owner or an admin for a new invitation. Then start Pardner with a fresh client directory, for example <code>pardner open --data ~/.pardner/client-2</code>,
+          and join from there. You join as a new person; your earlier work stays under your old entry.</p>}
+      </section>
+      <section aria-labelledby="removed-copy">
+        <h2 id="removed-copy">Keep a readable copy</h2>
+        <p>Run this on this computer to save the board as a readable file:</p>
+        <pre className="command"><code>{exportCommand}</code></pre>
+        <p className="muted small"><button type="button" className="link-button" onClick={copyCommand}>Copy command</button>
+          <span role="status">{copied === 'done' ? ' Copied.' : copied === 'failed' ? ' This browser blocked copying; select the command instead.' : ''}</span></p>
+      </section>
+      <div className="actions">
+        <button type="button" onClick={switcher.onStartOrJoin}>Start or join a project</button>
+      </div>
+    </main>
+  </div>
 }
 
 function SignedOut({ failure, retry }) {
@@ -359,7 +395,8 @@ function ProjectSwitcher({ projects, current, onSelect, onStartOrJoin }) {
       {projects.map(project => <button type="button" key={project.id} role="menuitemradio"
         aria-checked={project.id === current.id} onClick={() => { close(); if (project.id !== current.id) onSelect(project.id) }}>
         <span className="menu-label">{project.name}</span>
-        <span className="menu-detail">{syncLabel(project.status)}{hasPendingRequest(project) ? ' · unconfirmed change' : ''}</span>
+        <span className="menu-detail">{project.removed ? (project.removal?.left ? 'You left · no longer syncs' : 'Removed · no longer syncs')
+          : `${syncLabel(project.status)}${hasPendingRequest(project) ? ' · unconfirmed change' : ''}`}</span>
       </button>)}
       <div className="menu-separator" role="separator" />
       <button type="button" role="menuitem" onClick={() => { close(false); onStartOrJoin() }}>
@@ -367,15 +404,6 @@ function ProjectSwitcher({ projects, current, onSelect, onStartOrJoin }) {
       </button>
     </div>}
   </div>
-}
-
-const INVITES = {
-  human: { menu: 'Human', detail: 'A person and their agent', title: 'Invite a person',
-    body: 'For someone joining with their own identity. Their agent sets up their own board connected to this project. You approve their request after comparing a confirmation code.' },
-  agent: { menu: 'Agent', detail: 'Another agent of yours', title: 'Connect another of your agents',
-    body: 'For an agent you already run in another app. It joins as your agent; Pardner doesn’t start or instruct it. On another computer, you approve it like a new device.' },
-  device: { menu: 'My device', detail: 'Another computer you use', title: 'Add one of your devices',
-    body: 'For another computer you use. It links your existing identity rather than creating a new person. You approve it from this computer after comparing a confirmation code.' },
 }
 
 function InviteMenu({ memberRole, onChoose }) {
@@ -394,214 +422,7 @@ function InviteMenu({ memberRole, onChoose }) {
   </div>
 }
 
-const STATE_LABELS = { issued: 'Waiting to be used', redeemed: 'Used', revoked: 'Revoked', expired: 'Expired' }
-// expiresAt may be epoch milliseconds or an ISO timestamp.
-const timeOf = value => typeof value === 'number' ? value : Date.parse(value)
-function effectiveState(invite, now) {
-  return invite.state === 'issued' && timeOf(invite.expiresAt) <= now ? 'expired' : invite.state
-}
-function formatExpiry(value, now) {
-  const at = timeOf(value)
-  if (!Number.isFinite(at)) return 'Expiry not reported'
-  const minutes = Math.round((at - now) / 60000)
-  const absolute = new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-  if (minutes <= 0) return `Expired ${absolute}`
-  const relative = minutes < 90 ? `${minutes} min` : `${Math.round(minutes / 60)} h`
-  return `Expires in ${relative} · ${absolute}`
-}
-
-function InviteDialog({ api, project, purpose, returnFocus, onClose }) {
-  const dialog = useRef(null)
-  const operationId = useRef(createOperationId())
-  // The owner may offer the admin role; an admin offers only the member role.
-  const [role, setRole] = useState('member')
-  const [created, setCreated] = useState(null)
-  const [invites, setInvites] = useState(null)
-  const [busy, setBusy] = useState(false)
-  const [failure, setFailure] = useState(null)
-  const [revealed, setRevealed] = useState(false)
-  const [copied, setCopied] = useState(null)
-  const [now, setNow] = useState(() => Date.now())
-  const copy = INVITES[purpose]
-  const loadInvites = useCallback(() => api.invites(project.id).then(result => setInvites(result.invites ?? [])), [api, project.id])
-  useEffect(() => {
-    dialog.current.showModal()
-    loadInvites().catch(setFailure)
-    const tick = setInterval(() => setNow(Date.now()), 30000)
-    return () => { clearInterval(tick); if (returnFocus?.isConnected) returnFocus.focus() }
-  }, [loadInvites, returnFocus])
-  const create = async () => {
-    setBusy(true); setFailure(null)
-    try {
-      setCreated(await api.createInvite(project.id, { purpose, operationId: operationId.current, ...(purpose === 'human' ? { role } : {}) }))
-      setRevealed(false); setCopied(null)
-      await loadInvites()
-    } catch (error) {
-      setFailure(error)
-      if (error.code === 'OPERATION_ID_REUSED') operationId.current = createOperationId()
-    } finally { setBusy(false) }
-  }
-  // What the recipient's agent receives: a short, scannable setup prompt when the
-  // backend supplies one, otherwise the raw invitation. Both stay out of the DOM until revealed.
-  const shareText = created ? created.setupPrompt ?? created.invitation : null
-  const copyInvite = async () => {
-    try { await navigator.clipboard.writeText(shareText); setCopied('done') }
-    catch { setCopied('failed') }
-  }
-  const revoke = async inviteId => {
-    setBusy(true); setFailure(null)
-    try {
-      const result = await api.revokeInvite(project.id, inviteId)
-      const summary = result.invite ?? result
-      if (created?.invite.id === inviteId) { setCreated({ invite: summary, invitation: null, setupPrompt: null }); setRevealed(false) }
-      await loadInvites()
-    } catch (error) { setFailure(error) } finally { setBusy(false) }
-  }
-  const createAnother = () => {
-    operationId.current = createOperationId()
-    setCreated(null)
-    void create()
-  }
-  const createdState = created && effectiveState(created.invite, now)
-  const usable = createdState === 'issued' && Boolean(shareText)
-  // The invitation shown above is not repeated in the history list.
-  const history = invites?.filter(invite => invite.id !== created?.invite.id)
-  const revokeLabel = invite => `Revoke ${INVITES[invite.purpose]?.menu ?? invite.purpose} invitation, ${formatExpiry(invite.expiresAt, now)}`
-  return <dialog ref={dialog} className="invite-dialog" aria-labelledby="invite-title"
-    onCancel={event => { event.preventDefault(); onClose() }}>
-    <div className="profile-heading">
-      <div>
-        <h2 id="invite-title">{copy.title}</h2>
-        <p className="muted">{project.name}</p>
-      </div>
-      <button type="button" className="close" onClick={onClose}>Close</button>
-    </div>
-    <p>{copy.body}</p>
-    {purpose === 'human' && project.memberRole === 'owner' && !created && <label className="role-choice">Role
-      <select value={role} onChange={event => setRole(event.target.value)}>
-        <option value="member">Member</option>
-        <option value="admin">Admin: may also invite and remove members</option>
-      </select>
-    </label>}
-    {!created ? <div className="actions">
-      <button className="primary" disabled={busy} onClick={create}>{busy ? 'Creating…' : 'Create invitation'}</button>
-    </div> : <section className="invite-ready" aria-label="New invitation">
-      <p className="invite-state" data-state={createdState}>
-        <strong>{STATE_LABELS[createdState]}</strong>{createdState === 'issued' && ` · ${formatExpiry(created.invite.expiresAt, now)}`}
-      </p>
-      {usable ? <>
-        <div className="actions">
-          <button className="primary" onClick={copyInvite}>Copy invite</button>
-          <button aria-expanded={revealed} aria-controls="invite-text" onClick={() => setRevealed(value => !value)}>
-            {revealed ? 'Hide invite text' : 'Show invite text'}
-          </button>
-          <button disabled={busy} aria-label="Revoke this invitation" onClick={() => revoke(created.invite.id)}>Revoke</button>
-        </div>
-        <p className="muted small" role="status">
-          {copied === 'done' ? 'Copied. Treat it like a password and send it privately; it works once.'
-            : copied === 'failed' ? 'This browser blocked copying. Use Show invite text and copy it manually.'
-              : revealed ? '' : 'The invitation stays hidden so it can’t be read from a shared screen.'}
-        </p>
-        {revealed && <div id="invite-text" className="reveal">
-          <p className="warning-text">Visible on screen. Stop sharing your screen before copying.</p>
-          <textarea readOnly rows={5} spellCheck={false} aria-label="Invite text" value={shareText}
-            onFocus={event => event.target.select()} onClick={event => event.currentTarget.select()} />
-        </div>}
-      </> : <>
-        <p className="muted">This invitation can no longer be used. Create a new one if you still need it.</p>
-        <div className="actions">
-          <button className="primary" disabled={busy} onClick={createAnother}>Create another invitation</button>
-        </div>
-      </>}
-    </section>}
-    <Failure error={failure} />
-    <section aria-labelledby="invite-history">
-      <h3 id="invite-history">Invitations for this project</h3>
-      {history === undefined ? <p className="muted">Loading…</p> : !history.length ? <p className="muted">{created ? 'No other invitations.' : 'None yet.'}</p> :
-        <ul className="invite-list">
-          {history.map(invite => {
-            const state = effectiveState(invite, now)
-            return <li key={invite.id}>
-              <span>{INVITES[invite.purpose]?.menu ?? invite.purpose}</span>
-              <span className="invite-state" data-state={state}>{STATE_LABELS[state] ?? state}</span>
-              <span className="muted">{state === 'issued' ? formatExpiry(invite.expiresAt, now) : ''}</span>
-              {state === 'issued' && <button disabled={busy} onClick={() => revoke(invite.id)}
-                aria-label={revokeLabel(invite)}>Revoke</button>}
-            </li>
-          })}
-        </ul>}
-    </section>
-  </dialog>
-}
-
-const REQUEST_TITLES = {
-  human: request => `${request.person.name} wants to join as ${request.role === 'admin' ? 'an admin' : 'a member'}`,
-  device: request => `A new computer wants to join ${request.person.name}’s identity`,
-  agent: request => `A computer for ${request.person.name}’s agents only wants to join`,
-}
-
-/** Join requests this machine may approve. Opening one adds this approver's nonce, so both screens show its code. */
-function JoinRequestsDialog({ api, project, returnFocus, onClose, onChanged }) {
-  const dialog = useRef(null)
-  const [requests, setRequests] = useState(null)
-  const [failure, setFailure] = useState(null)
-  const [busy, setBusy] = useState(null)
-  const load = useCallback(async () => {
-    const { requests: listed } = await api.joinRequests(project.id)
-    const opened = await Promise.all(listed.map(request => request.code ? request
-      : api.revealCode(project.id, request.id).then(result => result.request, error => { setFailure(error); return null })))
-    setRequests(opened.filter(Boolean))
-  }, [api, project.id])
-  useEffect(() => {
-    dialog.current.showModal()
-    load().catch(setFailure)
-    const timer = setInterval(() => load().catch(() => {}), JOIN_POLL_MS * 2)
-    return () => { clearInterval(timer); if (returnFocus?.isConnected) returnFocus.focus() }
-  }, [load, returnFocus])
-  const decide = async (request, approved) => {
-    setBusy(request.id); setFailure(null)
-    try {
-      if (approved) await api.approveRequest(project.id, request.id, request.code)
-      else await api.rejectRequest(project.id, request.id)
-      await load()
-      onChanged?.()
-    } catch (error) { setFailure(error) } finally { setBusy(null) }
-  }
-  return <dialog ref={dialog} className="invite-dialog" aria-labelledby="requests-title" onCancel={event => { event.preventDefault(); onClose() }}>
-    <div className="profile-heading">
-      <div>
-        <h2 id="requests-title">Join requests</h2>
-        <p className="muted">{project.name}</p>
-      </div>
-      <button type="button" className="close" onClick={onClose}>Close</button>
-    </div>
-    <p>Approve only if the person reads you exactly the code shown here. Compare it face to face or by voice, not through the channel the invitation came through.</p>
-    <Failure error={failure} />
-    {requests === null ? <p className="muted">Loading…</p> : !requests.length ? <p className="muted">No requests are waiting.</p> :
-      <ul className="join-request-list">
-        {requests.map(request => {
-          const name = request.person.name
-          const duplicates = request.possibleDuplicates?.map(entry => entry.name).join(', ')
-          return <li key={request.id} aria-label={REQUEST_TITLES[request.purpose](request)}>
-            <p><strong>{REQUEST_TITLES[request.purpose](request)}</strong></p>
-            <p className="muted small">{request.purpose === 'human'
-              ? `${request.person.email} · ${request.device.name}`
-              : `${request.device.name} · links as ${name}${request.person.email ? ` <${request.person.email}>` : ''}`}</p>
-            {duplicates && <p className="warning-text">{duplicates} is already a member with this name or email. If this is the same person, reject this request and pair their computer with a My device invitation instead.</p>}
-            <p className="muted small">Confirmation code</p>
-            <p className="confirmation-code">{request.code ?? '…'}</p>
-            <div className="actions">
-              <button className="primary" disabled={!request.code || Boolean(busy)} aria-label={`Approve ${name}, code ${request.code ?? 'not shown'}`}
-                onClick={() => decide(request, true)}>{busy === request.id ? 'Approving…' : 'Approve'}</button>
-              <button disabled={Boolean(busy)} aria-label={`Reject ${name}`} onClick={() => decide(request, false)}>Reject</button>
-            </div>
-          </li>
-        })}
-      </ul>}
-  </dialog>
-}
-
-function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLost, refreshSession }) {
+function ProjectView({ api, session, project, switcher, onAuthLost, refreshSession }) {
   const [details, setDetails] = useState(null)
   const [presence, setPresence] = useState(null)
   const [failure, setFailure] = useState(null)
@@ -611,7 +432,11 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
   const [waitingRequests, setWaitingRequests] = useState(0)
   const [pairingDismissed, setPairingDismissed] = useState(() => { try { return localStorage.getItem(PAIRING_DISMISSED(project.id)) === 'true' } catch { return false } })
   const reporter = useRef(null)
-  const handle = useCallback(error => { if (error.code === 'AUTH_REQUIRED') onAuthLost(); else setFailure(error) }, [onAuthLost])
+  // Losing this project's membership is a project fact, shown as removed; only a lost browser session signs out (#154).
+  const removed = useCallback(() => { void refreshSession().catch(() => {}) }, [refreshSession])
+  const handle = useCallback(error => {
+    if (error.code === 'AUTH_REQUIRED') onAuthLost(); else if (error.code === 'REVOKED') removed(); else setFailure(error)
+  }, [onAuthLost, removed])
   const load = useCallback(async () => {
     const next = await api.project(project.id)
     setDetails(next)
@@ -622,8 +447,8 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
   useEffect(() => {
     let stopped = false
     load().catch(error => { if (!stopped) handle(error) })
-    // A revoked or expired session ends here too, without waiting for the board's socket.
-    const lost = error => { if (!stopped && error.code === 'AUTH_REQUIRED') onAuthLost() }
+    // A revoked or expired session ends here too, without waiting for the board's socket; so does a removal.
+    const lost = error => { if (stopped) return; if (error.code === 'AUTH_REQUIRED') onAuthLost(); else if (error.code === 'REVOKED') removed() }
     const presenceTimer = setInterval(() => api.presence(project.id)
       .then(next => { if (!stopped) setPresence(next) }).catch(lost), PRESENCE_POLL_MS)
     const projectTimer = setInterval(() => load().catch(lost), PROJECT_POLL_MS)
@@ -632,7 +457,7 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
     void requests()
     const requestsTimer = setInterval(requests, REQUESTS_POLL_MS)
     return () => { stopped = true; clearInterval(presenceTimer); clearInterval(projectTimer); clearInterval(requestsTimer) }
-  }, [api, project.id, load, handle, onAuthLost])
+  }, [api, project.id, load, handle, onAuthLost, removed])
   useEffect(() => {
     const instance = createPresenceReporter({ api, projectId: project.id, onError: () => {} })
     reporter.current = instance
@@ -657,12 +482,13 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
     [current.id, current.apiBase, current.wsPath, current.actorId]) // eslint-disable-line react-hooks/exhaustive-deps
   const reloadConfiguration = useCallback(async () => {
     try { return projectConfiguration((await load()).project) }
-    catch (error) { if (error.code === 'AUTH_REQUIRED') onAuthLost(); throw error }
-  }, [load, onAuthLost])
+    catch (error) { if (error.code === 'AUTH_REQUIRED') onAuthLost(); else if (error.code === 'REVOKED') removed(); throw error }
+  }, [load, onAuthLost, removed])
   const index = useMemo(() => presenceIndex(presence), [presence])
   const actors = useMemo(() => details?.actors ?? [], [details])
   const actorsById = useMemo(() => Object.fromEntries(actors.map(actor => [actor.id, actor])), [actors])
-  const participants = useMemo(() => sortParticipants(actors, index), [actors, index])
+  // Removed people stay in the board's history but not among the people here now (#175); the People panel lists them.
+  const participants = useMemo(() => sortParticipants(actors.filter(actor => !actor.removed), index), [actors, index])
   const me = actorsById[current.actorId] ?? { id: current.actorId, handle: current.actorId, kind: 'human', displayName: session.identity.name }
   const openProfile = useCallback((actor, element) => setDialog({ type: 'profile', actorId: actor.id, returnFocus: element }), [])
   const close = () => setDialog(null)
@@ -670,17 +496,16 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
   const header = <>
     <div className="client-identity">
       <span className="brand">Pardner</span>
-      <ProjectSwitcher projects={session.projects} current={current} onSelect={onSelect}
-        onStartOrJoin={onStartOrJoin} />
+      <ProjectSwitcher {...switcher} current={current} />
     </div>
     <div className="client-people">
       {participants.length > 0 && <AvatarStack actors={participants} index={index} max={5} label="People in this project"
         onOpen={openProfile} onMore={element => setDialog({ type: 'people', returnFocus: element })} />}
       {remotePresenceUnavailable && <span className="muted small">Remote presence unavailable</span>}
-      {waitingRequests > 0 && <button type="button" className="requests-button"
-        onClick={event => setDialog({ type: 'requests', returnFocus: event.currentTarget })}>
-        Join requests <span className="count">{waitingRequests}</span>
-      </button>}
+      <button type="button" className="people-button" aria-label={`People${waitingRequests ? `, ${waitingRequests} waiting to join` : ''}`}
+        onClick={event => setDialog({ type: 'members', returnFocus: event.currentTarget })}>
+        People{waitingRequests > 0 && <span className="badge" aria-hidden="true">{waitingRequests} waiting</span>}
+      </button>
       <InviteMenu memberRole={current.memberRole} onChoose={(purpose, element) => setDialog({ type: 'invite', purpose, returnFocus: element })} />
       <button type="button" className="you" aria-label={`You: ${avatarLabel(me, presenceOf(index, me.id))}. Open your profile`}
         onClick={event => openProfile(me, event.currentTarget)}>
@@ -690,29 +515,31 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
     </div>
   </>
   const canControl = details?.project.controlAvailable === true
+  const refreshRequests = () => api.joinRequests(project.id).then(result => setWaitingRequests(result.requests.length), () => {})
   // If the owner loses every machine, nobody can remove or demote admins: suggest pairing a second one early.
   const ownMachines = details?.membership?.machines?.filter(machine => machine.personId === session.identity.id).length
   const suggestPairing = current.memberRole === 'owner' && ownMachines === 1 && !pairingDismissed
   const dismissPairing = () => { setPairingDismissed(true); try { localStorage.setItem(PAIRING_DISMISSED(project.id), 'true') } catch { /* optional convenience */ } }
-  const notice = suggestPairing ? <div className="notice" role="status" aria-label="Pair a second computer">
-    <p>Pair a second computer with this project. If you lose every computer you own, nobody can remove or demote admins.</p>
+  // Dismissing the board notice keeps the suggestion in the People panel until a second machine is paired.
+  const notice = suggestPairing ? <div className="notice" role="status" aria-label="Pair a second machine">
+    <p><strong>Pair a second machine with this project.</strong> If you lose every machine you own, nobody can remove or demote an admin any more, because only the owner can.</p>
     <div className="actions">
-      <button onClick={event => setDialog({ type: 'invite', purpose: 'device', returnFocus: event.currentTarget })}>Pair a computer</button>
+      <button onClick={event => setDialog({ type: 'invite', purpose: 'device', returnFocus: event.currentTarget })}>Pair a machine</button>
       <button onClick={dismissPairing}>Not now</button>
     </div>
   </div> : null
   const sessionProps = useMemo(() => ({
     actorsById, index, focus: focusByTask(index), onOpenProfile: openProfile, requestedTask,
     onFocusChange: taskIds => reporter.current?.setFocus(taskIds),
-    onTasks: setTasks, onAuthLost, canControl,
-  }), [actorsById, index, openProfile, requestedTask, onAuthLost, canControl])
+    onTasks: setTasks, onAuthLost, onRemoved: removed, canControl,
+  }), [actorsById, index, openProfile, requestedTask, onAuthLost, removed, canControl])
   if (!details) return <main className="connection">
     <h1>{project.name}</h1>
     <p role="status">{failure ? 'This project didn’t open.' : 'Opening project…'}</p>
     <Failure error={failure}>
       <div className="actions">
         <button onClick={() => load().catch(handle)}>Retry</button>
-        <button onClick={onStartOrJoin}>Open another project</button>
+        <button onClick={switcher.onStartOrJoin}>Open another project</button>
       </div>
     </Failure>
   </main>
@@ -725,10 +552,11 @@ function ProjectView({ api, session, project, onSelect, onStartOrJoin, onAuthLos
       onClose={dialog.from === 'people' ? () => setDialog({ type: 'people', returnFocus: dialog.returnFocus }) : close}
       onOpenTask={taskId => { close(); setRequestedTask({ taskId, at: Date.now() }) }} />}
     {dialog?.type === 'people' && <PeopleDialog actors={participants} index={index} returnFocus={dialog.returnFocus}
-      onClose={close} onOpen={actor => setDialog({ type: 'profile', actorId: actor.id, returnFocus: dialog.returnFocus, from: 'people' })} />}
+      onClose={close} onOpen={actor => setDialog({ type: 'profile', actorId: actor.id, returnFocus: dialog.returnFocus, from: 'people' })}
+      onManage={() => setDialog({ type: 'members', returnFocus: dialog.returnFocus })} />}
+    {dialog?.type === 'members' && <PeoplePanel api={api} project={current} index={index} returnFocus={dialog.returnFocus}
+      onClose={close} onRemoved={removed} onChanged={() => { void load().catch(() => {}); void refreshRequests() }} />}
     {dialog?.type === 'invite' && <InviteDialog api={api} project={current} purpose={dialog.purpose}
       returnFocus={dialog.returnFocus} onClose={() => { close(); void refreshSession().catch(() => {}) }} />}
-    {dialog?.type === 'requests' && <JoinRequestsDialog api={api} project={current} returnFocus={dialog.returnFocus}
-      onClose={close} onChanged={() => { void load().catch(() => {}); void api.joinRequests(project.id).then(result => setWaitingRequests(result.requests.length), () => {}) }} />}
   </>
 }

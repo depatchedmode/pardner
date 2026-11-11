@@ -86,7 +86,7 @@ export function createClientApi(config, { fetcher = (...args) => fetch(...args) 
     try { result = await response.json() } catch { /* handled below */ }
     if (!response.ok) {
       throw Object.assign(new Error(result?.error || `The local client refused the request (${response.status}).`),
-        { code: result?.code ?? (response.status === 401 ? 'AUTH_REQUIRED' : undefined), status: response.status })
+        { code: result?.code ?? (response.status === 401 ? 'AUTH_REQUIRED' : undefined), status: response.status, details: result?.details ?? null })
     }
     if (!result || typeof result !== 'object' || Array.isArray(result)) {
       throw new Error('The local Pardner client returned an unreadable response. Retry.')
@@ -102,8 +102,17 @@ export function createClientApi(config, { fetcher = (...args) => fetch(...args) 
     join: ({ invitation, operationId }) => call('/join', { invitation, operationId }),
     project: projectId => call(`/projects/${id(projectId)}`),
     presence: projectId => call(`/projects/${id(projectId)}/presence`),
-    invites: projectId => call(`/projects/${id(projectId)}/invites`),
-    createInvite: (projectId, { purpose, operationId, role }) => call(`/projects/${id(projectId)}/invites`, { purpose, operationId, ...(role ? { role } : {}) }),
+    invites: (projectId, { limit, offset } = {}) => {
+      const query = new URLSearchParams(Object.entries({ limit, offset }).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))
+      return call(`/projects/${id(projectId)}/invites${query.size ? `?${query}` : ''}`)
+    },
+    createInvite: (projectId, { purpose, operationId, role, personId }) => call(`/projects/${id(projectId)}/invites`,
+      { purpose, operationId, ...(role ? { role } : {}), ...(personId ? { personId } : {}) }),
+    people: projectId => call(`/projects/${id(projectId)}/people`),
+    removeMember: (projectId, { kind, id: subject, operationId }) => call(`/projects/${id(projectId)}/revoke`, { kind, id: subject, operationId }),
+    changeRole: (projectId, { personId, role, operationId }) => call(`/projects/${id(projectId)}/role`, { personId, role, operationId }),
+    leave: (projectId, { operationId }) => call(`/projects/${id(projectId)}/leave`, { operationId }),
+    editProfile: (projectId, { name, email, operationId }) => call(`/projects/${id(projectId)}/profile`, { name, email, operationId }),
     joinRequests: projectId => call(`/projects/${id(projectId)}/join-requests`),
     revealCode: (projectId, requestId) => call(`/projects/${id(projectId)}/join-requests/${id(requestId)}/code`, {}),
     approveRequest: (projectId, requestId, code) => call(`/projects/${id(projectId)}/join-requests/${id(requestId)}/approve`, { code }),

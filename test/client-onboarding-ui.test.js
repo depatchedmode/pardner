@@ -244,8 +244,8 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await switcher.waitFor()
     await page.getByRole('button', { name: /^You: Alice, human, (idle|active)\. Open your profile$/ }).waitFor()
     // The owner of a new project, on one machine, is told to pair a second one; the suggestion can be put off.
-    const pairing = page.getByRole('status', { name: 'Pair a second computer' })
-    await pairing.getByText('If you lose every computer you own, nobody can remove or demote admins.', { exact: false }).waitFor({ timeout: 30000 })
+    const pairing = page.getByRole('status', { name: 'Pair a second machine' })
+    await pairing.getByText('If you lose every machine you own, nobody can remove or demote an admin any more', { exact: false }).waitFor({ timeout: 30000 })
     await pairing.getByRole('button', { name: 'Not now' }).click()
     await pairing.waitFor({ state: 'detached' })
     // A registered setup agent is not evidence of activity.
@@ -301,15 +301,16 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     // Bob waits; Alice opens his request, both screens show one code, and Alice approves it.
     const waiting = bobPage.getByRole('region', { name: 'Waiting for approval' })
     await waiting.getByText('Your confirmation code appears here when the person approving opens your request.').waitFor({ timeout: 30000 })
-    await page.getByRole('button', { name: /^Join requests 1$/ }).click({ timeout: 30000 })
-    const requests = page.getByRole('dialog', { name: 'Join requests' })
+    // The People button counts the requests waiting for this machine; the panel shows each with its code.
+    await page.getByRole('button', { name: 'People, 1 waiting to join' }).click({ timeout: 30000 })
+    const requests = page.getByRole('dialog', { name: 'People', exact: true })
     const request = requests.getByRole('listitem', { name: 'Bob wants to join as a member' })
     await request.getByText('bob@example.test · Bob’s laptop').waitFor()
     const approverCode = (await request.locator('.confirmation-code').textContent()).trim()
     assert.match(approverCode, /^\d{4} \d{4}$/)
     await waiting.getByTestId('join-code').getByText(approverCode, { exact: true }).waitFor({ timeout: 30000 })
     await request.getByRole('button', { name: `Approve Bob, code ${approverCode}` }).click()
-    await requests.getByText('No requests are waiting.').waitFor({ timeout: 30000 })
+    await requests.getByText('No one is waiting to join.').waitFor({ timeout: 30000 })
     await requests.getByRole('button', { name: 'Close' }).click()
     await bobPage.getByRole('button', { name: 'Project: Shared board. Switch project' }).waitFor({ timeout: 30000 })
     await bobPage.getByRole('button', { name: /^You: Bob, human/ }).waitFor()
