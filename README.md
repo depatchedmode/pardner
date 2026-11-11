@@ -158,7 +158,8 @@ history. Work from before a removal stays attributed. **A signer line is bound t
 the content its change wrote.** Pardner writes every object below the board's
 top-level maps once, in the change that creates it, never replaces or deletes an
 Activity entry, and leaves an Activity entry or a membership record with every
-change; each peer reads every change's operations once and finds any change that
+change; each peer reads every change's operations once, keeps what it found in its
+signature cache so a restart reads only new changes, and finds any change that
 breaks this. An entry a later change altered is shown as its signed change wrote
 it, read from the board's history, and marked "altered after signing" with the
 altering change's own signer; the altering change, a change that replaced or
@@ -410,8 +411,9 @@ its properties within that model only.
 
 A schema 10 directory contains workspace metadata, Automerge storage (the board
 and its signature document), the grow-only membership record store, the grow-only
-signature cache (`signatures.sqlite`: verified change signatures and equivocation
-reports), an exclusive service lock, and local connection settings. The hub additionally holds the SQLite delivery ledger and its own
+signature cache (`signatures.sqlite`: verified change signatures, equivocation
+reports, and which board changes this replica has read for the content check), an
+exclusive service lock, and local connection settings. The hub additionally holds the SQLite delivery ledger and its own
 waiting state after a restore (`hub-state.json`). A client
 directory also holds its machine key. Client directories and storage directories
 using an earlier schema are refused and left unchanged; choose a fresh directory

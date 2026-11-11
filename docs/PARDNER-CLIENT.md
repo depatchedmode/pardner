@@ -162,13 +162,14 @@ the content shown. Pardner writes every object below the board's top-level maps
 once, in the change that creates it, never replaces or deletes an Activity
 entry, and leaves an Activity entry or a membership record with every change.
 Each peer reads every change's operations once and finds any change that breaks
-this, from the documents alone, so every peer shows the same. An entry a later
+this, from the documents alone, so every peer shows the same; it keeps what it
+found in `signatures.sqlite`, so a restart reads only the changes that are new. An entry a later
 change altered is shown as the change that signed it wrote it, with "altered
 after signing by" the altering change's signer. The altering change, a change
 that replaced or deleted an entry, and a change that left no Activity entry are
 listed for review under their own signers. Until every change has been read, for
-a while after a new replica first syncs, signed entries show as still being
-checked. Membership records are shown from the verified record store, under the
+a while after a new replica first syncs (about 2 s at 10,000 operations), signed
+entries show as still being checked. Membership records are shown from the verified record store, under the
 machine that signed each record.
 
 **Malformed data.** What a peer reads from the signature document is checked for
