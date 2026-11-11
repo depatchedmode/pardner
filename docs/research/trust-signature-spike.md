@@ -7,7 +7,7 @@ Every number in this document was **measured** on the machine described in [Meth
 ## Answer
 
 1. **Use a signature store (option A).** Keep signatures in a second Automerge document beside the board, synced by automerge-repo as it is today. Apply every change, then check it. A change without a valid signature shows as "signature pending", then "unattributed". Never refuse a change.
-2. **Do not refuse changes (option B).** A refused change blocks every later change built on it. With "enforced from arrival", a peer that refuses and a peer that accepted then diverge for good. On automerge-repo's sync, one refusal also made two nodes exchange about 1,100 to 2,100 messages a second until the test ended. All measured.
+2. **Do not refuse changes (option B).** A refused change blocks every later change built on it. If a relaying peer applies "enforced from arrival", a peer that refuses and a peer that accepted then diverge for good. On automerge-repo's sync, one refusal also made two nodes exchange about 1,100 to 2,100 messages a second until the test ended. All measured.
 3. **Signing is cheap.** Signing takes 38–61 µs and checking 111–155 µs. Computing the signature adds 0.05% to 1.3% to authoring time. Checking signatures uses about 1% of the time budget at 50 operations a second. Both measured. Keep the signature's own disk write off the acknowledgement path: Ed25519 signatures are deterministic (measured), so a writer can sign its own changes again after a crash.
 4. **Stop storing strings as Automerge text.** At 10,000 operations a text board takes 52 s to open and needs 4.9 GB. At 50,000 operations Automerge 3.2.3 cannot load it at all. Plain string values open in 6.5 s at 10,000. All measured.
 5. **The decision rule fails on open time, not on signing.** No variant opens in under 3 s at 10,000 operations through automerge-repo. Loading the same plain-value bytes with `Automerge.load` takes 2.8 s, against 6.5 s through automerge-repo (measured). Open time needs its own work before 1d.
@@ -80,7 +80,7 @@ The board was the 1,000-operation text document. Each row ran three times in eac
 | A sync message is delivered twice | No change to the heads; no refusal | The same |
 | The writer's link drops for 3 s after the change leaves | The reader holds the change "pending" for 3.02–3.12 s. It is attributed 35–145 ms after the link returns | The change and its signature arrive together. Unattributed for 0 ms |
 | A member sends one unsigned change, then three signed changes on top | All four are applied everywhere. The unsigned one stays "pending" (the rule that would mark it "unattributed" was not built); the three later ones verify. Every node converges. No extra sync traffic | The hub refuses the unsigned change and blocks the three later ones. They reach no other node. The member and the hub then exchanged 5,648 to 10,434 messages each way in 5 s, until the test ended |
-| The reader already holds a removal of machine M. M writes c2. The writer, not yet aware of the removal, builds c3 on c2 | Every node applies c2 and c3 and converges. The reader flags c2 as made by a removed machine; c3 verifies | The reader refuses c2 and blocks c3, an honest change by a member. The reader never converges with the hub and the writer |
+| The reader already holds a removal of machine M. M writes c2, which reaches the reader through the hub. The writer, not yet aware of the removal, builds c3 on c2 | Every node applies c2 and c3 and converges. The reader flags c2 as made by a removed machine; c3 verifies | The reader refuses c2 and blocks c3, an honest change by a member. The reader never converges with the hub and the writer |
 
 The B livelock is automerge-repo's sync working as designed. The receiver keeps asking for the missing dependency, and the sender keeps sending it. Stripping refused hashes from the receiver's outgoing `need` list did not fix it: three of three runs still exchanged 9,694 to 10,368 messages each way in 5 s. Ending the loop would need a new "refused" message that the sender honours, or closing the peer's session.
 
@@ -343,8 +343,12 @@ In exchange, A keeps automerge-repo's sync untouched, keeps every peer convergin
 
 In [PARDNER-TRUST-DESIGN.md](../PARDNER-TRUST-DESIGN.md):
 
-1. **Section 2, "Stale signers".** Replace "refuse any new record or change from a removed machine from the moment they hold the removal" with: the gate refuses sessions from a removed machine once a peer holds the removal. A change from a removed machine that still arrives, for example relayed by a member, is applied and flagged "made by a removed machine". It is never refused, because refusal blocks every later change built on it and leaves peers diverged (this spike, section 1). Records keep the current rule: a record is data in the document, so not counting it does not split the document.
-2. **Section 2, "Demoted signers".** It says "the same arrival-time rule". Say that for changes this means flagging, as in item 1.
+1. **Section 2, "Stale signers".** Since 56eece25 the rule applies only where a record or change first enters from its signer, not to existing history a peer receives. That already avoids the divergence measured here, which is what happens when a relaying peer applies the rule. Two points remain for changes:
+   - "Refuse" should mean "close the signer's session at the gate". Dropping a change on a live session and syncing on makes automerge-repo loop, and blocks every later change built on the dropped one (section 1).
+   - A change from a removed machine that arrives as existing history is applied and flagged "made by a removed machine". It is never dropped.
+
+   Records keep the current rule. A record is data in the document, so not counting it does not split the document.
+2. **Section 2, "Demoted signers".** It says "the same arrival-time rule". Say that for changes this means closing the session at the gate, or flagging, as in item 1.
 3. **Section 3, "Actor IDs".** Replace "8 random bytes chosen at each process start" with "8 random bytes chosen each time the document is loaded". Add: the creation change is made with the machine actor (`Automerge.from(data, { actor })`), because `Repo.create` uses a random one.
 4. **Section 3, "What is signed".** State that `changeHash` is the raw 32-byte Automerge change hash, as `getChangesMetaSince` reports it. It equals SHA-256 of the change chunk after its 8-byte header (measured), so no decoding is needed.
 5. **Section 3, "What a peer checks".** Replace "the signer was a member machine when the peer received the change" with: the signature verifies, the actor prefix names the signing machine, and the signer was a member. A change that fails is flagged, not refused.
@@ -360,7 +364,7 @@ In [PARDNER-TRUST-DESIGN.md](../PARDNER-TRUST-DESIGN.md):
     - New row: "A signature arrives after its change. Pending, then attributed".
     - New row: "Two handles of one document in one process. Distinct actors; no duplicate sequence numbers".
 13. **Decisions table.**
-    - "Revocation": "Enforced from arrival at the gate. Changes from a removed machine that still arrive are flagged, not refused".
+    - "Revocation": "Enforced from arrival at the gate, by closing the removed machine's session. Changes from a removed machine that arrive as history are flagged, not refused".
     - "Text storage": "Plain string values. Automerge text crossed the decision rule".
     - "Signing": add "in a second Automerge document".
 
