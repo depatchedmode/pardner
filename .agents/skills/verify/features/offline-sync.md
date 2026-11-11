@@ -79,3 +79,12 @@ checks all decoded changes for `makeText`, including losing alternatives and
 retries, then reopens the document. It asserts ordinary JavaScript output and
 retains explicit resolution and duplicate retry behavior. Schema 6 documents
 are refused without changing their bytes.
+
+## Large-board reopen
+
+`test/storage-durability.test.js` compares full board views and heads with the
+upstream loader, kills during and immediately after open, covers overlapping
+snapshots with concurrent incremental tails, and fails/retries the first edit's
+barrier. The [benchmark](../../../../docs/research/board-open-time.md) records
+load-aware startup, first-view and first-edit costs at 1,000 and 10,000 operations.
+No timing assertion is added to shared-machine regression tests.

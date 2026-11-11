@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 const root = fileURLToPath(new URL('..', import.meta.url))
 const names = text => text.trim().split(/\s+/)
 const groups = [
+  { name: 'open-benchmark', scripts: [], files: ['scripts/bench-open.js'] },
   {
     name: 'trust-library', scripts: ['test:runtime'],
     files: names('lib/machine-key.js lib/membership.js test/machine-key.test.js test/membership.test.js'),
@@ -22,7 +23,7 @@ const groups = [
   {
     name: 'persistence', scripts: ['test:qualification', 'test:runtime'], qualification: 'Disk persistence and directory ownership',
     files: names(`lib/atomic-file.js lib/durable-repo.js lib/nodefs-storage-adapter.js lib/storage-key.js lib/storage-lease.js lib/private-state.js
-      support/persistence-process.js`),
+      support/persistence-process.js support/open-process.js`),
   },
   {
     name: 'transport', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'], qualification: 'Offline reopen, authenticated transport, or acknowledgement ordering',

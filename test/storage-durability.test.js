@@ -166,3 +166,112 @@ describe('local persistence qualification', () => {
     })
   })
 })
+
+it('reopening preserves upstream heads and board views across kills during and immediately after open', { timeout: 20000 }, async () => {
+  const { Repo } = await import('@automerge/automerge-repo')
+  const { WorkspaceRuntime } = await import('../lib/workspace-runtime.js')
+  const { Workspace } = await import('../lib/workspace.js')
+  await withStorage(async directory => {
+    const runtime = await new WorkspaceRuntime({ directory, actors: [{ id: 'writer', handle: 'writer', kind: 'human' }] }).init()
+    let expected, url
+    try {
+      for (let index = 0; index < 20; index++) {
+        const receipt = await runtime.execute({ operationId: `open-${index}`, actorId: 'writer', type: 'task.create',
+          payload: { title: `Task ${index}`, description: 'Persist this description. '.repeat(80) } })
+        await runtime.execute({ operationId: `comment-${index}`, actorId: 'writer', type: 'comment.add',
+          payload: { taskId: receipt.result.taskId, text: 'This acknowledged comment must survive.' } })
+      }
+      expected = runtime.getDoc()
+      url = runtime.docHandle.url
+    } finally { await runtime.close() }
+    // Independent upstream loader, against identical persisted chunks.
+    const upstream = new Repo({ storage: new NodeFSStorageAdapter(join(directory, 'repo')) })
+    try {
+      const handle = await upstream.find(url)
+      const workspace = new Workspace({ repo: upstream, handle, replicaId: 'comparison' })
+      assert.deepEqual(workspace.snapshot(), expected)
+    } finally { await upstream.shutdown() }
+    for (const phase of ['during', 'after', 'after']) {
+      const child = fork(new URL('../support/open-process.js', import.meta.url), [directory, phase],
+        { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] })
+      try {
+        const [message] = await once(child, 'message', { signal: AbortSignal.timeout(8000) })
+        assert.notEqual(message.type, 'error', message.message)
+        if (phase === 'during') assert.equal(message.type, 'opening')
+        else {
+          assert.deepEqual(message.snapshot, expected)
+          assert.equal(message.status.savedLocally, true)
+        }
+      } finally {
+        const exited = once(child, 'exit')
+        child.kill('SIGKILL')
+        await exited
+      }
+    }
+  })
+})
+
+it('does not rewrite a loaded document, but barriers the first edit and retries a failed save', async () => {
+  await withStorage(async directory => {
+    const writer = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    let url
+    try {
+      const handle = writer.create({ value: 'acknowledged', padding: 'snapshot'.repeat(1000) })
+      url = handle.url
+      await writer.flush()
+      handle.change(doc => { doc.value = 'incremental' })
+      await writer.flush()
+    } finally { await writer.shutdown() }
+    const storage = new NodeFSStorageAdapter(directory)
+    const save = storage.save.bind(storage)
+    let writes = 0, fail = true
+    storage.save = async (...args) => {
+      writes++
+      if (fail) throw new Error('injected first-save failure')
+      return save(...args)
+    }
+    const reopened = new DurableRepo({ storage })
+    try {
+      const handle = await reopened.find(url)
+      await reopened.flush()
+      assert.equal(writes, 0, 'read-only open must not rewrite stored history')
+      assert.equal(handle.doc().value, 'incremental')
+      const before = reopened.persistedHeads.get(handle.documentId)
+      handle.change(doc => { doc.value = 'after-reopen' })
+      await assert.rejects(reopened.flush(), /injected first-save failure/)
+      assert.deepEqual(reopened.persistedHeads.get(handle.documentId), before)
+      fail = false
+      await reopened.flush()
+      assert.notDeepEqual(reopened.persistedHeads.get(handle.documentId), before)
+      await reopened.shutdown()
+      const final = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+      try { assert.equal((await final.find(url)).doc().value, 'after-reopen') }
+      finally { await final.shutdown() }
+    } finally { fail = false; await reopened.shutdown() }
+  })
+})
+
+it('loads overlapping snapshots and concurrent incremental tails without dropping history', async () => {
+  const A = await import('@automerge/automerge')
+  const { createHash } = await import('node:crypto')
+  await withStorage(async directory => {
+    const storage = new NodeFSStorageAdapter(directory)
+    const writer = new DurableRepo({ storage })
+    const handle = writer.create({ left: 0, right: 0 })
+    await writer.flush()
+    const base = handle.doc()
+    const left = A.change(A.clone(base), doc => { doc.left = 1 })
+    const right = A.change(A.clone(base), doc => { doc.right = 2 })
+    const expected = A.merge(A.clone(left), right)
+    await writer.shutdown()
+    const chunks = [['snapshot', A.save(base)], ['snapshot', A.save(left)], ['incremental', A.saveSince(right, A.getHeads(base))]]
+    for (const [kind, bytes] of chunks) await storage.save([handle.documentId, kind, createHash('sha256').update(bytes).digest('hex')], bytes)
+    const reader = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    try {
+      const reopened = await reader.find(handle.url)
+      assert.deepEqual(A.getHeads(reopened.doc()), A.getHeads(expected))
+      assert.deepEqual(reopened.doc(), expected)
+      await reader.flush()
+    } finally { await reader.shutdown() }
+  })
+})

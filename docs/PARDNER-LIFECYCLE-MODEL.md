@@ -333,3 +333,24 @@ progress and witnesses pass. All eight mutation demonstrations were caught by
 implementation checks, reported as drift and reproduced by model counterexamples.
 See `plainStringStorageReview` in the evidence JSON. The model still excludes
 field merge semantics; those are covered by the operation and conflict tests.
+
+## Direct document load mapping review (2026-11-11)
+
+For #209, `DurableRepo` uses validated `Automerge.load` on upstream-discovered
+chunks. Re-reviewed `SyncUp`, `PersistRun`, `StoreCloseBegin` and
+`StoreCloseComplete`: the background-save queue, awaited disk barrier, failure
+propagation, head publication and drain-before-release ordering are unchanged.
+A flush of exactly the heads just read from disk needs no new write, as with
+upstream's stored-head optimization. Changed heads still await upstream save;
+a failed first save retains the old baseline for retry. Removing a document
+invalidates that baseline before removing any chunks.
+
+No model actions, guards, effects, atomicity assumptions, anchors or mutations
+changed. Startup decoding is outside the bounded model; implementation tests
+compare upstream heads/views, kill during and after open, cover overlapping
+snapshots and incremental tails, and fail/retry the first post-open save.
+The default check again explores 174,614 states and 679,456 transitions; all
+invariants, progress and ten witnesses pass. All eight mutation demonstrations
+were caught, reported as drift and reproduced as model counterexamples, with
+working-tree hashes unchanged. See `directDocumentLoadReview` in the evidence
+record for the mapping. No power-loss or real-agent claim follows from this.

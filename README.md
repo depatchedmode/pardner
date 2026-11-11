@@ -78,6 +78,11 @@ Each service owns a persisted Automerge replica; a hub relays changes and owns a
 transactional SQLite delivery ledger. Actor identity is separate from replica
 identity, so the same Actor can work from more than one machine.
 
+Existing boards reopen with a direct, validated Automerge load of the stored
+snapshot and incremental chunks. Read-only reopen does not rewrite the document;
+the first later edit re-establishes upstream save bookkeeping before its receipt.
+See the [open benchmark](docs/research/board-open-time.md) for measurements and tradeoffs.
+
 Local operations are acknowledged only after a disk persistence barrier. Enrolled
 replicas reopen without the hub and reconnect using fresh WebSocket tickets.
 Native replicas are trusted full document writers: their synchronized changes bypass
@@ -257,7 +262,7 @@ using an earlier schema are refused and left unchanged; choose a fresh directory
 rather than migrating or deleting existing data.
 
 Automerge **3.2.3** and Repo/network **2.5.1** are pinned. The persistence wrapper
-isolates the pinned Repo storage-subsystem integration and is qualified with fault
+isolates the pinned Repo storage-subsystem integration (including `loadDocData`) and is tested with fault
 injection and process-kill tests. These establish tested process-crash durability,
 not power-loss durability or arbitrary filesystem guarantees.
 
