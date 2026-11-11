@@ -1027,5 +1027,81 @@
       ]
     },
     "review": "lib/workspace-runtime.js: startHubState saves the waiting state with its fixed comparison point (since) and the newest checkpoint seen, together with the new record-store file identity, in one atomic write before the repository opens; a hub with a document but no state file waits (state-missing). noteCheckpoint is async: it saves a newly learned waiting state or a newer checkpoint before answering, compares with the fixed point while waiting, and returns false once stopping. resumeHub saves before returning. All hub-state writes are serialized; closeResources awaits a pending one before repo.shutdown() and the lease release (new StoreCloseBegin anchor; admits no request, no document persistence). automerge-sync-server.js: the handshake screen awaits noteCheckpoint, still before any welcome or the Automerge adapter (UpgradeArrive). The lease-before-drain mutation text follows the new closeResources body. No other guard, effect, atomicity note, invariant or witness changed."
+  },
+  "uniformHandshakeReview": {
+    "recorded": "2026-11-11",
+    "issue": 201,
+    "mapping": {
+      "revision": "3549af6a26652e22aac18a027b5e1849ce4cf307",
+      "files": {
+        "automerge-sync-server.js": "c386fa9621fdccd5b1c663bc3b6af7c5ff604e66b6cbab0a3949d8df834ec7c1",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "f1e4605edbd43378b327951308303d6f88c3eb7f313ede80800b6c457549a903",
+        "lib/workspace.js": "15803b62df46222217e15e406768478c369505cf7459db7dad9af969fb582af1"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-11T12:59:57.140Z",
+      "finished": "2026-11-11T13:00:17.974Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "automerge-sync-server.js: acceptMachine no longer judges a machine before it proves its key. Every well-formed hello is answered alike; membership, the hub's checkpoint comparison (noteCheckpoint), the waiting-hub record exchange and the refusal all run in admit, after both signatures verify and before any welcome, so a native upgrade still reaches registerSyncSession and the Automerge adapter only as a current member (UpgradeArrive), and stop() still terminates it. formerKey is gone and notMember always carries the removal details, since it is only reached after proof. Signed HTTP sessions (lib/machine-session.js, not mapped) likewise answer every hello and judge at confirm. No action guard, effect, atomicity note, invariant, witness or mutation text changed."
   }
 }

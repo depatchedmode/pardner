@@ -430,3 +430,21 @@ Fresh default check: 174614 states, 679456 transitions, all four invariants and
 demonstration was rerun: all eight mutations were caught, reported as drift and
 reproduced as a model counterexample, with the working tree unchanged. See
 `durableHubStateReview` in `docs/evidence/lifecycle-model.json`.
+
+## Uniform handshake mapping review (2026-11-11)
+
+The mapping records source revision `3549af6a26652e22aac18a027b5e1849ce4cf307`.
+In `automerge-sync-server.js`, `acceptMachine` no longer judges a machine
+before it proves its key: every well-formed hello gets the same reply, and
+membership, the checkpoint comparison, a waiting hub's record exchange and the
+refusal all run in `admit`, after both signatures verify and before any
+welcome. A native upgrade therefore still reaches `registerSyncSession` and the
+Automerge adapter only as a current member (`UpgradeArrive`), and `stop()`
+still terminates it. No action guard, effect, atomicity note, invariant,
+witness or mutation text changed.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught, reported as drift and
+reproduced as a model counterexample, with the working tree unchanged. See
+`uniformHandshakeReview` in `docs/evidence/lifecycle-model.json`.
