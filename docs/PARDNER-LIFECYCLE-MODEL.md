@@ -451,7 +451,8 @@ reproduced as a model counterexample, with the working tree unchanged. See
 
 ## Signed changes mapping review (2026-11-11)
 
-The mapping records source revision `f514d0b902d3bce17017d599b0511df5005ed045`.
+The mapping was first recorded at source revision `f514d0b902d3bce17017d599b0511df5005ed045`
+and finally at `45c1449baccd400867aad38e2e1406770db3e844`.
 Every change is now signed by the machine that makes it (`lib/attribution.js`,
 not mapped), and the hub's persistence acknowledgement covers the board and its
 signature document (#197).
@@ -490,7 +491,9 @@ flush persists every document directly) never pass through it, and
 dropped like any background save once closing. It also starts background
 checking only after `initialized` is set. Neither touches the board's
 persistence, an acknowledgement guard or shutdown ordering; the mapping was
-re-reviewed and accepted again.
+re-reviewed and accepted again. A last commit passes each record's position to
+`recordEntry`, again only when the board is read, and the mapping was accepted
+once more.
 
 Fresh default check: 174614 states, 679456 transitions, all four invariants and
 `ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation

@@ -63,10 +63,13 @@ export function needsReview(attribution, event) {
 
 const RECORD_STAMP = ''
 
-/** Membership records as Activity entries, signed by the machine that signed each record. */
+/**
+ * Membership records as Activity entries, signed by the machine that signed each record. Their times have
+ * one-second resolution; the key sorts records of one second in the order they reached the board.
+ */
 export function recordEvents(attribution) {
-  return (attribution?.records ?? []).map(record => ({ operationId: `record-${record.recordId}`, type: `record.${record.kind}`, timestamp: record.at ?? RECORD_STAMP,
-    actorId: record.signerActorId ?? null, record }))
+  return (attribution?.records ?? []).map(record => ({ operationId: `record-${String(record.position ?? 0).padStart(9, '0')}-${record.recordId}`,
+    type: `record.${record.kind}`, timestamp: record.at ?? RECORD_STAMP, actorId: record.signerActorId ?? null, record }))
 }
 
 /** Changes that need review but wrote no Activity entry, so they are still listed. */
@@ -124,9 +127,10 @@ export function reviewNotice(attribution) {
   const lines = []
   if (count) lines.push(`${count === 1 ? 'One change needs' : `${count} changes need`} review: ${count === 1 ? 'its' : 'their'} signer couldn’t be confirmed, ${count === 1 ? 'it was' : 'they were'} made by a removed machine, or ${count === 1 ? 'it claims' : 'they claim'} an Actor ${count === 1 ? 'its' : 'their'} machine isn’t allowed to act as.`)
   for (const report of equivocations) {
+    const relayer = machineLabel(attribution, report.relayedBy)
     lines.push(report.proven
-      ? `${machineLabel(attribution, report.machineId)} signed two different changes with the same number. Sync with the machine that sent the second is stopped until it is removed and its copy rebuilt.`
-      : `A change claiming to be from ${machineLabel(attribution, report.machineId)} conflicts with one already here, and only one of them is signed. Sync with ${machineLabel(attribution, report.relayedBy)} is stopped for this board.`)
+      ? `${machineLabel(attribution, report.machineId)} signed two different changes with the same number. Board changes from ${relayer} can’t be applied here until that machine is removed and its copy rebuilt.`
+      : `A change claiming to be from ${machineLabel(attribution, report.machineId)} conflicts with one already here, and ${report.signed?.some(Boolean) ? 'only one of them is' : 'neither is'} signed. Board changes from ${relayer} can’t be applied here until the machine that wrote it is removed.`)
   }
   return lines
 }
