@@ -243,6 +243,11 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     const switcher = page.getByRole('button', { name: 'Project: Shared board. Switch project' })
     await switcher.waitFor()
     await page.getByRole('button', { name: /^You: Alice, human, (idle|active)\. Open your profile$/ }).waitFor()
+    // The owner of a new project, on one machine, is told to pair a second one; the suggestion can be put off.
+    const pairing = page.getByRole('status', { name: 'Pair a second computer' })
+    await pairing.getByText('If you lose every computer you own, nobody can remove or demote admins.', { exact: false }).waitFor({ timeout: 30000 })
+    await pairing.getByRole('button', { name: 'Not now' }).click()
+    await pairing.waitFor({ state: 'detached' })
     // A registered setup agent is not evidence of activity.
     await page.getByRole('button', { name: 'Alpha, agent, offline. Open profile' }).waitFor()
     assert.equal(await page.getByRole('combobox', { name: 'Actor', exact: true }).count(), 0, 'there is no author picker')
@@ -264,6 +269,7 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await page.getByRole('button', { name: 'Invite' }).click()
     await page.getByRole('menuitem', { name: /^Human/ }).click()
     const dialog = page.getByRole('dialog', { name: 'Invite a person' })
+    assert.equal(await dialog.getByLabel('Role').inputValue(), 'member', 'the owner chooses the role; member by default')
     await dialog.getByRole('button', { name: 'Create invitation' }).click()
     await dialog.getByRole('button', { name: 'Copy invite' }).waitFor()
     await dialog.getByRole('region', { name: 'New invitation' }).getByText(/Waiting to be used · Expires in \d+ h/).waitFor()
