@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { fork } from 'node:child_process'
@@ -269,6 +270,47 @@ it('a missing-state hub requires a later record count and verified growth before
     assert.ok(server.store.membership().removedMachines.includes(project.keys[1].machineId))
   } finally {
     await server?.stop()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+it('resume keeps serving blocked until its saved state succeeds and serializes concurrent attempts', { timeout: 60000 }, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-restore-'))
+  let runtime, release
+  try {
+    const { project, restored } = await backedUp(root)
+    runtime = hubRuntime(await restored(), { project, actors })
+    await runtime.init()
+    const rename = fs.rename
+    let writes = 0
+    let entered = Promise.withResolvers()
+    let gate = Promise.withResolvers()
+    release = () => gate.resolve()
+    t.mock.method(fs, 'rename', async (from, to) => {
+      if (to === join(runtime.directory, 'hub-state.json')) {
+        writes++
+        entered.resolve()
+        await gate.promise
+        if (writes === 1) throw Object.assign(new Error('test write failure'), { code: 'EIO' })
+      }
+      return rename(from, to)
+    })
+    const first = runtime.resumeHub('operator').catch(error => error)
+    await entered.promise
+    const second = runtime.resumeHub('operator')
+    try {
+      assert.equal(runtime.hubStatus().waiting, true, 'pending writes must not enable serving')
+      assert.equal(writes, 1, 'the second resume has not started a write')
+    } finally { release() }
+    assert.equal((await first).code, 'EIO')
+    await second
+    assert.equal(writes, 2, 'a failed resume must not make the next attempt skip persistence')
+    assert.equal(runtime.hubStatus().waiting, false)
+    assert.equal(JSON.parse(await readFile(join(runtime.directory, 'hub-state.json'), 'utf8')).waiting, null)
+  } finally {
+    release?.()
+    await runtime?.close()
+    t.mock.restoreAll()
     await rm(root, { recursive: true, force: true })
   }
 })

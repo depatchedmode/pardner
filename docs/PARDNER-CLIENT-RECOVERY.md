@@ -117,6 +117,9 @@ records, or keep admission closed until those decisions are reconciled.
 
 ### A restored hub
 
+Resume is saved before the hub serves again. Concurrent resume attempts are serialized;
+a failed state-file write reports an error and leaves the hub waiting.
+
 The hub admits a machine only while the records it holds say that machine is a
 member, and a stale backup lacks removals made after it was taken. So a hosted
 project that starts from a restored or stale state **waits**: it serves no other

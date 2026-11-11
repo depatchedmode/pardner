@@ -15,9 +15,9 @@ import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
 const die = () => process.kill(process.pid, 'SIGKILL')
 process.once('message', async ({ directory, pem, genesis, killAt, checkpoint, records, by }) => {
   const save = WorkspaceRuntime.prototype.saveHubState
-  let started = false
+  let started = false, resuming = false
   WorkspaceRuntime.prototype.saveHubState = async function (...args) {
-    const step = !started ? 'start' : this.hubState.waiting ? 'note' : 'resume'
+    const step = !started ? 'start' : resuming ? 'resume' : 'note'
     if (killAt === `${step}-before-save`) die()
     await save.apply(this, args)
     if (killAt === `${step}-after-save`) die()
@@ -28,6 +28,7 @@ process.once('message', async ({ directory, pem, genesis, killAt, checkpoint, re
   await runtime.noteCheckpoint(checkpoint)
   runtime.admitRecords(records)
   if (killAt === 'catch-up-before-resume') die()
+  resuming = true
   await runtime.resumeHub(by)
   process.exit(3)
 })

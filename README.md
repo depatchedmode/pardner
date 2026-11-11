@@ -103,7 +103,8 @@ saw a later state has synced its membership, or its operator runs
 `pardner client resume`. Without `hub-state.json`, a checkpoint must show more records than the restored store, and verified records must bring the store up to that count; an old start count cannot vouch. That waiting state is saved with the point checkpoints
 are compared against, so it survives any number of restarts and a process kill at
 any step, and an established hub whose state file is missing waits too. Two live
-sync sessions for one machine are reported.
+sync sessions for one machine are reported. Resume attempts are serialized and
+serving stays blocked until the resumed state is saved; a failed write leaves it waiting.
 
 **The People panel** in each board's header lists every person with their role,
 who let them in, their machines (online or last seen where the hub knows it) and
