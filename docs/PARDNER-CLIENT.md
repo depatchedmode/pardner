@@ -175,10 +175,11 @@ names and task, goal and vein titles are as they are now, marked with a dotted
 underline; times, words, values and IDs are as signed. A membership record's signer
 line is the record's own signature.
 
-**What has no signer line.** The board, a task's fields and a comment's current
-text are the board as it is now. A comment names its recorded author, and says it
-was changed by someone other than its author when the change that wrote it, or its
-current text, is not that author's own signed, unflagged operation on it. A comment
+**What has no signer line.** The board, a task's fields, a comment's current text
+and the alternatives of a conflicted field or comment are the board as it is now.
+Each names the Actor the board records, and says it was changed by someone other
+than that Actor when the change that wrote it, or wrote into it, is not that Actor's
+own signed, unflagged operation. A comment
 deleted later keeps its signed words in Activity, with who marked it deleted.
 
 **Malformed data.** What a peer reads from the signature document is checked for

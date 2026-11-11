@@ -186,10 +186,13 @@ later keeps its signed words and says who marked it deleted. A membership record
 signer line is the record's own signature, which covers exactly the record shown.
 
 Views of the board as it is now (the board itself, a task's fields, a comment's
-current text) carry no signer line. A comment there names its recorded author, and
-says it was changed by someone other than its author when the change that wrote it
-or its current text is not that Actor's own signed, unflagged operation on it; that
-change then has its own Activity entry under its own signer. The task context's
+current text, the alternatives of a conflicted field or comment) carry no signer
+line. Where one names an author, it is the Actor the board records, and it says the
+value was changed by someone other than that Actor when the change that wrote it, or
+wrote into it, is not that Actor's own signed, unflagged operation; that change then
+has its own Activity entry under its own signer. The edit form's "saved a newer …"
+notice names the Actor of the newest History entry for the field, marked unconfirmed
+when that entry needs review. The task context's
 `history` (`pardner show`, and what agents read) lists the board's current operation
 events and is not attributed. Browser Activity and task History, `pardner activity`,
 `timeline`, `trace task` and `diff`, and `pardner client review` all read the same
