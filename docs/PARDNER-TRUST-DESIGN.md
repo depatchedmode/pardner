@@ -197,7 +197,7 @@ Decision rule: keep the chosen mechanism and Automerge text if, at 10,000 operat
 **Stage 1: the gate and attribution.** The guarantee: only member machines sync, and every change shows which machine made it. Members may change anything.
 1. **Keys, records and signed changes.**
    - Machine keys, the membership records and the grow-only store.
-   - The deterministic genesis, the machine-prefixed actor ID and signed changes, using the spike's mechanism.
+   - The signed genesis record, the machine-prefixed actor ID and signed changes, using the spike's mechanism.
    - Invitations and pairing with confirmation codes.
    - Hub admission derived from the records.
    - A breaking change: prior installs are rejected and preserved, not migrated (AGENTS.md).
