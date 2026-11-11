@@ -1430,7 +1430,8 @@ for (const engine of [chromium, webkit]) it(`shows the standalone service page a
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
     await page.goto(`${service.httpUrl}/pardner/`)
-    await page.getByText('This is an agent and integration service. Open Pardner with pardner open.', { exact: true }).waitFor()
+    await page.getByText('This is the standalone agent and integration service, for agents and scripts on this computer. It serves no other machine.', { exact: true }).waitFor()
+    await page.getByText('People use the Pardner client: run pardner open. The client keeps its own projects, so this service’s tasks do not appear there.', { exact: true }).waitFor()
     assert.equal(await page.locator('input, select, textarea, button').count(), 0, 'no token, pairing or Actor controls')
     assert.equal(await page.getByRole('region', { name: /Backlog/ }).count(), 0, 'no board')
     assert.deepEqual(errors, [])
