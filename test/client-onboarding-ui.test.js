@@ -186,10 +186,11 @@ async function gitProfile(name) {
   return directory
 }
 
-async function person(t, startClient, name, agent) {
+// `route: false` stands for a client started without --public-url.
+async function person(t, startClient, name, agent, { route = true } = {}) {
   const directory = await mkdtemp(join(tmpdir(), `pardner-ui-${name.toLowerCase()}-`))
   const gitDirectory = await gitProfile(name)
-  const client = await startClient({ directory, ...await sameComputerRoute(), deviceName: `${name}’s laptop`, gitDirectory, setupAgent: agent })
+  const client = await startClient({ directory, ...(route ? await sameComputerRoute() : { port: 0 }), deviceName: `${name}’s laptop`, gitDirectory, setupAgent: agent })
   t.after(async () => {
     await client.stop()
     await rm(directory, { recursive: true, force: true })
@@ -203,7 +204,7 @@ async function person(t, startClient, name, agent) {
     assert.equal(response.ok, true, `${path}: ${JSON.stringify(result)}`)
     return result
   }
-  return { client, call, open: async () => (await call('/open', {})).url }
+  return { client, call, directory, open: async () => (await call('/open', {})).url }
 }
 
 async function eventually(read, message, timeout = 20000) {
@@ -414,6 +415,93 @@ for (const engine of [chromium, webkit]) it(`links a second device from the iden
     assert.deepEqual(errors, [])
   })
 
+for (const engine of [chromium, webkit]) it(`refuses a loopback-only invitation and keeps the Invite dialog usable through a hub outage in ${engine.name()}`,
+  { timeout: 150000 }, async t => {
+    const { startClient } = await import(serviceModule)
+    const browser = await engine.launch({ headless: true })
+    t.after(() => browser.close())
+    const errors = []
+    const newPage = async () => {
+      const page = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage()
+      page.on('pageerror', error => errors.push(error.message))
+      return page
+    }
+    const openInvite = async (page, projectName) => {
+      await page.getByRole('button', { name: `Project: ${projectName}. Switch project` }).waitFor({ timeout: 30000 })
+      await page.getByRole('button', { name: 'Invite' }).click()
+      await page.getByRole('menuitem', { name: /^Human/ }).click()
+      return page.getByRole('dialog', { name: 'Invite a person' })
+    }
+
+    // Carol's client was started without --public-url, so a Human invitation could only be used on her computer.
+    const carol = await person(t, startClient, 'Carol', undefined, { route: false })
+    await carol.call('/identity', { name: 'Carol', email: 'carol@example.test', operationId: 'identity' })
+    await carol.call('/projects', { name: 'Loopback board', operationId: 'create' })
+    const carolPage = await newPage()
+    await carolPage.goto(await carol.open())
+    const refusing = await openInvite(carolPage, 'Loopback board')
+    await refusing.getByText('None yet.').waitFor()
+    assert.equal(await refusing.getByRole('alert').count(), 0, 'no alert before the person acts')
+    await refusing.getByRole('button', { name: 'Create invitation' }).click()
+    const refusal = refusing.getByRole('alert')
+    await refusal.getByText('This invitation would only work on this computer', { exact: true }).waitFor()
+    await refusal.getByText(`would point to ${carol.client.url}, which only this computer can reach`, { exact: false }).waitFor()
+    assert.equal(await refusal.locator('code').textContent(), 'pardner client serve --public-url <https origin>')
+    assert.equal(await refusing.getByRole('button', { name: 'Copy invite' }).count(), 0)
+    assert.equal(Object.keys(carol.client.registry.read().invites).length, 0, 'the refused invitation was never recorded')
+    await refusing.getByRole('button', { name: 'Close' }).click()
+
+    // An older invitation that carries another computer's loopback address names it instead of advising a retry.
+    const { port } = await sameComputerRoute()
+    const unreachable = `http://127.0.0.1:${port}`
+    const loopbackInvitation = `pardner-invite-v1.${Buffer.from(JSON.stringify({ id: 'invite-1', projectId: 'project-1', purpose: 'human',
+      endpoint: `${unreachable}/pardner/client/v1/enroll`, secret: 'invitation-secret' })).toString('base64url')}`
+    await carolPage.getByRole('button', { name: 'Project: Loopback board. Switch project' }).click()
+    await carolPage.getByRole('menuitem', { name: 'Start or join a project…' }).click()
+    await carolPage.getByRole('button', { name: 'Join a project' }).click()
+    await carolPage.getByLabel('Invitation').fill(loopbackInvitation)
+    await carolPage.getByRole('button', { name: 'Join project' }).click()
+    const unreachableAlert = carolPage.getByRole('alert')
+    await unreachableAlert.getByText('This invitation points somewhere this computer can’t reach', { exact: true }).waitFor({ timeout: 30000 })
+    await unreachableAlert.getByText(`This invitation points to ${unreachable}, which this computer can't reach`, { exact: false }).waitFor()
+    assert.doesNotMatch(await unreachableAlert.textContent(), /retry/i)
+
+    // Bob joined Alice's project; with Alice's computer (the hub) down, his Invite dialog explains rather than loading forever.
+    const alice = await person(t, startClient, 'Alice')
+    await alice.call('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+    const { project } = await alice.call('/projects', { name: 'Outage board', operationId: 'create' })
+    const invite = await alice.call(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite-bob' })
+    const bob = await person(t, startClient, 'Bob')
+    await bob.call('/identity', { name: 'Bob', email: 'bob@example.test', operationId: 'identity' })
+    await bob.call('/join', { invitation: invite.invitation, operationId: 'join' })
+    await alice.client.stop()
+    const bobPage = await newPage()
+    await bobPage.goto(await bob.open())
+    const dialog = await openInvite(bobPage, 'Outage board')
+    const history = dialog.getByRole('region', { name: 'Invitations for this project' })
+    await history.getByText('Couldn’t load invitations.').waitFor({ timeout: 20000 })
+    await history.getByText('issued by its hub, the computer of the person who started it', { exact: false }).waitFor()
+    assert.equal(await dialog.getByRole('alert').count(), 0, 'a failed list is not an alert before any action')
+    assert.equal(await history.getByText('Loading…').count(), 0)
+    await dialog.getByRole('button', { name: 'Create invitation' }).click()
+    const outage = dialog.getByRole('alert')
+    await outage.getByText('The project’s hub is unreachable', { exact: true }).waitFor()
+    await outage.getByText('Invitations for this project are issued by its hub', { exact: false }).waitFor()
+    assert.equal(await dialog.getByText('Project authority unavailable', { exact: false }).count(), 0, 'the raw server message is not the heading')
+    assert.equal(await history.getByText('issued by its hub', { exact: false }).count(), 0, 'the list does not repeat the alert')
+    await history.getByText('Couldn’t load invitations.').waitFor()
+
+    // When the hub is back, Retry loads the list and the same Create invitation succeeds.
+    const hub = await startClient({ directory: alice.directory })
+    t.after(() => hub.stop())
+    await history.getByRole('button', { name: 'Retry' }).click()
+    await history.getByText('None yet.').waitFor({ timeout: 20000 })
+    await dialog.getByRole('button', { name: 'Create invitation' }).click()
+    await dialog.getByRole('button', { name: 'Copy invite' }).waitFor({ timeout: 20000 })
+    assert.equal(await dialog.getByRole('alert').count(), 0)
+    assert.deepEqual(errors, [])
+  })
+
 // A Git profile with only user.name; global and system config are hidden so the email cannot leak in.
 async function startNameOnlyClient(t, startClient, name) {
   const directory = await mkdtemp(join(tmpdir(), `pardner-ui-${name.toLowerCase()}-`))
@@ -424,7 +512,7 @@ async function startNameOnlyClient(t, startClient, name) {
   process.env.GIT_CONFIG_GLOBAL = '/dev/null'
   process.env.GIT_CONFIG_NOSYSTEM = '1'
   let client
-  try { client = await startClient({ directory, port: 0, deviceName: `${name}’s laptop`, gitDirectory }) } finally {
+  try { client = await startClient({ directory, ...await sameComputerRoute(), deviceName: `${name}’s laptop`, gitDirectory }) } finally {
     for (const [key, value] of [['GIT_CONFIG_GLOBAL', saved.global], ['GIT_CONFIG_NOSYSTEM', saved.nosystem]]) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value
     }

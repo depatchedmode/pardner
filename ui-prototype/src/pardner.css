@@ -1253,6 +1253,9 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
 .invite-list li + li { border-top: 1px solid var(--line); }
 .invite-list li > .muted { font-size: 12px; }
 .invite-list .invite-state { white-space: nowrap; }
+.invite-history-failure { display: grid; justify-items: start; gap: 8px; font-size: 13px; }
+.invite-history-failure p { margin: 0; color: var(--muted); max-width: 60ch; }
+.invite-history-failure strong { color: var(--warning); font-weight: 500; }
 
 .client-entry { max-width: 520px; }
 .client-entry h1 { font-size: 26px; }

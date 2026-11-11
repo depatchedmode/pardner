@@ -29,6 +29,17 @@ const JOIN_HINTS = {
   HUB_REQUIRED: 'This computer can’t create invitations for this project yet. Ask the person who started the project, or retry later.',
   CLIENT_UNREACHABLE: 'Your local Pardner client may have stopped. Ask your agent to reopen it, then retry.',
 }
+// A human heading replaces the server's message for these codes. Without a hint above, the server's
+// message, which names the address and the fix, becomes the explanation.
+const FAILURE_HEADINGS = {
+  HUB_UNAVAILABLE: 'The project’s hub is unreachable',
+  PUBLIC_URL_REQUIRED: 'This invitation would only work on this computer',
+  INVITATION_UNREACHABLE: 'This invitation points somewhere this computer can’t reach',
+}
+// Invitations for a joined project are issued by its hub, so an outage there blocks them.
+const INVITE_HINTS = {
+  HUB_UNAVAILABLE: 'Invitations for this project are issued by its hub, the computer of the person who started it, and it can’t be reached right now. Retry when it’s back; nothing was lost.',
+}
 
 async function digest(text) {
   try {
@@ -37,11 +48,20 @@ async function digest(text) {
   } catch { return null }
 }
 
-function Failure({ error, children }) {
+function failureText(error, hints = JOIN_HINTS) {
+  const heading = FAILURE_HEADINGS[error.code]
+  return { heading: heading ?? error.message, hint: hints[error.code] ?? JOIN_HINTS[error.code] ?? (heading ? error.message : null) }
+}
+
+// Server messages quote commands in backticks, such as `pardner client serve --public-url <https origin>`.
+const withCode = text => text.split('`').map((part, index) => index % 2 ? <code key={index}>{part}</code> : part)
+
+function Failure({ error, hints, children }) {
   if (!error) return null
+  const { heading, hint } = failureText(error, hints)
   return <div className="error inline-error" role="alert">
-    <strong>{error.message}</strong>
-    {JOIN_HINTS[error.code] && <p>{JOIN_HINTS[error.code]}</p>}
+    <strong>{heading}</strong>
+    {hint && <p>{withCode(hint)}</p>}
     {children}
   </div>
 }
@@ -350,17 +370,23 @@ function InviteDialog({ api, project, purpose, returnFocus, onClose }) {
   const dialog = useRef(null)
   const operationId = useRef(createOperationId())
   const [created, setCreated] = useState(null)
-  const [invites, setInvites] = useState(null)
+  // { invites } once loaded, { failure } when the list could not be read, null while loading.
+  const [history, setHistory] = useState(null)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState(null)
   const [revealed, setRevealed] = useState(false)
   const [copied, setCopied] = useState(null)
   const [now, setNow] = useState(() => Date.now())
   const copy = INVITES[purpose]
-  const loadInvites = useCallback(() => api.invites(project.id).then(result => setInvites(result.invites ?? [])), [api, project.id])
+  const hints = project.role === 'replica' ? INVITE_HINTS : undefined
+  // The list is not the person's action, so its failure stays in the list with a Retry rather than an alert.
+  const loadInvites = useCallback(async () => {
+    setHistory(current => current?.invites ? current : null)
+    try { setHistory({ invites: (await api.invites(project.id)).invites ?? [] }) } catch (error) { setHistory({ failure: error }) }
+  }, [api, project.id])
   useEffect(() => {
     dialog.current.showModal()
-    loadInvites().catch(setFailure)
+    void loadInvites()
     const tick = setInterval(() => setNow(Date.now()), 30000)
     return () => { clearInterval(tick); if (returnFocus?.isConnected) returnFocus.focus() }
   }, [loadInvites, returnFocus])
@@ -399,7 +425,10 @@ function InviteDialog({ api, project, purpose, returnFocus, onClose }) {
   const createdState = created && effectiveState(created.invite, now)
   const usable = createdState === 'issued' && Boolean(shareText)
   // The invitation shown above is not repeated in the history list.
-  const history = invites?.filter(invite => invite.id !== created?.invite.id)
+  const others = history?.invites?.filter(invite => invite.id !== created?.invite.id)
+  const historyFailure = history?.failure && failureText(history.failure, hints)
+  // The alert above already explains the same cause after a failed action.
+  const historyHint = historyFailure && failure?.code !== history.failure.code ? historyFailure.hint ?? historyFailure.heading : null
   const revokeLabel = invite => `Revoke ${INVITES[invite.purpose]?.menu ?? invite.purpose} invitation, ${formatExpiry(invite.expiresAt, now)}`
   return <dialog ref={dialog} className="invite-dialog" aria-labelledby="invite-title"
     onCancel={event => { event.preventDefault(); onClose() }}>
@@ -442,12 +471,15 @@ function InviteDialog({ api, project, purpose, returnFocus, onClose }) {
         </div>
       </>}
     </section>}
-    <Failure error={failure} />
+    <Failure error={failure} hints={hints} />
     <section aria-labelledby="invite-history">
       <h3 id="invite-history">Invitations for this project</h3>
-      {history === undefined ? <p className="muted">Loading…</p> : !history.length ? <p className="muted">{created ? 'No other invitations.' : 'None yet.'}</p> :
+      {historyFailure ? <div className="invite-history-failure">
+        <p><strong>Couldn’t load invitations.</strong>{historyHint && <> {withCode(historyHint)}</>}</p>
+        <button type="button" onClick={() => void loadInvites()}>Retry</button>
+      </div> : !history ? <p className="muted">Loading…</p> : !others.length ? <p className="muted">{created ? 'No other invitations.' : 'None yet.'}</p> :
         <ul className="invite-list">
-          {history.map(invite => {
+          {others.map(invite => {
             const state = effectiveState(invite, now)
             return <li key={invite.id}>
               <span>{INVITES[invite.purpose]?.menu ?? invite.purpose}</span>
