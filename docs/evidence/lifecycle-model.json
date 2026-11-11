@@ -1103,5 +1103,80 @@
       ]
     },
     "review": "automerge-sync-server.js: acceptMachine no longer judges a machine before it proves its key. Every well-formed hello is answered alike; membership, the hub's checkpoint comparison (noteCheckpoint), the waiting-hub record exchange and the refusal all run in admit, after both signatures verify and before any welcome, so a native upgrade still reaches registerSyncSession and the Automerge adapter only as a current member (UpgradeArrive), and stop() still terminates it. formerKey is gone and notMember always carries the removal details, since it is only reached after proof. Signed HTTP sessions (lib/machine-session.js, not mapped) likewise answer every hello and judge at confirm. No action guard, effect, atomicity note, invariant, witness or mutation text changed."
+  },
+  "trustReviewThree": {
+    "recorded": "2026-11-11",
+    "mapping": {
+      "revision": "b6523dd53c4146037f6e70b914c47e30aa05bb37",
+      "files": {
+        "automerge-sync-server.js": "04db8d5ba079a9643242776db1443950d9db9d5d898fd514f984b9a0b181ef89",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "096d08c99aaf0ead64776c5c9980f15c2097d7b788eb0c52d608d8912c88c05b",
+        "lib/workspace.js": "15803b62df46222217e15e406768478c369505cf7459db7dad9af969fb582af1"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/trust-review-3-tSaNZN/lifecycle-mutations.json",
+      "started": "2026-11-11T14:03:06.903Z",
+      "finished": "2026-11-11T14:03:27.755Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "Reviewed every action named by drift against automerge-sync-server.js and lib/workspace-runtime.js. Checkpoint growth is checked after proof and before welcome (UpgradeArrive). Resume and checkpoint updates share the hub-state write queue; serving sees resumed state only after the write, and StoreCloseBegin still drains this queue before closing the repository and releasing the lease. Record limits precede canonicalization in the gate and harvest; admitted record writes still join the operation queue, make one document change, and await the existing persistence barrier (Handle, Respond, ReplicaEdit). No action guard, effect, atomicity assumption, anchor, invariant, witness or mutation changes. The model excludes membership and restored-hub waiting; focused regressions cover those rules. Full verification and qualification deliberately not run."
   }
 }

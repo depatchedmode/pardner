@@ -117,6 +117,9 @@ records, or keep admission closed until those decisions are reconciled.
 
 ### A restored hub
 
+Resume is saved before the hub serves again. Concurrent resume attempts are serialized;
+a failed state-file write reports an error and leaves the hub waiting.
+
 The hub admits a machine only while the records it holds say that machine is a
 member, and a stale backup lacks removals made after it was taken. So a hosted
 project that starts from a restored or stale state **waits**: it serves no other
@@ -135,6 +138,9 @@ How the hub knows it may be stale (wall-clock time plays no part):
   look untouched (a filesystem snapshot rolled back in place).
 - **Its own state file is missing.** A hub that already holds a project but has
   no `hub-state.json` can't tell whether it was restored, so it waits too.
+  Its start count is unknown: only a checkpoint with more records than the restored
+  store, followed by verified records extending the store to that count, can vouch.
+  Otherwise use the operator resume below; a checkpoint from an old run is not proof.
 
 The waiting state is saved in `hub-state.json`, in the same write as the new file
 identity, together with the point checkpoints are compared against (the state the

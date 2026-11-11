@@ -54,3 +54,8 @@ records are in [trust-enrollment.md](trust-enrollment.md).
 
 `test/trust-genesis-store.test.js` also checks that membership write-back after
 a process kill leaves no Automerge text anywhere in the document history.
+
+Additional restore regressions require verified record growth for a missing-state
+hub, refuse old checkpoints, and hold serving closed across pending/failed resume
+writes and concurrent retries. The harvest tests also require oversized records
+to be rejected with a limit reason both at the gate and when synced as history.

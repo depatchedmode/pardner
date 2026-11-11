@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { fork } from 'node:child_process'
@@ -7,6 +8,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import AutomergeSyncServer from '../automerge-sync-server.js'
+import { WebSocket } from 'ws'
+import { initiateHandshake, signCheckpoint, newRun } from '../lib/machine-handshake.js'
 import { machineKeyPem } from '../lib/machine-key.js'
 import { admitMembers, hubRuntime, replicaRuntime, testProject } from '../support/machines.js'
 
@@ -102,13 +105,13 @@ it('a hub with data whose state file is missing waits, rather than starting as i
       assert.equal(status.waiting, true, `start ${start} without a state file`)
       assert.equal(status.reason, 'state-missing')
     }
-    // Any checkpoint this hub signed vouches for it now, since it no longer knows where it was.
+    // An old checkpoint cannot establish freshness without a known comparison point.
     const { result } = await restart(project, live, async runtime => {
       const vouches = await runtime.noteCheckpoint(atBackup)
       await runtime.resumeHub({ machineId: project.keys[0].machineId })
       return vouches
     })
-    assert.equal(result, true)
+    assert.equal(result, false)
     assert.equal((await restart(project, live)).status.waiting, false)
     // A brand-new hub has no state file either, and does not wait.
     const fresh = hubRuntime(join(root, 'fresh'), { project: testProject(), actors })
@@ -233,6 +236,88 @@ it('a restored hub restarted before any member connects is still caught up by th
   } finally {
     await Promise.allSettled(replicas.map(runtime => runtime.close()))
     await Promise.allSettled(servers.map(server => server.stop()))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+it('a missing-state hub requires a later record count and verified growth before a member can resume it', { timeout: 60000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-restore-'))
+  let server
+  try {
+    const { project, live, atBackup, records } = await backedUp(root)
+    await rm(join(live, 'hub-state.json'))
+    server = new AutomergeSyncServer({ store: hubRuntime(live, { project, actors }), env: {}, apiToken: token,
+      httpPort: 0, wsPort: 0, logger: {} })
+    await server.start()
+    const route = `ws://127.0.0.1:${server.wsPort}/automerge`
+    const connect = async (checkpoint, offered) => {
+      const socket = new WebSocket(route)
+      try {
+        await once(socket, 'open')
+        return await initiateHandshake(socket, { key: project.keys[0], projectId: project.projectId, route,
+          role: 'replica', expectRole: 'hub', checkpoint, knownRecords: () => records, ownRecords: () => offered })
+      } finally { socket.terminate() }
+    }
+    await assert.rejects(connect(atBackup, records), { code: 'HUB_WAITING' })
+    assert.equal(server.store.hubStatus().waiting, true)
+    const removal = project.remove(project.keys[1])
+    const later = signCheckpoint(project.owner, { projectId: project.projectId, starts: atBackup.starts + 10,
+      run: newRun(), records: records.length + 1 })
+    await assert.rejects(connect(later, [...records, { ...removal, signature: 'invalid' }]), { code: 'HUB_WAITING' })
+    assert.equal(server.store.hubStatus().waiting, true, 'a signed count alone is insufficient')
+    await connect(later, [...records, removal])
+    assert.equal(server.store.hubStatus().waiting, false)
+    assert.ok(server.store.membership().removedMachines.includes(project.keys[1].machineId))
+  } finally {
+    await server?.stop()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+it('resume keeps serving blocked until its saved state succeeds and serializes concurrent attempts', { timeout: 60000 }, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-restore-'))
+  let runtime, release
+  try {
+    const { project, restored } = await backedUp(root)
+    runtime = hubRuntime(await restored(), { project, actors })
+    await runtime.init()
+    const rename = fs.rename
+    let writes = 0
+    const entered = Promise.withResolvers(), gate = Promise.withResolvers()
+    const retryEntered = Promise.withResolvers(), retryGate = Promise.withResolvers()
+    release = () => { gate.resolve(); retryGate.resolve() }
+    t.mock.method(fs, 'rename', async (from, to) => {
+      if (to === join(runtime.directory, 'hub-state.json')) {
+        writes++
+        if (writes === 1) {
+          entered.resolve()
+          await gate.promise
+          throw Object.assign(new Error('test write failure'), { code: 'EIO' })
+        }
+        retryEntered.resolve()
+        await retryGate.promise
+      }
+      return rename(from, to)
+    })
+    const first = runtime.resumeHub('operator').catch(error => error)
+    await entered.promise
+    const second = runtime.resumeHub('operator')
+    try {
+      assert.equal(runtime.hubStatus().waiting, true, 'pending writes must not enable serving')
+      assert.equal(writes, 1, 'the second resume has not started a write')
+    } finally { gate.resolve() }
+    assert.equal((await first).code, 'EIO')
+    await retryEntered.promise
+    assert.equal(runtime.hubStatus().waiting, true, 'a failed write leaves serving blocked during the retry')
+    retryGate.resolve()
+    await second
+    assert.equal(writes, 2, 'a failed resume must not make the next attempt skip persistence')
+    assert.equal(runtime.hubStatus().waiting, false)
+    assert.equal(JSON.parse(await readFile(join(runtime.directory, 'hub-state.json'), 'utf8')).waiting, null)
+  } finally {
+    release?.()
+    await runtime?.close()
+    t.mock.restoreAll()
     await rm(root, { recursive: true, force: true })
   }
 })

@@ -124,3 +124,25 @@ it('an agents-only machine’s membership records, synced as history, grant and 
     }
   })
 })
+
+it('oversized records are refused with a limit reason at the gate and when harvested', { timeout: 60000 }, async () => {
+  await withHub(async ({ project, server, replica }) => {
+    const writer = await replica(0), key = project.keys[0], personId = personIdFor(key.publicKey)
+    const base = project.trust.record(key, 'profile', personId, { displayName: 'Member', email: '' })
+    const records = [
+      forge(key, base, { displayName: 'x'.repeat(4097) }),
+      forge(key, base, { extra: Array.from({ length: 80 }, () => 'x'.repeat(1024)) }),
+      forge(key, base, { extra: Array.from({ length: 17 }).reduce(value => ({ child: value }), null) }),
+    ]
+    for (const record of records) await assert.rejects(server.store.addRecords([record]), /Record exceeds/)
+    const marker = project.trust.record(key, 'profile', personId, { displayName: 'Marker', email: '' })
+    write(writer, [...records, marker])
+    for (const runtime of [server.store, writer]) {
+      await eventually(() => runtime.records.get(marker.recordId), 'the batch never arrived')
+      for (const record of records) {
+        assert.equal(runtime.records.get(record.recordId), undefined)
+        assert.match(notStored(runtime, record), /Record exceeds/)
+      }
+    }
+  })
+})
