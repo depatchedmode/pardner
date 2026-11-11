@@ -2,11 +2,13 @@ import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import * as A from '@automerge/automerge'
-import { SHARDS, createSignaturesData, shardOf, signChange, storedSignatures, verifyChange } from '../lib/change-signatures.js'
+import { SHARDS, createSignaturesData, machineActor, machinePrefix, shardOf, signChange, storedSignatures, verifyChange } from '../lib/change-signatures.js'
+import { machineIndex } from '../lib/attribution.js'
 import { generateMachineKey } from '../lib/machine-key.js'
+import { hubRuntime } from '../support/machines.js'
 import { plain } from '../lib/workspace-schema.js'
 import { storageValue } from '../lib/workspace-values.js'
-import { eventually, execute, operationOf, signerOf, stateOf, withHub, writeTask } from '../support/signed-hub.js'
+import { actors, eventually, execute, operationOf, signerOf, stateOf, withHub, writeTask } from '../support/signed-hub.js'
 
 // The rules that make a signer line mean "this machine signed exactly this content" (docs/PARDNER-TRUST-DESIGN.md,
 // section 3), for every peer, even when another member's client writes unusual but well-formed data.
@@ -333,5 +335,62 @@ it('replacing or deleting an Activity entry, or a signed change that leaves no A
     assert.equal(review(deletion).noEntry, true, 'a deletion leaves no entry of its own either')
     // Ordinary work is never listed: operations and membership records each leave an entry.
     assert.deepEqual(server.store.getDoc().attribution.review.filter(entry => entry.noEntry || entry.rewrote).map(entry => entry.change).sort(), [replacement, deletion, rename].sort())
+  })
+})
+
+it('a replica asks for the hub’s acknowledgement only once every signature it made is in the signature document it asks about', { timeout: 60000 }, async () => {
+  await withHub(async ({ server, replica }) => {
+    const writer = await replica(0)
+    // The signature stays out of the signature document: the hub holds the board change but not its signature.
+    writer.attribution.holdOutbox = true
+    const { result } = await execute(writer, 'Not acknowledged without its signature')
+    const operation = await eventually(() => operationOf(server.store, result.taskId), 'the change never reached the hub')
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    assert.equal(writer.status().syncPending, true, 'no acknowledgement covers a change whose signature the hub cannot hold')
+    writer.attribution.holdOutbox = false
+    await eventually(() => !writer.status().syncPending, 'never acknowledged once the signature was written')
+    const hash = signerOf(writer, operation.operationId).hash
+    assert.ok(storedSignatures(server.store.workspace.signatures.doc(), hash).length, 'the acknowledged signature heads hold its signature')
+  })
+})
+
+it('two keys sharing one 16-byte actor prefix attribute to neither', () => {
+  const [one, two] = [generateMachineKey(), generateMachineKey()]
+  const machines = [{ id: one.machineId, publicKey: one.publicKey, personId: 'person-one' }, { id: two.machineId, publicKey: two.publicKey, personId: 'person-two' }]
+  const index = machineIndex(machines, () => 'f'.repeat(32))
+  assert.equal(index.size, 1)
+  assert.equal(index.get('f'.repeat(32)).ambiguous, true)
+  // Distinct prefixes, and one key certified twice, are not ambiguous.
+  const distinct = machineIndex([...machines, { ...machines[0], personId: 'person-three' }])
+  assert.equal([...distinct.values()].some(entry => entry.ambiguous), false)
+  assert.deepEqual(distinct.get(machinePrefix(one.publicKey)).personIds, ['person-one', 'person-three'])
+})
+
+it('an equivocation report is kept across a restart', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, bare }) => {
+    const [first, second] = [await bare(0), await bare(1)]
+    await eventually(() => A.getHeads(second.board.doc()).join() === A.getHeads(server.store.docHandle.doc()).join(), 'the second member never synced')
+    const base = second.board.doc(), actor = machineActor(project.keys[0])
+    const one = A.change(A.clone(base, { actor }), doc => { doc.name = new A.ImmutableString('One story') })
+    const two = A.change(A.clone(base, { actor }), doc => { doc.name = new A.ImmutableString('Another story') })
+    for (const [doc, member] of [[one, first], [two, second]]) {
+      const [hash] = A.getHeads(doc)
+      member.signatures.change(d => { d[shardOf(hash)][hash] = signChange(project.keys[0], project.projectId, hash) })
+    }
+    first.board.update(doc => A.merge(doc, one))
+    second.board.update(doc => A.merge(doc, two))
+    const report = await eventually(() => server.store.getDoc().attribution.summary.equivocations[0], 'the equivocation was never reported')
+    // Both members stop, so nothing can report it again; the hub restarts from its own directory.
+    await first.repo.shutdown(); await second.repo.shutdown()
+    const directory = server.store.directory
+    await server.store.close()
+    const reopened = hubRuntime(directory, { actors, project })
+    await reopened.init()
+    try {
+      const kept = reopened.getDoc().attribution.summary.equivocations
+      assert.equal(kept.length, 1)
+      assert.deepEqual([kept[0].machineId, kept[0].seq, [...kept[0].hashes].sort()], [report.machineId, report.seq, [...report.hashes].sort()])
+      assert.equal(kept[0].proven, true, 'its proof is checked again on reading')
+    } finally { await reopened.close() }
   })
 })
