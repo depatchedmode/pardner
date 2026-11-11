@@ -25,6 +25,14 @@ Status: **plan**. Nothing here is implemented. The design is in [PARDNER-TRUST-D
 | 3 | Handshake | Replace `deviceToken` and `replicaToken`. Sign hub HTTP requests. Close sessions on removal. Make `/policy` a local check. A restored hub waits for a peer. Retire the hand-run hub and replica roles. Reword the AGENTS.md admission rule | #187, part of #165 | lifecycle model, 20-seed, acceptance contract update |
 | 4 | Direct peer lane | An opt-in listener, the same handshake over a machine-keyed channel, and sync between two machines at a given address | — | lifecycle model, 20-seed, two real machines on separate networks |
 
+## Landing order (decided)
+
+The gate lands first, and change attribution follows separately.
+
+- **Gate:** `integration/trust-gate` joins the keys, signed membership, invitations and pairing, the People panel, the machine-key handshake, plain string values, the three stage 0 fixes and the review fixes (#217, #219). It is qualified as one branch. README states that changes are not yet signed.
+- **Attribution:** signed changes (#220) and the Activity work (#222, #223) stay a separate stack until an independent review passes. Signing itself is sound; what Activity shows under a signature is not yet.
+- **After both:** the machine-keyed channel (#215) with the direct peer lane (#200), the next-change-slot check (#221), per-project identity (#218) and open time (#209).
+
 ## Ordering
 
 - 0a, 0b, 0c and the spike start now, in parallel.
