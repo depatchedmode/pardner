@@ -7,10 +7,13 @@ import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
 import { startClient } from '../lib/client-service.js'
 import { CLIENT_API, setupAgent } from '../lib/client-identity.js'
+import { invitationData } from '../lib/client-invites.js'
+import { sameComputerRoute } from '../support/client-workspace.js'
 
-async function fixture(t, name) {
+// Every fixture has an explicit loopback route unless `route: false` stands for a client started without --public-url.
+async function fixture(t, name, { route = true } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-client-'))
-  const client = await startClient({ directory, port: 0, deviceName: `${name} laptop`, setupAgent: { harnessId: 'openai-codex', name: `${name} agent` } })
+  const client = await startClient({ directory, ...(route ? await sameComputerRoute() : { port: 0 }), deviceName: `${name} laptop`, setupAgent: { harnessId: 'openai-codex', name: `${name} agent` } })
   t.after(async () => { await client.stop(); await rm(directory, { recursive: true, force: true }) })
   const api = async (path, body, options = {}) => {
     const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST',
@@ -231,7 +234,8 @@ test('WebSocket proxy forwards a document delivered in the same packet as its up
 })
 
 test('agent-only enrollment has its own author and cannot obtain a human browser session', { timeout: 30000 }, async t => {
-  const alice = await fixture(t, 'Alice')
+  // A client without --public-url still invites an agent on this same computer.
+  const alice = await fixture(t, 'Alice', { route: false })
   const { result: { project } } = await alice.api('/projects', { name: 'Agent', operationId: 'create' })
   const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'agent' })
   const directory = await mkdtemp(join(tmpdir(), 'pardner-agent-'))
@@ -489,6 +493,43 @@ test('gateway error pages and hub 5xx responses are outages: replicas keep savin
   reply = { status: 401, type: 'application/json', body: JSON.stringify({ code: 'AUTH_REQUIRED', error: 'Device is not admitted to this project' }) }
   const { result: revoked, response } = await bob.api(path, { type: 'task.create', operationId: 'denied', payload: { title: 'denied' } }, { failure: true })
   assert.equal(response.status, 403); assert.equal(revoked.code, 'REVOKED')
+})
+
+test('without --public-url, Human and My device invitations are refused at issue time and nothing is recorded', { timeout: 30000 }, async t => {
+  const alice = await fixture(t, 'Alice', { route: false })
+  const { result: { project } } = await alice.api('/projects', { name: 'Loopback only', operationId: 'create' })
+  for (const purpose of ['human', 'device']) {
+    const { result, response } = await alice.api(`/projects/${project.id}/invites`, { purpose, operationId: `invite-${purpose}` }, { failure: true })
+    assert.equal(response.status, 409); assert.equal(result.code, 'PUBLIC_URL_REQUIRED')
+    assert.equal(result.error, `A ${purpose === 'human' ? 'Human' : 'My device'} invitation is used on another computer, but this client has no public address, ` +
+      `so the invitation would point to ${alice.client.url}, which only this computer can reach. ` +
+      'Restart this client with `pardner client serve --public-url <https origin>`, then create the invitation again.')
+    assert.deepEqual(result.details, { purpose, endpoint: `${alice.client.url}/pardner/client/v1/enroll` })
+    assert.equal(result.invitation, undefined)
+  }
+  const { result: agent } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'invite-agent' })
+  assert.equal(invitationData(agent.invitation).endpoint, `${alice.client.url}/pardner/client/v1/enroll`)
+  const { result: listed } = await alice.api(`/projects/${project.id}/invites`)
+  assert.deepEqual(listed.invites.map(invite => invite.purpose), ['agent'])
+})
+
+test('a member asking a hub without --public-url is told the hub must be restarted with one', { timeout: 45000 }, async t => {
+  const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
+  const { result: { project } } = await alice.api('/projects', { name: 'Hub route', operationId: 'create' })
+  const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
+  await bob.api('/join', { invitation: invitation.invitation, operationId: 'join' })
+  // The hub restarts on the same port but without its public route.
+  alice.client.registry.update(state => { state.publicUrl = null })
+  await alice.client.stop()
+  const hub = await startClient({ directory: alice.directory })
+  t.after(() => hub.stop())
+  assert.equal(hub.gatewayUrl, hub.url)
+  const { result, response } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'device', operationId: 'device' }, { failure: true })
+  assert.equal(response.status, 409); assert.equal(result.code, 'PUBLIC_URL_REQUIRED')
+  assert.match(result.error, /^A My device invitation is used on another computer, but this project's hub \(the computer that started the project, where its invitations are issued\) has no public address/)
+  assert.ok(result.error.includes(`would point to ${hub.url}, which only the hub's computer can reach. Restart the hub's client with \`pardner client serve --public-url <https origin>\``), result.error)
+  const { result: agent } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'agent' })
+  assert.equal(invitationData(agent.invitation).endpoint, `${hub.url}/pardner/client/v1/enroll`)
 })
 
 test('identity, harness and revocation refusals name the actual problem', { timeout: 45000 }, async t => {

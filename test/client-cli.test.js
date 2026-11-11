@@ -64,7 +64,16 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
     assert.ok(!grantOutput.stdout.includes(grant.token))
     assert.equal((await stat(grantFile)).mode & 0o777, 0o600)
     const output = join(directory, 'invite.txt')
-    const { stdout } = await run(['invite', '--project', project.id, '--purpose', 'human', '--operation-id', 'invite', '--output-file', output])
+    // Without --public-url a Human or My device invitation would carry this client's loopback address.
+    for (const purpose of ['human', 'device']) {
+      const loopbackOnly = await refused(['invite', '--project', project.id, '--purpose', purpose, '--operation-id', `invite-${purpose}`, '--output-file', output])
+      assert.equal(loopbackOnly.code, 'PUBLIC_URL_REQUIRED')
+      assert.match(loopbackOnly.message, new RegExp(`would point to ${client.url.replaceAll('.', '\\.')}, which only this computer can reach`))
+      assert.match(loopbackOnly.message, /Restart this client with `pardner client serve --public-url <https origin>`/)
+      await assert.rejects(stat(output), { code: 'ENOENT' })
+    }
+    // An agent invitation is for an agent on this computer, so the loopback route is fine.
+    const { stdout } = await run(['invite', '--project', project.id, '--purpose', 'agent', '--operation-id', 'invite', '--output-file', output])
     const invitation = await readFile(output, 'utf8')
     assert.equal(invitationData(invitation).projectId, project.id)
     assert.ok(!stdout.includes(invitation)); assert.equal((await stat(output)).mode & 0o777, 0o600)

@@ -8,6 +8,7 @@ import { promisify } from 'node:util'
 import { chromium, webkit } from 'playwright'
 import { bootstrapPath, createClientApi, projectConfiguration, takeBootstrapGrant } from '../ui-prototype/src/client-api.js'
 import { createConnection } from '../ui-prototype/src/connection.js'
+import { sameComputerRoute } from '../support/client-workspace.js'
 import { createPresenceReporter, focusByTask, presenceIndex, sortParticipants } from '../ui-prototype/src/presence.js'
 
 const run = promisify(execFile)
@@ -188,7 +189,7 @@ async function gitProfile(name) {
 async function person(t, startClient, name, agent) {
   const directory = await mkdtemp(join(tmpdir(), `pardner-ui-${name.toLowerCase()}-`))
   const gitDirectory = await gitProfile(name)
-  const client = await startClient({ directory, port: 0, deviceName: `${name}’s laptop`, gitDirectory, setupAgent: agent })
+  const client = await startClient({ directory, ...await sameComputerRoute(), deviceName: `${name}’s laptop`, gitDirectory, setupAgent: agent })
   t.after(async () => {
     await client.stop()
     await rm(directory, { recursive: true, force: true })
