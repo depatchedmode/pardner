@@ -62,7 +62,7 @@ async function build(directory, project, operations) {
     const request = next(runtime.workspace.handle.doc())
     const prepared = prepareOperation(runtime.workspace.handle.doc(), { ...request, operationId: `build-${index}` },
       { replicaId: runtime.manifest.replicaId, timestamp: new Date(Date.UTC(2026, 0, 1) + index * 1000).toISOString() })
-    runtime.workspace.handle.change(prepared.change)
+    runtime.boardChange(prepared.change)
     request.onDone?.(prepared.event.result)
     if (index % 50 === 49) await new Promise(resolve => setImmediate(resolve))
   }

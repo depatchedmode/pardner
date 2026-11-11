@@ -44,7 +44,7 @@ export function signerLine(attribution, signers) {
       case 'removed':
         return { text: `Made by a removed machine: ${machineLabel(attribution, signer.machineId)}${signer.actorMismatch ? ' · as an Actor it isn’t allowed to act as' : ''}`, tone: 'flag' }
       case 'unattributed':
-        return { text: `Unattributed: ${REASONS[signer.reason] ?? 'no valid signature'} · relayed by ${machineLabel(attribution, signer.relayedBy)}`, tone: 'flag' }
+        return { text: `Unattributed: ${REASONS[signer.reason] ?? 'no valid signature'} · relayed by ${machineLabel(attribution, signer.relayedBy)}${signer.ownActor ? ' · it carries this computer’s actor, but this computer didn’t make it' : ''}`, tone: 'flag' }
       default: {
         const waiting = signer.waitingFor ? ` · waiting for ${machineLabel(attribution, signer.waitingFor)}` : ''
         return { text: `Signature pending${waiting}`, tone: 'pending' }
@@ -123,9 +123,11 @@ export function recordSignerLine(attribution, record) {
 export function reviewNotice(attribution) {
   const count = attribution?.summary?.review ?? 0
   const equivocations = attribution?.summary?.equivocations ?? []
+  const ownActor = attribution?.summary?.ownActor ?? 0
   if (!count && !equivocations.length) return null
   const lines = []
   if (count) lines.push(`${count === 1 ? 'One change needs' : `${count} changes need`} review: ${count === 1 ? 'its' : 'their'} signer couldn’t be confirmed, ${count === 1 ? 'it was' : 'they were'} made by a removed machine, or ${count === 1 ? 'it claims' : 'they claim'} an Actor ${count === 1 ? 'its' : 'their'} machine isn’t allowed to act as.`)
+  if (ownActor) lines.push(`${ownActor === 1 ? 'One change carries' : `${ownActor} changes carry`} this computer’s actor but ${ownActor === 1 ? 'wasn’t' : 'weren’t'} made here: another machine used it.`)
   for (const report of equivocations) {
     const relayer = machineLabel(attribution, report.relayedBy)
     lines.push(report.proven
