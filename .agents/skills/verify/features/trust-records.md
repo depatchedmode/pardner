@@ -14,10 +14,10 @@ assertions in `test/client-cli.test.js` cover the public outputs.
   the signed genesis. A retried create returns the same ID, and a second create
   gets another. The stored genesis verifies from the ID alone and names the creator,
   whose person ID is derived from this machine's key, and this machine.
-- **Prior installs.** Version 1 and version 2 client directories, whether cleanly
-  closed or left with a write-ahead log by a killed process, and schema 6 and 7
+- **Prior installs.** Version 1, 2 and 3 client directories, whether cleanly
+  closed or left with a write-ahead log by a killed process, and schema 6, 7 and 8
   storage directories are refused, and their paths, modes and bytes are compared
-  before and after. A version 2 registry's version is read from a private copy.
+  before and after. A version 2 or 3 registry's version is read from a private copy.
 - **Admission.** `test/record-store.test.js` stores a batch whose records
   certify each other in either order. It refuses a forged signature, another
   project, a non-record and a signer the store already holds as removed, with

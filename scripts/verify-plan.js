@@ -28,6 +28,14 @@ const groups = [
       note: 'Signed offers, join requests and codes; approval, expiry, single use, the request bound, pairing, roles, removal and re-admission' }],
   },
   {
+    name: 'signed-changes', scripts: ['test:runtime', 'test:cli', 'test:ui'],
+    qualification: 'Signed changes, the signature document and cache, attribution, and the two-document hub acknowledgement',
+    files: names(`lib/attribution.js lib/change-signatures.js lib/signature-cache.js lib/client-review.js support/signing-process.js support/unsigned-peer.js
+      scripts/signing-benchmark.js test/signed-changes-ui.test.js`),
+    focused: [{ command: 'node --test test/change-signatures.test.js test/signed-changes.test.js test/signed-changes-ui.test.js',
+      note: 'Machine actors, signing and checking, pending then unattributed under cut, slow and silent links, removed machines, equivocation, kill between saves, and the board' }],
+  },
+  {
     name: 'persistence', scripts: ['test:qualification', 'test:runtime'], qualification: 'Disk persistence and directory ownership',
     files: names(`lib/atomic-file.js lib/durable-repo.js lib/nodefs-storage-adapter.js lib/storage-key.js lib/storage-lease.js lib/private-state.js
       support/persistence-process.js`),
