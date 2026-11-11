@@ -135,6 +135,9 @@ How the hub knows it may be stale (wall-clock time plays no part):
   look untouched (a filesystem snapshot rolled back in place).
 - **Its own state file is missing.** A hub that already holds a project but has
   no `hub-state.json` can't tell whether it was restored, so it waits too.
+  Its start count is unknown: only a checkpoint with more records than the restored
+  store, followed by verified records extending the store to that count, can vouch.
+  Otherwise use the operator resume below; a checkpoint from an old run is not proof.
 
 The waiting state is saved in `hub-state.json`, in the same write as the new file
 identity, together with the point checkpoints are compared against (the state the

@@ -100,7 +100,7 @@ Actors a machine may act as come from its records. A write checks this machine's
 own records locally and never waits on the hub. A hub restored from a backup, or
 shown by a member that it fell behind, serves no other machine until a member that
 saw a later state has synced its membership, or its operator runs
-`pardner client resume`. That waiting state is saved with the point checkpoints
+`pardner client resume`. Without `hub-state.json`, a checkpoint must show more records than the restored store, and verified records must bring the store up to that count; an old start count cannot vouch. That waiting state is saved with the point checkpoints
 are compared against, so it survives any number of restarts and a process kill at
 any step, and an established hub whose state file is missing waits too. Two live
 sync sessions for one machine are reported.
