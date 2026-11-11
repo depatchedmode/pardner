@@ -283,15 +283,19 @@ it('resume keeps serving blocked until its saved state succeeds and serializes c
     await runtime.init()
     const rename = fs.rename
     let writes = 0
-    let entered = Promise.withResolvers()
-    let gate = Promise.withResolvers()
-    release = () => gate.resolve()
+    const entered = Promise.withResolvers(), gate = Promise.withResolvers()
+    const retryEntered = Promise.withResolvers(), retryGate = Promise.withResolvers()
+    release = () => { gate.resolve(); retryGate.resolve() }
     t.mock.method(fs, 'rename', async (from, to) => {
       if (to === join(runtime.directory, 'hub-state.json')) {
         writes++
-        entered.resolve()
-        await gate.promise
-        if (writes === 1) throw Object.assign(new Error('test write failure'), { code: 'EIO' })
+        if (writes === 1) {
+          entered.resolve()
+          await gate.promise
+          throw Object.assign(new Error('test write failure'), { code: 'EIO' })
+        }
+        retryEntered.resolve()
+        await retryGate.promise
       }
       return rename(from, to)
     })
@@ -301,8 +305,11 @@ it('resume keeps serving blocked until its saved state succeeds and serializes c
     try {
       assert.equal(runtime.hubStatus().waiting, true, 'pending writes must not enable serving')
       assert.equal(writes, 1, 'the second resume has not started a write')
-    } finally { release() }
+    } finally { gate.resolve() }
     assert.equal((await first).code, 'EIO')
+    await retryEntered.promise
+    assert.equal(runtime.hubStatus().waiting, true, 'a failed write leaves serving blocked during the retry')
+    retryGate.resolve()
     await second
     assert.equal(writes, 2, 'a failed resume must not make the next attempt skip persistence')
     assert.equal(runtime.hubStatus().waiting, false)
