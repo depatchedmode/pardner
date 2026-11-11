@@ -14,6 +14,8 @@ already covered. Match the exact assertions to the task's expected result.
   receipt, acknowledgement loss, and effect replay.
 - [Control pane and issue links](control.md): T3 credential, registry, routes,
   queued intent, stale reads, approvals, cancellation, verdicts, and GitHub links.
+- [Machine keys and membership library](trust-library.md): standalone signing,
+  fixed-point authority, removals and deterministic conflict choices.
 - [Client onboarding and presence](client-onboarding.md): authenticated Actor
   sessions, device aggregation, expiry and integration evidence boundaries.
 

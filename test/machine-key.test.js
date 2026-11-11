@@ -60,4 +60,3 @@ test('keys round-trip at 0600; exposed files, symlinks, corrupt files and overwr
     await assert.rejects(loadMachineKey(directory), { code: 'ELOOP' })
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
-
