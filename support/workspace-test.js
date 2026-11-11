@@ -1,9 +1,9 @@
-import { replicaCredentials } from './replica-credentials.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import AutomergeSyncServer from '../automerge-sync-server.js'
+import { hubRuntime } from './machines.js'
 
 export const ACTORS = [
   { id: 'alice', handle: 'alice', kind: 'human' },
@@ -14,7 +14,7 @@ export const ACTORS = [
 
 export async function withWorkspaceServer(run) {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-public-test-'))
-  const server = new AutomergeSyncServer({ replicaCredentials, directory, actors: ACTORS, env: {}, apiToken: 'test-token', httpPort: 0, wsPort: 0, logger: {} })
+  const server = new AutomergeSyncServer({ store: hubRuntime(directory, { actors: ACTORS }), env: {}, apiToken: 'test-token', httpPort: 0, wsPort: 0, logger: {} })
   try {
     await server.start()
     const api = async (path, body, { token = 'test-token', method = body === undefined ? 'GET' : 'POST' } = {}) => {

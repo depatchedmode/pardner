@@ -3,8 +3,12 @@
 /**
  * Automerge Sync Server
  *
- * HTTP/WebSocket hub for the current Pardner deployment.
- * CLI, external harnesses, and UI clients talk to this process.
+ * One project's HTTP and WebSocket service: the client's internal per-project
+ * runtime, or the standalone agent and integration service (`pardner serve`).
+ * The CLI, external harnesses and UI clients talk to it with its local API
+ * token. Other machines reach a hub only with their machine keys: the native
+ * sync socket opens with the machine handshake, and their HTTP requests are
+ * signed (lib/machine-handshake.js, lib/machine-session.js).
  */
 
 import { WebSocketServer } from 'ws'
@@ -22,6 +26,8 @@ import { parseGithubRepo } from './lib/github-remote.js'
 import { isLoopback, isLoopbackRequest } from './lib/loopback.js'
 import { ControlPane } from './lib/control-pane.js'
 import { T3Busy, T3Rejected, T3Unknown } from './lib/t3-mcp-client.js'
+import { HandshakeError, respondHandshake } from './lib/machine-handshake.js'
+import { SessionServer, signedBody, signedHeaders } from './lib/machine-session.js'
 
 const DEFAULT_HTTP_PORT = 8004
 const DEFAULT_WS_PORT = 8005
@@ -29,6 +35,12 @@ const DEFAULT_WS_PORT = 8005
 /** WebSocket path for Automerge Repo native (CBOR) sync — distinct from JSON UI subscriptions. */
 const NATIVE_AUTOMERGE_WS_PATH = '/automerge'
 const REQUEST_LIMIT = '100kb'
+/** Routes another machine may call with a signed request instead of the local API token. */
+const MACHINE_ROUTES = new Set(['/automerge/sync-ack'])
+/** How long a second sync session for one machine waits for the first to answer a ping before the first is presumed gone. */
+const DUPLICATE_PROBE_MS = 3000
+const HUB_WAITING_MESSAGE = 'This hub was restored or fell behind, and waits to catch up with a current member machine before it serves another machine. '
+  + 'If no machine holds newer state, its operator can run pardner client resume --project ID on the hub.'
 
 function wsUpgradePathname(req) {
   try {
@@ -94,11 +106,7 @@ class AutomergeSyncServer {
     this.logger = options.logger ?? console
     this.store = options.store ?? new WorkspaceRuntime({
       directory: options.directory ?? options.storagePath ?? resolve(env.PARDNER_DATA_DIR ?? '.pardner'),
-      role: options.role ?? env.PARDNER_ROLE ?? 'hub', actors: options.actors ?? [],
-      hubUrl: options.hubUrl ?? env.PARDNER_HUB_URL, hubWsUrl: options.hubWsUrl ?? env.PARDNER_HUB_WS_URL,
-      replicaCredentialId: options.replicaCredentialId ?? env.PARDNER_REPLICA_ID,
-      replicaToken: options.replicaToken ?? env.PARDNER_REPLICA_TOKEN,
-      token: options.hubToken ?? env.PARDNER_HUB_TOKEN ?? options.apiToken ?? env.PARDNER_API_TOKEN,
+      role: 'hub', actors: options.actors ?? [],
     })
     this.connectedClients = new Set()
     this.app = express()
@@ -118,18 +126,17 @@ class AutomergeSyncServer {
     this.httpPort = parsePort(options.httpPort ?? env.PARDNER_HTTP_PORT ?? DEFAULT_HTTP_PORT, 'PARDNER_HTTP_PORT')
     this.wsPort = parsePort(options.wsPort ?? env.PARDNER_WS_PORT ?? DEFAULT_WS_PORT, 'PARDNER_WS_PORT')
     this.apiToken = options.apiToken ?? env.PARDNER_API_TOKEN ?? ''
-    const replicaCredentials = options.replicaCredentials ?? JSON.parse(env.PARDNER_REPLICA_CREDENTIALS ?? '{}')
-    if (!replicaCredentials || Array.isArray(replicaCredentials) || typeof replicaCredentials !== 'object') {
-      throw new Error('PARDNER_REPLICA_CREDENTIALS must map enrolled replica IDs to distinct secrets')
+    // The client's loopback hop to this runtime's native socket: its own process proves it with this token. It is
+    // a credential inside one machine; other machines prove themselves only with the handshake.
+    this.nativeToken = options.nativeToken ?? null
+    if (this.nativeToken !== null && (!isNonEmptyString(this.nativeToken) || this.nativeToken === this.apiToken)) {
+      throw new Error('The native socket token must be nonempty and distinct from the API token')
     }
-    this.replicaCredentials = new Map(Object.entries(replicaCredentials))
-    const secrets = new Set()
-    for (const [id, secret] of this.replicaCredentials) {
-      if (!isNonEmptyString(id) || !isNonEmptyString(secret) || secret === this.apiToken || secrets.has(secret)) {
-        throw new Error('Replica credentials must have nonempty IDs and unique secrets distinct from the API token')
-      }
-      secrets.add(secret)
-    }
+    // Routes other machines dial to reach this hub; the handshake binds them. The client passes its public routes;
+    // otherwise they are this service's own listener addresses.
+    this.machineRoutes = options.machineRoutes ?? null
+    this.syncSessions = new Map()
+    this.duplicates = new Map()
     this.allowInsecureLocal = options.allowInsecureLocal ?? env.PARDNER_ALLOW_INSECURE_LOCAL === '1'
     this.allowLegacyWsQueryToken = options.allowLegacyWsQueryToken ?? env.PARDNER_ALLOW_LEGACY_WS_QUERY_TOKEN === '1'
     this.wsTicketTtlMs = Number(
@@ -140,7 +147,9 @@ class AutomergeSyncServer {
       httpUnauthorized: 0,
       httpOriginRejected: 0,
       wsUnauthorized: 0,
-      wsOriginRejected: 0
+      wsOriginRejected: 0,
+      machineRefused: 0,
+      duplicateMachine: 0,
     }
     this.explicitOrigins = options.allowedOrigins !== undefined || env.PARDNER_ALLOWED_ORIGINS !== undefined
     this.allowedOrigins = parseAllowedOrigins(
@@ -173,8 +182,17 @@ class AutomergeSyncServer {
     await this.store.init()
     this.onDocumentChange = () => this.broadcastDocumentUpdate()
     this.onRuntimeStatus = status => this.broadcastMessage({ type: 'sync-status', status })
+    this.onMembership = () => this.enforceMembership()
     this.store.docHandle.on('change', this.onDocumentChange)
     this.store.on?.('status', this.onRuntimeStatus)
+    this.store.on?.('membership', this.onMembership)
+    this.sessions = this.store.role === 'hub' && this.store.machineKey ? new SessionServer({ key: this.store.machineKey,
+      projectId: this.store.manifest.workspaceId, acceptRoute: route => this.routes().http.includes(route),
+      member: machineId => this.memberKey(machineId), refusal: machineId => this.notMember(machineId),
+      welcome: () => {
+        if (this.store.hubStatus()?.waiting) throw new HandshakeError('HUB_WAITING', HUB_WAITING_MESSAGE)
+        return { records: this.store.records.all(), checkpoint: this.store.checkpoint() }
+      } }) : null
     this.logger.log?.('✅ Backend AutomergeStore initialized')
     if (this.controlOptions !== false) {
       this.control = await new ControlPane({ directory: this.store.directory, logger: this.logger, ...this.controlOptions,
@@ -194,12 +212,15 @@ class AutomergeSyncServer {
     this.httpServer = createServer(this.app)
     await this.listen(this.httpServer, this.httpPort, this.host)
     this.httpPort = this.getBoundPort(this.httpServer, this.httpPort)
+    const authority = this.host.includes(':') ? `[${this.host}]` : this.host
+    this.directRoutes = { http: [`http://${authority}:${this.httpPort}`] }
     if (!this.explicitOrigins) {
       for (const origin of defaultAllowedOrigins(this.httpPort)) this.allowedOrigins.add(origin)
     }
 
     await this.listen(this.wsHttpServer, this.wsPort, this.host)
     this.wsPort = this.getBoundPort(this.wsHttpServer, this.wsPort)
+    this.directRoutes.ws = [`ws://${authority}:${this.wsPort}${NATIVE_AUTOMERGE_WS_PATH}`]
 
     this.logger.log?.(`📡 HTTP API listening on ${this.host}:${this.httpPort}`)
     this.logger.log?.(`🌐 WebSocket sync on ${this.host}:${this.wsPort}`)
@@ -242,12 +263,14 @@ class AutomergeSyncServer {
 
   async stop() {
     this.stopping = true
+    this.sessions?.clear()
     // Stop both listeners before draining upgraded sockets and in-flight requests.
     const listenersClosed = Promise.allSettled([
       this.closeServer(this.wsHttpServer), this.closeServer(this.httpServer),
     ])
     if (this.onDocumentChange) this.store.docHandle?.off('change', this.onDocumentChange)
     if (this.onRuntimeStatus) this.store.off?.('status', this.onRuntimeStatus)
+    if (this.onMembership) this.store.off?.('membership', this.onMembership)
     for (const client of this.connectedClients) {
       try {
         client.terminate()
@@ -365,9 +388,9 @@ class AutomergeSyncServer {
     return null
   }
 
-  mintWsTicket(replicaId = null) {
+  mintWsTicket(native = false) {
     const ticket = crypto.randomBytes(32).toString('hex')
-    this.wsTickets.set(ticket, { expiresAt: Date.now() + this.wsTicketTtlMs, replicaId })
+    this.wsTickets.set(ticket, { expiresAt: Date.now() + this.wsTicketTtlMs, native })
     return ticket
   }
 
@@ -376,9 +399,7 @@ class AutomergeSyncServer {
     const grant = this.wsTickets.get(ticket)
     if (!grant) return false
     this.wsTickets.delete(ticket)
-    return grant.expiresAt > Date.now() && (native
-      ? grant.replicaId !== null && this.replicaCredentials.has(grant.replicaId)
-      : grant.replicaId === null)
+    return grant.expiresAt > Date.now() && grant.native === native
   }
 
   cleanupExpiredWsTickets() {
@@ -396,7 +417,9 @@ class AutomergeSyncServer {
 
   isAuthorizedWebSocketRequest(req) {
     if (wsUpgradePathname(req) === NATIVE_AUTOMERGE_WS_PATH) {
-      return this.consumeWsTicket(this.wsTicketFromRequest(req), true)
+      // Another machine is admitted by the handshake on the socket; behind the client, its loopback hop also needs a ticket.
+      if (!this.store.machineKey || this.store.role !== 'hub') return false
+      return this.nativeToken === null || this.consumeWsTicket(this.wsTicketFromRequest(req), true)
     }
     if (!this.apiToken) return true
 
@@ -415,6 +438,16 @@ class AutomergeSyncServer {
       }
       return next()
     }
+    const signed = MACHINE_ROUTES.has(req.path) && this.sessions ? signedHeaders(req.headers) : null
+    if (signed) {
+      try {
+        req.machine = this.verifyMachine({ ...signed, method: req.method, suffix: req.originalUrl, body: signedBody(req.method, req.body) })
+        return next()
+      } catch (error) {
+        this.recordSecurityEvent('machineRefused', `Refused a signed ${req.method} from another machine`)
+        return res.status(machineStatus(error.code)).json({ code: error.code, error: error.message })
+      }
+    }
     this.recordSecurityEvent(
       'httpUnauthorized',
       `Rejected unauthorized HTTP ${req.method}`
@@ -422,6 +455,118 @@ class AutomergeSyncServer {
     return res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' })
   }
   
+  /** The routes other machines dial to reach this hub, as `{ http, ws }`. */
+  routes() { return this.machineRoutes ?? this.directRoutes ?? { http: [], ws: [] } }
+
+  /** The certified public key of `machineId` while it is a current member of this hub's records, else null. */
+  memberKey(machineId) {
+    return this.store.records.membership().machines.find(machine => machine.id === machineId)?.publicKey ?? null
+  }
+
+  /** The machine a signed request comes from; refused while this hub waits after a restore. */
+  verifyMachine(request) {
+    if (!this.sessions) throw new HandshakeError('NO_MACHINES', 'This service serves no other machine. Host projects with pardner client.')
+    if (this.store.hubStatus()?.waiting) throw new HandshakeError('HUB_WAITING', HUB_WAITING_MESSAGE)
+    return this.sessions.verify(request)
+  }
+
+  /**
+   * Admits another machine on a native socket: the handshake, then the
+   * Automerge adapter. Only a current member machine is welcomed, and it gets
+   * the records only after both signatures verify. While this hub waits after
+   * a restore, any machine that proves its key has its records merged first,
+   * since it may have been admitted after the backup; then only a member is
+   * welcomed, and only a member that saw a later state of this hub vouches
+   * for catching up. Every other machine is refused.
+   */
+  async acceptMachine(ws, req) {
+    ws.isAlive = true
+    ws.on('pong', () => { ws.isAlive = true })
+    let vouches = false
+    try {
+      const { initiator } = await respondHandshake(ws, { key: this.store.machineKey, projectId: this.store.manifest.workspaceId, role: 'hub',
+        acceptRoute: route => this.routes().ws.includes(route),
+        screen: hello => {
+          vouches = this.store.noteCheckpoint(hello.checkpoint)
+          if (!this.store.hubStatus()?.waiting && this.memberKey(hello.initiator.machineId) !== hello.initiator.publicKey) throw this.notMember(hello.initiator.machineId)
+        },
+        admit: async ({ hello, requestMembership }) => {
+          if (this.store.hubStatus()?.waiting) {
+            this.store.admitRecords(await requestMembership())
+            if (this.memberKey(hello.initiator.machineId) !== hello.initiator.publicKey) throw this.notMember(hello.initiator.machineId)
+            if (!vouches) throw new HandshakeError('HUB_WAITING', HUB_WAITING_MESSAGE)
+            await this.store.resumeHub({ machineId: hello.initiator.machineId })
+          }
+          if (this.memberKey(hello.initiator.machineId) !== hello.initiator.publicKey) throw this.notMember(hello.initiator.machineId)
+          return { records: this.store.records.all(), checkpoint: this.store.checkpoint(), documentUrl: this.store.manifest.url }
+        } })
+      // Membership may have changed while the welcome was sent; nothing reaches Automerge unless it still holds.
+      if (this.stopping || ws.readyState !== ws.OPEN || this.memberKey(initiator.machineId) !== initiator.publicKey) {
+        ws.terminate()
+        return
+      }
+      this.registerSyncSession(initiator.machineId, ws)
+      this.nativeWsServer.emit('connection', ws, req)
+    } catch (error) {
+      this.recordSecurityEvent('machineRefused', `Refused a machine handshake (${error.code ?? 'failed'})`)
+      if (ws.readyState === ws.OPEN) ws.close(4403, String(error.code ?? 'HANDSHAKE_FAILED').slice(0, 100))
+      else ws.terminate()
+    }
+  }
+
+  notMember(machineId) {
+    return this.store.records.membership().removedMachines.includes(machineId)
+      ? new HandshakeError('REVOKED', 'This machine was removed from the project; nothing is served to it. Its local data is preserved.')
+      : new HandshakeError('NOT_MEMBER', 'This machine is not a member of the project; nothing is served to it')
+  }
+
+  /**
+   * Tracks one machine's live sync sessions. A second session for a machine
+   * that already has one is either a reconnect (the first no longer answers
+   * a ping and is closed) or two live copies of one machine, such as a backup
+   * running beside its original: that is reported, not refused (#165).
+   */
+  registerSyncSession(machineId, ws) {
+    const live = this.syncSessions.get(machineId) ?? new Set()
+    this.syncSessions.set(machineId, live)
+    for (const other of live) this.probeDuplicate(machineId, other)
+    live.add(ws)
+    ws.once('close', () => {
+      live.delete(ws)
+      if (!live.size) this.syncSessions.delete(machineId)
+      this.reportDuplicates()
+    })
+  }
+
+  probeDuplicate(machineId, other) {
+    const answered = () => {
+      clearTimeout(timer)
+      if (other.readyState !== other.OPEN || (this.syncSessions.get(machineId)?.size ?? 0) < 2) return
+      const previous = this.duplicates.get(machineId)
+      this.duplicates.set(machineId, { machineId, detectedAt: previous?.detectedAt ?? new Date().toISOString(), lastSeenAt: new Date().toISOString() })
+      this.recordSecurityEvent('duplicateMachine', 'Two live sync sessions for one machine: a copied client directory may be running beside its original')
+      this.reportDuplicates()
+    }
+    const timer = setTimeout(() => { other.off('pong', answered); other.terminate() }, DUPLICATE_PROBE_MS)
+    other.once('pong', answered)
+    try { other.ping() } catch { clearTimeout(timer); other.terminate() }
+  }
+
+  /** The hub's report of machines seen with two live sync sessions, in its status, while either copy is connected. */
+  reportDuplicates() {
+    this.store.duplicateMachines = [...this.duplicates.values()].map(entry => ({ ...entry, sessions: this.syncSessions.get(entry.machineId)?.size ?? 0 }))
+    this.store.emitStatus?.()
+  }
+
+  /** Ends every session of a machine that is no longer a member, at once: its sync sockets close and its signed sessions are dropped. */
+  enforceMembership() {
+    this.sessions?.revokeNonMembers()
+    for (const [machineId, live] of this.syncSessions) {
+      if (this.memberKey(machineId)) continue
+      for (const ws of live) ws.close(4403, 'REVOKED')
+    }
+  }
+
   /**
    * Control records for T3 threads this service controls. Credentials, the
    * registry, routes and owner decisions need the local loopback page; dispatch,
@@ -502,17 +647,39 @@ class AutomergeSyncServer {
       res.status(400).json({ code: 'INVALID_ARGUMENT', error: 'Send a valid JSON request.' })
     })
     this.app.get('/pardner/config', (_req, res) => res.set('Cache-Control', 'no-store').json({
-      apiBase: '', wsPath: this.browserWsPath ?? '/',
+      mode: 'standalone', apiBase: '', wsPath: this.browserWsPath ?? '/',
       ...(this.browserWsPath === undefined ? { wsPort: this.wsPort } : {}),
       workspaceId: this.store.manifest.workspaceId,
     }))
+    // The machine handshake carried by HTTP: it opens a signed session (lib/machine-session.js).
+    const sessionFailure = (res, error) => res.status(machineStatus(error.code)).json({ code: error.code ?? 'HANDSHAKE_INVALID', error: error.message })
+    this.app.post('/session', (req, res) => {
+      res.set('Cache-Control', 'no-store')
+      try {
+        if (!this.sessions) throw new HandshakeError('NO_MACHINES', 'This service serves no other machine. Host projects with pardner client.')
+        res.json(this.sessions.open(req.body?.hello))
+      } catch (error) {
+        this.recordSecurityEvent('machineRefused', `Refused a machine session (${error.code ?? 'failed'})`)
+        sessionFailure(res, error)
+      }
+    })
+    this.app.post('/session/confirm', async (req, res) => {
+      res.set('Cache-Control', 'no-store')
+      try {
+        if (!this.sessions) throw new HandshakeError('NO_MACHINES', 'This service serves no other machine. Host projects with pardner client.')
+        res.json({ welcome: await this.sessions.confirm(req.body?.session, req.body?.confirm) })
+      } catch (error) {
+        this.recordSecurityEvent('machineRefused', `Refused a machine session (${error.code ?? 'failed'})`)
+        sessionFailure(res, error)
+      }
+    })
     this.app.use('/pardner', express.static(fileURLToPath(new URL('./ui-prototype/dist/', import.meta.url)), {
       setHeaders: res => res.setHeader('Cache-Control', 'no-cache'),
     }))
     this.app.use((req, res, next) => this.authMiddleware(req, res, next))
     this.setupControlAPI()
     const commands = new Set(['/automerge/operations', '/automerge/sync-ack', '/automerge/ws-ticket', '/automerge/membership/records',
-      '/automerge/deliveries/claim', '/automerge/deliveries/ack', '/automerge/deliveries/release'])
+      '/automerge/deliveries/claim', '/automerge/deliveries/ack', '/automerge/deliveries/release', '/automerge/machine/verify', '/automerge/hub/resume'])
     this.app.use((req, res, next) => {
       const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
       if (mutation && !commands.has(req.path)) {
@@ -567,6 +734,31 @@ class AutomergeSyncServer {
       } catch (error) { operationFailure(res, error) }
     })
 
+    // Every membership record this runtime holds, for its client to check another machine's welcome against.
+    this.app.get('/automerge/membership/log', (req, res) => {
+      try {
+        res.json({ records: this.store.records.all() })
+      } catch (error) { operationFailure(res, error) }
+    })
+
+    // The client's own routes for other machines ask here which machine signed a request.
+    this.app.post('/automerge/machine/verify', (req, res) => {
+      try {
+        const { session, seq, signature, method, suffix, body } = req.body ?? {}
+        res.json(this.verifyMachine({ session, seq, signature, method, suffix, body }))
+      } catch (error) {
+        this.recordSecurityEvent('machineRefused', `Refused a signed request from another machine (${error.code ?? 'failed'})`)
+        res.status(machineStatus(error.code)).json({ success: false, code: error.code ?? 'AUTH_REQUIRED', error: error.message })
+      }
+    })
+
+    // The operator confirms that no machine holds newer state than this restored hub.
+    this.app.post('/automerge/hub/resume', async (req, res) => {
+      try {
+        res.json(await this.store.resumeHub('operator'))
+      } catch (error) { operationFailure(res, error) }
+    })
+
     // The hub's gate for new membership records (WorkspaceRuntime.addRecords).
     this.app.post('/automerge/membership/records', async (req, res) => {
       try {
@@ -615,18 +807,16 @@ class AutomergeSyncServer {
         if (!['ui', 'replica'].includes(purpose)) {
           return res.status(400).json({ code: 'INVALID_TICKET_PURPOSE', error: 'Unknown ticket purpose' })
         }
-        let replicaId = null
         if (purpose === 'replica') {
-          replicaId = req.body?.replicaId
-          const expected = this.replicaCredentials.get(replicaId)
-          const supplied = req.headers['x-pardner-replica-token']
-          if (!expected || typeof supplied !== 'string' ||
-              !crypto.timingSafeEqual(crypto.createHash('sha256').update(expected).digest(),
+          // Only the client's own loopback hop holds this token; other machines reach the socket through it.
+          const supplied = req.headers['x-pardner-native-token']
+          if (this.nativeToken === null || typeof supplied !== 'string' ||
+              !crypto.timingSafeEqual(crypto.createHash('sha256').update(this.nativeToken).digest(),
                 crypto.createHash('sha256').update(supplied).digest())) {
-            return res.status(403).json({ code: 'REPLICA_REQUIRED', error: 'An enrolled replica credential is required' })
+            return res.status(403).json({ code: 'REPLICA_REQUIRED', error: 'Other machines connect through the client, with the machine handshake' })
           }
         }
-        const ticket = this.mintWsTicket(replicaId)
+        const ticket = this.mintWsTicket(purpose === 'replica')
         res.json({ success: true, ticket, expiresInMs: this.wsTicketTtlMs })
       } catch (error) {
         res.status(500).json({ error: error.message })
@@ -769,6 +959,8 @@ class AutomergeSyncServer {
       const pathname = wsUpgradePathname(req)
       const target = pathname === NATIVE_AUTOMERGE_WS_PATH ? this.nativeWsServer : this.wssJson
       target.handleUpgrade(req, socket, head, ws => {
+        // Another machine reaches Automerge only after the machine handshake on its socket.
+        if (target === this.nativeWsServer) return void this.acceptMachine(ws, req)
         target.emit('connection', ws, req)
       })
     }
@@ -847,6 +1039,12 @@ class AutomergeSyncServer {
   }
 
 
+}
+
+/** The HTTP status of a refused machine handshake or signed request. */
+function machineStatus(code) {
+  return { SESSION_UNKNOWN: 401, AUTH_REQUIRED: 401, REQUEST_REPLAYED: 401, REVOKED: 403, NOT_MEMBER: 403, ROUTE_REJECTED: 403, WRONG_PROJECT: 403,
+    NO_MACHINES: 403, TOO_MANY_REQUESTS: 429, HUB_WAITING: 503 }[code] ?? 400
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

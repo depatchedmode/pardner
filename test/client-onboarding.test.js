@@ -8,6 +8,8 @@ import { createHash } from 'node:crypto'
 import { startClient } from '../lib/client-service.js'
 import { CLIENT_API, setupAgent } from '../lib/client-identity.js'
 import { joinApproved, unwrap } from '../support/enrollment.js'
+import { createHello } from '../lib/machine-handshake.js'
+import { generateMachineKey } from '../lib/machine-key.js'
 
 async function fixture(t, name) {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-client-'))
@@ -192,7 +194,9 @@ test('recipient proof, removal and changed retries cannot recover another admiss
   // The same request, resent, reports its approval and the same credential; nothing else does.
   const retry = await enroll2({ action: 'request', ...attempt.recipient })
   assert.equal(retry.status, 200)
-  assert.equal(retry.result.receipt.deviceToken, attempt.receipt.deviceToken)
+  assert.equal(retry.result.receipt.admissionId, attempt.receipt.admissionId)
+  assert.equal(retry.result.receipt.machineId, bob.client.registry.machineKey.machineId)
+  for (const field of ['deviceToken', 'replicaToken']) assert.equal(retry.result.receipt[field], undefined, 'no bearer credential is issued between machines')
   assert.equal((await enroll2({ action: 'request', ...attempt.recipient, recipientProof: 'different'.repeat(8) })).result.code, 'INVITE_USED')
   assert.equal((await enroll2({ action: 'status', offerId: attempt.recipient.request.offerId, requestId: attempt.requestId, recipientProof: 'different'.repeat(8) })).result.code, 'AUTH_REQUIRED')
   const changed = { ...attempt.recipient, request: { ...attempt.recipient.request, device: { ...attempt.recipient.request.device, name: 'changed' } } }
@@ -512,6 +516,32 @@ test('an unauthenticated WebSocket upgrade cannot restart a dead project runtime
   assert.equal(client.starting.size, 0)
 })
 
+test('another machine’s handshake cannot wake a dead hosted runtime, which restarts by itself after the backoff', { timeout: 30000 }, async t => {
+  const { WebSocket } = await import('ws')
+  const { client, call } = await blankClient(t, 'pardner-revive-', { restartBackoffMs: 400 })
+  await call('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+  const { project } = await call('/projects', { name: 'Dormant hub', operationId: 'create' })
+  const key = client.project(project.id).key
+  const runtime = await client.runtime(client.project(project.id))
+  runtime.child.kill('SIGKILL')
+  await new Promise(resolve => runtime.child.once('exit', resolve))
+  // The hello is unauthenticated, so it gets an outage, not a fresh runtime.
+  const hello = createHello(generateMachineKey(), { projectId: project.id, route: `${client.url}${CLIENT_API}/replica/${project.id}`, role: 'replica' })
+  const response = await fetch(`${client.url}${CLIENT_API}/replica/${project.id}/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hello }) })
+  assert.equal(response.status, 503); assert.equal((await response.json()).code, 'HUB_UNAVAILABLE')
+  const socket = new WebSocket(`${client.url.replace(/^http/, 'ws')}${CLIENT_API}/replica/${project.id}/native`)
+  assert.match(await new Promise(resolve => { socket.once('error', error => resolve(error.message)); socket.once('open', () => resolve('open')) }), /401/)
+  assert.equal(client.runtimes.get(key), runtime, 'no anonymous request replaced the dead runtime')
+  assert.equal(client.starting.size, 0)
+  const deadline = Date.now() + 15000
+  const restarted = () => { const current = client.runtimes.get(key); return current && current !== runtime && !current.dead }
+  while (!restarted()) {
+    assert.ok(Date.now() < deadline, 'the hosted runtime was never restarted')
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  assert.equal(client.runtimes.get(key).connection.workspaceId, project.id)
+})
+
 test('gateway error pages and hub 5xx responses are outages: replicas keep saving locally and only explicit revocation revokes', { timeout: 45000 }, async t => {
   const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
   const { result: { project } } = await alice.api('/projects', { name: 'Degraded', operationId: 'create' })
@@ -534,7 +564,14 @@ test('gateway error pages and hub 5xx responses are outages: replicas keep savin
   reply = { status: 503, type: 'application/json', body: JSON.stringify({ code: 'SERVICE_STOPPING', error: 'The service is stopping' }) }
   const { result: stopping } = await bob.api(path, { type: 'task.create', operationId: 'through-503', payload: { title: 'Saved while the hub restarts' } })
   assert.equal(stopping.savedLocally, true)
-  reply = { status: 401, type: 'application/json', body: JSON.stringify({ code: 'AUTH_REQUIRED', error: 'Device is not admitted to this project' }) }
+  // A write checks this machine's own records and never waits on the hub; an authentication failure is not a removal.
+  reply = { status: 401, type: 'application/json', body: JSON.stringify({ code: 'AUTH_REQUIRED', error: 'Sign in again' }) }
+  const { result: unauthenticated } = await bob.api(path, { type: 'task.create', operationId: 'through-401', payload: { title: 'Saved through a 401' } })
+  assert.equal(unauthenticated.savedLocally, true)
+  // Only the hub saying this machine was removed revokes it.
+  reply = { status: 403, type: 'application/json', body: JSON.stringify({ code: 'REVOKED', error: 'This machine was removed from the project' }) }
+  const { result: removed, response: removal } = await bob.api(`/projects/${project.id}`, undefined, { failure: true })
+  assert.equal(removal.status, 403); assert.equal(removed.code, 'REVOKED')
   const { result: revoked, response } = await bob.api(path, { type: 'task.create', operationId: 'denied', payload: { title: 'denied' } }, { failure: true })
   assert.equal(response.status, 403); assert.equal(revoked.code, 'REVOKED')
 })

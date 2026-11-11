@@ -8,7 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { chromium, webkit } from 'playwright'
 import Server from '../automerge-sync-server.js'
 import { withClientReplicas } from '../support/client-workspace.js'
-import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
+import { admitMembers, hubRuntime, projectFor, replicaRuntime } from '../support/machines.js'
 
 // Independent canonical encoder: expected fingerprints never use production helpers.
 function canonical(value) {
@@ -18,7 +18,6 @@ function canonical(value) {
 }
 const fingerprint = (request, actorId = 'actor-a') => createHash('sha256').update(canonical({type: request.type, actorId, payload: request.payload})).digest('hex')
 const token = 'disposable-integrity-token'
-const replicaCredentials = Object.fromEntries([0, 1].map(i => [`peer-${i}`, `disposable-integrity-replica-${i}`]))
 const actors = [{id: 'actor-a', handle: 'alice', kind: 'human'}]
 async function until(check) {
   const deadline=Date.now()+10000
@@ -26,7 +25,14 @@ async function until(check) {
 }
 for (const order of [[0,1],[1,0]]) it(`preserves public collision evidence after sync order ${order} and restart`, {timeout:60000}, async () => {
   const root=await mkdtemp(join(tmpdir(),'pardner-integrity-'))
-  const make=(name, settings={})=>new Server({replicaCredentials,store:new WorkspaceRuntime({directory:join(root,name),role:name==='hub'?'hub':'replica',actors,token,replicaCredentialId:name,replicaToken:replicaCredentials[name],retryMs:100,...settings}),env:{},apiToken:token,httpPort:0,wsPort:0,logger:{}})
+  // The hub and two member machines of one fixture project; each peer reconnects with its own machine key.
+  const project=projectFor(join(root,'hub'))
+  const make=(name, settings={})=>{
+    const store=name==='hub'?hubRuntime(join(root,name),{actors,retryMs:100}):replicaRuntime(join(root,name),project,Number(name.slice(5)),{actors,retryMs:100,...settings})
+    const server=new Server({store,env:{},apiToken:token,httpPort:0,wsPort:0,logger:{}})
+    if(name==='hub'){const start=server.start.bind(server);server.start=async()=>{await start();await admitMembers(server.store,project)}}
+    return server
+  }
   let hub=make('hub'), peers=[]
   async function api(server,path,body) {
     const response=await fetch(`http://127.0.0.1:${server.httpPort}${path}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})})

@@ -14,7 +14,7 @@
     "test": "npm run ui:build && node --test",
     "test:gaps": "node --test test/fitness-gaps.test.js test/sync-use-cases.test.js",
     "test:qualification": "node --test test/storage-durability.test.js test/conflict-qualification.test.js test/ticket-reconnect.test.js",
-    "test:runtime": "node --test test/workspace-operations.test.js test/workspace-runtime.test.js test/delivery-ledger.test.js test/lifecycle-conformance.test.js test/lifecycle-model.test.js test/issue-links.test.js test/t3-execution.test.js test/control-pane.test.js test/client-registry.test.js test/client-onboarding.test.js test/client-control.test.js test/onboarding-flow.test.js test/client-presence.test.js test/onboarding-invitation.test.js test/client-admission-cache.test.js test/loopback.test.js test/machine-key.test.js test/membership.test.js test/client-machine-key.test.js test/record-store.test.js test/trust-genesis-store.test.js test/enrollment.test.js test/trust-enrollment.test.js",
+    "test:runtime": "node --test test/workspace-operations.test.js test/workspace-runtime.test.js test/delivery-ledger.test.js test/lifecycle-conformance.test.js test/lifecycle-model.test.js test/issue-links.test.js test/t3-execution.test.js test/control-pane.test.js test/client-registry.test.js test/client-onboarding.test.js test/client-control.test.js test/onboarding-flow.test.js test/client-presence.test.js test/onboarding-invitation.test.js test/client-local-admission.test.js test/loopback.test.js test/machine-key.test.js test/membership.test.js test/client-machine-key.test.js test/record-store.test.js test/trust-genesis-store.test.js test/enrollment.test.js test/trust-enrollment.test.js test/machine-handshake.test.js",
     "test:cli": "node --test test/pardner-cli-workflow.test.js test/pardner-cli-auth-fallback.test.js test/pardner-cli-mentions.test.js test/pardner-cli-issues.test.js test/pardner-brand.test.js test/client-cli.test.js",
     "test:ui": "npm run ui:build && node --test test/pardner-ui.test.js test/browser-connection.test.js test/pardner-control-ui.test.js test/markdown-privacy.test.js test/client-onboarding-ui.test.js test/ui-conflicts.test.js test/ui-record-status.test.js test/ui-record-conflicts.test.js",
     "test:acceptance": "node scripts/acceptance.js",
@@ -27,8 +27,6 @@
     "verify:model": "node formal/lifecycle/check.js",
     "verify:model:mutations": "node formal/lifecycle/mutations.js",
     "test:verification": "node --test test/verify-plan.test.js test/verify-watchdog.test.js test/verify-sanitize.test.js",
-    "smoke:native-peer": "node scripts/native-peer-smoke.js",
-    "stress:native-peer": "node scripts/stress-native-peer.js",
     "ui:build": "npm run build --prefix ui-prototype",
     "test:control-runtime": "npm run ui:build && python3 -B -m unittest discover -s test -p control_runtime_test.py"
   },

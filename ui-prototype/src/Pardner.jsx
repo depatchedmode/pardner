@@ -8,6 +8,7 @@ import ClientApp from './ClientApp.jsx'
 import { AvatarStack } from './Avatar.jsx'
 import RecordConflicts from './RecordConflicts.jsx'
 import { disputedStatusText } from './record-conflicts.js'
+import { hubNotice } from './client-api.js'
 import { isNewComment } from './comments.js'
 import { defaultHandoffStatus } from './handoff.js'
 import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js'
@@ -135,6 +136,7 @@ function SaveStatus({ status, connected, busy, heads }) {
   if (busy) text = 'Saving locally…'
   else if (!connected) text = 'Local service disconnected'
   else if (status?.storageError) text = 'Local save failed'
+  else if (hubNotice(status)) text = hubNotice(status)
   else if (!status?.savedLocally || status.heads?.join(',') !== heads) text = 'Saving locally…'
   else if (status.syncPending) text = 'Saved locally · waiting for hub'
   else text = 'Saved locally · synced'
@@ -192,10 +194,11 @@ export default function Pardner() {
       <button onClick={() => reload().catch(setFailure)}>Retry connection</button></>}
   </main>
   if (config.mode === 'client') return <ClientApp config={config} />
-  // A standalone service has no human board: people use the local client.
+  // A standalone service has no human board: people use the local client, which keeps its own projects.
   return <main className="connection">
     <h1>Pardner</h1>
-    <p>This is an agent and integration service. Open Pardner with <code>pardner open</code>.</p>
+    <p>This is the standalone agent and integration service, for agents and scripts on this computer. It serves no other machine.</p>
+    <p>People use the Pardner client: run <code>pardner open</code>. The client keeps its own projects, so this service’s tasks do not appear there.</p>
   </main>
 }
 

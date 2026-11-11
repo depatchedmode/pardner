@@ -346,8 +346,7 @@ class Controller:
     def cli(self, argv, agent):
         if not argv or argv[0].startswith('--') or argv[0] in ['serve', 'bridge', 'client', 'open']:
             raise ControlUsageError('Supply a coordination command; lifecycle, client and bridge commands are not Actor entrypoints')
-        protected = {'--data', '--server', '--token', '--token-file', '--actor', '--agent', '--role', '--hub', '--hub-ws',
-                     '--hub-token', '--http-port', '--ws-port'}
+        protected = {'--data', '--server', '--token', '--token-file', '--actor', '--agent', '--role', '--http-port', '--ws-port'}
         if protected.intersection(argv):
             raise ControlUsageError('The control installation selects connection settings and the entrypoint Actor')
         if agent not in self.config['agents']:

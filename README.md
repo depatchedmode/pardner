@@ -58,23 +58,37 @@ approving machine signs the admission. A person's own machine, the owner or an
 admin pairs another machine into that person's identity, and pairing never
 creates a second person. Removal (`member.remove`, `machine.remove`) and owner-only
 role changes are records too. Every new record enters through one gate on the hub
-that refuses removed machines and signers without the needed role. The hub admits
-a device's sync and API calls only while its machine is a current member, and
-decides which Actors it may act as from the records, so a removal takes effect
-from the records. A removed machine or person returns only as a new machine key
-or a new person.
+that refuses removed machines and signers without the needed role. A removed
+machine or person returns only as a new machine key or a new person.
 
-What is not enforced yet: the transport credential is still the bearer
-`deviceToken` and `replicaToken` that the hub issues on approval; peers do not
-check each other, and the machine-key handshake that replaces those tokens is a
-later step. Automerge changes are not signed, so a member's board edits are
-attributed by the local service, not by signature. Agent grants limit agents only
-on their own machine. A member running a modified client could still write a
-record signed by its own machine straight into the document. The hub harvests
-that as history, without the role check, so a demoted admin could still remove a
-member that way. Such a record never yields a bearer credential, and records from
-a removed machine are refused. Records are enforced only at the hub. The rest of
-the trust rollout remains a [plan](docs/PARDNER-TRUST-PLAN.md).
+**Only member machines sync.** Machines authenticate to each other with their
+machine keys alone; no bearer token is issued, stored or accepted between machines.
+Every sync connection opens with a mutual challenge and response: each side signs
+a transcript of the project ID, both machine IDs, both fresh nonces, both roles and
+the route dialled, so a recorded or relayed answer is useless elsewhere. The hub
+serves only a current member machine of its records, and a joining machine accepts
+nothing until the hub proves it is a member machine of the project its invitation
+named. Every other request between machines is signed by the machine key within a
+short session opened the same way, and a replayed request is refused. When the hub
+applies a removal it closes that machine's sync and signed sessions at once. The
+Actors a machine may act as come from its records. A write checks this machine's
+own records locally and never waits on the hub. A hub restored from a backup, or
+shown by a member that it fell behind, serves no other machine until a member that
+saw a later state has synced its membership, or its operator runs
+`pardner client resume`. Two live sync sessions for one machine are reported.
+
+What is not enforced yet: **changes are not signed, so a member machine's word is
+taken for who made a change.** Any member may change anything, and the local
+service on the machine that made a change attributes it. Agent grants limit agents
+only on their own machine. A member running a modified client could still write a
+record signed by its own machine straight into the document. The hub harvests that
+as history, without the role check, so a demoted admin could still remove a member
+that way; records from a removed machine are refused. Records are enforced only at
+the hub. A removed machine that synced after a hub's backup was taken, was removed
+while offline, and is the first to reach the restored hub can still be served
+until a member holding the removal connects. Peers do not sync directly, and hub
+routes rely on HTTPS for confidentiality. The rest of the trust rollout remains a
+[plan](docs/PARDNER-TRUST-PLAN.md).
 
 The [local client onboarding preview](docs/PARDNER-CLIENT.md) adds a private
 identity and project registry, isolated project runtimes, Start/Join, purpose-specific
@@ -88,20 +102,19 @@ computer's loopback only. Phone access is not currently offered; it is planned
 through the hub over HTTPS.
 
 The standalone service (`pardner serve`) is an agent and integration service: one
-local service per machine whose attributed operation API agents and integrations use
-through the `pardner` CLI. Its `/pardner/` page serves no board; it points people to
-`pardner open`.
+project on this computer whose attributed operation API agents and integrations use
+through the `pardner` CLI. It serves no other machine, and its data is separate from
+the client's projects. Its `/pardner/` page serves no board; it points people to
+`pardner open`. Only the client hosts a project for other machines or joins one.
 Each service owns a persisted Automerge replica; a hub relays changes and owns a
 transactional SQLite delivery ledger. Actor identity is separate from replica
 identity, so the same Actor can work from more than one machine.
 
 Local operations are acknowledged only after a disk persistence barrier. Enrolled
-replicas reopen without the hub and reconnect using fresh WebSocket tickets.
-Native replicas are trusted full document writers: their synchronized changes bypass
-operation validation. They require separately enrolled replica credentials; ordinary
-API/Actor credentials authorize only the API and UI subscriptions. See
-[replica enrollment](docs/PARDNER-CLI.md#enroll-another-machine) for provisioning and
-rotation.
+replicas reopen without the hub and reconnect with a fresh machine handshake.
+Member machines are trusted full document writers: their synchronized changes bypass
+operation validation. Ordinary API and Actor credentials authorize only a machine's
+own API and UI subscriptions; they are never accepted between machines.
 Different-field edits merge; same-field alternatives retain their authors and
 require explicit resolution. A synced indicator requires an explicit hub
 persistence acknowledgement covering the displayed document heads.
@@ -189,11 +202,10 @@ The service writes its credentials to `.pardner/connection.json` (mode 0600) for
 CLI and integrations. Install the package to expose `pardner` directly on PATH; `npm
 run sync` also starts the local service.
 
-For another machine, enroll a fresh replica with `pardner serve --role replica
---hub URL --hub-ws URL --hub-token TOKEN`. The hub must be reachable for enrollment;
-its role, addresses, and credentials are then remembered locally. The hub defaults
-to loopback and must explicitly bind the intended interface for remote machines.
-See the [service and CLI guide](docs/PARDNER-CLI.md) for complete examples.
+The standalone service syncs with no other machine. To work on a project from
+another machine, host it in the client (`pardner open`, then create a project) and
+join it from the other machine's client with an invitation; the
+[client guide](docs/PARDNER-CLIENT.md) covers invitations, approval and recovery.
 
 ## UI development
 

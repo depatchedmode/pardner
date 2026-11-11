@@ -33,9 +33,10 @@ const groups = [
   },
   {
     name: 'transport', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'], qualification: 'Offline reopen, authenticated transport, or acknowledgement ordering',
-    files: names(`automerge-sync-server.js lib/local-service.js lib/workspace-runtime.js lib/native-peer-client.js
+    // Retired paths stay listed (lib/native-peer-client.js, support/replica-credentials.js) so the change removing them is classified.
+    files: names(`automerge-sync-server.js lib/local-service.js lib/workspace-runtime.js lib/machine-handshake.js lib/machine-session.js
       lib/sync-client.js lib/ticket-network-adapter.js lib/validated-websocket-server-adapter.js
-      support/resources.js support/workspace-service-process.js support/replica-credentials.js`),
+      support/resources.js support/workspace-service-process.js support/machines.js lib/native-peer-client.js support/replica-credentials.js`),
   },
   {
     name: 'delivery', scripts: ['test:runtime', 'test:cli'], qualification: 'Durable delivery, leases, or replay',
@@ -69,8 +70,9 @@ const groups = [
   },
   {
     name: 'operator-harness', scripts: ['test:runtime', 'test:cli'],
-    files: names(`scripts/native-peer-smoke.js scripts/stress-native-peer.js scripts/remote/install-node.sh
-      scripts/remote/provision.sh scripts/remote/rehearse.py scripts/remote/verify-agent.py`),
+    // The native-peer tools and the remote rehearsal are retired with the hand-run roles; they stay listed for that change.
+    files: names(`scripts/remote/install-node.sh scripts/remote/provision.sh scripts/native-peer-smoke.js scripts/stress-native-peer.js
+      scripts/remote/rehearse.py scripts/remote/verify-agent.py`),
   },
   {
     name: 'verification-tooling', scripts: ['test:verification'],
@@ -94,7 +96,7 @@ const groups = [
     qualification: 'Private client persistence, authenticated admission and resumable project enrollment',
     files: names(`lib/client-identity.js lib/client-registry.js lib/client-runtime.js lib/client-runtime-child.js
       lib/client-auth.js lib/client-invites.js lib/client-projects.js lib/client-proxy.js lib/client-service.js lib/client-cli.js`),
-    focused: [{ command: 'node --test test/client-registry.test.js test/client-onboarding.test.js test/client-cli.test.js test/client-recovery.test.js test/client-shutdown.test.js test/client-control.test.js test/onboarding-flow.test.js test/client-admission-cache.test.js',
+    focused: [{ command: 'node --test test/client-registry.test.js test/client-onboarding.test.js test/client-cli.test.js test/client-recovery.test.js test/client-shutdown.test.js test/client-control.test.js test/onboarding-flow.test.js test/client-local-admission.test.js',
       note: 'Real client enrollment, authority boundaries, CLI privacy, cold restoration, revocation, offline restart and project isolation' }],
   },
   {

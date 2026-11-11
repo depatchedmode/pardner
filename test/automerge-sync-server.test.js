@@ -6,6 +6,7 @@ import { once } from 'node:events'
 import { request, createServer as createHttpServer } from 'node:http'
 import { setTimeout as delay } from 'node:timers/promises'
 import { WebSocket } from 'ws'
+import { cbor } from '@automerge/automerge-repo'
 
 import {
   createTempDir,
@@ -15,9 +16,20 @@ import {
   httpUrl,
   wsUrl,
   TEST_TOKEN,
-  mintReplicaTicket,
+  memberSocket,
   mintWsTicket,
 } from '../support/resources.js'
+
+/** A native socket that skips the machine handshake is refused and closed before any Automerge data. */
+async function expectHandshakeRefusal(url) {
+  const socket = await expectWebSocketOpen(url)
+  const frames = []
+  socket.on('message', (data, binary) => frames.push(binary ? 'binary' : JSON.parse(data.toString()).type))
+  const closed = once(socket, 'close')
+  socket.send(cbor.encode({ type: 'join', senderId: 'skipped-the-handshake' }))
+  assert.equal((await closed)[0], 4403)
+  assert.deepEqual(frames, ['refused'])
+}
 
 function withTempServer(overrides, fn) {
   const storagePath = createTempDir('pardner-sync-test-')
@@ -149,33 +161,29 @@ for (const host of ['', '0.0.0.0', '::', '192.168.1.5', '2001:db8::1', 'localhos
 }
 
 for (const host of ['127.0.0.1', '::1']) {
-  it(`serves insecure HTTP/UI on loopback but requires enrolled native credentials on ${host}`, async () => {
+  it(`serves insecure HTTP/UI on loopback but admits another machine only through the handshake on ${host}`, async () => {
     await withStartedServer({ host, apiToken: '', allowInsecureLocal: true }, async server => {
       assert.equal(server.httpServer.address().address, host)
       assert.equal(server.wsHttpServer.address().address, host)
       const authority = host.includes(':') ? `[${host}]` : host
       assert.equal((await fetch(`http://${authority}:${server.httpPort}/automerge/doc`)).status, 200)
-      assert.equal((await requestWebSocketUpgrade(`http://${authority}:${server.wsPort}/automerge`)).statusCode, 401)
-      const ticket = await mintReplicaTicket(server)
-      for (const path of ['/', `/automerge?ticket=${ticket}`]) {
-        const socket = await expectWebSocketOpen(`ws://${authority}:${server.wsPort}${path}`)
-        socket.terminate()
-      }
+      await expectHandshakeRefusal(`ws://${authority}:${server.wsPort}/automerge`)
+      ;(await memberSocket(server)).terminate()
+      ;(await expectWebSocketOpen(`ws://${authority}:${server.wsPort}/`)).terminate()
     })
   })
 }
 
 it('accepts scoped tickets and the opted-in legacy UI token on IPv6', async () => {
   await withStartedServer({ host: '::1', allowLegacyWsQueryToken: true }, async server => {
-    for (const path of [
-      `/?ticket=${await mintWsTicket(server)}`,
-      `/automerge?ticket=${await mintReplicaTicket(server)}`,
-      `/?token=${TEST_TOKEN}`,
-    ]) {
+    for (const path of [`/?ticket=${await mintWsTicket(server)}`, `/?token=${TEST_TOKEN}`]) {
       const socket = await expectWebSocketOpen(wsUrl(server, path))
       socket.terminate()
     }
-    assert.equal((await requestWebSocketUpgrade(`http://[::1]:${server.wsPort}/automerge?token=${TEST_TOKEN}`)).statusCode, 401)
+    ;(await memberSocket(server)).terminate()
+    // The API token is no proof on the native socket, and neither is a UI ticket: only the handshake admits a machine.
+    await expectHandshakeRefusal(`ws://[::1]:${server.wsPort}/automerge?token=${TEST_TOKEN}`)
+    await expectHandshakeRefusal(`ws://[::1]:${server.wsPort}/automerge?ticket=${await mintWsTicket(server)}`)
   })
 })
 
@@ -202,9 +210,9 @@ it('preserves token enforcement on an explicit wildcard bind', async () => {
     assert.equal((await fetch(`http://127.0.0.1:${server.httpPort}/automerge/doc`, {
       headers: { Authorization: `Bearer ${TEST_TOKEN}` },
     })).status, 200)
-    for (const path of ['/', '/automerge']) {
-      assert.equal((await requestWebSocketUpgrade(`http://127.0.0.1:${server.wsPort}${path}`)).statusCode, 401)
-    }
+    assert.equal((await requestWebSocketUpgrade(`http://127.0.0.1:${server.wsPort}/`)).statusCode, 401)
+    // Another machine's socket opens, but only the machine handshake admits it.
+    await expectHandshakeRefusal(`ws://127.0.0.1:${server.wsPort}/automerge`)
   })
 })
 

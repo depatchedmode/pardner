@@ -10,31 +10,39 @@ import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { WebSocket, WebSocketServer } from 'ws'
 import { cli, startCliService } from '../support/cli-resources.js'
+import AutomergeSyncServer from '../automerge-sync-server.js'
+import { requestJson } from '../lib/sync-client.js'
+import { admitMembers, advertiseRoutes, hubRuntime, replicaRuntime } from '../support/machines.js'
 import { NetworkGate } from '../support/acceptance/network-gate.js'
 import { ExpectedOperations, hash } from '../support/acceptance/expected-operations.js'
 
-it('blocks hub HTTP and native sockets while the public local service remains writable', { timeout: 20000 }, async () => {
+it('blocks hub HTTP and native sockets while the member replica remains writable, and recovers a lost acknowledgement', { timeout: 20000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'pardner-gate-'))
-  const hubDirectory = join(root, 'hub'), replicaDirectory = join(root, 'replica')
-  const hub = await startCliService(hubDirectory)
+  const token = 'gate-test-token', actors = [{ id: 'alice', handle: 'alice', kind: 'human' }]
+  const service = store => new AutomergeSyncServer({ store, env: {}, apiToken: token, httpPort: 0, wsPort: 0, logger: {} })
+  const hub = service(hubRuntime(join(root, 'hub'), { actors }))
   let gate, replica
   try {
-    await cli(hubDirectory, ['actors', 'register', 'alice', '--actor', 'alice', '--handle', 'alice', '--kind', 'human'])
-    const { token } = JSON.parse(await readFile(join(hubDirectory, 'connection.json'), 'utf8'))
-    gate = await new NetworkGate(hub).start()
-    replica = await startCliService(replicaDirectory, ['--role', 'replica', '--hub', gate.httpUrl, '--hub-ws', gate.wsUrl, '--hub-token', token])
+    await hub.start()
+    const project = await admitMembers(hub.store)
+    gate = await new NetworkGate({ httpUrl: `http://127.0.0.1:${hub.httpPort}`, wsUrl: `ws://127.0.0.1:${hub.wsPort}` }).start()
+    // The hub serves the member machine at the gate's address, which is the route the replica dials.
+    advertiseRoutes(hub, { http: [gate.httpUrl], ws: [gate.wsUrl] })
+    replica = service(replicaRuntime(join(root, 'replica'), project, 0, { hubUrl: gate.httpUrl, hubWsUrl: gate.wsUrl, actors, retryMs: 100 }))
+    await replica.start()
+    const api = (server, path, body) => requestJson(`http://127.0.0.1:${server.httpPort}`, path, { token,
+      ...(body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}) })
     gate.partition()
-    await assert.rejects(fetch(`${gate.httpUrl}/automerge/url`, { signal: AbortSignal.timeout(1000) }))
-    const offline = await cli(replicaDirectory, ['task', 'create', '--actor', 'alice', '--title', 'Offline task'])
-    assert.equal(offline.result.savedLocally, true)
-    assert.equal(offline.result.syncPending, true)
+    await assert.rejects(fetch(`${gate.httpUrl}/session`, { method: 'POST', signal: AbortSignal.timeout(1000) }))
+    const offline = await api(replica, '/automerge/operations', { operationId: randomUUID(), actorId: 'alice', type: 'task.create', payload: { title: 'Offline task' } })
+    assert.equal(offline.savedLocally, true)
+    assert.equal(offline.syncPending, true)
     gate.loseResponse('/automerge/sync-ack')
     gate.partition(false)
     const deadline = Date.now() + 10000
-    while ((await cli(replicaDirectory, ['status'])).result.syncPending) assert.ok(Date.now() < deadline, 'Convergence exceeded ten seconds')
+    while (replica.store.status().syncPending) { assert.ok(Date.now() < deadline, 'Convergence exceeded ten seconds'); await new Promise(resolve => setTimeout(resolve, 25)) }
     assert.ok(gate.events.some(event => event.type === 'response-lost'))
-    const snapshot = await cli(hubDirectory, ['show', offline.result.result.taskId])
-    assert.equal(snapshot.result.task.title, 'Offline task')
+    assert.equal(hub.store.workspace.taskContext(offline.result.taskId).task.title, 'Offline task')
   } finally {
     await replica?.stop()
     await gate?.close()

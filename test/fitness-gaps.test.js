@@ -1,17 +1,17 @@
-import { mintReplicaTicket } from '../support/resources.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Repo } from '@automerge/automerge-repo'
-import { WebSocketClientAdapter } from '@automerge/automerge-repo-network-websocket'
 import { withWorkspaceServer } from '../support/workspace-test.js'
+import { admitMembers, memberAdapter } from '../support/machines.js'
 import { SCHEMA_VERSION, taskView } from '../lib/workspace-schema.js'
 
 it('a native Automerge Repo peer resolves the production schema over the CBOR WebSocket endpoint', { timeout: 10000 }, async () => {
   await withWorkspaceServer(async ({ server, api, create }) => {
     const taskId = await create({ title: 'Native wire contract' })
-    const ticket = await mintReplicaTicket(server)
+    // A member machine's socket opens with the machine handshake, then speaks the pinned Automerge protocol.
+    const project = await admitMembers(server.store)
     const { url } = await api('/automerge/url')
-    const adapter = new WebSocketClientAdapter(`ws://127.0.0.1:${server.wsPort}/automerge?ticket=${ticket}`, 60000)
+    const adapter = memberAdapter(project, 0, `ws://127.0.0.1:${server.wsPort}/automerge`)
     const repo = new Repo({ network: [adapter] })
     try {
       const handle = await repo.find(url, { signal: AbortSignal.timeout(3000) })
@@ -20,7 +20,7 @@ it('a native Automerge Repo peer resolves the production schema over the CBOR We
       assert.equal(taskView(doc, taskId).title, 'Native wire contract')
       assert.equal(doc.actors.builder.kind, 'agent')
     } finally {
-      adapter.socket?.terminate()
+      adapter.disconnect()
       await repo.shutdown()
     }
   })

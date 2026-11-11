@@ -225,11 +225,13 @@ machine cannot remove itself. `client role --project ID --person PERSON_ID --rol
 admin|member` is the owner's alone; each change names the role record it replaces.
 People an admin admitted stay when that admin is removed or demoted.
 
-Removal also ends the machine's bearer admission at the hub at once: its sync
-socket closes, its presence ends, its open invitations are revoked, and the hub
-refuses its API calls and new records. A removed computer keeps its local data and
-export. It learns of the removal at its next hub check, so one write inside the
-10-second admission cache can still save locally without reaching anyone.
+Removal ends the machine's sessions at the hub at once: its sync socket closes,
+its signed HTTP sessions are dropped, its presence ends, its open invitations are
+revoked, and the hub refuses its handshake, its requests and new records. A removed
+computer keeps its local data and export. It learns of the removal when the hub
+refuses its next handshake (within a few seconds while the hub is reachable) and
+then refuses further writes, also after a restart; a write saved before that stays
+on that computer and reaches nobody.
 
 Removals are permanent for that machine key and person ID. A removed machine
 returns as a new machine: start Pardner with a fresh `--data` directory on that
@@ -301,29 +303,38 @@ delivery leases need the authority. Remote presence becomes unavailable. Local
 save acknowledgement follows the existing disk barrier; synchronization requires
 the hub's acknowledgement. An outage is any failure that is not an explicit hub
 decision: an unreachable address, a gateway error page, a non-JSON body or a hub
-5xx (including `SERVICE_STOPPING`) all count. Only an explicit `AUTH_REQUIRED` or
-`REVOKED` answer revokes local membership.
+5xx (including `SERVICE_STOPPING` and a restored hub's `HUB_WAITING`) all count.
+Only the hub saying this machine was removed (`REVOKED`) revokes local membership;
+an authentication failure, or a hub that does not know this machine, does not.
 
-Before a local save on a replica, the client confirms with the hub that the
-writing Actor is still admitted (`/policy`, bounded by a 3 s timeout). A positive
-answer is reused for 10 s per project and Actor; each reuse starts at most one
-background check, so a slow hub does not hold up the save. Once that answer is
-older than 10 s the save waits for a fresh check, except while the project
-runtime reports the hub disconnected: then the last positive answer stands and
-the save is not delayed. With no earlier positive answer the hub is asked as
-before, and an outage still allows the local save. The window this opens is
-bounded: a revocation is enforced from the first check that observes it, which
-for an Actor writing continuously is the next background check, and otherwise is
-at most 10 s after the last positive answer while the hub is reachable. A write
-accepted in that window is saved locally but its Actor's synchronization still
-depends on the hub, which checks the device credential on every sync and
-delivery call. Revoking from this computer clears the cached answers for that
-project, and issuing an agent credential (`agent-grant`) always checks the hub.
+Before a local save, the client checks its own machine's membership in its record
+store: the machine must be a current member, and the writing Actor one its records
+let it act as (its person unless it is agents-only, or an agent it named). Nothing
+is asked of the hub, so a save never waits on it and an enrolled member keeps
+saving through an outage. Issuing an agent credential (`agent-grant`) uses the same
+local check. A removal reaches the check when this machine holds the record or when
+the hub refuses its handshake as removed; the hub stops syncing with it from the
+moment the hub applies the removal.
+
+How machines authenticate: the replica's project runtime opens its sync socket with
+the machine handshake (both machines sign a transcript of the project, both machine
+IDs, both nonces, both roles and the route dialled) and accepts nothing until the
+hub proves it is a member machine of the project the invitation named. The client
+service and the runtime sign every other request to the hub with the machine key,
+inside a short session opened the same way. The client gives its machine key to its
+own project runtimes over their IPC channel only. The hub accepts the handshake only
+on routes it advertised: its loopback address and each `--public-url` it has given
+to an enrolled machine. Two live sync sessions for one machine (a copied directory
+running beside its original) are reported in the hub's project status and status
+line; they are not refused.
 
 A project runtime that fails
 to start is reported as `LOCAL_SERVICE_UNAVAILABLE` and is not restarted again
 for 5 s, so polling cannot fork it repeatedly; a runtime that crashes after
-starting is restarted on the next authenticated request. Native replicas remain
+starting is restarted on the next authenticated request. Other machines' requests
+never wake a runtime (their first message, the handshake's hello, is not yet
+authenticated), so the client restarts a hosted project's runtime by itself after
+the same 5 s, and other machines see an outage until then. Native replicas remain
 trusted full document writers, so API author binding is not a signature on
 arbitrary synchronized changes.
 Revocation cannot erase an offline device's already received data.

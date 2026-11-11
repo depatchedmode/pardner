@@ -1,12 +1,11 @@
-import { replicaOptions } from '../support/replica-credentials.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { withWorkspaceServer } from '../support/workspace-test.js'
-import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
 import { NetworkGate } from '../support/acceptance/network-gate.js'
+import { admitMembers, advertiseRoutes, replicaRuntime } from '../support/machines.js'
 
 async function eventually(check) {
   const deadline = Date.now() + 10000
@@ -21,10 +20,11 @@ async function withReplicas(run) {
     const { server, directory } = fixture
     const gates = []
     const replicas = []
+    const project = await admitMembers(server.store)
     const reopen = async index => {
       const gate = gates[index]
-      const replica = new WorkspaceRuntime({ ...replicaOptions, directory: join(directory, `replica-${index}`), role: 'replica',
-        hubUrl: gate.httpUrl, hubWsUrl: gate.wsUrl, token: 'test-token', retryMs: 100 })
+      // Each replica is its own member machine and reaches the hub only through its gate.
+      const replica = replicaRuntime(join(directory, `replica-${index}`), project, index, { hubUrl: gate.httpUrl, hubWsUrl: gate.wsUrl, retryMs: 100 })
       replicas[index] = replica
       await replica.init()
       return replica
@@ -32,6 +32,7 @@ async function withReplicas(run) {
     try {
       for (let index = 0; index < 2; index++) {
         gates.push(await new NetworkGate({ httpUrl: `http://127.0.0.1:${server.httpPort}`, wsUrl: `ws://127.0.0.1:${server.wsPort}/automerge` }).start())
+        advertiseRoutes(server, { http: [gates[index].httpUrl], ws: [gates[index].wsUrl] })
         await reopen(index)
       }
       const converge = () => eventually(() => replicas.every(replica => !replica.status().syncPending))
