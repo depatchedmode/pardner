@@ -54,3 +54,11 @@ and Chromium/WebKit inspection. Run it explicitly under the shared heavy-test
 lock as well as the full discovered suite. Task context `integrityConflicts`
 contains every unresolved request variant; browser details expose those records.
 A field resolution does not repair a reused retry key. No automatic repair runs.
+
+Comment deletion is author-only (no moderator exception). The runtime API case
+in `workspace-runtime.test.js` and CLI case in `pardner-cli-workflow.test.js`
+assert non-author `FORBIDDEN`, preserved content, successful author deletion,
+and replay of the same delete operation. `ui-conflicts.test.js` exercises real
+concurrent comment edits in Chromium and WebKit: a non-author sees
+disabled **Keep this comment** controls with an author-only reason, while the
+author can resolve. Browser Edit/Delete controls are absent.

@@ -61,3 +61,30 @@ it('runs human to agent to agent to human handoffs through the public CLI servic
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+it('reports an author-only comment deletion refusal and supports author retries through the CLI', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-cli-comment-author-'))
+  const service = await startCliService(directory)
+  const run = async (args, actor = 'alice') => {
+    const output = await cli(directory, [...args, '--actor', actor])
+    assert.equal(output.code, 0, output.stdout + output.stderr)
+    return output.result
+  }
+  try {
+    for (const id of ['alice', 'bob']) await run(['actors', 'register', id, '--handle', id, '--kind', 'human'])
+    const { result: { taskId } } = await run(['task', 'create', '--title', 'Author permissions'])
+    const added = await run(['comment', taskId, 'Only I may delete this'])
+    const args = ['comment-delete', added.result.commentId, '--revisions', JSON.stringify([added.operationId]), '--operation-id', 'delete-once']
+    const refused = await cli(directory, [...args, '--actor', 'bob'])
+    assert.equal(refused.code, 1)
+    assert.equal(refused.result.error.code, 'FORBIDDEN')
+    assert.equal(refused.result.error.message, 'Only the comment author may delete it')
+    assert.equal((await run(['show', taskId])).comments.length, 1)
+    assert.equal((await run(args)).savedLocally, true)
+    assert.equal((await run(args)).replayed, true)
+    assert.equal((await run(['show', taskId])).comments.length, 0)
+  } finally {
+    await service.stop()
+    await rm(directory, { recursive: true, force: true })
+  }
+})

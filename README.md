@@ -271,6 +271,13 @@ and revision tokens; see the [operation identity contract](docs/PARDNER-CLI.md).
 Coordination commands emit one JSON result on stdout; errors include stable codes
 and details, with diagnostics on stderr. Reads do not implicitly mark comments seen.
 
+Comment edits, conflict resolution, and deletion are author-only, with no moderator
+exception. Use `comment-delete COMMENT --revisions '["REVISION"]'` to delete
+your own comment; other Actors receive `FORBIDDEN`. The browser disables
+**Keep this comment** for non-authors and explains why; edit and delete remain
+CLI/API operations. Deletion removes the comment from the conversation, not its
+audit history. Retrying the same successful delete operation ID remains idempotent.
+
 ## Validation and goal state
 
 The measurable automated goal is a complete two-human/two-agent workflow across
