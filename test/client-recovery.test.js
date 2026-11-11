@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { startClient } from '../lib/client-service.js'
+import { joinApproved } from '../support/enrollment.js'
 
 const exec = promisify(execFile)
 const base = '/pardner/client/v1'
@@ -37,6 +38,8 @@ async function eventually(read, condition) {
 async function identity(p, name) { return p.cli(['identity', '--name', name, '--email', `${name.toLowerCase()}@example.test`, '--operation-id', 'identity']) }
 async function invite(p, id, purpose, operationId) { return p.api(`/projects/${id}/invites`, { purpose, operationId }) }
 const projectPath = id => `/projects/${id}/api/automerge`
+const enroll = (joiner, approver, invitation, operationId = 'join') =>
+  joinApproved({ join: body => joiner.api('/join', body), approver: (path, body) => approver.api(path, body), invitation, operationId })
 
 test('cold backups restore both client and authority to fresh directories with identity, history, retries and delivery intact', { timeout: 120000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'pardner-client-restore-'))
@@ -48,7 +51,7 @@ test('cold backups restore both client and authority to fresh directories with i
     const { project } = await alice.cli(['create', '--name', 'Recovery board', '--operation-id', 'create'])
     const { project: separate } = await alice.cli(['create', '--name', 'Independent board', '--operation-id', 'separate'])
     const invitation = await invite(alice, project.id, 'human', 'invite-bob')
-    await bob.api('/join', { invitation: invitation.setupPrompt, operationId: 'join' })
+    await enroll(bob, alice, invitation.setupPrompt)
     const path = projectPath(project.id)
     const operation = { type: 'task.create', operationId: 'retained-task', payload: { title: 'Retained work', description: 'Content and authored history survive restoration.' } }
     const saved = await bob.api(path + '/operations', operation)
@@ -125,9 +128,10 @@ test('a surviving owned device revokes a lost device while its retained work rem
     const bobIdentity = await identity(bob, 'Bob')
     const { project } = await alice.cli(['create', '--name', 'Device recovery', '--operation-id', 'create'])
     const invited = await invite(alice, project.id, 'human', 'bob')
-    await bob.api('/join', { invitation: invited.invitation, operationId: 'join' })
+    await enroll(bob, alice, invited.invitation)
+    // Bob's own laptop approves his spare machine.
     const linked = await invite(bob, project.id, 'device', 'spare')
-    await spare.api('/join', { invitation: linked.invitation, operationId: 'join' })
+    await enroll(spare, bob, linked.invitation)
     assert.deepEqual((await spare.cli(['list'])).identity, bobIdentity.identity)
     const path = projectPath(project.id)
     const saved = await bob.api(path + '/operations', { type: 'task.create', operationId: 'saved-before-loss', payload: { title: 'Retained after revocation' } })
@@ -136,8 +140,10 @@ test('a surviving owned device revokes a lost device while its retained work rem
     assert.ok(members.actors.some(actor => actor.devices.some(device => device.id === bobIdentity.device.id)))
     const agent = await bob.api(`/projects/${project.id}/agent-grant`, {})
     assert.equal((await bob.api(`/projects/${project.id}/export`, undefined, { token: agent.token, expected: 403 })).code, 'FORBIDDEN')
+    // The lost laptop is named by the device ID its profile lists; the spare signs `machine.remove` for it.
     const revoked = await spare.cli(['revoke', '--project', project.id, '--kind', 'device', '--id', bobIdentity.device.id, '--operation-id', 'lost-device'])
-    assert.equal(revoked.revoked, true)
+    assert.equal(revoked.removed, true)
+    assert.equal(revoked.id, bob.client.registry.machineKey.machineId)
     const again = await spare.cli(['revoke', '--project', project.id, '--kind', 'device', '--id', bobIdentity.device.id, '--operation-id', 'lost-device'])
     assert.deepEqual(again, revoked)
     // The lost laptop learns of a revocation made elsewhere from its next hub check. A write inside the 10 s admission

@@ -556,6 +556,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
           </button>
         </div>
       </header>
+      {session.notice}
       {errorSlot === 'page' && errorNotice}
       {pending && !error && (
         <div className="notice">

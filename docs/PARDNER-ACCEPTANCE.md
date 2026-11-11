@@ -35,10 +35,12 @@ Chromium contexts, and two separate deterministic agent worker subprocesses:
   no browser.
 - **Alice's laptop** joins with a `device` invitation, so it is the same Alice Actor
   on a second persisted replica. **Bob's laptop** joins with a `human` invitation.
-  Each laptop has its own Chromium context, opened with `client/v1/open` (a
+  The hub approves each laptop's join request after the confirmation code on both
+  sides matches, which signs that laptop's admission record. Each laptop has its own Chromium context, opened with `client/v1/open` (a
   one-time grant in the URL fragment exchanged for a session cookie).
 - **Agents:** Builder is Alice's agent, joined on her laptop with an `agent`
-  invitation; Reviewer is Bob's, joined on his. Each worker holds that client's
+  invitation; Reviewer is Bob's, joined on his. Each laptop names its agent with
+  an `agent.name` record and needs no approval. Each worker holds that client's
   `agent-grant` credential and runs `pardner --token-file`, whose Actor is the
   one the credential is bound to.
 - **Network:** each laptop reaches the hub only through its own network gate. The

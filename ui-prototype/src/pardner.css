@@ -1254,6 +1254,26 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
 .invite-list li > .muted { font-size: 12px; }
 .invite-list .invite-state { white-space: nowrap; }
 
+/* Confirmation codes are read aloud: large, spaced, tabular. */
+.confirmation-code {
+  margin: 2px 0 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 28px;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.join-waiting { display: grid; gap: 6px; justify-items: start; }
+.join-waiting h2 { font-size: 20px; }
+.join-waiting p { margin: 0; }
+.join-request-list { list-style: none; margin: 16px 0 0; padding: 0; }
+.join-request-list li { padding: 14px 0; }
+.join-request-list li + li { border-top: 1px solid var(--line); }
+.join-request-list p { margin: 0 0 4px; }
+.requests-button { font-size: 13px; }
+.role-choice { display: grid; gap: 6px; margin: 4px 0 14px; max-width: 360px; }
+.menu [aria-disabled='true'] .menu-label { color: var(--muted); }
+
 .client-entry { max-width: 520px; }
 .client-entry h1 { font-size: 26px; }
 .client-entry .lead { color: #d6d6d6; margin: 0 0 26px; }

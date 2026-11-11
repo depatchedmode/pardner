@@ -267,7 +267,7 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await dialog.getByRole('button', { name: 'Create invitation' }).click()
     await dialog.getByRole('button', { name: 'Copy invite' }).waitFor()
     await dialog.getByRole('region', { name: 'New invitation' }).getByText(/Waiting to be used · Expires in \d+ h/).waitFor()
-    assert.equal((await page.content()).includes('pardner-invite-v1.'), false)
+    assert.equal((await page.content()).includes('pardner-invite-v2.'), false)
     let copied
     if (engine === chromium) {
       await dialog.getByRole('button', { name: 'Copy invite' }).click()
@@ -277,7 +277,7 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     // WebKit does not expose Chromium's clipboard permissions. Exercise its explicit reveal path.
     await dialog.getByRole('button', { name: 'Show invite text' }).click()
     const invitation = await dialog.getByLabel('Invite text').inputValue()
-    assert.match(invitation, /pardner-invite-v1\./)
+    assert.match(invitation, /pardner-invite-v2\./)
     if (copied !== undefined) assert.equal(invitation, copied)
     await dialog.getByRole('button', { name: 'Hide invite text' }).click()
     assert.equal((await page.content()).includes(invitation), false)
@@ -292,6 +292,19 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await bobPage.getByRole('button', { name: 'Join a project' }).click()
     await bobPage.getByLabel('Invitation').fill(invitation)
     await bobPage.getByRole('button', { name: 'Join project' }).click()
+    // Bob waits; Alice opens his request, both screens show one code, and Alice approves it.
+    const waiting = bobPage.getByRole('region', { name: 'Waiting for approval' })
+    await waiting.getByText('Your confirmation code appears here when the person approving opens your request.').waitFor({ timeout: 30000 })
+    await page.getByRole('button', { name: /^Join requests 1$/ }).click({ timeout: 30000 })
+    const requests = page.getByRole('dialog', { name: 'Join requests' })
+    const request = requests.getByRole('listitem', { name: 'Bob wants to join as a member' })
+    await request.getByText('bob@example.test · Bob’s laptop').waitFor()
+    const approverCode = (await request.locator('.confirmation-code').textContent()).trim()
+    assert.match(approverCode, /^\d{4} \d{4}$/)
+    await waiting.getByTestId('join-code').getByText(approverCode, { exact: true }).waitFor({ timeout: 30000 })
+    await request.getByRole('button', { name: `Approve Bob, code ${approverCode}` }).click()
+    await requests.getByText('No requests are waiting.').waitFor({ timeout: 30000 })
+    await requests.getByRole('button', { name: 'Close' }).click()
     await bobPage.getByRole('button', { name: 'Project: Shared board. Switch project' }).waitFor({ timeout: 30000 })
     await bobPage.getByRole('button', { name: /^You: Bob, human/ }).waitFor()
     const bobAvatar = page.getByRole('button', { name: /^Bob, human, (idle|active)\. Open profile$/ })
@@ -403,9 +416,19 @@ for (const engine of [chromium, webkit]) it(`links a second device from the iden
     await form.getByLabel('My device invitation').fill(human.invitation)
     await form.getByRole('button', { name: 'Link device' }).click()
     await form.getByText('This is a Human invitation. Confirm your identity first, then join with it.').waitFor()
-    assert.equal(alice.client.registry.read().invites[human.invite.id].recipient, undefined, 'a refused paste never reaches the hub')
+    assert.deepEqual(alice.client.registry.read().invites[human.invite.id].requests, {}, 'a refused paste never reaches the hub')
     await form.getByLabel('My device invitation').fill(device.invitation)
+    // Before anything is sent, the page says whose identity this computer joins (#155).
+    await form.getByText('This computer will be linked as Alice <alice@example.test> in “Linked board”.').waitFor()
     await form.getByRole('button', { name: 'Link device' }).click()
+    const waiting = page.getByRole('region', { name: 'Waiting for approval' })
+    await waiting.getByText(/link this computer as Alice <alice@example\.test> in “Linked board”/).waitFor({ timeout: 30000 })
+    // Alice approves from her own client after comparing the code.
+    const [pending] = (await alice.call(`/projects/${project.id}/join-requests`)).requests
+    assert.equal(pending.person.name, 'Alice'); assert.equal(pending.purpose, 'device')
+    const { request } = await alice.call(`/projects/${project.id}/join-requests/${pending.id}/code`, {})
+    await waiting.getByTestId('join-code').getByText(request.code, { exact: true }).waitFor({ timeout: 30000 })
+    await alice.call(`/projects/${project.id}/join-requests/${pending.id}/approve`, { code: request.code })
     await page.getByRole('button', { name: 'Project: Linked board. Switch project' }).waitFor({ timeout: 30000 })
     await page.getByRole('button', { name: /^You: Alice, human/ }).waitFor()
     assert.equal(desktop.client.registry.read().identity.id, alice.client.registry.read().identity.id, 'the device adopts the sponsor identity')

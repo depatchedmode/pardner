@@ -10,6 +10,7 @@ import { NetworkGate } from '../support/acceptance/network-gate.js'
 import { ExpectedOperations, hash } from '../support/acceptance/expected-operations.js'
 import { candidateFingerprint } from '../support/acceptance/candidate.js'
 import { AgentProcess } from '../support/acceptance/agent-process.js'
+import { joinApproved } from '../support/enrollment.js'
 
 const args = process.argv.slice(2)
 const option = (key, fallback) => { const index = args.indexOf(`--${key}`); return index < 0 ? fallback : args[index + 1] }
@@ -34,8 +35,9 @@ const AGENT_HARNESS = 'anthropic-claude-code'
  * Client topology: side 0 is Alice's always-on desktop client, the project authority (hub), with no browser. Side 1
  * is Alice's laptop, joined with a `device` invitation (the same Actor on a second replica); side 2 is Bob's laptop,
  * joined with a `human` invitation. Each laptop reaches the hub only through its own NetworkGate, advertised as the
- * hub's loopback public URL when that laptop enrolled. Builder is Alice's agent joined on her laptop and Reviewer is
- * Bob's agent joined on his, each with an `agent` invitation; their workers hold agent-grant credentials.
+ * hub's loopback public URL when that laptop enrolled. The hub approves each laptop after comparing its confirmation
+ * code. Builder is Alice's agent joined on her laptop and Reviewer is Bob's agent joined on his, each with an `agent`
+ * invitation used on a machine already in the project (no approval); their workers hold agent-grant credentials.
  */
 async function runSeed(seed) {
   const rng = random(seed), expected = new ExpectedOperations(), timings = []
@@ -89,8 +91,11 @@ async function runSeed(seed) {
       await delay(40)
     }
   }
+  // A new laptop waits for the hub's owner to approve it after comparing the confirmation code; an agent joined on a
+  // laptop already in the project is named there without approval.
   const enroll = async (side, invitation, operationId, agent) => {
-    const joined = await services[side].call('/join', { invitation, operationId, ...(agent ? { agent } : {}) })
+    const joined = await joinApproved({ join: body => services[side].call('/join', body), approver: (path, body) => services[0].call(path, body),
+      invitation, operationId, agent })
     assert.equal(joined.project.id, project.id)
     return joined.project
   }
