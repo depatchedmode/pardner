@@ -18,12 +18,16 @@ assertions in `test/client-cli.test.js` cover the public outputs.
   with a write-ahead log by a killed process, and a schema 5 storage directory are
   refused, and their paths, modes and bytes are compared before and after.
 - **Admission.** `test/record-store.test.js` stores a batch whose records
-  authorize each other in either order, refuses a forged signature, another
-  project, a non-record, a member's promotion of themself and a removed signer
-  with stated reasons, and shows SQLite triggers refusing updates and deletes.
+  certify each other in either order. It refuses a forged signature, another
+  project, a non-record and a signer the store already holds as removed, with
+  stated reasons. It keeps a member's self-promotion, which grants nothing. Every
+  order of a log received at once (genesis, admin admitted, admin's admission,
+  admin removed) gives the same membership with the admin's admission kept. SQLite
+  triggers refuse updates and deletes.
 - **Harvest and write-back.** Records written straight into the document are
-  stored only when valid: a tampered signature, another project, an unknown signer
-  and a removed signer are refused and reported in `notStored`. A record deleted
+  stored only when authentic: a tampered signature, another project, an
+  uncertified signer and a record arriving after its signer's removal are refused
+  and reported in `notStored`. A record deleted
   from the document, or the whole map, is written back, and the heads then settle.
   A deleted removal still holds after restart.
 - **Kill between save and use.** A child process is killed with SIGKILL the moment

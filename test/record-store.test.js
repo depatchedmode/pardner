@@ -46,13 +46,13 @@ test('the record store saves a batch whose records authorize each other, in any 
   }
 })
 
-test('the record store refuses records it cannot verify or that their signer may not make now', async () => {
+test('the record store refuses unverifiable records and new records from a machine it already holds as removed', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-record-store-'))
   try {
     const f = fixture()
     const store = new RecordStore(join(directory, RECORD_STORE_FILE), f.projectId)
     const reasons = records => Object.fromEntries(store.admit(records).refused.map(({ record, reason }) => [record?.recordId ?? 'none', reason]))
-    assert.deepEqual(reasons([f.add]), { [f.add.recordId]: 'Signer is not a member machine of this project' }, 'nothing counts before the genesis')
+    assert.deepEqual(reasons([f.add]), { [f.add.recordId]: 'Signer is not a machine certified in this project' }, 'nothing counts before the genesis')
     store.admit([f.genesis])
     const forged = { ...f.add, displayName: 'Forged' }
     const elsewhere = testGenesis()
@@ -61,15 +61,48 @@ test('the record store refuses records it cannot verify or that their signer may
       [forged.recordId]: 'Invalid signature', [elsewhere.recordId]: 'Wrong project', none: 'Wrong project',
     })
     store.admit([f.add])
-    assert.deepEqual(reasons([promotion]), { [promotion.recordId]: 'Signer may not make this record in the current membership' })
+    // Authority is computed from the store, not filtered into it: a member's promotion of themself is kept and grants nothing.
+    assert.deepEqual(reasons([promotion]), {})
+    assert.equal(store.membership().people.find(person => person.id === 'member').role, 'member')
+    assert.ok(store.membership().rejected.some(entry => entry.recordId === promotion.recordId))
     const removal = buildRecord(f.owner, { projectId: f.projectId, kind: 'member.remove', subject: 'member' })
     store.admit([removal])
-    assert.deepEqual(reasons([f.pair]), { [f.pair.recordId]: 'Signer is not a member machine of this project' }, 'a removed signer is refused from arrival')
-    assert.equal(store.size, 3)
+    assert.deepEqual(reasons([f.pair]), { [f.pair.recordId]: 'Signer was removed before this record arrived' })
+    assert.equal(store.size, 4)
     store.close()
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
+})
+
+function* permutations(values) {
+  if (!values.length) { yield []; return }
+  for (let i = 0; i < values.length; i++) for (const tail of permutations(values.filter((_, index) => index !== i))) yield [values[i], ...tail]
+}
+
+test('a log received at once keeps a removed admin’s earlier admissions in every order, and refuses that admin’s later records', () => {
+  const owner = generateMachineKey(), admin = generateMachineKey(), member = generateMachineKey()
+  const genesis = testGenesis(owner), projectId = genesis.projectId
+  const add = (signer, person, machine, role) => buildRecord(signer, { projectId, kind: 'member.add', subject: person, displayName: person, role,
+    machineId: machine.machineId, publicKey: machine.publicKey, offer: {}, joinRequest: {}, approval: {} })
+  const log = [genesis, add(owner, 'admin', admin, 'admin'), add(admin, 'member', member, 'member'),
+    buildRecord(owner, { projectId, kind: 'member.remove', subject: 'admin' })]
+  let expected
+  for (const order of permutations(log)) {
+    const store = new RecordStore(':memory:', projectId)
+    assert.deepEqual(store.admit(order).refused, [])
+    const { people, machines, removedPeople } = store.membership()
+    expected ??= { people, machines, removedPeople }
+    assert.deepEqual({ people, machines, removedPeople }, expected)
+    store.close()
+  }
+  assert.deepEqual(expected.people.map(person => person.id).sort(), ['member', 'test-owner'])
+  assert.deepEqual(expected.removedPeople, ['admin'])
+  const store = new RecordStore(':memory:', projectId)
+  store.admit(log)
+  const late = add(admin, 'late', generateMachineKey(), 'member')
+  assert.deepEqual(store.admit([late]).refused.map(entry => entry.reason), ['Signer was removed before this record arrived'])
+  store.close()
 })
 
 test('the record store only grows and belongs to one project', async () => {

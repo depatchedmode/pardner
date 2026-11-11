@@ -111,7 +111,7 @@ test('the record store keeps valid records, refuses tampered and foreign ones, a
     await eventually(() => runtime.membership().people.some(person => person.id === 'member'))
     assert.deepEqual(runtime.membership().machines.map(machine => machine.id).sort(), [owner.machineId, member.machineId].sort())
     assert.deepEqual(reasons(), { [forged.recordId]: 'Invalid signature', [elsewhere.recordId]: 'Wrong project',
-      [foreign.recordId]: 'Wrong project', [unsigned.recordId]: 'Signer is not a member machine of this project' })
+      [foreign.recordId]: 'Wrong project', [unsigned.recordId]: 'Signer is not a machine certified in this project' })
     for (const record of [forged, elsewhere, foreign, unsigned]) assert.equal(runtime.records.get(record.recordId), undefined)
     assert.equal(runtime.membership().storedRecords, 2)
 
@@ -139,14 +139,14 @@ test('the record store keeps valid records, refuses tampered and foreign ones, a
     const late = memberAdd(member, projectId, 'late', generateMachineKey())
     runtime.docHandle.change(doc => { doc.membership[late.recordId] = late })
     await eventually(() => reasons()[late.recordId])
-    assert.equal(reasons()[late.recordId], 'Signer is not a member machine of this project')
+    assert.equal(reasons()[late.recordId], 'Signer was removed before this record arrived')
 
     await runtime.close()
     runtime = new WorkspaceRuntime({ directory, actors })
     await runtime.init()
     assert.deepEqual(runtime.membership().removedPeople, ['member'])
     assert.equal(runtime.membership().storedRecords, 3)
-    assert.equal(reasons()[late.recordId], 'Signer is not a member machine of this project', 'refused records still in the document are reported again after a restart')
+    assert.equal(reasons()[late.recordId], 'Signer was removed before this record arrived', 'refused records still in the document are reported again after a restart')
     assert.equal(reasons()[forged.recordId], undefined, 'the forged record left the document with the deleted map')
   } finally {
     await runtime.close()

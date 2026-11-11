@@ -78,9 +78,12 @@ store, `records.sqlite`. On load and after every document change, the project
 runtime verifies new records and saves the valid ones before using them. It then
 writes back any stored record the document lacks, so a deleted record still
 counts and returns to other peers. A record is stored if it is this project's
-genesis, or if a current member machine signed it, its signature verifies, and
-that machine may make it in the current membership. A record signed by a removed
-machine is therefore refused once the store holds the removal.
+genesis, or if its signature verifies under a machine key that another stored
+record certifies. The membership computed from the store then decides what each
+record grants, so an unauthorized record is kept but has no effect. A record from
+a machine the store already holds as removed is refused (enforced from arrival).
+A record that arrives together with that removal, as a whole log does for a
+newly joined replica, is still stored, so an admin's earlier admissions stay.
 
 `client show --project ID` includes the membership computed from the store,
 read-only: `people`, `machines`, `agentNames`, removals, `storedRecords`, and
