@@ -508,3 +508,22 @@ demonstration was rerun: all eight mutations were caught by their implementation
 check, reported as drift and reproduced as a model counterexample, with the
 working tree unchanged. See `signedChangesReview` in
 `docs/evidence/lifecycle-model.json`.
+
+## Trust review follow-up mapping (2026-11-11)
+
+The mapping records source revision `b6523dd53c4146037f6e70b914c47e30aa05bb37`.
+Re-reviewed every action named by drift for `automerge-sync-server.js` and
+`lib/workspace-runtime.js`. The missing-state growth check precedes welcome and
+Automerge admission (`UpgradeArrive`). Resume publishes state only after its
+serialized write; `StoreCloseBegin` still drains that queue before repository
+shutdown and lease release. Record limits run before canonicalization in the
+record gate and harvest; accepted writes retain their operation queue and disk
+barrier (`Handle`, `Respond`, `ReplicaEdit`). No guard, effect, atomicity assumption,
+anchor, invariant, witness or mutation changed. Restored-hub waiting and membership
+remain outside the model and are exercised by the focused regression tests.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses are reachable. All eight mutations
+were caught, reported as drift and reproduced by the model; the working tree was
+unchanged. See `trustReviewThree` in the evidence JSON. Full verification and
+qualification were deliberately deferred to keep the shared machine quiet.

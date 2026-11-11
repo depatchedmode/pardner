@@ -512,7 +512,10 @@ class AutomergeSyncServer {
           if (this.store.hubStatus()?.waiting) {
             this.store.admitRecords(await requestMembership())
             if (this.memberKey(machineId) !== publicKey) throw this.notMember(machineId)
-            if (!vouches) throw new HandshakeError('HUB_WAITING', HUB_WAITING_MESSAGE)
+            const waiting = this.store.hubState.waiting
+            const grew = waiting?.reason !== 'state-missing' || (this.store.records.size > waiting.since.records
+              && this.store.records.size >= hello.checkpoint?.records)
+            if (!vouches || !grew) throw new HandshakeError('HUB_WAITING', HUB_WAITING_MESSAGE)
             await this.store.resumeHub({ machineId })
           }
           if (this.memberKey(machineId) !== publicKey) throw this.notMember(machineId)

@@ -95,15 +95,27 @@ named. The hub answers every handshake alike and judges a machine only once it
 has proved its key, so nobody can learn without the private key whether a key was
 ever certified; a removed machine that proves its key is told who removed it. Every other request between machines is signed by the machine key within a
 short session opened the same way, and a replayed request is refused. When the hub
-applies a removal it closes that machine's sync and signed sessions at once. The
+applies a removal it closes that machine's proven sync and signed sessions at once.
+Unproven pending sessions expire uniformly, so revocation does not reveal membership. The
 Actors a machine may act as come from its records. A write checks this machine's
 own records locally and never waits on the hub. A hub restored from a backup, or
 shown by a member that it fell behind, serves no other machine until a member that
 saw a later state has synced its membership, or its operator runs
-`pardner client resume`. That waiting state is saved with the point checkpoints
+`pardner client resume`. Without `hub-state.json`, a checkpoint must show more
+records than the restored store, and verified records must bring the store up to
+that count; an old start count cannot vouch. That waiting state is saved with the point checkpoints
 are compared against, so it survives any number of restarts and a process kill at
 any step, and an established hub whose state file is missing waits too. Two live
-sync sessions for one machine are reported.
+sync sessions for one machine are reported. Resume attempts are serialized and
+serving stays blocked until the resumed state is saved; a failed write leaves it waiting.
+
+Membership records are limited to 64 KiB of serialized UTF-8 JSON, nesting depth 16
+(root depth 0), and 4,096 UTF-16 code units per string or property name, including
+unknown fields, offers and join requests. `RECORD_LIMITS` in `lib/membership.js`
+defines these rules. Oversized records are refused with a reason before
+canonicalization or signature checks at the gate and during harvest. The reducer
+uses append-only certification lists, aggregate authority and a queue of newly
+gained authority; repeated certifications do not trigger whole-log rescans.
 
 **The People panel** in each board's header lists every person with their role,
 who let them in, their machines (online or last seen where the hub knows it) and
