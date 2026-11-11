@@ -141,7 +141,10 @@ How machines authenticate:
   sign a transcript of the protocol version, project ID, both machine IDs, both
   fresh nonces, both roles and the route as dialled. The hub serves only a current
   member machine, and the joining machine accepts nothing until the hub is a member
-  machine in the log rooted at the project ID it expected.
+  machine in the log rooted at the project ID it expected. The frames that
+  follow are protected only by TLS, so a party terminating TLS in front of the
+  hub could inject sync traffic on an authenticated socket
+  ([#215](https://github.com/depatchedmode/pardner/issues/215)).
 - **HTTP.** A session opens with the same exchange (`POST …/session`, then
   `…/session/confirm`); each later request is signed by the machine key over the
   session, a sequence number, the method, the URL as dialled, the body and the
