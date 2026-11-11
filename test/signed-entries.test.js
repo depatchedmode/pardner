@@ -6,6 +6,10 @@ import { machineActor, shardOf, signChange } from '../lib/change-signatures.js'
 import { canonical, plain } from '../lib/workspace-schema.js'
 import { storageValue } from '../lib/workspace-values.js'
 import { eventually, execute, withHub } from '../support/signed-hub.js'
+import { everyOperationVia } from '../support/activity-fixture.js'
+import { OPERATION_TYPES } from '../lib/workspace-commands.js'
+import { personIdFor } from '../lib/machine-key.js'
+import { actorId as actorFor } from '../lib/client-identity.js'
 
 // A signer line means "this machine signed exactly this content" (docs/PARDNER-TRUST-DESIGN.md, section 3). These
 // tests run two or more peers, with the unusual data arriving by sync, and check every shown entry against what
@@ -147,4 +151,35 @@ it('an edit inside another person’s signed entry changes nothing shown under t
       assert.ok(review, 'the edit is listed for review')
     }
   })
+})
+
+it('every ordinary operation type and every record flow is shown on every peer as one signed entry of its own change, with nothing flagged', { timeout: 120000 }, async () => {
+  // Each machine acts as its own person's Actor, which it is certified for: the hub's owner registers itself first.
+  await withHub(async ({ project, server, replica }) => {
+    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey))
+    const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
+    await register({ id: owner, handle: 'owner', kind: 'human', displayName: 'Owner' })
+    await register({ id: member, handle: 'member-zero', kind: 'human', displayName: 'Member Zero' })
+    const writer = await replica(0)
+    const receipts = await everyOperationVia({ execute: request => writer.execute(request), doc: () => writer.workspace.handle.doc(), register, actorId: member, recipient: owner })
+    assert.deepEqual([...new Set(receipts.map(item => item.type))].sort(), [...OPERATION_TYPES].sort(), 'every operation type ran')
+    const late = await replica(1)
+    const heads = A.getHeads(writer.workspace.handle.doc())
+    await settled([server.store, writer, late], heads)
+    for (const runtime of [server.store, writer, late]) {
+      assertBound(runtime)
+      const { activity, attribution } = runtime.getDoc()
+      await eventually(() => runtime.getDoc().attribution.review.length === 0, () => `${runtime.role} lists ${runtime.getDoc().attribution.review.length} changes for review: ${JSON.stringify(runtime.getDoc().attribution.review.map(item => [item.kind, item.flags, item.state]))}`)
+      assert.ok(activity.every(entry => !entry.review && !Object.keys(entry.flags).length && entry.changes.every(change => change.state === 'signed')), `${runtime.role} flags an ordinary entry`)
+      for (const { receipt } of receipts) {
+        const entries = activity.filter(entry => entry.kind === 'operation' && entry.key === receipt.operationId)
+        assert.equal(entries.length, 1)
+        assert.equal(entries[0].changes.length, 1)
+      }
+      // Records: the gate's admissions, and the creation change's genesis, each signed and valid.
+      const records = activity.filter(entry => entry.kind === 'record')
+      assert.ok(records.length >= project.all.length && records.every(entry => !entry.flags.invalidRecord))
+      assert.equal(new Set(activity.flatMap(entry => entry.changes.map(change => change.hash))).size, attribution.summary.changes, 'every change is shown')
+    }
+  }, { hubOptions: { actors: [] } })
 })

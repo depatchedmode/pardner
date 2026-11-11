@@ -86,3 +86,46 @@ export function writeRecords(doc, records, { actor = `${ALICE}${'02'.repeat(8)}`
     for (const record of records) draft.membership[record.recordId] = storageValue(record)
   })
 }
+
+/**
+ * Every operation type through a running service, as `actorId`: `execute(request)` runs one request, `doc()` reads the
+ * service's board, and `register(payload)` registers an Actor on the hub. Returns each receipt with its type.
+ */
+export async function everyOperationVia({ execute, doc, register, actorId, recipient }) {
+  const receipts = []
+  let count = 0
+  const step = async (type, payload) => {
+    const receipt = await execute({ operationId: `every-${++count}-${Date.now()}`, actorId, type, payload })
+    receipts.push({ type, receipt })
+    return receipt.result
+  }
+  receipts.push({ type: 'actor.register', receipt: await register({ id: `agent-${Date.now()}`, handle: `agent${Date.now()}`, kind: 'agent', displayName: 'Helper' }) })
+  const task = (await step('task.create', { title: 'Every operation', description: 'Through the service', tags: ['one'] })).taskId
+  const revisions = field => taskState(doc(), task).revisions[field]
+  await step('task.update', { taskId: task, updates: { status: 'in-progress' }, expectedRevisions: { status: revisions('status') } })
+  await step('task.resolve', { taskId: task, field: 'priority', value: 'p1', expectedRevisions: revisions('priority') })
+  const handoff = await step('task.handoff', { taskId: task, to: recipient, status: 'review', message: 'Over to you',
+    expectedRevisions: { assignee: revisions('assignee'), status: revisions('status') } })
+  const added = (await step('comment.add', { taskId: task, text: 'A first comment' })).commentId
+  await step('comment.edit', { commentId: added, text: 'A first comment, edited', expectedRevisions: commentView(doc(), added).revisionIds })
+  await step('comment.resolve', { commentId: added, text: 'The kept version', expectedRevisions: commentView(doc(), added).revisionIds })
+  const doomed = (await step('comment.add', { taskId: task, text: 'Soon deleted' })).commentId
+  await step('comment.delete', { commentId: doomed, expectedRevisions: commentView(doc(), doomed).revisionIds })
+  const view = commentView(doc(), handoff.commentId)
+  await step('read.mark', { taskId: task, comments: [{ commentId: view.id, revisionId: view.revisionId }] })
+  await step('task.link-commit', { taskId: task, commit: { hash: 'abc1234def', message: 'Implement it' } })
+  const goal = (await step('goal.create', { title: 'A goal' })).goalId
+  await step('goal.update', { goalId: goal, updates: { description: 'Why' }, expectedRevisions: { description: recordState(doc(), 'goal', goal).revisions.description } })
+  await step('goal.resolve', { goalId: goal, field: 'status', value: 'open', expectedRevisions: recordState(doc(), 'goal', goal).revisions.status })
+  const vein = (await step('vein.create', { title: 'A vein', goalId: goal })).veinId
+  await step('vein.update', { veinId: vein, updates: { title: 'A vein, renamed' }, expectedRevisions: { title: recordState(doc(), 'vein', vein).revisions.title } })
+  await step('vein.resolve', { veinId: vein, field: 'status', value: 'open', expectedRevisions: recordState(doc(), 'vein', vein).revisions.status })
+  await step('task.link-vein', { taskId: task, veinId: vein })
+  await step('task.unlink-vein', { taskId: task, veinId: vein, expectedRevisions: linkAlternatives(doc(), task, vein).map(link => link.operationId) })
+  await step('task.link-issue', { taskId: task, repository: 'example/pardner', number: 7 })
+  await step('task.unlink-issue', { taskId: task, repository: 'example/pardner', number: 7, expectedRevisions: issueLinkIndex(doc())[task][0].revisions })
+  const branch = (await step('task.branch', { taskId: task, name: 'experiment' })).branchId
+  await step('task.update', { taskId: branch, updates: { description: 'Changed on the branch' }, expectedRevisions: { description: taskState(doc(), branch).revisions.description } })
+  await step('task.merge', { branchId: branch, expectedRevisions: { description: taskState(doc(), task).revisions.description } })
+  return receipts
+}
