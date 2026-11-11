@@ -8,6 +8,8 @@ import { createHash } from 'node:crypto'
 import { startClient } from '../lib/client-service.js'
 import { CLIENT_API, setupAgent } from '../lib/client-identity.js'
 import { joinApproved, unwrap } from '../support/enrollment.js'
+import { createHello } from '../lib/machine-handshake.js'
+import { generateMachineKey } from '../lib/machine-key.js'
 
 async function fixture(t, name) {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-client-'))
@@ -512,6 +514,32 @@ test('an unauthenticated WebSocket upgrade cannot restart a dead project runtime
   assert.match(outcome, /401/)
   assert.equal(client.runtimes.get(client.project(project.id).key), runtime, 'the dead runtime must not be replaced by an anonymous socket')
   assert.equal(client.starting.size, 0)
+})
+
+test('another machine’s handshake cannot wake a dead hosted runtime, which restarts by itself after the backoff', { timeout: 30000 }, async t => {
+  const { WebSocket } = await import('ws')
+  const { client, call } = await blankClient(t, 'pardner-revive-', { restartBackoffMs: 400 })
+  await call('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+  const { project } = await call('/projects', { name: 'Dormant hub', operationId: 'create' })
+  const key = client.project(project.id).key
+  const runtime = await client.runtime(client.project(project.id))
+  runtime.child.kill('SIGKILL')
+  await new Promise(resolve => runtime.child.once('exit', resolve))
+  // The hello is unauthenticated, so it gets an outage, not a fresh runtime.
+  const hello = createHello(generateMachineKey(), { projectId: project.id, route: `${client.url}${CLIENT_API}/replica/${project.id}`, role: 'replica' })
+  const response = await fetch(`${client.url}${CLIENT_API}/replica/${project.id}/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hello }) })
+  assert.equal(response.status, 503); assert.equal((await response.json()).code, 'HUB_UNAVAILABLE')
+  const socket = new WebSocket(`${client.url.replace(/^http/, 'ws')}${CLIENT_API}/replica/${project.id}/native`)
+  assert.match(await new Promise(resolve => { socket.once('error', error => resolve(error.message)); socket.once('open', () => resolve('open')) }), /401/)
+  assert.equal(client.runtimes.get(key), runtime, 'no anonymous request replaced the dead runtime')
+  assert.equal(client.starting.size, 0)
+  const deadline = Date.now() + 15000
+  const restarted = () => { const current = client.runtimes.get(key); return current && current !== runtime && !current.dead }
+  while (!restarted()) {
+    assert.ok(Date.now() < deadline, 'the hosted runtime was never restarted')
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  assert.equal(client.runtimes.get(key).connection.workspaceId, project.id)
 })
 
 test('gateway error pages and hub 5xx responses are outages: replicas keep saving locally and only explicit revocation revokes', { timeout: 45000 }, async t => {

@@ -331,7 +331,10 @@ line; they are not refused.
 A project runtime that fails
 to start is reported as `LOCAL_SERVICE_UNAVAILABLE` and is not restarted again
 for 5 s, so polling cannot fork it repeatedly; a runtime that crashes after
-starting is restarted on the next authenticated request. Native replicas remain
+starting is restarted on the next authenticated request. Other machines' requests
+never wake a runtime (their first message, the handshake's hello, is not yet
+authenticated), so the client restarts a hosted project's runtime by itself after
+the same 5 s, and other machines see an outage until then. Native replicas remain
 trusted full document writers, so API author binding is not a signature on
 arbitrary synchronized changes.
 Revocation cannot erase an offline device's already received data.
