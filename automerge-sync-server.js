@@ -547,9 +547,11 @@ class AutomergeSyncServer {
     this.syncSessions.set(machineId, live)
     for (const other of live) this.probeDuplicate(machineId, other)
     live.add(ws)
+    this.reportSyncPeer(machineId)
     ws.once('close', () => {
       live.delete(ws)
       if (!live.size) this.syncSessions.delete(machineId)
+      this.reportSyncPeer(machineId)
       this.reportDuplicates()
     })
   }
@@ -566,6 +568,15 @@ class AutomergeSyncServer {
     const timer = setTimeout(() => { other.off('pong', answered); other.terminate() }, DUPLICATE_PROBE_MS)
     other.once('pong', answered)
     try { other.ping() } catch { clearTimeout(timer); other.terminate() }
+  }
+
+  /**
+   * Which machines hold a live sync session with this hub, and when each was
+   * last seen on one, in its status (in memory only, so it resets when the hub
+   * restarts). The hub's client shows these as online or last seen (#198).
+   */
+  reportSyncPeer(machineId) {
+    this.store.syncPeers = { ...this.store.syncPeers, [machineId]: { connected: this.syncSessions.has(machineId), lastSeenAt: Date.now() } }
   }
 
   /** The hub's report of machines seen with two live sync sessions, in its status, while either copy is connected. */
