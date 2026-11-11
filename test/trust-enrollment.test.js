@@ -232,6 +232,25 @@ test('pairing: a person’s own machine or an admin approves, and nobody else ca
   assert.equal((await membership(alice, project)).machines.some(machine => machine.id === intruder.machineId), false)
 })
 
+test('a person belongs to their first machine: a paired computer cannot start a project or join another as a new person', { timeout: 90000 }, async t => {
+  const alice = await participant(t, 'Alice'), bob = await participant(t, 'Bob')
+  const { project } = await alice.call('/projects', { name: 'First machine', operationId: 'create' })
+  await approve(bob, alice, (await invite(alice, project, 'human')).invitation)
+  const laptop = await participant(t, 'Bob laptop', { identity: false })
+  await approve(laptop, bob, (await invite(bob, project, 'device')).invitation, 'pair')
+  assert.equal(laptop.personId, bob.personId, 'the paired computer holds the person ID of Bob’s first machine')
+  const started = await laptop.fail('/projects', { name: 'Elsewhere', operationId: 'create' })
+  assert.equal(started.code, 'IDENTITY_MISMATCH')
+  assert.match(started.error, /linked to Bob through another of their machines, so it can’t start a project/)
+  const { project: other } = await alice.call('/projects', { name: 'Second', operationId: 'second' })
+  const joined = await laptop.fail('/join', { invitation: (await invite(alice, other, 'human')).invitation, operationId: 'join-other' })
+  assert.equal(joined.code, 'IDENTITY_MISMATCH')
+  assert.match(joined.error, /can’t join a project as a new person/)
+  // Bob's first machine joins the second project as Bob, under the same person ID.
+  await approve(bob, alice, (await invite(alice, other, 'human')).invitation, 'join-second')
+  assert.ok((await membership(alice, other)).people.some(person => person.id === bob.personId))
+})
+
 test('roles: a member cannot invite people, an admin offers only the member role, and only the owner changes roles', { timeout: 90000 }, async t => {
   const alice = await participant(t, 'Alice'), bob = await participant(t, 'Bob'), carol = await participant(t, 'Carol')
   const { project } = await alice.call('/projects', { name: 'Roles', operationId: 'create' })
