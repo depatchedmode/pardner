@@ -448,3 +448,41 @@ Fresh default check: 174614 states, 679456 transitions, all four invariants and
 demonstration was rerun: all eight mutations were caught, reported as drift and
 reproduced as a model counterexample, with the working tree unchanged. See
 `uniformHandshakeReview` in `docs/evidence/lifecycle-model.json`.
+
+## Signed changes mapping review (2026-11-11)
+
+The mapping records source revision `f514d0b902d3bce17017d599b0511df5005ed045`.
+Every change is now signed by the machine that makes it (`lib/attribution.js`,
+not mapped), and the hub's persistence acknowledgement covers the board and its
+signature document (#197).
+
+- `lib/workspace.js`: `acknowledge(heads, signatureHeads)` refuses unless both
+  are held, then one flush job persists both documents before it answers
+  (`Handle(ack)`, `Respond`).
+- `lib/workspace-runtime.js`: the replica requests both heads. Its first guard
+  also requires the hub's reported signature heads to be held, and its second
+  guard records both requested snapshots, never the current heads
+  (`ReplicaReceive`, `ReplicaAckCommit`). `syncPending` stays true until both
+  are acknowledged, so the model's heads now stand for the pair of documents
+  (`ReplicaEdit`). Writing a signature into the signature document is a
+  deferred local change off the acknowledgement path, like a membership
+  write-back. `closeResources` stops asking the hub for signatures before
+  `abort()`, writes pending signatures into the signature document after the
+  operation queue drains and before `repo.shutdown()`, and closes the
+  signature cache in `finally`, before the lease (`StoreCloseBegin`).
+- `automerge-sync-server.js`: `sync-ack` passes the signature heads; a new
+  signed route answers a member's question about a change's signature.
+  `stop()` destroys connections that never carried a request: an aborted
+  `fetch` can leave one open for three seconds, and it holds no modeled request
+  (`StopBegin`).
+
+No action guard, effect, invariant or witness changed. The `ack-before-persist`,
+`stale-ack-accepted` and `lease-before-drain` mutation texts follow the new
+code; what each mutates is unchanged.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught by their implementation
+check, reported as drift and reproduced as a model counterexample, with the
+working tree unchanged. See `signedChangesReview` in
+`docs/evidence/lifecycle-model.json`.

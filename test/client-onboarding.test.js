@@ -183,6 +183,8 @@ test('offline restart preserves projects, identity, credentials and operation re
   await new Promise(resolve => badRuntime.child.once('exit', resolve))
   const independent = await call(`/projects/${local.id}/api/automerge/operations`, { type: 'task.create', operationId: 'independent', payload: { title: 'Other project works' } })
   assert.equal(independent.savedLocally, true)
+  // Stopped before Bob's fixture removes the directory this client uses: after hooks run in the order they were added.
+  await restarted.stop()
 })
 
 test('recipient proof, removal and changed retries cannot recover another admission', { timeout: 45000 }, async t => {
