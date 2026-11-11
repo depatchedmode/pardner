@@ -1,6 +1,6 @@
 # Pardner trust design: one gate, signed attribution
 
-Status: **proposal**. Nothing here is implemented. Current behaviour is described in [README.md](../README.md#current-implementation) and [PARDNER-CLIENT.md](PARDNER-CLIENT.md).
+Status: **in progress**. Implementation is tracked in #201; README says what is enforced today. Current behaviour is described in [README.md](../README.md#current-implementation) and [PARDNER-CLIENT.md](PARDNER-CLIENT.md).
 
 This version replaces an earlier, larger design: person keys, UCAN delegation chains, scoped authority, and per-operation authority checks by replay. The owner judged that design overcomplicated for what Pardner needs (see [Decision history](#decision-history)). The earlier text is in git history at commit `2aacfbf0`.
 
@@ -55,7 +55,7 @@ recordId = sha256(canonical(record) ‖ signature)
 
 | Kind | Signed by | Effect |
 |---|---|---|
-| `project.genesis` | The creator's first machine | Names the owner (a person ID and display name) and certifies that machine. `projectId = sha256(canonical(genesis record))`, so anyone holding the project ID can check the genesis without asking anyone |
+| `project.genesis` | The creator's first machine | Names the owner (a person ID and display name), certifies that machine, and carries a random nonce so two projects from one person never share an ID. `projectId` is the SHA-256 of the canonical genesis record with its `projectId`, signature and record ID left out, so anyone holding the project ID can check the genesis without asking anyone |
 | `member.add` | A machine of the owner or an admin | Admits a person with role `admin` or `member` and certifies their first machine. Holds the offer, the join request and the confirmation-code approval (section 4) |
 | `member.role` | A machine of the owner | Changes a person's role between `admin` and `member`. Each record names the role record it replaces (`replaces`, or null for the first). The owner's role never changes |
 | `member.remove` | A machine of the owner (for anyone), or of an admin (for members only) | Removes a person and all their machines. The owner can't be removed |
@@ -75,7 +75,7 @@ recordId = sha256(canonical(record) ‖ signature)
 - **Demoted signers.** A demoted admin can still sign an admission that counts, as a removed one can. Peers refuse new admissions from a signer who is not an admin in their current state, so this is the same arrival-time rule and the same known limit as for removed machines.
 - **Grow-only store.** Each peer keeps every valid record it has seen in a local store that only grows. The store is saved before the peer acts on a record, and is part of the cold backup. A record that later disappears from the document still counts. A member cannot erase a removal.
 - **Earlier admissions stay.** Removing an admin removes only that admin's person and machines. People and machines the admin admitted earlier stay (decided).
-- **Stale signers.** A removed machine can still sign records, so the hub and every peer refuse any new record or change from a removed machine from the moment they hold the removal ("enforced from arrival"). Until the direct lane exists, every record arrives through the hub, so this closes the gap. On the direct lane, a removed admin could hand a back-dated record to a peer that has not yet heard of the removal. That is a known limit, stated in [Direct peer lane](#direct-peer-lane).
+- **Stale signers.** A removed machine can still sign records, so the hub and every peer refuse any new record or change from a removed machine from the moment they hold the removal ("enforced from arrival"). This rule applies where a record first enters from its signer: at the hub's gate, and later at a direct peer's. It does not apply when a peer receives existing history. A new replica gets the whole log at once and keeps a removed admin's earlier admissions, as the rule above requires. Until the direct lane exists, every record enters through the hub, so this closes the gap. On the direct lane, a removed admin could hand a back-dated record to a peer that has not yet heard of the removal. That is a known limit, stated in [Direct peer lane](#direct-peer-lane).
 
 ### 3. Signed changes (attribution)
 
