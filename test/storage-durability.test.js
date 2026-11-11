@@ -210,3 +210,68 @@ it('reopening preserves upstream heads and board views across kills during and i
     }
   })
 })
+
+it('does not rewrite a loaded document, but barriers the first edit and retries a failed save', async () => {
+  await withStorage(async directory => {
+    const writer = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    let url
+    try {
+      const handle = writer.create({ value: 'acknowledged', padding: 'snapshot'.repeat(1000) })
+      url = handle.url
+      await writer.flush()
+      handle.change(doc => { doc.value = 'incremental' })
+      await writer.flush()
+    } finally { await writer.shutdown() }
+    const storage = new NodeFSStorageAdapter(directory)
+    const save = storage.save.bind(storage)
+    let writes = 0, fail = true
+    storage.save = async (...args) => {
+      writes++
+      if (fail) throw new Error('injected first-save failure')
+      return save(...args)
+    }
+    const reopened = new DurableRepo({ storage })
+    try {
+      const handle = await reopened.find(url)
+      await reopened.flush()
+      assert.equal(writes, 0, 'read-only open must not rewrite stored history')
+      assert.equal(handle.doc().value, 'incremental')
+      const before = reopened.persistedHeads.get(handle.documentId)
+      handle.change(doc => { doc.value = 'after-reopen' })
+      await assert.rejects(reopened.flush(), /injected first-save failure/)
+      assert.deepEqual(reopened.persistedHeads.get(handle.documentId), before)
+      fail = false
+      await reopened.flush()
+      assert.notDeepEqual(reopened.persistedHeads.get(handle.documentId), before)
+      await reopened.shutdown()
+      const final = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+      try { assert.equal((await final.find(url)).doc().value, 'after-reopen') }
+      finally { await final.shutdown() }
+    } finally { fail = false; await reopened.shutdown() }
+  })
+})
+
+it('loads overlapping snapshots and concurrent incremental tails without dropping history', async () => {
+  const A = await import('@automerge/automerge')
+  const { createHash } = await import('node:crypto')
+  await withStorage(async directory => {
+    const storage = new NodeFSStorageAdapter(directory)
+    const writer = new DurableRepo({ storage })
+    const handle = writer.create({ left: 0, right: 0 })
+    await writer.flush()
+    const base = handle.doc()
+    const left = A.change(A.clone(base), doc => { doc.left = 1 })
+    const right = A.change(A.clone(base), doc => { doc.right = 2 })
+    const expected = A.merge(A.clone(left), right)
+    await writer.shutdown()
+    const chunks = [['snapshot', A.save(base)], ['snapshot', A.save(left)], ['incremental', A.saveSince(right, A.getHeads(base))]]
+    for (const [kind, bytes] of chunks) await storage.save([handle.documentId, kind, createHash('sha256').update(bytes).digest('hex')], bytes)
+    const reader = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    try {
+      const reopened = await reader.find(handle.url)
+      assert.deepEqual(A.getHeads(reopened.doc()), A.getHeads(expected))
+      assert.deepEqual(reopened.doc(), expected)
+      await reader.flush()
+    } finally { await reader.shutdown() }
+  })
+})

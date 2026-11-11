@@ -645,5 +645,39 @@
     "progress": true,
     "allWitnesses": true,
     "mutationDemonstration": "All eight implementation mutations caught, source drift reported, and mirrored model counterexamples found; working tree unchanged."
+  },
+  "directDocumentLoadReview": {
+    "date": "2026-11-11",
+    "issue": 209,
+    "node": "v24.11.1",
+    "mapping": {
+      "revision": "af234da718e16315791e8319aad938b5d545e992",
+      "files": {
+        "automerge-sync-server.js": "c4d37d0eff4fda4a9d6b2eabda58bd69396a33cd414873807685228b180ddcb3",
+        "lib/durable-repo.js": "5910f0b15c2dbf2c8d0bb01dc6a52796b050bb95c488a491902afe28ec24adcf",
+        "lib/workspace-runtime.js": "42ba10b5209662d57759ade06c6bfc1fb579ff61337c21065ee08edf5749a5c7",
+        "lib/workspace.js": "15803b62df46222217e15e406768478c369505cf7459db7dad9af969fb582af1"
+      }
+    },
+    "actionsReviewed": [
+      "SyncUp",
+      "PersistRun",
+      "StoreCloseBegin",
+      "StoreCloseComplete"
+    ],
+    "semantics": "Direct validated decoding; loaded-head no-op only for data already on disk. Changed heads still await the existing serialized save. No model transitions or assumptions changed. Startup decoding is covered by implementation tests, outside the bounded model.",
+    "states": 174614,
+    "transitions": 679456,
+    "durationMs": 4505,
+    "invariants": "passed",
+    "progress": "passed",
+    "coverageWitnesses": 10,
+    "mutations": {
+      "count": 8,
+      "caught": 8,
+      "reported": 8,
+      "counterexamples": 8,
+      "workingTreeUnchanged": true
+    }
   }
 }
