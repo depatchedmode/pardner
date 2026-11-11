@@ -93,9 +93,9 @@ const groups = [
     name: 'client-onboarding', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'],
     qualification: 'Private client persistence, authenticated admission and resumable project enrollment',
     files: names(`lib/client-identity.js lib/client-registry.js lib/client-runtime.js lib/client-runtime-child.js
-      lib/client-auth.js lib/client-invites.js lib/client-projects.js lib/client-proxy.js lib/client-service.js lib/client-cli.js`),
-    focused: [{ command: 'node --test test/client-registry.test.js test/client-onboarding.test.js test/client-cli.test.js test/client-recovery.test.js test/client-shutdown.test.js test/client-control.test.js test/onboarding-flow.test.js test/client-admission-cache.test.js',
-      note: 'Real client enrollment, authority boundaries, CLI privacy, cold restoration, revocation, offline restart and project isolation' }],
+      lib/client-auth.js lib/client-invites.js lib/client-people.js lib/client-projects.js lib/client-proxy.js lib/client-service.js lib/client-cli.js`),
+    focused: [{ command: 'node --test test/client-registry.test.js test/client-onboarding.test.js test/client-cli.test.js test/client-recovery.test.js test/client-shutdown.test.js test/client-control.test.js test/onboarding-flow.test.js test/client-admission-cache.test.js test/trust-people.test.js',
+      note: 'Real client enrollment, authority boundaries, CLI privacy, cold restoration, revocation, offline restart, project isolation, the People view, leaving and the removed state' }],
   },
   {
     name: 'onboarding-invitation', scripts: ['test:cli', 'test:ui'], files: ['lib/onboarding-invitation.js'],

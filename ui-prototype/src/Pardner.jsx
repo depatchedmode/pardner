@@ -289,6 +289,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
   const request = useCallback(async (path, body) => {
     try { return await client.request(path, body) } catch (failure) {
       if (failure.code === 'AUTH_REQUIRED') sessionRef.current.onAuthLost()
+      if (failure.code === 'REVOKED') sessionRef.current.onRemoved?.()
       if (failure.code === 'WORKSPACE_MISMATCH') await reloadConfiguration()
       throw failure
     }
@@ -492,7 +493,8 @@ export function Workspace({ config, reloadConfiguration, session }) {
       <button type="button" onClick={retryConnection}>Retry connection</button>
     </div>}
   </main>
-  const actors = doc.actors
+  // The client's Actors carry each person's current profile name (and removal); the document keeps enrollment names.
+  const actors = session.actorsById ? { ...doc.actors, ...session.actorsById } : doc.actors
   const veins = doc.veins || {}
   const goals = doc.goals || {}
   const activeVeinFilter = veins[veinFilter] ? veinFilter : ''

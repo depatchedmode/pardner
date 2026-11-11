@@ -20,6 +20,8 @@ already covered. Match the exact assertions to the task's expected result.
   derived project ID, grow-only record store, write-back and prior-install refusal.
 - [Invitations, pairing and removal](trust-enrollment.md): signed offers, join
   requests and codes, approval, bounds, pairing, roles, removal and re-admission.
+- [People panel](people-panel.md): people, machines and agents, each role's
+  actions, leaving, profiles, invitation history and the removed state.
 - [Client onboarding and presence](client-onboarding.md): authenticated Actor
   sessions, device aggregation, expiry and integration evidence boundaries.
 

@@ -1242,17 +1242,23 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
 .reveal { margin-top: 8px; }
 .reveal textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
 .warning-text { color: var(--warning); font-size: 13px; margin: 0 0 8px; }
+/* Each invitation: what it was for and its state, then who issued it and what became of it. */
 .invite-list li {
   display: grid;
-  grid-template-columns: 80px max-content minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'kind state action' 'meta meta action';
   align-items: center;
-  gap: 12px;
-  padding: 8px 0;
+  column-gap: 10px;
+  row-gap: 3px;
+  padding: 9px 0;
   font-size: 13px;
 }
 .invite-list li + li { border-top: 1px solid var(--line); }
-.invite-list li > .muted { font-size: 12px; }
-.invite-list .invite-state { white-space: nowrap; }
+.invite-kind { grid-area: kind; font-weight: 500; }
+.invite-list .invite-state { grid-area: state; white-space: nowrap; }
+.invite-meta { grid-area: meta; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.invite-list li > button { grid-area: action; }
+.invite-more { margin: 10px 0 0; }
 
 /* Confirmation codes are read aloud: large, spaced, tabular. */
 .confirmation-code {
@@ -1270,7 +1276,17 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
 .join-request-list li { padding: 14px 0; }
 .join-request-list li + li { border-top: 1px solid var(--line); }
 .join-request-list p { margin: 0 0 4px; }
-.requests-button { font-size: 13px; }
+/* The header's way into the People panel; its badge counts requests waiting for this machine's approval. */
+.people-button { display: inline-flex; align-items: center; gap: 8px; }
+.badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-wash);
+  border: 1px solid #2c6b55;
+  color: var(--accent);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
 .role-choice { display: grid; gap: 6px; margin: 4px 0 14px; max-width: 360px; }
 .menu [aria-disabled='true'] .menu-label { color: var(--muted); }
 
@@ -1304,8 +1320,6 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
   .avatar, .avatar-more { min-height: 0; }
   .people-list li { grid-template-columns: auto minmax(0, 1fr) auto; }
   .people-list li > .muted { display: none; }
-  .invite-list li { grid-template-columns: minmax(0, 1fr) auto; }
-  .invite-list li > .muted { grid-column: 1 / -1; }
 }
 @media (min-width: 761px) {
   .app[data-client] .side-panel {
@@ -1324,4 +1338,156 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
 .mention-hint {
   margin: 4px 0 0;
   font-size: 0.85rem;
+}
+
+/* People panel (#198): members, their machines and agents, removed entries and invitations. */
+.people-panel {
+  width: min(760px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  background: var(--surface);
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: 0 16px 48px #0009;
+}
+.people-panel::backdrop,
+.confirm-dialog::backdrop { background: #000a; }
+.people-panel > .muted,
+.people-intro { margin: 0 0 14px; }
+.people-panel > .notice { margin: 0 0 14px; }
+.people-panel > .notice p { margin: 0 0 8px; }
+.people-panel > .notice .actions { margin-top: 4px; }
+.people-actions { margin: 0 0 6px; }
+.people-section {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.people-section h3 { font-size: 15px; margin-bottom: 12px; }
+.people-section > .muted.small { margin: -4px 0 12px; }
+.member-list,
+.machine-list,
+.agent-list,
+.removed-list,
+.consequences { list-style: none; margin: 0; padding: 0; }
+.member { padding: 16px 0; }
+.member + .member { border-top: 1px solid var(--line); }
+.member:first-child { padding-top: 4px; }
+.member-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+.member-heading h4 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.member-heading p { margin: 2px 0 0; overflow-wrap: anywhere; }
+.role-badge {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+  color: #d6d6d6;
+}
+.role-badge[data-role='owner'] { border-color: #2c6b55; color: var(--accent); }
+.role-badge[data-role='admin'] { border-color: var(--info-line); color: #b9d7ec; }
+.member-part { margin: 12px 0 0 52px; }
+.member-part h5 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.machine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
+  padding: 7px 0;
+}
+.machine + .machine { border-top: 1px solid #262626; }
+.machine-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; font-size: 14px; }
+.machine-name { font-weight: 500; overflow-wrap: anywhere; }
+.machine-state { font-size: 13px; color: var(--muted); }
+.machine-state[data-status='online'] { color: var(--accent); }
+.machine-state[data-status='unreachable'] { color: var(--warning); }
+.machine-id { grid-column: 1; }
+.machine > button { grid-column: 2; grid-row: 1 / span 2; }
+.machine-note { grid-column: 1 / -1; }
+.tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+  color: #d6d6d6;
+  white-space: nowrap;
+}
+.tag[data-tag='This machine'] { border-color: #2c6b55; color: var(--accent); }
+/* Removed is a state of its own, never shown like offline (#175). */
+.removed-tag { border-color: var(--warning-line); color: var(--warning); background: var(--warning-bg); }
+.agent-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 4px 0; font-size: 14px; }
+.member-actions { margin: 14px 0 0 52px; }
+.member-note { margin: 12px 0 0 52px; }
+.unavailable { display: inline-flex; flex-direction: column; gap: 4px; max-width: 32ch; }
+button[aria-disabled='true'] { opacity: 0.5; cursor: default; }
+button[aria-disabled='true']:hover { background: #202020; border-color: var(--line); }
+.danger { border-color: var(--danger-line); color: var(--danger-text); }
+.danger:hover { background: var(--danger-bg); border-color: #b5705f; }
+.quiet { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+.removed-list li { padding: 12px 0; }
+.removed-list li + li { border-top: 1px solid var(--line); }
+.removed-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.removed-list p { margin: 4px 0 8px; }
+.profile-editor { margin: 14px 0 0 52px; max-width: 420px; gap: 12px; }
+.profile-editor p { margin: 0; }
+.observed { margin: 22px 0 0; }
+.manage-people { margin: 16px 0 0; font-size: 14px; }
+.confirm-dialog { width: min(480px, calc(100% - 32px)); }
+.confirm-dialog h2 { font-size: 19px; margin-bottom: 12px; overflow-wrap: anywhere; }
+.consequences li { position: relative; padding: 0 0 8px 18px; line-height: 1.5; font-size: 14px; }
+.consequences li::before { content: ''; position: absolute; left: 3px; top: 0.6em; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+.confirm-actions { justify-content: flex-end; margin-top: 16px; }
+.removed-project { max-width: 620px; margin-top: 6vh; }
+.removed-project h1 { margin-top: 10px; }
+.removed-project section { margin-top: 24px; }
+.removed-project h2 { font-size: 16px; margin-bottom: 8px; }
+.removed-project ul { margin: 0; padding-left: 20px; line-height: 1.6; }
+.removed-project code { overflow-wrap: anywhere; }
+.removed-app header { padding: 14px 28px; }
+.command {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--code-bg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.removed-project > .actions { margin-top: 28px; }
+@media (max-width: 760px) {
+  /* At phone width the panel is the whole screen. */
+  .people-panel {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    padding: 18px 16px 28px;
+  }
+  .member-part,
+  .member-actions,
+  .member-note,
+  .profile-editor { margin-left: 0; }
+  .member-heading { grid-template-columns: auto minmax(0, 1fr); }
+  .member-heading .role-badge { grid-column: 2; justify-self: start; }
+  .removed-project { margin-top: 2vh; }
+  .removed-app header { padding: 12px 16px; }
 }

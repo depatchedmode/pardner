@@ -102,7 +102,8 @@ export function ProfileDialog({ actor, actors, entry, tasks, currentActorId, ret
         <h2 id={titleId}>{actorName(actor)}{actor.id === currentActorId && <span className="you-tag"> (you)</span>}</h2>
         <p className="profile-kind">
           {actor.kind === 'agent' ? `Agent${human ? ` · ${actorName(human)}’s agent` : ''}` : 'Human'}
-          {' · '}<span className="presence-text" data-presence={state}>{PRESENCE_LABELS[state]}</span>
+          {' · '}{actor.removed ? <span className="tag removed-tag">Removed from the project</span>
+            : <span className="presence-text" data-presence={state}>{PRESENCE_LABELS[state]}</span>}
         </p>
       </div>
       <button type="button" className="close" onClick={onClose}>Close</button>
@@ -156,7 +157,7 @@ export function ProfileDialog({ actor, actors, entry, tasks, currentActorId, ret
   </dialog>
 }
 
-export function PeopleDialog({ actors, index, returnFocus, onClose, onOpen }) {
+export function PeopleDialog({ actors, index, returnFocus, onClose, onOpen, onManage }) {
   const modal = useModal(onClose, returnFocus)
   return <dialog className="profile-dialog" aria-labelledby="people-title" {...modal}>
     <div className="profile-heading">
@@ -174,5 +175,6 @@ export function PeopleDialog({ actors, index, returnFocus, onClose, onOpen }) {
         </li>
       })}
     </ul>
+    {onManage && <p className="manage-people"><button type="button" className="link-button" onClick={onManage}>Machines, roles and removed people</button></p>}
   </dialog>
 }

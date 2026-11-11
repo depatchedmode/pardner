@@ -58,10 +58,10 @@ recordId = sha256(canonical(record) ‖ signature)
 | `project.genesis` | The creator's first machine | Names the owner (a person ID and display name), certifies that machine, and carries a random nonce so two projects from one person never share an ID. `projectId` is the SHA-256 of the canonical genesis record with its `projectId`, signature and record ID left out, so anyone holding the project ID can check the genesis without asking anyone |
 | `member.add` | A machine of the owner or an admin | Admits a person with role `admin` or `member` and certifies their first machine. Holds the offer, the join request and the confirmation-code approval (section 4) |
 | `member.role` | A machine of the owner | Changes a person's role between `admin` and `member`. Each record names the role record it replaces (`replaces`, or null for the first). The owner's role never changes |
-| `member.remove` | A machine of the owner (for anyone), or of an admin (for members only) | Removes a person and all their machines. The owner can't be removed |
-| `machine.add` | Another machine of the same person, or a machine of the owner or an admin | Certifies a new machine for that person, after a confirmation code on both screens |
+| `member.remove` | A machine of the owner (for anyone), or of an admin (for members only), or the person's own machine (to leave) | Removes a person and all their machines. The owner can't be removed and can't leave |
+| `machine.add` | Another machine of the same person, or a machine of the owner or an admin | Certifies a new machine for that person, after a confirmation code on both screens. `agentsOnly: true` marks a machine, such as a build box, that may act only as that person's agents and never as the person |
 | `machine.remove` | Another machine of the same person, or a machine of whoever may remove that person | Removes one machine |
-| `agent.name` | The machine the agent runs on | Records an agent's display name and harness, for example "Maya's Codex" (#150). It grants nothing; it is a label |
+| `agent.name` | The machine the agent runs on | Records an agent's display name and harness, for example "Maya's Codex" (#150). Its subject must be an agent of the signing machine's own person, so no machine can label itself as someone else's agent |
 | `profile` | Any machine of that person | Sets display name and email. These default to git's `user.name` and `user.email` |
 
 **How membership is computed.** It is a pure function of the set of valid records, and does not depend on order:
@@ -72,33 +72,39 @@ recordId = sha256(canonical(record) ‖ signature)
   - *Whose admissions count?* A `member.add` or `machine.add` counts if its signer's person is the owner or **has ever held** `admin`, by admission or by any owner-signed role record. A later demotion does not undo what an admin did, just as a removal does not.
   - *What is a person's role now?* The head of their chain of role records, following `replaces`. If two owner machines changed a role at once, there are two heads, and the greater record ID wins.
 - **Who an admin may remove.** An admin's `member.remove` or `machine.remove` counts only against a person who has never held `admin`. The owner's removals count against anyone but the owner. A promotion and an admin's removal of the same person, made at the same moment, therefore have one answer: the person stays.
-- **Demoted signers.** A demoted admin can still sign an admission that counts, as a removed one can. Peers refuse new admissions from a signer who is not an admin in their current state, so this is the same arrival-time rule and the same known limit as for removed machines.
+- **Demoted signers (known limit).** A demoted admin can still sign an admission or a removal that counts. The hub's gate refuses new records from a signer who no longer holds the role. But a demoted admin is still a member and still syncs, so a modified client can write such a record straight into the document, and peers will count it. Demotion is therefore a soft step. To stop a former admin for certain, remove them: a removed machine cannot sync, so it cannot add anything. README states this.
 - **Grow-only store.** Each peer keeps every valid record it has seen in a local store that only grows. The store is saved before the peer acts on a record, and is part of the cold backup. A record that later disappears from the document still counts. A member cannot erase a removal.
 - **Earlier admissions stay.** Removing an admin removes only that admin's person and machines. People and machines the admin admitted earlier stay (decided).
 - **Stale signers.** A removed machine can still sign records, so the hub and every peer refuse any new record or change from a removed machine from the moment they hold the removal ("enforced from arrival"). This rule applies where a record first enters from its signer: at the hub's gate, and later at a direct peer's. It does not apply when a peer receives existing history. A new replica gets the whole log at once and keeps a removed admin's earlier admissions, as the rule above requires. Until the direct lane exists, every record enters through the hub, so this closes the gap. On the direct lane, a removed admin could hand a back-dated record to a peer that has not yet heard of the removal. That is a known limit, stated in [Direct peer lane](#direct-peer-lane).
+- **Changes from a removed machine.** At the gate, refusing means closing the removed machine's session. A peer never drops one change and keeps syncing: Automerge would then block every later change built on it, and peers would split (measured in the [spike](research/trust-signature-spike.md)). A removed machine's change that arrives as existing history, relayed by a member, is applied and flagged "made by a removed machine".
 
 ### 3. Signed changes (attribution)
 
-- **What is signed.** Every Automerge change a machine makes is signed: `Ed25519(machine key, "pardner/change/v1" ‖ projectId ‖ changeHash)`. The signature covers the change bytes exactly, so nobody can wrap it around different content.
-- **Actor IDs.** The change's Automerge actor ID starts with the machine ID's raw 16-byte digest and ends with 8 random bytes chosen at each process start. A restored backup and its original therefore never reuse an actor and sequence number, which Automerge refuses **(checked)**. automerge-repo picks a random actor every time it loads a document, so Pardner sets its own after loading, with `handle.update(doc => clone(doc, { actor }))` **(checked)**.
-- **What a peer checks.** The signature verifies, and the signer was a member machine when the peer received the change. The board shows the change as made by that machine's person, or by the agent the machine names. Peers take the machine's word only for *which* Actor on that machine acted (see [The local trust zone](#the-local-trust-zone)).
+- **What is signed.** Every Automerge change a machine makes is signed: `Ed25519(machine key, "pardner/change/v1" ‖ projectId ‖ changeHash)`, where `changeHash` is Automerge's raw 32-byte change hash. The signature covers the change bytes exactly, so nobody can wrap it around different content.
+- **Actor IDs.** The change's Automerge actor ID starts with the machine ID's raw 16-byte digest and ends with 8 random bytes chosen each time a document is loaded. A restored backup and its original, or two handles in one process, therefore never reuse an actor and sequence number, which Automerge refuses (measured: one suffix per process failed 16 of 166 runtime tests). automerge-repo picks a random actor on every load, so Pardner sets its own after loading, and makes the creation change with the machine actor.
+- **What a peer checks.** The signature verifies, the change's actor prefix names the signing machine, and that machine is or was a member. A change that fails is flagged, never refused. The board shows the change as made by that machine's person, or by the agent the machine names. Peers take the machine's word only for *which* Actor on that machine acted (see [The local trust zone](#the-local-trust-zone)).
 - **What a peer does not check.** Whether the operation was "allowed". Members may change anything, as in git. The local service still enforces the board's rules (for example, only the author deletes a comment, #160) on every write it makes, and the operations log shows every change with its signer, so a bad change can be reviewed and undone.
-- **Where signatures travel.** A signature cannot sit inside the change it signs. The spike chooses between:
-  - a signature store, either a second Automerge document or a map keyed by change hash, synced alongside the board;
-  - a small change exchange that sends each change with its signature, verifies it, then applies it.
-- **Unsigned or badly signed changes are never silent.** With the exchange, they are refused and logged. With a store, they are applied and then flagged on the board as "unattributed: relayed by <machine>" for review. The spike decides which; AGENTS.md's rule against silently discarding edits applies to both.
-- **Equivocation (known limit).** A member machine can send two different changes with the same actor and sequence number to two peers. Each change verifies, but Automerge refuses the second on each side. Two signed changes for one actor and sequence number are proof, and the machine is reported. The remedy is `machine.remove` and rebuilding the minority replica.
+- **Where signatures travel (decided by the spike).** A signature cannot sit inside the change it signs. Signatures live in a second Automerge document beside the board, sharded by the first byte of the change hash, and synced by automerge-repo as it is today.
+  - Writers sign each change at once and save the entry with the next background save, off the acknowledgement path. Ed25519 signatures are deterministic, so at start-up a writer re-creates any of its own entries that are missing.
+  - Each peer keeps the signatures it has verified in a local grow-only cache, so deleting an entry from the shared document does not unattribute a change for peers that saw it.
+  - The hub's persistence acknowledgement covers both documents.
+- **Unsigned or badly signed changes are never silent, and never refused.** Every change is applied, then checked. The board shows one of:
+  - "signature pending", while the signature document has not caught up with the peer that sent the change (milliseconds normally, or the length of an outage);
+  - "unattributed: relayed by <machine>", once it has caught up and there is still no valid signature;
+  - "made by a removed machine", when the peer holds the signer's removal.
+- **Why not verify before applying.** The spike built it. A refused change blocks every later change built on it, automerge-repo's sync loops, and peers that refuse by arrival order diverge for good.
+- **Equivocation (known limit).** A member machine can send two different changes with the same actor and sequence number to two peers. Each change verifies, but Automerge refuses the second on a merge. What automerge-repo does when one arrives by sync is unverified. Two signed changes for one actor and sequence number are proof, and the machine is reported. The remedy is `machine.remove` and rebuilding the minority replica.
 
 ### 4. Joining: invitations and pairing
 
 - **New person (an admin approves).**
-  1. **Offer.** The owner or an admin creates an invitation. It holds the offer `{projectId, offerId, role, routes[], expiresAt}`, signed by their machine, and a one-time secret. `routes` lists ways to reach the hub. The issuer refuses invitations whose only routes are loopback, and the recipient reports routes that fail (#162, STORY-041).
-  2. **Join request.** The newcomer's client generates a machine key and sends a join request, keyed with the invitation secret, to the enrollment point. The enrollment point holds pending requests in its local queue, with at most 5 per offer, and stores the request before anything else happens.
-  3. **Confirmation code.** Once the request is stored, the approving admin's client adds a fresh random nonce. Both screens then show a code derived from the offer, the joiner's machine key and that nonce. The admin compares them face to face or by voice, ideally not over the channel the invitation travelled on. Because the nonce is chosen after the request is fixed, someone holding a leaked invitation gets only one guess at matching the code. If two pending requests on one offer show the same code, both are rejected.
-  4. **Approval.** The admin's machine signs `member.add`. Expiry and single use are checked by the enrollment point when it approves; other peers never check clocks.
-- **New machine for an existing person (your own machine approves).** The new machine generates its key and shows a pairing request. The person approves it from one of their existing machines, comparing a confirmation code built the same way, and that machine signs `machine.add`. An admin can do the same for someone who has lost every machine. Pardner never offers to start a second identity on a computer joining an existing person (STORY-016, STORY-018).
+  1. **Offer.** The owner or an admin creates an invitation. It holds the offer `{projectId, offerId, purpose, role or personId, routes[], expiresAt}`, signed by their machine, and a one-time secret. A pairing offer names the person the machine is for, so a request on it cannot name anyone else. `routes` lists ways to reach the hub. The issuer refuses invitations whose only routes are loopback, and the recipient reports routes that fail (#162, STORY-041).
+  2. **Join request.** The newcomer's client generates a machine key and sends a join request, keyed with the invitation secret, to the enrollment point. The enrollment point holds pending requests in its local queue and stores the request before anything else happens. At most 5 wait at once and 20 are accepted in total per offer, and each expires after 30 minutes.
+  3. **Confirmation code.** Once the request is stored, the approving admin's client adds a fresh random nonce. Both screens then show an eight-digit code derived from the offer, the joiner's machine key and that nonce. The admin compares them face to face or by voice, ideally not over the channel the invitation travelled on. Because the nonce is chosen after the request is fixed, someone holding a leaked invitation gets only one guess at matching the code. The same-code rule is checked each time an approver fixes a nonce: if two pending requests on one offer show the same code, both are rejected.
+  4. **Approval.** The admin's machine signs `member.add`. Expiry and single use are checked by the enrollment point when it approves; other peers never check clocks. The first approval reserves the offer: a second approval, or a revocation of the offer, fails from that point.
+- **New machine for an existing person (your own machine approves).** The new machine generates its key and shows a pairing request. The person approves it from one of their existing machines, comparing a confirmation code built the same way, and that machine signs `machine.add`. An admin can do the same for someone who has lost every machine. A pairing offer is issued by whoever may approve it: the person's own machines, or the owner or an admin. Pardner never offers to start a second identity on a computer joining an existing person (STORY-016, STORY-018).
 - **New agent (no ceremony).** Agents run under their machine's key. `agent.name` gives them a label, and agent grants limit them locally, as today.
-- **Re-admission.** Removals are permanent, so a removed machine comes back as a new machine key, and a removed person comes back through a new invitation. There are no dead ends (STORY-043, STORY-130).
+- **Re-admission.** Removals are permanent, so a removed machine comes back as a new machine key, and a removed person comes back through a new invitation as a new person ID. Both need a fresh client directory, because the key belongs to the directory. The old person stays listed as removed and keeps their earlier work. There are no dead ends (STORY-043, STORY-130).
 - **Forge checks.** None. Admission always rests on an admin and a confirmation code, so no forge is ever required (decided).
 
 ### 5. Transport admission (the gate)
@@ -129,7 +135,7 @@ Consequences:
 ## Backup, restore and loss
 
 - **What a cold backup holds.** The client directory, including the machine key and the grow-only record store. A backup is a credential, as it is today.
-- **Restoring.** A restored client is the same machine and resumes signing. Each process picks its own actor suffix, so a restored copy and its original cannot corrupt each other's history. Running both is still a duplicated credential (#165, STORY-142). A peer that sees two live sessions for one machine reports it, and the remedy is `machine.remove` and a fresh key.
+- **Restoring.** A restored client is the same machine and resumes signing. Each document load picks its own actor suffix, so a restored copy and its original cannot corrupt each other's history. Running both is still a duplicated credential (#165, STORY-142). A peer that sees two live sessions for one machine reports it, and the remedy is `machine.remove` and a fresh key.
 - **A stale hub backup.** A restored hub does not serve, accept or enroll until it has synced membership with at least one member peer, or until its operator confirms that no newer state exists. Removals live on every peer, so the hub then catches up and cannot roll them back. The delivery lease ledger still needs its own current backup.
 - **Fresh install with no backup.** The computer pairs as a new machine through one of the person's machines or an admin. It fetches the document and checks the membership log from the genesis, needing only the project ID.
 - **Lost machine.** Remove it from another of the person's machines, or have an admin or the owner remove it.
@@ -182,17 +188,12 @@ README states each stage's guarantee as it lands, so no stage claims more than i
 - add the comment author check (#160);
 - refuse loopback-only invitations (#162).
 
-**Spike (before step 1).**
-- Choose how signatures travel (a signature store or a verify-then-apply exchange) and what an unsigned change does.
-- Measure signing and verification cost per change at 1, 10 and 50 operations per second, and at 1k, 10k and 50k operations.
-- Measure a new replica's first full check.
-- Measure whether Automerge text should stay (Q7: keep it unless the numbers cross the rule below).
-
-Decision rule: keep the chosen mechanism and Automerge text if, at 10,000 operations, all of these hold:
-- signing adds under 10% to authoring time;
-- verification keeps up with 50 operations per second;
-- the document opens in under 3 seconds;
-- the README acceptance bounds (6 s offline open, 10 s convergence) still hold with verification on.
+**Spike (done, #193).** Results are in [research/trust-signature-spike.md](research/trust-signature-spike.md). All figures were measured on one shared machine with synthetic boards.
+- **Signature transport:** the second-document store. Verify-before-apply was built and rejected.
+- **Signing cost:** signing takes about 40 µs and checking about 110 µs. At 10,000 operations signing adds under 0.3% to authoring, and checking uses about 1% of the budget at 50 operations per second.
+- **Text storage:** Automerge text crossed the decision rule and goes (Q7). At 10,000 operations a text board takes 52 s and 4.9 GB to open, and at 50,000 it cannot be loaded. Plain string values open in 6.5 s at 10,000.
+- **Open time:** still fails the 3-second rule with plain values through automerge-repo (6.5 s; 2.8 s with a direct `Automerge.load`). This needs its own work before signed changes land.
+- **Not shown:** the README acceptance bounds with signing on. They were reasoned from parts, not run.
 
 **Stage 1: the gate and attribution.** The guarantee: only member machines sync, and every change shows which machine made it. Members may change anything.
 1. **Keys, records and signed changes.**
@@ -203,6 +204,7 @@ Decision rule: keep the chosen mechanism and Automerge text if, at 10,000 operat
    - A breaking change: prior installs are rejected and preserved, not migrated (AGENTS.md).
    - Updates `docs/PARDNER-CLIENT.md`, `docs/PARDNER-CLIENT-RECOVERY.md` and README.
 2. **Board surfaces, straight after.** Members, machines and agents; removal and re-admission; pairing a new machine; unattributed-change notices.
+   - Storage: plain string values in place of Automerge text, and open time under 3 seconds at 10,000 operations, before signed changes.
 3. **Machine-key handshake.**
    - It replaces the bearer tokens.
    - It retires the hand-run hub and replica roles.
@@ -238,7 +240,10 @@ This is a plan. None of these scenarios has been run.
 | 1 | An expired invitation is used | Refused by the enrollment point |
 | 1 | Someone pairs a machine into another person's identity | Refused: only that person's machine or an admin can sign `machine.add`, after a code match |
 | 1 | A change is relayed by a second member | Shown as made by the original machine; the signature verifies |
-| 1 | A change with a missing or bad signature | Refused or flagged as unattributed, per the spike's mechanism; never silently dropped |
+| 1 | A change with a missing or bad signature | Applied and flagged as pending, then unattributed; never refused or dropped |
+| 1 | A signature arrives after its change | Pending, then attributed |
+| 1 | A removed machine's change is relayed by a member | Applied and flagged "made by a removed machine"; every peer converges |
+| 1 | Two handles of one document in one process | Distinct actors; no duplicate sequence numbers |
 | 1 | The same field is edited on two disconnected machines | Both changes verify; both alternatives are kept for explicit resolution, as today |
 | 1 | An enrolled replica reopens with the hub unreachable, edits and restarts | Opens, signs and saves locally; the edits survive |
 | 1 | A restored stale hub backup, with a removed machine connecting first | The hub waits for a member peer; the removed machine is not served |
@@ -266,12 +271,12 @@ This is a plan. None of these scenarios has been run.
 | Removal | An admin's removal leaves the people they admitted in. Removals are grow-only and order-free; if two machines remove each other, both go |
 | Admins | Only the owner removes or demotes admins. A lost owner freezes the admin list (Q4) |
 | Invitations | Admin approval with a confirmation code only, with no forge check. The code includes an approver nonce added after the request is stored |
-| Signing | Every change is signed from stage 1. The spike picks how signatures travel |
+| Signing | Every change is signed from stage 1. Signatures live in a second Automerge document. Changes are applied then checked, and flagged, never refused |
 | Hand-run roles | Retired. Client mode is the only way to host or join |
 | Admission rule | The handshake replaces bearer tokens, and AGENTS.md is reworded with it (Q2) |
 | Enrollment | Hub-only until the direct lane is qualified (Q3) |
-| Revocation | Enforced from arrival: new records and changes from a removed machine are refused once a peer holds the removal (Q1) |
-| Text storage | Keep Automerge text unless the spike's numbers cross the decision rule (Q7) |
+| Revocation | Enforced from arrival at the gate: a removed machine's session is closed and its new records are refused. Its changes that arrive as history are flagged, not refused (Q1) |
+| Text storage | Plain string values. Automerge text crossed the decision rule (Q7) |
 
 ## Decision history
 

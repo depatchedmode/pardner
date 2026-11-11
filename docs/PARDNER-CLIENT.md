@@ -162,10 +162,11 @@ retry. The invitation is used up; other waiting requests on it are rejected. An
 admin on another computer approves the same way: their own machine signs, and the
 hub records it.
 
-The board shows **Join requests** to everyone who may approve one: the owner and
-admins for new people, and the person's own machines, the owner or an admin for a
-new machine. Each request shows the name, email and device, or, for a new
-machine, whose identity it joins (#155). A new person whose name or email matches
+The **People** panel (below) lists join requests, with their codes, to everyone
+who may approve one: the owner and admins for new people, and the person's own
+machines, the owner or an admin for a new machine. The header's **People** button
+counts the requests waiting for this machine. Each request shows the name, email
+and device, or, for a new machine, whose identity it joins (#155). A new person whose name or email matches
 a member is flagged, in case it is that member's second computer. Pairing never
 creates a second person.
 
@@ -215,9 +216,68 @@ of the person, for their agents only: it is approved like a new device, and the
 hub never lets it act as the person. An agent-only client cannot issue a human
 browser launch; it uses its scoped agent grant to read and edit the board.
 
-### Removal, roles and re-admission
+### The People panel
 
-`client revoke --project ID --kind member --id PERSON_ID` signs `member.remove`;
+The header's **People** button opens a panel built from this machine's own
+membership records, so it opens offline; the hub checks every action again when
+it is taken. Roles decide only who may let people in or remove them: every member
+may change anything on the board. The panel shows:
+
+- **Counts** of people, machines, agents and removed entries in its heading.
+- **Each person:** their role, email and who let them in (or that they started
+  the project); their machines, with **This machine**, **Hosts the project**,
+  **Agents only**, and online or last seen where the hub knows it (the hub keeps
+  this in memory, so it resets when the hub restarts); and their agents with the
+  machines they run on. A machine's short ID tells apart machines with the same
+  name; a machine paired after its person joined says who paired it.
+- **Waiting to join:** join requests with the confirmation code, **Approve** and
+  **Reject**, as above.
+- **Removed:** people and machines removed from the project, with who removed
+  them or that the person left, distinct from offline (#175). The board's avatar
+  stack no longer lists a removed person, and their profile says they were
+  removed; their earlier work keeps their name.
+- **Invitations:** newest first, with what each was for, who issued it and when,
+  its state, and who used or revoked it. It shows ten at a time, up to the newest
+  fifty, refreshes while open, and offers **Revoke** for unused ones (#183). The
+  Invite dialog shows the same history.
+
+Actions appear only to people who may take them, with a short reason where one is
+not available on a particular entry:
+
+| Action | Who sees it |
+|---|---|
+| Invite someone (the owner chooses member or admin) | Owner and admins |
+| Pair another machine | Everyone, for themselves |
+| Pair a machine for someone else | Owner; admins for people who never held admin |
+| Remove a machine | The person's other machines; the owner; admins for people who never held admin |
+| Remove a person, invite a removed person again | Owner; admins for people who never held admin |
+| Make admin / Make member | Owner |
+| Edit name and email | Each person, on their own entry |
+| Stop an agent here (**Stop here**) | Each person, for their own agents running on this machine |
+| Leave project | Everyone but the owner |
+
+Nobody but the owner is offered controls on the owner's entry. The machine you are
+using can't remove itself, and the machine that hosts the project can't be
+removed. Removing, changing a role and leaving each ask first, and say what loses
+access, that past work stays attributed, that people the person let in stay, and
+how to come back: a new invitation or pairing, used from a fresh client directory
+(#152).
+
+**Profile.** **Edit name and email** writes a `profile` record for the project,
+signed by this machine, and keeps the new details as this computer's identity for
+projects it starts or joins later. Every member's board then shows the new name.
+Agent names given at enrollment, such as "Maya's Codex", do not change.
+
+**Owner nudge.** The owner of a project with one machine sees a suggestion to pair
+a second: if the owner loses every machine, nobody can remove or demote an admin
+any more. Dismissed on the board, it stays in the panel until a second machine is
+paired.
+
+### Removal, roles, leaving and re-admission
+
+`client revoke --project ID --kind member --id PERSON_ID` signs `member.remove`
+(the human Actor ID a profile shows works too; an agent's ID is refused with
+advice, and a refused ID leaves the operation ID free for the corrected request);
 `--kind machine --id MACHINE_ID` (or the device ID a profile lists) signs
 `machine.remove`. The owner removes anyone but the owner; an admin removes members
 who never held admin; a person's other machine removes one of their machines. A
@@ -225,11 +285,26 @@ machine cannot remove itself. `client role --project ID --person PERSON_ID --rol
 admin|member` is the owner's alone; each change names the role record it replaces.
 People an admin admitted stay when that admin is removed or demoted.
 
+**Leaving.** `client leave --project ID` (or **Leave project** in the panel) signs
+`member.remove` for this machine's own person. All of the person's machines lose
+access, as with any removal, and the people they let in stay. The owner can't
+leave, and an agents-only machine can't leave on its person's behalf.
+
 Removal also ends the machine's bearer admission at the hub at once: its sync
 socket closes, its presence ends, its open invitations are revoked, and the hub
 refuses its API calls and new records. A removed computer keeps its local data and
-export. It learns of the removal at its next hub check, so one write inside the
-10-second admission cache can still save locally without reaching anyone.
+export. It learns of the removal at its next hub check (an open board checks
+within seconds), or from its own records if the removal reached it, so one write
+inside the 10-second admission cache can still save locally without reaching
+anyone.
+
+**What the removed computer shows (#154).** The hub's `REVOKED` answer carries who
+removed the machine and whether its person left. The project then stays listed in
+`removedProjects` (`client list`, and the browser's project switcher), and the
+browser shows **You were removed from “…”**, **This computer was removed from
+“…”** or **You left “…”**, with who removed it, what that means, how to come back
+and the export command. It never shows the signed-out screen for a removal, and it
+offers no Retry: removal is permanent for that machine and person.
 
 Removals are permanent for that machine key and person ID. A removed machine
 returns as a new machine: start Pardner with a fresh `--data` directory on that
@@ -250,8 +325,16 @@ for a Human invitation and `--person PERSON_ID` for pairing someone else's
 machine. It writes the private artifact to the chosen file and prints only the
 summary and file path.
 
-After creating a project, Pardner suggests pairing a second computer: if the owner
+After creating a project, Pardner suggests pairing a second machine: if the owner
 loses every machine, nobody can remove or demote admins any more.
+
+`client people --project ID` prints the panel's facts as text: each person with
+their role, who let them in, machines (with short IDs and online or last seen),
+agents and person ID, then removed entries. `--json` prints the same view as data.
+`client invites --project ID [--limit N] [--offset N]` lists invitations newest
+first, `client revoke-invite --project ID --invite INVITE_ID` revokes one, and
+`client profile --project ID --name NAME --email EMAIL` edits this person's
+profile.
 
 ## Actors and presence
 
