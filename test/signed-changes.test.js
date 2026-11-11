@@ -277,6 +277,25 @@ it('a change from a removed machine, relayed by a member, is applied and flagged
   })
 })
 
+it('work a machine signed before its removal stays attributed on a replica that derives the removal only after showing that work', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica }) => {
+    const removed = await replica(0)
+    const { result: before } = await execute(removed, 'Before the removal')
+    const earlier = await eventually(() => operationOf(server.store, before.taskId), 'never relayed')
+    await eventually(() => stateOf(server.store, earlier.operationId) === 'signed', 'never attributed')
+    await server.store.addRecords([project.remove(project.keys[0])])
+    // A replica that joins now learns the removal from its records at once, but derives the change that wrote the
+    // removal into the board last, in small slices; meanwhile it is asked what it shows, again and again.
+    const late = await replica(2, { attribution: { quietMs: 400, pollMs: 100, deriveOps: 10 } })
+    const seen = new Set()
+    await eventually(() => {
+      seen.add(stateOf(late, earlier.operationId))
+      return late.attribution.summary().checking === 0 && late.attribution.log.complete
+    }, 'the late replica never finished deriving')
+    assert.equal(stateOf(late, earlier.operationId), 'signed', `earlier work is shown as ${stateOf(late, earlier.operationId)} (seen: ${[...seen].join(', ')})`)
+  })
+})
+
 it('a restored backup running beside its original, in one process, never reuses an actor and sequence number', { timeout: 90000 }, async () => {
   await withHub(async ({ root, project, server, replica }) => {
     const directory = join(root, 'original'), backup = join(root, 'backup')
