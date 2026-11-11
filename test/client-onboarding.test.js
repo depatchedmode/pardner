@@ -7,7 +7,7 @@ import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
 import { startClient } from '../lib/client-service.js'
 import { CLIENT_API, setupAgent } from '../lib/client-identity.js'
-import { invitationData } from '../lib/client-invites.js'
+import { invitationData, unreachableInvitation } from '../lib/client-invites.js'
 import { sameComputerRoute } from '../support/client-workspace.js'
 
 // Every fixture has an explicit loopback route unless `route: false` stands for a client started without --public-url.
@@ -530,6 +530,40 @@ test('a member asking a hub without --public-url is told the hub must be restart
   assert.ok(result.error.includes(`would point to ${hub.url}, which only the hub's computer can reach. Restart the hub's client with \`pardner client serve --public-url <https origin>\``), result.error)
   const { result: agent } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'agent' })
   assert.equal(invitationData(agent.invitation).endpoint, `${hub.url}/pardner/client/v1/enroll`)
+})
+
+test('joining names an unreachable loopback invitation address, while a reachable hub that is down still advises retry', { timeout: 45000 }, async t => {
+  const bob = await fixture(t, 'Bob')
+  const envelope = endpoint => `pardner-invite-v1.${Buffer.from(JSON.stringify({ id: 'invite-1', projectId: 'project-1', purpose: 'human',
+    endpoint, secret: 'invitation-secret' })).toString('base64url')}`
+  // An invitation issued before this refusal existed: its address is the creator's own loopback listener.
+  const { port } = await sameComputerRoute()
+  const unreachable = `http://127.0.0.1:${port}`
+  const { result, response } = await bob.api('/join', { invitation: envelope(`${unreachable}/pardner/client/v1/enroll`), operationId: 'join-loopback' }, { failure: true })
+  assert.equal(response.status, 409); assert.equal(result.code, 'INVITATION_UNREACHABLE')
+  assert.deepEqual(result.details, { endpoint: unreachable })
+  assert.ok(result.error.startsWith(`This invitation points to ${unreachable}, which this computer can't reach`), result.error)
+  assert.match(result.error, /--public-url <https origin>/)
+  assert.doesNotMatch(result.error, /retry/i)
+  const again = await bob.api('/join', { invitation: envelope(`${unreachable}/pardner/client/v1/enroll`), operationId: 'join-loopback' }, { failure: true })
+  assert.equal(again.result.code, 'INVITATION_UNREACHABLE', 'retrying the same attempt reports the same cause')
+  // A gateway that answers for a hub that is down is a temporary outage.
+  let reply = { status: 502, type: 'text/html', body: '<html><body><h1>502 Bad Gateway</h1></body></html>' }
+  const gateway = createServer((_req, res) => { res.writeHead(reply.status, { 'Content-Type': reply.type }); res.end(reply.body) })
+  await new Promise(resolve => gateway.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => gateway.close(resolve)))
+  const reachable = envelope(`http://127.0.0.1:${gateway.address().port}/pardner/client/v1/enroll`)
+  for (const [index, next] of [reply, { status: 503, type: 'application/json', body: JSON.stringify({ code: 'SERVICE_STOPPING', error: 'Client is stopping' }) }].entries()) {
+    reply = next
+    const outage = await bob.api('/join', { invitation: reachable, operationId: `join-outage-${index}` }, { failure: true })
+    assert.equal(outage.response.status, 503); assert.equal(outage.result.code, 'HUB_UNAVAILABLE')
+  }
+  // An HTTPS route that does not answer may come back, so it keeps the outage code and its retry advice.
+  const https = { endpoint: 'https://pardner.example.test/pardner/client/v1/enroll' }
+  const offline = Object.assign(new Error('Project authority unavailable; retry this attempt'), { code: 'HUB_UNAVAILABLE', details: { cause: 'fetch failed' } })
+  assert.equal(unreachableInvitation(https, offline), offline)
+  const answered = Object.assign(new Error('Project authority unavailable; retry this attempt'), { code: 'HUB_UNAVAILABLE', details: { status: 503 } })
+  assert.equal(unreachableInvitation({ endpoint: `${unreachable}/pardner/client/v1/enroll` }, answered), answered)
 })
 
 test('identity, harness and revocation refusals name the actual problem', { timeout: 45000 }, async t => {
