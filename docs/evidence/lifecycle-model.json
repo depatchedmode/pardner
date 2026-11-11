@@ -625,5 +625,25 @@
       ]
     },
     "review": "lib/workspace-runtime.js: a fresh hub takes a signed genesis (hand-run hubs sign one with a one-time key), derives workspaceId from it and saves it to a per-project grow-only record store before repo.create; init harvests membership records after the document is found and refuses a document without a valid genesis; the change handler schedules a harvest that admits new records to the store and writes back stored records the document lacks, as a handle.change with no request; closeResources awaits pending harvests after the operation queue and before repo.shutdown, and closes the record store in the finally block before the lease. automerge-sync-server.js adds a read-only GET /automerge/membership after the stopping and admission middleware. Admission, the flush barrier, acknowledgement guards and shutdown ordering keep their guard, effect and atomicity. The write-back is modeled as another local edit (ReplicaEdit gains its anchor); StoreCloseBegin gains the harvest drain anchor. No action, invariant or witness changed. The lease-before-drain mutation find/replace text gained the harvest drain and record store close lines. Wider-bound records remain historical; not rerun."
+  },
+  "plainStringStorageReview": {
+    "recorded": "2026-11-11",
+    "issue": 208,
+    "mapping": {
+      "revision": "55416f9d80ab0c859ea3f095d58daf36ccf4041c",
+      "files": {
+        "automerge-sync-server.js": "c4d37d0eff4fda4a9d6b2eabda58bd69396a33cd414873807685228b180ddcb3",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "42ba10b5209662d57759ade06c6bfc1fb579ff61337c21065ee08edf5749a5c7",
+        "lib/workspace.js": "15803b62df46222217e15e406768478c369505cf7459db7dad9af969fb582af1"
+      }
+    },
+    "reason": "Workspace reads unwrap immutable strings; membership write-back uses storageValue. Re-reviewed ReplicaEdit, SyncDown, ReplicaSendAck, Handle, Respond, StoreCloseBegin, StoreCloseComplete, ReplicaReceive and ReplicaAckCommit: guards, effects and atomicity are unchanged. Updated only the membership write-back source anchor.",
+    "states": 174614,
+    "transitions": 679456,
+    "allInvariants": true,
+    "progress": true,
+    "allWitnesses": true,
+    "mutationDemonstration": "All eight implementation mutations caught, source drift reported, and mirrored model counterexamples found; working tree unchanged."
   }
 }
