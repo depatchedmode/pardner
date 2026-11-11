@@ -359,6 +359,39 @@ test('agents are named after their owner and harness; a different name for an en
   assert.deepEqual(labels, ['Marcus Lee’s Claude', 'Overnight Claude', 'Priya Raman’s Codex'])
 })
 
+test('a machine paired with no agent name given labels its agent with the name that agent was enrolled under', { timeout: 60000 }, async t => {
+  const priya = await fixture(t, 'Priya Raman', { agent: {} })
+  const { result: { project } } = await priya.api('/projects', { name: 'Labels', operationId: 'create' })
+  const machine = async setupAgent => {
+    const directory = await mkdtemp(join(tmpdir(), 'pardner-agent-'))
+    const client = await startClient({ directory, port: 0, setupAgent })
+    t.after(async () => { await client.stop(); await rm(directory, { recursive: true, force: true }) })
+    const call = async (path, body) => {
+      const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { Authorization: `Bearer ${client.registry.read().operatorToken}`,
+        'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+      const result = await response.json()
+      if (!response.ok) throw Object.assign(new Error(JSON.stringify(result)), { code: result.code })
+      return result
+    }
+    return { client, call }
+  }
+  const pair = async (box, operationId) => {
+    const { result: invitation } = await priya.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId })
+    await joinApproved({ join: body => box.call('/join', body), approver: priya.call, invitation: invitation.invitation, operationId })
+  }
+  // Priya's Claude agent is enrolled from one machine under a name of its own.
+  await pair(await machine({ harnessId: 'anthropic-claude-code', name: 'Overnight Claude' }), 'first')
+  // A second machine runs the same agent and gives no name.
+  const second = await machine({ harnessId: 'anthropic-claude-code' })
+  await pair(second, 'second')
+  const { actors, membership } = (await priya.api(`/projects/${project.id}`)).result
+  const actor = Object.values(actors).find(entry => entry.kind === 'agent' && entry.harnessId === 'anthropic-claude-code')
+  assert.equal(actor.displayName, 'Overnight Claude')
+  const label = membership.agentNames.find(entry => entry.machineId === second.client.registry.machineKey.machineId)
+  assert.equal(label.id, actor.id)
+  assert.equal(label.displayName, 'Overnight Claude', 'the new machine’s signed label agrees with the Actor')
+})
+
 test('reopening with a new browser principal replays setup instead of allocating projects or recipient proofs', { timeout: 30000 }, async t => {
   const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
   const bootstrap = async client => {
