@@ -77,6 +77,19 @@ async function runSeed(seed) {
   const show = (side, id) => services[side].call(api(`/task/${encodeURIComponent(id)}/context`), undefined, { timeout: 5000 })
   const snapshot = async side => (await services[side].call(api('/doc'), undefined, { timeout: 5000 })).doc
   const status = side => services[side].call(api('/status'), undefined, { timeout: 5000 })
+  // Every acknowledged operation shown as signed, with no Actor flag, on every replica, within ten seconds.
+  const attributed = async () => {
+    const started = performance.now()
+    for (;;) {
+      const docs = await Promise.all([0, 1, 2].map(snapshot))
+      if (docs.every(doc => expected.attributed(doc))) {
+        timings.push({ kind: 'attribution', elapsed: performance.now() - started })
+        return docs
+      }
+      assert.ok(performance.now() - started <= 10000, 'Acknowledged operations were not all shown as signed on every replica within ten seconds')
+      await delay(40)
+    }
+  }
   const converge = async () => {
     const started = performance.now()
     while (true) {
@@ -323,7 +336,9 @@ async function runSeed(seed) {
     }
     assert.deepEqual(pageErrors, [])
     progress('Verifying acknowledged operations and final effects against the independent manifest')
-    const docs = await converge()
+    await converge()
+    // Signatures travel in their own document, so they may land just after the boards converged.
+    const docs = await attributed()
     const verified = docs.map(doc => expected.verify(doc))
     assert.ok(verified.every(result => result.snapshotHash === verified[0].snapshotHash))
     const maxima = {}
