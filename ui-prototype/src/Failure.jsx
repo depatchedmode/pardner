@@ -19,11 +19,32 @@ export const HINTS = {
   STALE_UPDATE: 'Someone changed this at the same time. Close this and try again.',
 }
 
+// A human heading replaces the server's message for these codes. Without a hint, the server's message,
+// which names the address and the fix, becomes the explanation (#162).
+const HEADINGS = {
+  HUB_UNAVAILABLE: 'The project’s hub is unreachable',
+  PUBLIC_URL_REQUIRED: 'This invitation would only work on this computer',
+  INVITATION_UNREACHABLE: 'This invitation points somewhere this computer can’t reach',
+}
+// Invitations for a joined project are issued by its hub, so an outage there blocks them.
+export const INVITE_HINTS = {
+  HUB_UNAVAILABLE: 'Invitations for this project are issued by its hub, the computer of the person who started it, and it can’t be reached right now. Retry when it’s back; nothing was lost.',
+}
+
+export function failureText(error, hints = HINTS) {
+  const heading = HEADINGS[error.code]
+  return { heading: heading ?? error.message, hint: hints[error.code] ?? HINTS[error.code] ?? (heading ? error.message : null) }
+}
+
+// Server messages quote commands in backticks, such as `pardner client serve --public-url <https origin>`.
+export const withCode = text => text.split('`').map((part, index) => index % 2 ? <code key={index}>{part}</code> : part)
+
 export function Failure({ error, children, hints = HINTS }) {
   if (!error) return null
+  const { heading, hint } = failureText(error, hints)
   return <div className="error inline-error" role="alert">
-    <strong>{error.message}</strong>
-    {hints[error.code] && <p>{hints[error.code]}</p>}
+    <strong>{heading}</strong>
+    {hint && <p>{withCode(hint)}</p>}
     {children}
   </div>
 }

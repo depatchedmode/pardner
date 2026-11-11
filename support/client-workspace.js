@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createServer } from 'node:net'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { startClient } from '../lib/client-service.js'
@@ -19,11 +20,25 @@ export async function eventually(read, message = 'Condition was not met within t
   }
 }
 
+/**
+ * A loopback `publicUrl` for a client whose Human or My device invitations are redeemed by another client on this
+ * same computer, as every multi-client fixture does. Without one, those invitations are refused at issue time.
+ * The port is reserved by binding and releasing it, so pass both values to `startClient`.
+ */
+export async function sameComputerRoute() {
+  const server = createServer()
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
+  const { port } = server.address()
+  await new Promise(resolve => server.close(resolve))
+  return { port, publicUrl: `http://127.0.0.1:${port}` }
+}
+
 const email = name => `${name.toLowerCase().replace(/[^a-z0-9]+/g, '.')}@example.test`
 
 // One person's local client service, driven over HTTP with its operator bearer.
 async function participant(directory, name, options = {}) {
-  const client = await startClient({ directory, port: 0, deviceName: `${name}’s laptop`, gitDirectory: directory, ...options })
+  const route = options.port === undefined ? await sameComputerRoute() : {}
+  const client = await startClient({ directory, ...route, deviceName: `${name}’s laptop`, gitDirectory: directory, ...options })
   const call = async (path, body, { token = client.registry.read().operatorToken, expected } = {}) => {
     const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST',
       signal: AbortSignal.timeout(30000), headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

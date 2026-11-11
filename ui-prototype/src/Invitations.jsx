@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Failure } from './Failure.jsx'
+import { Failure, INVITE_HINTS, failureText, withCode } from './Failure.jsx'
 import { createOperationId } from './operation-id.js'
 
 export const INVITES = {
@@ -37,24 +37,36 @@ const kindLabel = invite => invite.purpose === 'human' ? `Person${invite.role ==
 
 /**
  * One project's invitations, newest first, refreshed while shown (#183): what each was for, who issued it and when,
- * its state, and who used or revoked it. Shows ten at a time, up to the newest fifty.
+ * its state, and who used or revoked it. Shows ten at a time, up to the newest fifty. Loading the list is not the
+ * person's action, so its failure stays here with a Retry rather than raising an alert (#162); only a removal is
+ * passed to `onFailure`. `actionFailure` is the alert above, whose cause the list does not repeat.
  */
-export function InvitationHistory({ api, projectId, excludeId = null, refresh = 0, emptyText = 'None yet.', onFailure }) {
+export function InvitationHistory({ api, projectId, excludeId = null, refresh = 0, emptyText = 'None yet.', onFailure, hints, actionFailure = null }) {
   const [page, setPage] = useState(null)
+  const [loadFailure, setLoadFailure] = useState(null)
   const [limit, setLimit] = useState(PAGE)
   const [busy, setBusy] = useState(null)
   const [now, setNow] = useState(() => Date.now())
-  const load = useCallback(() => api.invites(projectId, { limit: Math.min(MOST, limit) }).then(setPage), [api, projectId, limit])
+  const load = useCallback(() => api.invites(projectId, { limit: Math.min(MOST, limit) }).then(next => { setPage(next); setLoadFailure(null) }), [api, projectId, limit])
+  const listFailed = useCallback(error => { if (error.code === 'REVOKED') onFailure?.(error); else setLoadFailure(error) }, [onFailure])
   useEffect(() => {
     let stopped = false
-    const tick = () => { setNow(Date.now()); load().catch(error => { if (!stopped) onFailure?.(error) }) }
+    const tick = () => { setNow(Date.now()); load().catch(error => { if (!stopped) listFailed(error) }) }
     tick()
     const timer = setInterval(tick, INVITE_POLL_MS)
     return () => { stopped = true; clearInterval(timer) }
-  }, [load, refresh, onFailure])
+  }, [load, refresh, listFailed])
   const revoke = async invite => {
     setBusy(invite.id)
     try { await api.revokeInvite(projectId, invite.id); await load() } catch (error) { onFailure?.(error) } finally { setBusy(null) }
+  }
+  if (loadFailure) {
+    const { heading, hint } = failureText(loadFailure, hints)
+    const explanation = actionFailure?.code !== loadFailure.code ? hint ?? heading : null
+    return <div className="invite-history-failure">
+      <p><strong>Couldn’t load invitations.</strong>{explanation && <> {withCode(explanation)}</>}</p>
+      <button type="button" onClick={() => { load().catch(listFailed) }}>Retry</button>
+    </div>
   }
   if (!page) return <p className="muted">Loading…</p>
   const shown = page.invites.filter(invite => invite.id !== excludeId)
@@ -103,6 +115,7 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
   const [copied, setCopied] = useState(null)
   const [now, setNow] = useState(() => Date.now())
   const copy = INVITES[purpose]
+  const hints = project.role === 'replica' ? INVITE_HINTS : undefined
   const title = person ? `Pair a machine for ${person.name}` : again ? `Invite ${again.name} again` : copy.title
   const body = person ? `For a new computer of ${person.name}’s, for example after they lost every machine. ${person.name} runs Pardner there with a fresh client directory and joins with this invitation; you approve the request after comparing a confirmation code. It joins as ${person.name}, not as a new person.`
     : again ? `${again.name} was removed, so they join again as a new person, from a fresh client directory on their computer. Their earlier work stays under their old entry. You approve their request after comparing a confirmation code.`
@@ -193,11 +206,11 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
         </div>
       </>}
     </section>}
-    <Failure error={failure} />
+    <Failure error={failure} hints={hints} />
     <section aria-labelledby="invite-history">
       <h3 id="invite-history">Invitations for this project</h3>
       <InvitationHistory api={api} projectId={project.id} excludeId={created?.invite.id ?? null} refresh={refresh}
-        emptyText={created ? 'No other invitations.' : 'None yet.'} onFailure={setFailure} />
+        emptyText={created ? 'No other invitations.' : 'None yet.'} onFailure={setFailure} hints={hints} actionFailure={failure} />
     </section>
   </dialog>
 }

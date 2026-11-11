@@ -138,6 +138,23 @@ not assume a published npm release. The Join form accepts either the complete
 prompt or the raw invitation. Invitations from earlier Pardner versions are
 refused with a request for a new one.
 
+Human and My device invitations are used by a client on another computer, so they
+need a route other computers can reach. A client started without `--public-url`
+refuses to issue them with `PUBLIC_URL_REQUIRED`: the message names the loopback
+address the invitation would have carried and says to restart the client with
+`pardner client serve --public-url <https origin>`. On a joined computer the
+invitation is issued by the hub, so the message asks for the hub's client to be
+restarted. Agent invitations stay available without `--public-url`, for an agent
+on the same computer. An explicit `--public-url` is always honoured, including a
+loopback relay or test gate (see
+[Connectivity and recovery boundaries](#connectivity-and-recovery-boundaries)).
+
+During a hub outage the dialog's invitation list says it couldn't load and offers
+**Retry**; it raises no alert until the person acts. Creating an invitation then
+fails under the heading "The project's hub is unreachable", which explains that a
+joined project's invitations are issued by its hub, the computer of the person who
+started it.
+
 ### Waiting for approval
 
 A new machine sends a join request to the hub: its new machine key, the person it
@@ -197,6 +214,15 @@ appears. If a response is uncertain, retry the same operation ID and unchanged
 invitation. The request and its proof are stored privately, so a retry never uses
 another place on the invitation.
 
+If no connection can be made to an invitation's loopback address, joining fails
+with `INVITATION_UNREACHABLE`. The error names the address and says it belongs to
+the computer that created the invitation, which is the only place it works; ask
+for a new invitation from a client started with `--public-url`. Retrying cannot
+help from another computer, so the error does not suggest it. A hub that answers
+as down (a gateway error page or a 5xx response), or an HTTPS address that does not
+answer, is a temporary outage: joining fails with `HUB_UNAVAILABLE`, and retrying
+the same operation ID later is safe.
+
 The approver lists requests, which also adds their nonce, and approves with the
 code the joining person reads out:
 
@@ -219,6 +245,11 @@ with `--harness`. Selecting a harness that has no label on this machine fails.
 Private grants include that harness's configured model and manager when known.
 These are reporting defaults, not proof of the active model: agents must report
 their actual current model when opening or updating a presence session.
+
+The CLI can also issue invitations through `client invite --project ID --purpose
+human|agent|device --output-file FILE --operation-id ID`. It writes the private
+artifact to the chosen file and prints only the summary and file path. The same
+`PUBLIC_URL_REQUIRED` refusal applies, and no file is written.
 
 An Agent invitation used on another computer pairs that computer as a new machine
 of the person, for their agents only: it is approved like a new device, and the
@@ -376,7 +407,8 @@ configured reachable HTTPS gateway, supplied with `client serve --public-url`.
 Plain HTTP is accepted there only for a loopback origin (`http://127.0.0.1:<port>`
 or `http://localhost:<port>`), such as a relay on the same machine or the
 acceptance network gate; any other origin must be HTTPS. An invitation
-containing a loopback address works only on the originating machine. The option does not provision a relay, publish the client or establish
+containing a loopback address works only on the originating machine, which is
+why Human and My device invitations need `--public-url`. The option does not provision a relay, publish the client or establish
 network reachability. Keep the browser/operator surface private and route only
 the intended enrollment and authenticated replica endpoints.
 

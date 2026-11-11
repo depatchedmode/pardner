@@ -23,6 +23,17 @@ until it releases its data directory. Each project runs in a separate local
 runtime. The standalone `pardner serve` instructions below are for agents and
 integrations.
 
+`pardner client invite --project ID --purpose human|agent|device --output-file FILE
+--operation-id ID` writes a private invitation to `FILE`. Human and My device
+invitations are joined from another computer, so they need the client started with
+`--public-url <https origin>`; without it they fail with `PUBLIC_URL_REQUIRED`,
+naming the loopback address and the fix, and nothing is written. Agent invitations
+work without it for an agent on the same computer. `pardner client join
+--invitation-file FILE --operation-id ID` fails with `INVITATION_UNREACHABLE`, naming
+the address, when an invitation points to another computer's loopback address; a
+temporary hub outage reports `HUB_UNAVAILABLE` and can be retried with the same
+operation ID. See [Invite and join](PARDNER-CLIENT.md#invite-and-join).
+
 The client also supports `show --project ID` and `export --project ID
 --output-file FILE`. Use the [recovery guide](PARDNER-CLIENT-RECOVERY.md) for full
 cold backups, fresh-install restoration and authority replacement. A content
