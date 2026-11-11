@@ -451,6 +451,25 @@ nav button[aria-pressed='true'] {
   line-clamp: 2;
   overflow: hidden;
 }
+.event-signer {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.event-signer[data-tone="flag"] {
+  color: var(--warning);
+}
+/* A signature normally arrives milliseconds after its change: say "pending" only once the wait is noticeable. */
+.event-signer[data-tone="pending"] {
+  animation: pardner-reveal 0s linear 1.5s both;
+}
+@keyframes pardner-reveal {
+  from { visibility: hidden; }
+  to { visibility: visible; }
+}
+.review-notice p {
+  margin: 0 0 8px;
+}
 .event > time {
   grid-column: 2;
   grid-row: 1;

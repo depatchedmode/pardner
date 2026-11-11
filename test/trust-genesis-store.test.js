@@ -80,8 +80,9 @@ test('project creation signs a genesis that verifies from the project ID alone a
 })
 
 test('a storage directory from an earlier schema is refused and left byte-identical', { timeout: 30000 }, async () => {
-  // Schema 7 is the last before person IDs were derived from keys and certifications carried their machine's consent.
-  for (const schemaVersion of [6, 7]) {
+  // Schema 7 is the last before person IDs were derived from keys and certifications carried their machine's consent;
+  // schema 8 the last before every change was signed.
+  for (const schemaVersion of [6, 7, 8]) {
     const storage = await mkdtemp(join(tmpdir(), 'pardner-prior-storage-'))
     try {
       ;(await acquireStorageLease(storage)).close()

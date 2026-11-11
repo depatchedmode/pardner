@@ -110,10 +110,74 @@ a removed machine, or a signer without the role a record needs, cannot add new
 records. History that arrives by sync is harvested without that check, so a new
 replica keeps a removed admin's earlier admissions.
 
+## Signed changes
+
+Every Automerge change this machine makes carries an actor ID that begins with its
+machine ID's digest and ends with 8 random bytes drawn each time a project's
+documents are loaded. The project runtime signs each change at once with the
+machine key, over the project ID and the change's hash, and saves the signature
+in the project's signature cache, `signatures.sqlite`, before the change can be
+saved. It then writes the signature into the project's **signature document**, a
+second Automerge document beside the board. Every member derives that document's
+ID from the project ID, so no member can point a project at another one; the hub
+creates it with the board, and the client serves only those two documents. The
+signature document is saved in the background at most once a second and synced
+like the board, off the acknowledgement path: a write is acknowledged once the
+board is on disk. When a project runtime starts, it writes back every signature in
+its cache that the shared document lacks, its own included.
+
+**Checking.** Every change that arrives is applied first, as before, then
+checked: its signature must verify under the machine its actor names, and that
+machine must be or have been a member. Each signature this machine verifies goes
+into its cache, which only grows, so an entry deleted from the shared document
+does not unattribute a change here, and is written back. A change is never
+refused, dropped or hidden. Each one is in one of four states:
+
+- **Signed** by its machine, shown as that machine's person (or the agent the
+  machine names) and the machine.
+- **Signature pending**, while the signature may still be on its way. The hub
+  waits while the machine that sent the change is disconnected, and for a second
+  on a live connection after the change arrived; a member machine asks the hub,
+  and waits while the hub does or while the hub holds a signature that has not
+  arrived yet. Pending lasts milliseconds normally, or the length of an outage.
+  The board shows nothing for the first moment and then "Signature pending".
+- **Unattributed: relayed by** a named machine, once that wait is over and no
+  valid signature exists, for example because the change was never signed or its
+  signature doesn't check out. It becomes signed if a valid signature arrives later.
+- **Made by a removed machine**, for a signed change by a machine this computer
+  holds as removed that does not come before the removal in the board's history.
+  Its earlier work stays signed and attributed.
+
+A change that claims an Actor its machine is not certified for, such as another
+person's Actor, is flagged too; peers take a machine's word only for which of its
+own Actors acted.
+
+**Where it shows.** Every Activity entry and task history entry has a signer line.
+Membership records appear in Activity under **People and machines**: admissions,
+pairings, removals, role changes, agent names and profiles, each with the machine
+that signed it and the time it reached the board. When changes need review, the
+board shows a notice with **Review changes**, which opens Activity's **Needs
+review** filter. `pardner client review --project ID` lists the same changes as
+text, or as data with `--json`.
+
+**Equivocation.** Two different changes with one actor and sequence number can't
+both be in a document: Automerge refuses the second, and automerge-repo then
+applies nothing from any message that carries it. Pardner reports such a refusal
+with both change hashes and the machine the actor names. When both changes carry
+valid signatures, that machine signed both, and the board and `client review` say
+so. Board changes from the peer that carries the conflicting change stop applying
+here until that machine is removed and its copy rebuilt; every other peer keeps
+syncing.
+
+**Hub acknowledgement.** A member machine's change counts as synced only when the
+hub acknowledges that it has persisted the heads of both the board and the
+signature document, so an acknowledged change's signature is on the hub's disk too.
+
 Directories made before machine keys are refused, whether a client directory
-without `machine-key.pem` or a storage directory with an earlier schema. They are
-left byte-for-byte unchanged and are never migrated. Start Pardner with a fresh
-`--data` directory.
+without `machine-key.pem` or a storage directory with an earlier schema. Schema 9
+storage, with signed changes, and version 4 client directories are the current
+ones. Earlier directories are left byte-for-byte unchanged and are never migrated.
+Start Pardner with a fresh `--data` directory.
 
 ## Invite and join
 

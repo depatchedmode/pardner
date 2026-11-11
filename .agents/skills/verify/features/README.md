@@ -22,6 +22,9 @@ already covered. Match the exact assertions to the task's expected result.
   requests and codes, approval, bounds, pairing, roles, removal and re-admission.
 - [People panel](people-panel.md): people, machines and agents, each role's
   actions, leaving, profiles, invitation history and the removed state.
+- [Signed changes and attribution](signed-changes.md): machine actors, signatures
+  and the signature cache, pending and unattributed changes, removed machines,
+  equivocation, the two-document hub acknowledgement, and the board and CLI.
 - [Client onboarding and presence](client-onboarding.md): authenticated Actor
   sessions, device aggregation, expiry and integration evidence boundaries.
 

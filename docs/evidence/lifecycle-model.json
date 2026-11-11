@@ -1103,5 +1103,81 @@
       ]
     },
     "review": "automerge-sync-server.js: acceptMachine no longer judges a machine before it proves its key. Every well-formed hello is answered alike; membership, the hub's checkpoint comparison (noteCheckpoint), the waiting-hub record exchange and the refusal all run in admit, after both signatures verify and before any welcome, so a native upgrade still reaches registerSyncSession and the Automerge adapter only as a current member (UpgradeArrive), and stop() still terminates it. formerKey is gone and notMember always carries the removal details, since it is only reached after proof. Signed HTTP sessions (lib/machine-session.js, not mapped) likewise answer every hello and judge at confirm. No action guard, effect, atomicity note, invariant, witness or mutation text changed."
+  },
+  "signedChangesReview": {
+    "recorded": "2026-11-11",
+    "issue": 197,
+    "mapping": {
+      "revision": "63cb8fc74c7939c1ad3407db1db92d0e47291ebe",
+      "files": {
+        "automerge-sync-server.js": "01f9b82b230d0dabc2d11d7814b2d2e52254fcaab30bb9f6dd0d1eadd952472b",
+        "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
+        "lib/workspace-runtime.js": "36114ae0a330ed85e5afb5724b5a7957b4cf698245ba82877f1d82eb65b92e48",
+        "lib/workspace.js": "d9926568c6f48d929955b0d0b2b85d23de09dfb143327e84d7c8f9c6c51f3c52"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-11T15:56:34.440Z",
+      "finished": "2026-11-11T15:56:56.995Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "Every change is signed (lib/attribution.js, not mapped) and the hub's persistence acknowledgement covers the board and its signature document. lib/workspace.js: acknowledge(heads, signatureHeads) refuses unless both are held, then one flush job persists both documents before the answer (Handle(ack), Respond). lib/workspace-runtime.js: documents are created with this machine's actor and every loaded one adopts a fresh machine actor before any local change; the replica requests both heads, its first guard also requires the hub's signature heads to be held, and its second guard records both requested snapshots, never current heads (ReplicaReceive, ReplicaAckCommit); syncPending stays true until both are acknowledged (ReplicaEdit: heads now stand for the pair); a signature-document change is a deferred local change off the acknowledgement path, like a membership write-back; closeResources pauses the hub poll before abort() and writes pending signatures into the signature document after the operation queue drains, before repo.shutdown(); the cache closes in finally before the lease. automerge-sync-server.js: sync-ack passes signatureHeads; a new signed route answers attribution queries; stop() destroys connections that never carried a request, which hold no modeled request (StopBegin). No action guard, effect, invariant or witness changed; the mutation texts for ack-before-persist, stale-ack-accepted and lease-before-drain follow the new code. Later commits in the same change pace the signature document's background saves to one a second through a storage.saveDoc wrapper that explicit flushes (including DurableRepo.shutdown) bypass, clear its timer in closeResources, start background checking only after initialized is set, and pass record positions to recordEntry when the board is read; each was re-reviewed and accepted, and the mapping recorded here is the final one. The last commit also saves each document's sync state, at most once a second per document and peer, in DurableRepo, through background(), because Repo 2.5.1 throttles those saves per peer and dropped the board's state behind the signature document's."
   }
 }
