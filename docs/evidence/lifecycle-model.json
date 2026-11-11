@@ -1329,5 +1329,80 @@
       ]
     },
     "review": "Integration of #220 (signed changes) and #219 (restored-hub freshness, durable resume, record limits) on integration/trust-stage1. Drift against the #220 mapping is exactly #219's change to automerge-sync-server.js and lib/workspace-runtime.js, now beside the signed-changes code. Re-reviewed every action named by drift. The missing-state growth check runs in admit, after both signatures verify and before any welcome or Automerge admission (UpgradeArrive). Resume and checkpoint updates share the hub-state write queue and publish state only after the write; closeResources still pauses attribution, drains the operation queue and harvests, writes pending signatures into the signature document, drains hub-state writes, then shuts the repository down, and closes the signature cache before the lease (StoreCloseBegin, StoreCloseComplete). Record limits precede canonicalization in the record gate and harvest; admitted record writes still join the operation queue, make one document change and await the persistence barrier; the two-document acknowledgement is untouched (Handle, Respond, ReplicaEdit, ReplicaReceive, ReplicaAckCommit). No action guard, effect, atomicity assumption, anchor, invariant, witness or mutation text changed."
+  },
+  "attributionReviewOne": {
+    "recorded": "2026-11-11",
+    "mapping": {
+      "revision": "7785e94f17377ec17c1d27a526e7965f7a811845",
+      "files": {
+        "automerge-sync-server.js": "4ea7545bbea2ec334a0b09a139ff51e12833ffeb0b44b95991675ae2cf46d69e",
+        "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
+        "lib/workspace-runtime.js": "53a8ea5cf2fd3635ad5a9afe42ec46b51b8001888282db1dcf95308dc31fb2c0",
+        "lib/workspace.js": "fbe75195fdd19a0f10bfa0fba4da30291838072100e4e063360485d9d1cce20a"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-11T18:50:03.991Z",
+      "finished": "2026-11-11T18:50:26.601Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "Attribution review fixes (signing only through the write path, content-bound signer lines, hardened signature document). Drift: lib/workspace.js and lib/workspace-runtime.js. Workspace.apply makes its change through an injected write path (WorkspaceRuntime.boardChange, which signs exactly that change through ChangeAttribution.change), still synchronously before the flush; the record gate and record write-back use the same path, each one document change before its flush (Handle, ReplicaEdit). The board's creation change is signed and cached in createDocument before the board is imported; nothing waits on it. synchronizeAcknowledgement first writes pending signatures into the signature document, a local change that only advances its heads, and sends no request while one is unwritten; this only withholds a request that the unfair ReplicaSendAck already need not send. The requested-snapshot guards and two-document flush are unchanged (ReplicaSendAck, ReplicaReceive, ReplicaAckCommit, Respond). attributionView adds read-only content. SyncDown, StoreCloseBegin and StoreCloseComplete: the code they map is unchanged. Changed: the Handle anchor (now this.change(prepared.change)), a new ReplicaSendAck anchor for the unwritten-signature guard, and two mapping notes. No guard, effect, atomicity assumption, invariant, witness or mutation text changed."
   }
 }

@@ -548,3 +548,37 @@ Fresh default check: 174614 states, 679456 transitions, all four invariants and
 `ShutdownCompletes` hold; all ten witnesses are reachable. All eight mutations
 were caught, reported as drift and reproduced by the model; the working tree was
 unchanged. See `trustStageOneSignedIntegrationReview` in the evidence JSON.
+
+## Attribution review mapping review (2026-11-11)
+
+The attribution fixes (sign only what this machine's own write path made, bind
+each signer line to its content, harden the signature document) changed
+`lib/workspace.js` and `lib/workspace-runtime.js`. Drift named `ReplicaEdit`,
+`SyncDown`, `ReplicaSendAck`, `Handle`, `Respond`, `StoreCloseBegin`,
+`StoreCloseComplete`, `ReplicaReceive` and `ReplicaAckCommit`; each was
+re-reviewed against the diff:
+- `Handle`, `ReplicaEdit`: `Workspace.apply` makes its change through an
+  injected write path (`WorkspaceRuntime.boardChange`, which signs exactly that
+  change through `ChangeAttribution.change`), still synchronously before the
+  flush. The record gate and record write-back use the same path, each one
+  document change before its flush. The board's creation change is signed and
+  cached in `createDocument` before the board is imported; nothing waits on it.
+- `ReplicaSendAck`: `synchronizeAcknowledgement` first writes pending signatures
+  into the signature document (a local change that only advances its heads) and
+  sends no request while one is unwritten. That only withholds a request the
+  unfair action already need not send. The requested-snapshot reads are
+  unchanged.
+- `ReplicaReceive`, `ReplicaAckCommit`, `Respond`: the guards and the
+  two-document flush are unchanged. `attributionView` only adds read-only content.
+- `SyncDown`, `StoreCloseBegin`, `StoreCloseComplete`: the mapped code is
+  unchanged.
+
+Changed: the `Handle` anchor (now `this.change(prepared.change)`), a new
+`ReplicaSendAck` anchor for the unwritten-signature guard, and two mapping
+notes. No guard, effect, atomicity assumption, invariant, witness or mutation
+text changed.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses are reachable. All eight mutations
+were caught, reported as drift and reproduced by the model; the working tree was
+unchanged. See `attributionReviewOne` in the evidence JSON.
