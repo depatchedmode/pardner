@@ -1,7 +1,8 @@
 # Machine keys and membership library
 
-The new modules have no product callers. Run `node --test test/machine-key.test.js
-test/membership.test.js` (also included in `test:runtime`). Checks cover Ed25519
+The client and project runtime now call these modules; their product behavior is
+in [the record store entry](trust-records.md). Run `node --test test/machine-key.test.js
+test/membership.test.js` (also included in `test:runtime`) for the library itself. Checks cover Ed25519
 key round trips, raw-key machine IDs, 0600 files, corrupt/exposed/symlink refusal,
 exact domain separation, project-bound genesis and record verification, authority
 chains, admin protection, immutable owner role, permanent removals, mutual machine

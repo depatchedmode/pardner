@@ -11,7 +11,13 @@ const groups = [
   {
     name: 'trust-library', scripts: ['test:runtime'],
     files: names('lib/machine-key.js lib/membership.js test/machine-key.test.js test/membership.test.js'),
-    focused: [{ command: 'node --test test/machine-key.test.js test/membership.test.js', note: 'Standalone machine keys and order-free signed records; no product callers' }],
+    focused: [{ command: 'node --test test/machine-key.test.js test/membership.test.js', note: 'Machine keys and order-free signed records, as a library' }],
+  },
+  {
+    name: 'trust-records', scripts: ['test:runtime', 'test:cli'], qualification: 'Signed genesis, derived project ID and grow-only membership record persistence',
+    files: names('lib/record-store.js support/genesis.js support/record-store-process.js support/client-directory.js'),
+    focused: [{ command: 'node --test test/client-machine-key.test.js test/record-store.test.js test/trust-genesis-store.test.js',
+      note: 'Machine-key refusals, prior-install refusal, genesis and project ID, record admission, harvest, write-back and kill survival' }],
   },
   {
     name: 'persistence', scripts: ['test:qualification', 'test:runtime'], qualification: 'Disk persistence and directory ownership',
