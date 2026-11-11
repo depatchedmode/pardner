@@ -68,11 +68,12 @@ test('every permutation resolves authority chains and retains a removed admin’
 })
 
 test('only the owner can add, remove or change admins; no one can remove or re-role the owner', () => {
-  const f = fixture(), other = generateMachineKey()
-  const base = [f.genesis, f.adminAdd, f.add(f.admin, 'member', f.member)]
+  const f = fixture(), other = generateMachineKey(), deputy = generateMachineKey()
+  const base = [f.genesis, f.adminAdd, f.add(f.admin, 'member', f.member), f.add(f.owner, 'deputy', deputy, 'admin')]
   const forbidden = [
     f.add(f.admin, 'other', other, 'admin'), f.add(f.member, 'other', other),
-    f.record(f.admin, 'member.remove', 'admin'), f.record(f.admin, 'member.role', 'admin', { role: 'member', replaces: null }),
+    // An admin may leave (below), but never removes another admin.
+    f.record(f.admin, 'member.remove', 'deputy'), f.record(f.admin, 'member.role', 'admin', { role: 'member', replaces: null }),
     f.record(f.admin, 'member.role', 'member', { role: 'admin', replaces: null }),
     f.record(f.owner, 'member.remove', 'owner'), f.record(f.owner, 'member.role', 'owner', { role: 'member', replaces: null }),
     f.record(f.admin, 'member.remove', 'owner'),
@@ -382,7 +383,8 @@ test('maySign enforces owner-only roles, historical target protection and same-p
   const state = computeMembership(base)
   for (const key of [f.owner, f.admin, f.member]) {
     assert.equal(maySign(state, f.record(key, 'member.role', 'member', { role: 'admin', replaces: null })), key === f.owner)
-    assert.equal(maySign(state, f.record(key, 'member.remove', 'member')), key === f.owner)
+    // The member's own machine may sign their removal: that is leaving.
+    assert.equal(maySign(state, f.record(key, 'member.remove', 'member')), key !== f.admin)
     assert.equal(maySign(state, f.pair(key, 'member', extra)), key !== f.admin)
     assert.equal(maySign(state, f.record(key, 'machine.remove', second.machineId)), key !== f.admin)
     assert.equal(maySign(state, f.add(key, 'extra', extra, 'admin')), key === f.owner)
@@ -411,4 +413,61 @@ test('maySign rejects unknown signers, malformed, forged and foreign records wit
   }
   assert.equal(maySign(state, valid), true)
   assert.deepEqual(state, original)
+})
+
+test('a person leaves by signing their own removal from any of their machines; the owner cannot leave', () => {
+  const f = fixture(), second = generateMachineKey(), agentsOnly = generateMachineKey()
+  const base = [f.genesis, f.adminAdd, f.add(f.admin, 'member', f.member), f.pair(f.member, 'member', second),
+    f.record(f.member, 'machine.add', agentsOnly.machineId, { personId: 'member', publicKey: agentsOnly.publicKey, approval: {}, agentsOnly: true })]
+  for (const [key, person] of [[f.member, 'member'], [second, 'member'], [f.admin, 'admin']]) {
+    const leave = f.record(key, 'member.remove', person)
+    const records = [...base, leave]
+    const expected = computeMembership(records)
+    assert.deepEqual(expected.rejected, [], `${person} leaves`)
+    assert.ok(expected.removedPeople.includes(person))
+    assert.equal(expected.people.some(entry => entry.id === person), false)
+    assert.deepEqual(expected.removals.map(entry => [entry.subject, entry.left, entry.by.personId]), [[person, true, person]])
+    assert.ok(expected.formerPeople.some(entry => entry.id === person))
+    // Leaving takes every machine of the person; people the leaver admitted stay.
+    if (person === 'member') for (const machine of [f.member, second, agentsOnly]) assert.equal(isMember(expected, machine.machineId), false)
+    if (person === 'admin') assert.equal(isMember(expected, f.member.machineId), true)
+    for (const permutation of permutations(records)) assert.deepEqual(computeMembership(permutation), expected)
+  }
+  // The owner can't leave, and an agents-only machine never acts as its person.
+  for (const forbidden of [f.record(f.owner, 'member.remove', 'owner'), f.record(agentsOnly, 'member.remove', 'member')]) {
+    const state = computeMembership([...base, forbidden])
+    assert.deepEqual(state.rejected.map(entry => entry.recordId), [forbidden.recordId])
+    assert.deepEqual(state.removedPeople, [])
+  }
+})
+
+test('leaving is judged at arrival like every removal: current members only, never the owner or an agents-only machine', () => {
+  const f = fixture(), agentsOnly = generateMachineKey()
+  const base = [f.genesis, f.adminAdd, f.add(f.admin, 'member', f.member),
+    f.record(f.member, 'machine.add', agentsOnly.machineId, { personId: 'member', publicKey: agentsOnly.publicKey, approval: {}, agentsOnly: true })]
+  const state = computeMembership(base)
+  assert.equal(maySign(state, f.record(f.member, 'member.remove', 'member')), true)
+  assert.equal(maySign(state, f.record(f.admin, 'member.remove', 'admin')), true)
+  assert.equal(maySign(state, f.record(f.owner, 'member.remove', 'owner')), false)
+  assert.equal(maySign(state, f.record(agentsOnly, 'member.remove', 'member')), false)
+  // A member still can't remove anyone else.
+  assert.equal(maySign(state, f.record(f.member, 'member.remove', 'admin')), false)
+  const removed = computeMembership([...base, f.record(f.owner, 'member.remove', 'member')])
+  assert.equal(maySign(removed, f.record(f.member, 'member.remove', 'member')), false, 'a removed machine adds nothing, not even its own leave')
+})
+
+test('who admitted and who removed each person and machine is the same in every order', () => {
+  const f = fixture(), second = generateMachineKey()
+  const records = [f.genesis, f.adminAdd, f.add(f.admin, 'member', f.member), f.pair(f.member, 'member', second),
+    f.record(f.member, 'machine.remove', second.machineId), f.record(f.owner, 'member.remove', 'admin')]
+  const expected = computeMembership(records)
+  const person = id => expected.people.find(entry => entry.id === id)
+  assert.equal(person('owner').admittedBy, null, 'the owner started the project')
+  assert.deepEqual(person('member').admittedBy, { machineId: f.admin.machineId, personId: 'admin' }, 'the removed admin’s admission stays attributed')
+  assert.equal(expected.machines.find(machine => machine.id === f.owner.machineId).admittedBy, null)
+  assert.deepEqual(expected.formerMachines.find(machine => machine.id === second.machineId).admittedBy, { machineId: f.member.machineId, personId: 'member' })
+  assert.deepEqual(expected.formerPeople.map(entry => [entry.id, entry.role, entry.admittedBy.personId]), [['admin', 'admin', 'owner']])
+  assert.deepEqual(expected.removals.map(entry => [entry.kind, entry.subject, entry.by.personId, entry.left]).sort(),
+    [['machine.remove', second.machineId, 'member', false], ['member.remove', 'admin', 'owner', false]].sort())
+  for (const permutation of permutations(records)) assert.deepEqual(computeMembership(permutation), expected)
 })
