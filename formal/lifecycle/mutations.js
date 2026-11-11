@@ -118,11 +118,13 @@ export const MUTATIONS = [
     find: `    this.adapter?.disconnect()
     try {
       await this.workspace?.queue
+      await this.harvests
       await this.repo?.shutdown()
     } finally {
       this.initialized = false
       this.closed = true
       this.deliveryLedger?.close()
+      this.records?.close()
       this.lease?.close()
       this.lease = null
     }`,
@@ -131,11 +133,13 @@ export const MUTATIONS = [
     this.lease = null
     try {
       await this.workspace?.queue
+      await this.harvests
       await this.repo?.shutdown()
     } finally {
       this.initialized = false
       this.closed = true
       this.deliveryLedger?.close()
+      this.records?.close()
     }`,
     check: { file: CONFORMANCE, pattern: 'drains queued persistence before releasing the storage lease' },
   },

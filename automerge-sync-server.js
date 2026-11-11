@@ -561,6 +561,12 @@ class AutomergeSyncServer {
       res.json(this.store.status())
     })
 
+    this.app.get('/automerge/membership', (req, res) => {
+      try {
+        res.json(this.store.membership())
+      } catch (error) { operationFailure(res, error) }
+    })
+
     this.app.get('/automerge/deliveries', async (req, res) => {
       try {
         res.json(await this.store.pendingDeliveries(req.query.actor))

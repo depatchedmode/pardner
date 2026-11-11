@@ -38,10 +38,19 @@ Plans in agent-assisted work are hypotheses, not blueprints. Pardner's vocabular
 
 ## Current implementation
 
-The standalone `lib/machine-key.js` and `lib/membership.js` libraries provide
-Ed25519 keys and order-free signed membership records. No running product path
-calls them yet; enrollment and sync still use the credentials described below.
-The trust rollout remains a [plan](docs/PARDNER-TRUST-PLAN.md).
+Each client directory has its own Ed25519 machine key, created on first start and
+reported as a machine ID by `client status`. Creating a project signs a
+`project.genesis` record with that key, naming the creator as owner, and the
+project ID is derived from that record, so anyone with the ID can check the
+genesis. Signed membership records live in the project document. Each project
+also keeps a grow-only local store of every valid record its client has seen,
+saved before the client uses one. A record later removed from the document still
+counts and is written back. Tampered or foreign records are not stored, and
+`client show` reports them beside the membership computed from the store.
+**Records are stored and verified but grant nothing yet.** Only the genesis is
+written today. Admission, enrollment, revocation and sync still use the bearer
+credentials described below until later trust steps. The rest of the trust
+rollout remains a [plan](docs/PARDNER-TRUST-PLAN.md).
 
 The [local client onboarding preview](docs/PARDNER-CLIENT.md) adds a private
 identity and project registry, isolated project runtimes, Start/Join, purpose-specific
@@ -233,10 +242,12 @@ its properties within that model only.
 
 ## Storage and dependencies
 
-A schema 5 directory contains workspace metadata, Automerge storage, an exclusive
-service lock, and local connection settings. The hub additionally holds the
-SQLite delivery ledger. Incompatible prior installs are rejected and preserved;
-choose a new directory rather than migrating or deleting existing data.
+A schema 6 directory contains workspace metadata, Automerge storage, the
+grow-only membership record store, an exclusive service lock, and local connection
+settings. The hub additionally holds the SQLite delivery ledger. A client
+directory also holds its machine key. Client directories and storage directories
+from before machine keys are refused and left unchanged; choose a fresh directory
+rather than migrating or deleting existing data.
 
 Automerge **3.2.3** and Repo/network **2.5.1** are pinned. The persistence wrapper
 isolates the pinned Repo storage-subsystem integration and is qualified with fault
