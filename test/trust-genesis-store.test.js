@@ -80,18 +80,22 @@ test('project creation signs a genesis that verifies from the project ID alone a
 })
 
 test('a storage directory from an earlier schema is refused and left byte-identical', { timeout: 30000 }, async () => {
-  const storage = await mkdtemp(join(tmpdir(), 'pardner-prior-storage-'))
-  try {
-    ;(await acquireStorageLease(storage)).close()
-    await writeFile(join(storage, 'workspace.json'), JSON.stringify({ schemaVersion: 6, role: 'hub', replicaId: 'replica-old', workspaceId: 'a'.repeat(64), url: generateAutomergeUrl(), state: 'ready' }))
-    await mkdir(join(storage, 'repo'))
-    await writeFile(join(storage, 'repo', 'chunk'), 'prior document bytes')
-    const before = await snapshot(storage)
-    const runtime = new WorkspaceRuntime({ directory: storage })
-    await assert.rejects(runtime.init(), { code: 'INCOMPATIBLE_SCHEMA', message: /left unchanged.*fresh data directory/s })
-    assert.deepEqual(await snapshot(storage), before)
-  } finally {
-    await rm(storage, { recursive: true, force: true })
+  // Schema 7 is the last before person IDs were derived from keys and certifications carried their machine's consent.
+  for (const schemaVersion of [6, 7]) {
+    const storage = await mkdtemp(join(tmpdir(), 'pardner-prior-storage-'))
+    try {
+      ;(await acquireStorageLease(storage)).close()
+      await writeFile(join(storage, 'workspace.json'), JSON.stringify({ schemaVersion, role: 'hub', replicaId: 'replica-old', workspaceId: 'a'.repeat(64), url: generateAutomergeUrl(), state: 'ready' }))
+      await mkdir(join(storage, 'repo'))
+      await writeFile(join(storage, 'repo', 'chunk'), 'prior document bytes')
+      await writeFile(join(storage, RECORD_STORE_FILE), 'prior membership records')
+      const before = await snapshot(storage)
+      const runtime = new WorkspaceRuntime({ directory: storage })
+      await assert.rejects(runtime.init(), { code: 'INCOMPATIBLE_SCHEMA', message: /left unchanged.*fresh data directory/s }, `schema ${schemaVersion}`)
+      assert.deepEqual(await snapshot(storage), before)
+    } finally {
+      await rm(storage, { recursive: true, force: true })
+    }
   }
 })
 

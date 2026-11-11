@@ -62,7 +62,7 @@ test('a missing, exposed or foreign machine key stops startup and is never repla
   }
 })
 
-test('client directories from before machine keys are refused and left byte-identical', { timeout: 60000 }, async () => {
+test('client directories from earlier versions, before machine keys or before derived person IDs, are refused and left byte-identical', { timeout: 60000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'pardner-prior-client-'))
   try {
     // A version 1 client directory with a schema 5 project, as the previous release left it.
@@ -81,8 +81,23 @@ test('client directories from before machine keys are refused and left byte-iden
       await writeFile(join(directory, 'projects', 'old', 'repo', 'chunk'), 'prior document bytes')
       return directory
     }
-    const directories = [await prior('clean'), await prior('unclean', true)]
+    // A version 2 client directory, with its machine key, from before person IDs were derived from machine keys.
+    const versionTwo = async (name, unclean = false) => {
+      const directory = await prior(name, unclean)
+      const donor = join(root, `${name}-donor`)
+      await (await operatorClient(donor)).service.stop()
+      await copyFile(join(donor, MACHINE_KEY_FILE), join(directory, MACHINE_KEY_FILE))
+      await chmod(join(directory, MACHINE_KEY_FILE), 0o600)
+      const script = `import { DatabaseSync } from 'node:sqlite'
+        const database = new DatabaseSync(${JSON.stringify(join(directory, 'client.sqlite'))})
+        database.prepare('UPDATE registry SET value = json_set(value, ?, 2) WHERE id = 1').run('$.version')
+        ${unclean ? "process.kill(process.pid, 'SIGKILL')" : 'database.close()'}`
+      spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', script], { stdio: 'ignore' })
+      return directory
+    }
+    const directories = [await prior('clean'), await prior('unclean', true), await versionTwo('version-two'), await versionTwo('version-two-unclean', true)]
     assert.ok((await readdir(directories[1])).includes('client.sqlite-wal'), 'the unclean registry keeps its write-ahead log')
+    assert.ok((await readdir(directories[3])).includes('client.sqlite-wal'), 'the unclean version 2 registry keeps its write-ahead log')
     for (const directory of directories) {
       const before = await snapshot(directory)
       await assert.rejects(startClient({ directory, port: 0 }), { code: 'INCOMPATIBLE_SCHEMA', message: /left unchanged.*fresh data directory/s })
