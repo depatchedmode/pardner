@@ -198,6 +198,37 @@ it('repairs of signature entries are never lost when deletions coincide: every o
   })
 })
 
+it('a repair that fails stays pending and is retried until the entry is put back', { timeout: 90000 }, async () => {
+  await withHub(async ({ server, replica, bare }) => {
+    const writer = await replica(0)
+    const { result } = await execute(writer, 'Its entry is deleted while writing fails')
+    const operation = await eventually(() => operationOf(server.store, result.taskId), 'never relayed')
+    await eventually(() => stateOf(server.store, operation.operationId) === 'signed', 'never attributed')
+    const hash = signerOf(server.store, operation.operationId).hash
+    const vandal = await bare(2)
+    await eventually(() => storedSignatures(vandal.signatures.doc(), hash).length, 'the vandal never received the entry')
+    await writer.close()
+    // The hub's first attempts to write the entry back fail; each failure is contained.
+    const attribution = server.store.attribution
+    const write = attribution.writeEntries.bind(attribution)
+    let failures = 0
+    attribution.writeEntries = entries => {
+      if (entries.some(entry => entry.hash === hash) && failures < 2) { failures++; throw new Error('simulated write failure') }
+      return write(entries)
+    }
+    const error = console.error
+    console.error = () => {}
+    try {
+      server.store.workspace.signatures.update(doc => A.merge(doc, A.change(A.clone(vandal.signatures.doc()), d => { delete d[shardOf(hash)][hash] })))
+      await eventually(() => failures >= 1, 'the repair was never attempted')
+      await eventually(() => storedSignatures(server.store.workspace.signatures.doc(), hash).length, 'the failed repair was dropped instead of retried')
+    } finally {
+      attribution.writeEntries = write
+      console.error = error
+    }
+  })
+})
+
 it('a member asks the hub about every change it has no verdict for, in turn, so one batch cannot starve the rest', { timeout: 120000 }, async () => {
   await withHub(async ({ replica, bare }) => {
     const reader = await replica(1)
