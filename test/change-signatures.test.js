@@ -96,6 +96,23 @@ test('the changes in a sync message are found when Automerge packs chunks togeth
   assert.deepEqual(changesInMessage(packed).map(change => change.seq), [2, 3])
 })
 
+test('reading a refused sync message stops at its change limit, whatever form its chunks take', () => {
+  let doc = A.from({ n: 0 }, { actor: 'ab'.repeat(24) })
+  for (let index = 1; index <= 9; index++) doc = A.change(doc, d => { d.n = index })
+  const all = A.getAllChanges(doc)
+  // A whole-document chunk holding ten changes counts each of them against the limit.
+  const whole = A.encodeSyncMessage({ heads: [], need: [], have: [], changes: [A.save(doc)] })
+  assert.equal(changesInMessage(whole).length, 10)
+  assert.equal(changesInMessage(whole, 3).length, 3, 'a whole-document chunk is cut at the limit')
+  // A limit reached inside one entry ends the reading: no later entry, chunk or document is read.
+  const entries = A.encodeSyncMessage({ heads: [], need: [], have: [], changes: [new Uint8Array([...all[1], ...all[2]]), A.save(doc), all[3]] })
+  assert.deepEqual(changesInMessage(entries, 2).map(change => change.seq), [2, 3])
+  assert.equal(changesInMessage(entries, 4).length, 4, 'a document chunk after earlier changes gets only what is left of the limit')
+  // An entry that is not an Automerge chunk after the limit is reached is never looked at.
+  const junkAfter = A.encodeSyncMessage({ heads: [], need: [], have: [], changes: [all[1], new Uint8Array([1, 2, 3])] })
+  assert.deepEqual(changesInMessage(junkAfter, 1).map(change => change.seq), [2])
+})
+
 test('the signature cache only grows, belongs to one project, is private, and survives reopening', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-signature-cache-'))
   const path = join(directory, SIGNATURE_CACHE_FILE)
