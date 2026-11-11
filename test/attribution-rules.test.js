@@ -1,9 +1,10 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
+import { join } from 'node:path'
 import * as A from '@automerge/automerge'
 import { SHARDS, createSignaturesData, machineActor, machinePrefix, shardOf, signChange, storedSignatures, verifyChange } from '../lib/change-signatures.js'
-import { machineIndex } from '../lib/attribution.js'
+import { ChangeAttribution, machineIndex } from '../lib/attribution.js'
 import { generateMachineKey } from '../lib/machine-key.js'
 import { hubRuntime } from '../support/machines.js'
 import { plain } from '../lib/workspace-schema.js'
@@ -392,5 +393,36 @@ it('an equivocation report is kept across a restart', { timeout: 90000 }, async 
       assert.deepEqual([kept[0].machineId, kept[0].seq, [...kept[0].hashes].sort()], [report.machineId, report.seq, [...report.hashes].sort()])
       assert.equal(kept[0].proven, true, 'its proof is checked again on reading')
     } finally { await reopened.close() }
+  })
+})
+
+it('a reopened replica reads only the changes it has not read before, and keeps what it found', { timeout: 90000 }, async () => {
+  await withHub(async ({ root, project, server, replica, bare }) => {
+    const directory = join(root, 'reopened-reader')
+    let reader = await replica(1, { directory })
+    const { result } = await execute(server.store, 'Altered, then the reader reopens')
+    const original = await eventually(() => operationOf(reader, result.taskId), 'never relayed')
+    const editor = await bare(2)
+    await eventually(() => editor.board.doc().operations?.[original.operationId], 'the editor never synced')
+    editor.board.change(doc => { doc.operations[original.operationId].payload.title = new A.ImmutableString('Rewritten') })
+    const edit = A.getHeads(editor.board.doc())[0]
+    await eventually(() => A.hasHeads(reader.docHandle.doc(), [edit]), 'the edit never reached the reader')
+    await checked(reader)
+    const changes = reader.attribution.metas.size
+    await reader.close()
+    // Count what the reopened replica reads: nothing it read before.
+    const scan = ChangeAttribution.prototype.scanChange
+    let read = 0
+    ChangeAttribution.prototype.scanChange = function (change) { if (!this.scan.scanned.has(change.hash)) read++; return scan.call(this, change) }
+    try {
+      reader = await replica(1, { directory })
+      await checked(reader)
+    } finally { ChangeAttribution.prototype.scanChange = scan }
+    assert.ok(read <= reader.attribution.metas.size - changes, `read ${read} changes again`)
+    const [signer] = reader.getDoc().attribution.operations[original.operationId]
+    assert.equal(signer.state, 'signed')
+    assert.deepEqual(signer.altered?.map(entry => entry.hash), [edit], 'the alteration found before the restart is still shown')
+    assert.equal(reader.getDoc().attribution.signed[original.operationId].payload.title, 'Altered, then the reader reopens')
+    assert.ok(reviewEntry(reader, edit), 'and still listed for review')
   })
 })

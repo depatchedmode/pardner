@@ -142,3 +142,26 @@ test('the signature cache keeps equivocation reports across reopening, and they 
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+test('the signature cache keeps which board changes were read, and what they wrote, and that only grows', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-signature-scanned-'))
+  const path = join(directory, SIGNATURE_CACHE_FILE)
+  try {
+    const plainChange = 'ab'.repeat(32), rewrite = 'cd'.repeat(32)
+    const findings = { targets: ['7@' + 'ef'.repeat(16)], replaced: [{ map: 'operations', key: 'op-x', kind: 'deleted' }], noEntry: true }
+    let cache = new SignatureCache(path, projectId)
+    cache.addScanned([[plainChange, null], [rewrite, findings]])
+    cache.addScanned([[rewrite, null]])
+    assert.throws(() => cache.addScanned([['not-a-hash', null]]))
+    cache.close()
+    cache = new SignatureCache(path, projectId)
+    assert.deepEqual([...cache.scannedChanges()].sort(), [[plainChange, null], [rewrite, findings]], 'the first record of a change is kept as it was')
+    cache.close()
+    const database = new DatabaseSync(path)
+    assert.throws(() => database.exec('DELETE FROM scanned'), /only grow/)
+    assert.throws(() => database.exec('UPDATE scanned SET findings = NULL'), /only grow/)
+    database.close()
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
