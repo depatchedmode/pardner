@@ -1,12 +1,13 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import * as A from '@automerge/automerge'
 import { SHARDS, createSignaturesData, machineActor, machinePrefix, shardOf, signChange, storedSignatures, verifyChange } from '../lib/change-signatures.js'
 import { ChangeAttribution, machineIndex } from '../lib/attribution.js'
 import { generateMachineKey } from '../lib/machine-key.js'
 import { hubRuntime } from '../support/machines.js'
+import { prepareOperation } from '../lib/workspace-commands.js'
 import { plain } from '../lib/workspace-schema.js'
 import { storageValue } from '../lib/workspace-values.js'
 import { actors, eventually, execute, operationOf, signerOf, stateOf, withHub, writeTask } from '../support/signed-hub.js'
@@ -385,6 +386,75 @@ it('a replica asks for the hub’s acknowledgement only once every signature it 
     await eventually(() => !writer.status().syncPending, 'never acknowledged once the signature was written')
     const hash = signerOf(writer, operation.operationId).hash
     assert.ok(storedSignatures(server.store.workspace.signatures.doc(), hash).length, 'the acknowledged signature heads hold its signature')
+  })
+})
+
+/** The 64-byte values stored for `hash` in a signature document as of `heads`, read with Automerge's history. */
+function signaturesAt(doc, heads, hash) {
+  const backend = A.getBackend(doc), values = []
+  for (const [type, shard] of backend.getAll('_root', shardOf(hash), heads)) {
+    if (type !== 'map') continue
+    for (const [kind, value] of backend.getAll(shard, hash, heads)) if (kind === 'bytes' && value.length === 64) values.push(value)
+  }
+  return values
+}
+
+it('a replica asks the hub to acknowledge one pair of heads captured when its outbox is empty, so a change made while it saves is in neither', { timeout: 60000 }, async () => {
+  await withHub(async ({ replica }) => {
+    const writer = await replica(0)
+    const requests = []
+    const requestHub = writer.requestHub.bind(writer)
+    writer.requestHub = (path, options) => {
+      if (path === '/automerge/sync-ack') requests.push(structuredClone(options.body))
+      return requestHub(path, options)
+    }
+    // While the acknowledgement request saves locally, this machine makes another change, whose signature stays
+    // in the outbox for the moment.
+    const flush = writer.repo.flush.bind(writer.repo)
+    let made = null
+    writer.repo.flush = documents => {
+      if (writer.syncing && !made) {
+        writer.attribution.holdOutbox = true
+        const prepared = prepareOperation(writer.workspace.handle.doc(), { operationId: randomUUID(), actorId: 'alice', type: 'task.create', payload: { title: 'Made during the save' } },
+          { replicaId: writer.manifest.replicaId, timestamp: new Date().toISOString() })
+        writer.boardChange(prepared.change)
+        made = A.getHeads(writer.workspace.handle.doc())[0]
+      }
+      return flush(documents)
+    }
+    await execute(writer, 'Saved before the request')
+    await eventually(() => made && requests.length, 'no acknowledgement was requested')
+    writer.attribution.holdOutbox = false
+    await eventually(() => !writer.status().syncPending, 'never acknowledged once the signature was written')
+    const board = writer.workspace.handle.doc(), signatures = writer.workspace.signatures.doc()
+    for (const request of requests) {
+      const contains = !A.getChangesMetaSince(board, request.heads).some(meta => meta.hash === made)
+      if (contains) assert.ok(signaturesAt(signatures, request.signatureHeads, made).length, 'a requested board head includes a change whose signature the requested signature heads lack')
+    }
+  })
+})
+
+it('a write whose signature cannot be saved in the local signature cache is not acknowledged; its retry is, once the signature is saved', { timeout: 60000 }, async () => {
+  await withHub(async ({ replica }) => {
+    const writer = await replica(0)
+    const add = writer.signatureCache.add.bind(writer.signatureCache)
+    const error = console.error
+    console.error = () => {}
+    const request = { operationId: randomUUID(), actorId: 'alice', type: 'task.create', payload: { title: 'Signed, not saved' } }
+    let hash
+    try {
+      writer.signatureCache.add = () => { throw new Error('simulated cache failure') }
+      await assert.rejects(writer.execute(request), failure => failure.code === 'STORAGE_FAILED', 'a write whose own signature is only in memory was acknowledged')
+      hash = A.getHeads(writer.workspace.handle.doc())[0]
+      assert.equal(writer.signatureCache.has(hash), false)
+    } finally {
+      writer.signatureCache.add = add
+      console.error = error
+    }
+    const receipt = await writer.execute(request)
+    assert.equal(receipt.replayed, true)
+    assert.equal(receipt.savedLocally, true)
+    assert.equal(writer.signatureCache.get(hash)?.machineId, writer.machineKey.machineId, 'the retry is acknowledged only once the signature is saved')
   })
 })
 
