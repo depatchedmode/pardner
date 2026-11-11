@@ -119,3 +119,19 @@ test('the record store only grows and belongs to one project', async () => {
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+test('the record store rejects excessive nesting before canonicalizing a supplied record', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-record-store-'))
+  const p = trustProject()
+  const store = new RecordStore(join(directory, RECORD_STORE_FILE), p.projectId)
+  try {
+    store.admit([p.genesis])
+    let extra = null
+    for (let i = 0; i < 10000; i++) extra = { child: extra }
+    const record = { ...p.genesis, extra }
+    const result = store.admit([record])
+    assert.deepEqual(result.accepted, [])
+    assert.equal(result.refused[0].reason, 'Record exceeds nesting depth limit')
+    assert.equal(store.size, 1)
+  } finally { store.close(); await rm(directory, { recursive: true, force: true }) }
+})
