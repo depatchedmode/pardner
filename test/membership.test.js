@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { generateMachineKey } from '../lib/machine-key.js'
-import { buildRecord, computeMembership, genesisProjectId, isMember, MEMBERSHIP_DOMAIN, verifyRecord } from '../lib/membership.js'
+import { buildRecord, computeMembership, genesisProjectId, isMember, maySign, MEMBERSHIP_DOMAIN, verifyRecord } from '../lib/membership.js'
 import { canonical } from '../lib/workspace-schema.js'
 
 function fixture() {
@@ -345,4 +345,70 @@ test('hundreds of records reach an authority fixed point within a generous time 
   assert.equal(state.machines.length, 151)
   assert.deepEqual(state.rejected, [])
   assert.ok(elapsed < 5000, `301 records took ${elapsed.toFixed(0)} ms`)
+})
+
+test('maySign uses current roles while the reducer keeps demoted and removed signer authority', () => {
+  const f = fixture(), extra = generateMachineKey(), paired = generateMachineKey()
+  const base = [f.genesis, f.adminAdd, f.add(f.owner, 'member', f.member)]
+  const records = [f.add(f.admin, 'extra', extra), f.pair(f.admin, 'member', paired),
+    f.record(f.admin, 'member.remove', 'member'), f.record(f.admin, 'machine.remove', f.member.machineId)]
+  const current = computeMembership(base)
+  const demotedBase = [...base, f.record(f.owner, 'member.role', 'admin', { role: 'member', replaces: null })]
+  const demoted = computeMembership(demotedBase)
+  const removedBase = [...base, f.record(f.owner, 'member.remove', 'admin')]
+  const removed = computeMembership(removedBase)
+  for (const record of records) {
+    assert.equal(maySign(current, record), true, record.kind)
+    assert.equal(maySign(demoted, record), false, record.kind)
+    assert.equal(maySign(removed, record), false, record.kind)
+    assert.deepEqual(computeMembership([...demotedBase, record]).rejected, [])
+    assert.deepEqual(computeMembership([...removedBase, record]).rejected, [])
+  }
+  const profile = f.record(f.admin, 'profile', 'admin', { displayName: 'Updated', email: '' })
+  const label = f.record(f.admin, 'agent.name', 'agent', { machineId: f.admin.machineId, displayName: 'Agent', harness: 'test' })
+  for (const record of [profile, label, f.pair(f.admin, 'admin', paired)]) {
+    assert.equal(maySign(demoted, record), true)
+    assert.equal(maySign(removed, record), false)
+    assert.deepEqual(computeMembership([...removedBase, record]).rejected, [])
+  }
+})
+
+test('maySign enforces owner-only roles, historical target protection and same-person machine control', () => {
+  const f = fixture(), second = generateMachineKey(), extra = generateMachineKey()
+  const promote = f.record(f.owner, 'member.role', 'member', { role: 'admin', replaces: null })
+  const base = [f.genesis, f.adminAdd, f.add(f.owner, 'member', f.member), promote,
+    f.record(f.owner, 'member.role', 'member', { role: 'member', replaces: promote.recordId }),
+    f.pair(f.member, 'member', second)]
+  const state = computeMembership(base)
+  for (const key of [f.owner, f.admin, f.member]) {
+    assert.equal(maySign(state, f.record(key, 'member.role', 'member', { role: 'admin', replaces: null })), key === f.owner)
+    assert.equal(maySign(state, f.record(key, 'member.remove', 'member')), key === f.owner)
+    assert.equal(maySign(state, f.pair(key, 'member', extra)), key !== f.admin)
+    assert.equal(maySign(state, f.record(key, 'machine.remove', second.machineId)), key !== f.admin)
+    assert.equal(maySign(state, f.add(key, 'extra', extra, 'admin')), key === f.owner)
+  }
+  assert.equal(maySign(state, f.record(f.member, 'machine.remove', f.member.machineId)), false)
+  assert.equal(maySign(state, f.record(f.owner, 'member.remove', 'owner')), false)
+  assert.equal(maySign(state, f.record(f.owner, 'member.role', 'owner', { role: 'member', replaces: null })), false)
+  assert.equal(maySign(state, f.record(f.admin, 'machine.remove', f.owner.machineId)), false)
+  assert.equal(maySign(state, f.pair(f.admin, 'owner', extra)), false)
+  assert.equal(maySign(state, f.record(f.admin, 'profile', 'member', { displayName: 'Forgery', email: '' })), false)
+  const removedMachine = computeMembership([...base, f.record(second, 'machine.remove', f.member.machineId)])
+  assert.equal(maySign(removedMachine, f.pair(f.member, 'member', extra)), false)
+  assert.equal(maySign(removedMachine, f.pair(second, 'member', extra)), true)
+})
+
+test('maySign rejects unknown signers, malformed, forged and foreign records without mutating state', () => {
+  const f = fixture(), foreign = fixture()
+  const state = computeMembership([f.genesis, f.adminAdd])
+  const original = structuredClone(state)
+  const valid = f.add(f.admin, 'member', f.member)
+  for (const record of [null, {}, f.genesis, foreign.adminAdd,
+    f.add(f.member, 'unknown', generateMachineKey()), { ...valid, displayName: 'Tampered' },
+    f.record(f.owner, 'member.remove', 'unknown'), f.pair(f.owner, 'unknown', f.member),
+    f.record(f.owner, 'machine.remove', f.member.machineId)]) {
+    assert.equal(maySign(state, record), false)
+  }
+  assert.equal(maySign(state, valid), true)
+  assert.deepEqual(state, original)
 })
