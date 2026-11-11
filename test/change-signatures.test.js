@@ -11,6 +11,7 @@ import { CHANGE_DOMAIN, SHARDS, actorPrefix, createSignaturesData, machineActor,
 import { changesInMessage } from '../lib/attribution.js'
 import { generateMachineKey } from '../lib/machine-key.js'
 import { canonical } from '../lib/workspace-schema.js'
+import { DERIVATION_VERSION } from '../lib/change-log.js'
 import { SIGNATURE_CACHE_FILE, SignatureCache } from '../lib/signature-cache.js'
 
 const projectId = createHash('sha256').update('project').digest('hex')
@@ -96,6 +97,23 @@ test('the changes in a sync message are found when Automerge packs chunks togeth
   assert.deepEqual(changesInMessage(packed).map(change => change.seq), [2, 3])
 })
 
+test('reading a refused sync message stops at its change limit, whatever form its chunks take', () => {
+  let doc = A.from({ n: 0 }, { actor: 'ab'.repeat(24) })
+  for (let index = 1; index <= 9; index++) doc = A.change(doc, d => { d.n = index })
+  const all = A.getAllChanges(doc)
+  // A whole-document chunk holding ten changes counts each of them against the limit.
+  const whole = A.encodeSyncMessage({ heads: [], need: [], have: [], changes: [A.save(doc)] })
+  assert.equal(changesInMessage(whole).length, 10)
+  assert.equal(changesInMessage(whole, 3).length, 3, 'a whole-document chunk is cut at the limit')
+  // A limit reached inside one entry ends the reading: no later entry, chunk or document is read.
+  const entries = A.encodeSyncMessage({ heads: [], need: [], have: [], changes: [new Uint8Array([...all[1], ...all[2]]), A.save(doc), all[3]] })
+  assert.deepEqual(changesInMessage(entries, 2).map(change => change.seq), [2, 3])
+  assert.equal(changesInMessage(entries, 4).length, 4, 'a document chunk after earlier changes gets only what is left of the limit')
+  // An entry that is not an Automerge chunk after the limit is reached is never looked at.
+  const junkAfter = A.encodeSyncMessage({ heads: [], need: [], have: [], changes: [all[1], new Uint8Array([1, 2, 3])] })
+  assert.deepEqual(changesInMessage(junkAfter, 1).map(change => change.seq), [2])
+})
+
 test('the signature cache only grows, belongs to one project, is private, and survives reopening', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-signature-cache-'))
   const path = join(directory, SIGNATURE_CACHE_FILE)
@@ -122,45 +140,59 @@ test('the signature cache only grows, belongs to one project, is private, and su
   }
 })
 
-test('the signature cache keeps equivocation reports across reopening, and they only grow', async () => {
+test('the signature cache keeps equivocation reports and the signatures that prove them across reopening, and they only grow', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-signature-reports-'))
   const path = join(directory, SIGNATURE_CACHE_FILE)
   try {
     const report = { document: 'board', actor: 'ab'.repeat(24), seq: 3, hashes: ['cd'.repeat(32), 'ef'.repeat(32)], machineId: null }
+    const proof = new Uint8Array(64).fill(7)
     let cache = new SignatureCache(path, projectId)
     cache.addEquivocation('board:a:3', report)
     cache.addEquivocation('board:a:3', { ...report, seq: 4 })
+    cache.addEquivocationProof('board:a:3', report.hashes[0], proof)
+    cache.addEquivocationProof('board:a:3', report.hashes[0], new Uint8Array(64))
+    assert.throws(() => cache.addEquivocationProof('board:a:3', 'not-a-hash', proof), /Invalid equivocation proof/)
     cache.close()
     cache = new SignatureCache(path, projectId)
     assert.deepEqual(cache.equivocations(100), [['board:a:3', report]], 'the first report under a key is kept as it was')
+    assert.deepEqual([...cache.equivocationProofs('board:a:3')], [[report.hashes[0], proof]], 'the first proof of a change is kept as it was')
     cache.close()
     const database = new DatabaseSync(path)
     assert.throws(() => database.exec('DELETE FROM equivocations'), /only grow/)
     assert.throws(() => database.exec("UPDATE equivocations SET report = '{}'"), /only grow/)
+    assert.throws(() => database.exec('DELETE FROM equivocation_proofs'), /only grow/)
+    assert.throws(() => database.exec("UPDATE equivocation_proofs SET hash = 'x'"), /only grow/)
     database.close()
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
 })
 
-test('the signature cache keeps which board changes were read, and what they wrote, and that only grows', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'pardner-signature-scanned-'))
+test('the signature cache keeps the Activity entry derived from each change, by change hash and derivation version, and it only grows', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-signature-derived-'))
   const path = join(directory, SIGNATURE_CACHE_FILE)
   try {
-    const plainChange = 'ab'.repeat(32), rewrite = 'cd'.repeat(32)
-    const findings = { targets: ['7@' + 'ef'.repeat(16)], replaced: [{ map: 'operations', key: 'op-x', kind: 'deleted' }], noEntry: true }
+    const one = 'ab'.repeat(32), two = 'cd'.repeat(32)
+    const entry = hash => ({ v: DERIVATION_VERSION, hash, kind: 'operation', time: 1, ops: 3, key: 'op-x', event: { text: hash.slice(0, 4) } })
     let cache = new SignatureCache(path, projectId)
-    cache.addScanned([[plainChange, null], [rewrite, findings]])
-    cache.addScanned([[rewrite, null]])
-    assert.throws(() => cache.addScanned([['not-a-hash', null]]))
+    cache.addDerived([[one, entry(one)], [two, entry(two)]])
+    cache.addDerived([[two, { ...entry(two), kind: 'unrecognised' }]])
+    assert.throws(() => cache.addDerived([['not-a-hash', entry('not-a-hash')]]))
+    assert.throws(() => cache.addDerived([[one, entry(two)]]), /Invalid derived entry/)
     cache.close()
     cache = new SignatureCache(path, projectId)
-    assert.deepEqual([...cache.scannedChanges()].sort(), [[plainChange, null], [rewrite, findings]], 'the first record of a change is kept as it was')
+    assert.deepEqual(cache.derivedEntries(new Set([one, two])).sort(), [[one, entry(one)], [two, entry(two)]], 'the first entry of a change is kept as it was')
+    assert.deepEqual(cache.derivedEntries(new Set([one])), [[one, entry(one)]], 'only the changes asked about are read')
     cache.close()
     const database = new DatabaseSync(path)
-    assert.throws(() => database.exec('DELETE FROM scanned'), /only grow/)
-    assert.throws(() => database.exec('UPDATE scanned SET findings = NULL'), /only grow/)
+    // An entry of another derivation version is not read: that change is derived again.
+    database.prepare('INSERT INTO derived (hash, version, entry) VALUES (?, ?, ?)').run('ef'.repeat(32), DERIVATION_VERSION + 1, '{}')
+    assert.throws(() => database.exec('DELETE FROM derived'), /only grow/)
+    assert.throws(() => database.exec("UPDATE derived SET entry = '{}'"), /only grow/)
     database.close()
+    cache = new SignatureCache(path, projectId)
+    assert.deepEqual(cache.derivedEntries(new Set(['ef'.repeat(32)])), [])
+    cache.close()
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

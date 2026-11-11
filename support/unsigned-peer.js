@@ -41,3 +41,22 @@ export async function alterEntry({ key, projectId, nativeUrl, boardUrl, operatio
   signatures.change(doc => { doc[shardOf(hash)][hash] = signChange(key, projectId, hash) })
   return { repo, hash }
 }
+
+/**
+ * Test-only: a bare Automerge peer that proves `key` at a hub's native route, makes any one change to the board
+ * (`write(doc)`), as a modified client could, and signs it with `key`. Returns the peer's repo, to shut down, and
+ * the change's hash.
+ */
+export async function signedWrite({ key, projectId, nativeUrl, boardUrl, write }) {
+  const adapter = new TicketNetworkAdapter({ retryMs: 60000, getUrl: async () => nativeUrl,
+    handshake: (socket, signal) => initiateHandshake(socket, { key, projectId, route: nativeUrl, role: 'replica', expectRole: 'hub', knownRecords: () => [], signal }) })
+  const repo = new Repo({ network: [adapter], sharePolicy: async () => true })
+  const board = await repo.find(boardUrl, { signal: AbortSignal.timeout(15000) })
+  const signatures = await repo.find(signaturesDocumentUrl(projectId), { signal: AbortSignal.timeout(15000) })
+  board.update(doc => A.clone(doc, { actor: machineActor(key) }))
+  board.change(write)
+  const [hash] = A.getHeads(board.doc())
+  signatures.update(doc => A.clone(doc, { actor: machineActor(key) }))
+  signatures.change(doc => { doc[shardOf(hash)][hash] = signChange(key, projectId, hash) })
+  return { repo, hash }
+}

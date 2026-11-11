@@ -15,7 +15,7 @@ import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js
 import { quickStatusEditable } from './task-status.js'
 import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
-import { describeChange, describeRecord, needsReview, recordEvents, recordSignerLine, reviewNotice, reviewOnlyEvents, shownEvent, signerLine } from './attribution.js'
+import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, needsReview, reviewNotice, signerLine, taskRows } from './attribution.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const StatusOptions = ({ values = STATUSES }) => values.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
@@ -152,38 +152,54 @@ function SaveStatus({ status, connected, busy, heads }) {
   )
 }
 
-// One event as a plain sentence. Activity passes handlers so subjects become
-// buttons; History passes none and stays plain text.
-function EventRow({ event, lookups, within, onTask, onVein, onGoal, formatTime, ...articleProps }) {
+const CURRENT_TITLE = 'As named now: not part of what was signed'
+
+/** A name or title looked up now, marked as current. */
+const Current = ({ children }) => <span className="current-label" title={CURRENT_TITLE}>{children}</span>
+
+/** Text parts of a sentence or detail: plain strings, statuses, and names or titles marked as current. */
+function renderParts(parts, handlers = {}) {
+  return parts.map((part, index) => {
+    if (typeof part === 'string') return part
+    if (part.status) return <span key={index} className="record-status" data-status={part.status}>{part.label}</span>
+    const open = part.subject && handlers[part.subject]
+    if (open && !part.missing) {
+      return <button key={index} type="button" className={part.current ? 'subject current-label' : 'subject'} title={part.current ? CURRENT_TITLE : undefined}
+        {...(part.subject === 'task' ? { 'data-task-id': part.id } : {})} onClick={click => open(click.currentTarget, part.id)}>{part.label}</button>
+    }
+    return part.current ? <Current key={index}>{part.label}</Current> : part.label
+  })
+}
+
+// One Activity entry as a plain sentence, derived from the change that wrote it (lib/activity.js on the service):
+// what it shows is what that change wrote, and its signer line is that change's own verdict. Names and titles are
+// looked up now and marked so. Activity passes handlers so subjects become buttons; History passes none and stays
+// plain text.
+function EventRow({ event: row, lookups, within, onTask, onVein, onGoal, formatTime, ...articleProps }) {
   const { attribution } = lookups
-  // An entry a later change altered is shown as its signed change wrote it, under that change's signer.
-  const description = event.record ? describeRecord(event, attribution) : event.review ? describeChange(event, attribution)
-    : describeEvent(shownEvent(attribution, event), lookups, { within })
-  const signer = event.record ? recordSignerLine(attribution, event.record)
-    : signerLine(attribution, event.review ? [event.review] : attribution?.operations?.[event.operationId])
-  const when = new Date(event.timestamp || 0)
-  const timed = Boolean(event.timestamp)
+  const { entry } = row
+  const description = entry.kind === 'record' ? describeRecord(row, attribution) : entry.kind === 'unrecognised' ? describeChange(row, attribution)
+    : describeEvent(entry.event, lookups, { within })
+  const signer = signerLine(attribution, entry)
+  const when = new Date(row.timestamp || 0)
+  const timed = Boolean(row.timestamp)
   const handlers = { task: onTask, vein: onVein, goal: onGoal }
   return (
     <article className="event" {...articleProps}>
       <p className="event-line">
-        <strong>{description.actor}</strong>
-        {description.parts.map((part, index) => {
-          if (typeof part === 'string') return part
-          if (part.status) return <span key={index} className="record-status" data-status={part.status}>{part.label}</span>
-          const open = handlers[part.subject]
-          if (!open || part.missing) return part.label
-          return <button key={index} type="button" className="subject" {...(part.subject === 'task' ? { 'data-task-id': part.id } : {})}
-            onClick={click => open(click.currentTarget, part.id)}>{part.label}</button>
-        })}
+        <strong>{description.actorCurrent ? <Current>{description.actor}</Current> : description.actor}</strong>
+        {renderParts(description.parts, handlers)}
       </p>
-      {description.detail && <p className="event-detail">{description.detail}</p>}
+      {description.detail && <p className="event-detail">{renderParts(description.detailParts ?? [description.detail])}</p>}
       {description.excerpt && <p className="event-detail">{description.excerpt}</p>}
       {signer && <p className="event-signer" data-tone={signer.tone}>{signer.text}</p>}
       {timed ? <time dateTime={when.toISOString()} title={when.toLocaleString()}>{formatTime(when)}</time> : <time className="muted">Time unknown</time>}
     </article>
   )
 }
+
+/** The note Activity and History carry: which parts of an entry are looked up now. */
+const CurrentLegend = () => <p className="muted current-legend">Names and titles marked <Current>like this</Current> are as they are now; times, words and values are as each entry’s signer wrote them.</p>
 
 export default function Pardner() {
   const [config, setConfig] = useState(null)
@@ -414,16 +430,14 @@ export function Workspace({ config, reloadConfiguration, session }) {
   }, [selected, creating])
   const activityEvents = useMemo(() => {
     const actorId = doc?.actors?.[activityActor] ? activityActor : ''
-    const attribution = doc?.attribution
-    // Membership records and flagged changes that wrote no entry appear beside operations.
-    const all = [...Object.values(doc?.operations ?? {}), ...recordEvents(attribution), ...reviewOnlyEvents(attribution)]
-    return sortEvents(all.filter(event => {
-      if (actorId && event.actorId !== actorId) return false
-      if (activityShow === 'review') return needsReview(attribution, event)
-      const group = event.record ? 'members' : event.review ? 'other' : eventGroup(event)
+    // Every entry is derived from one change; sorting, grouping and filtering use what that change signed.
+    return sortEvents(activityRows(doc).filter(row => {
+      if (actorId && row.actorId !== actorId) return false
+      if (activityShow === 'review') return needsReview(row)
+      const group = row.entry.kind === 'record' ? 'members' : row.entry.kind === 'unrecognised' ? 'other' : eventGroup(row)
       return activityShow === 'changes' ? group !== 'reads' : group === activityShow
     }))
-  }, [doc?.operations, doc?.actors, doc?.attribution, activityActor, activityShow])
+  }, [doc?.activity, doc?.actors, doc?.attribution, activityActor, activityShow])
   const activityFocus = useRef(null)
   useEffect(() => {
     if (!activityCutoff && activityEvents.length) {
@@ -528,7 +542,8 @@ export function Workspace({ config, reloadConfiguration, session }) {
     activityFocus.current = activityEvents[visibleCount].operationId
     setActivityCutoff({ timestamp: next.timestamp, operationId: next.operationId })
   }
-  const lookups = { actors, tasks: doc.tasks, veins, goals, comments: doc.comments, attribution: doc.attribution ?? null }
+  const lookups = { actors, tasks: doc.tasks, veins, goals, comments: doc.comments, attribution: doc.attribution ?? null, deletions: doc.attribution?.deletions ?? null,
+    activity: doc.activity ?? [] }
   // Changes whose signer couldn't be confirmed, or that came from a removed machine, are announced on every view.
   const review = reviewNotice(doc.attribution)
   const openVein = (_element, veinId) => {
@@ -714,6 +729,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
             showVein={showVein}
             actor={actor}
             actors={actors}
+            attribution={doc.attribution ?? null}
             submit={submit}
             busy={busy}
             pending={pending}
@@ -728,9 +744,11 @@ export function Workspace({ config, reloadConfiguration, session }) {
               <h2>Activity</h2>
               <span className="muted">Showing {visibleCount.toLocaleString()} of {activityEvents.length.toLocaleString()}</span>
             </div>
+            {activityEvents.length > 0 && <CurrentLegend />}
+            {doc.attribution?.summary?.notDerived > 0 && <p className="muted" role="status">Reading {doc.attribution.summary.notDerived.toLocaleString()} more changes…</p>}
             {!activityEvents.length && <p className="empty">
               {activityShow === 'review' ? 'Every change here is signed by a member machine.'
-                : Object.keys(doc.operations).length ? 'No activity matches these filters.' : 'No activity yet.'}
+                : (doc.activity ?? []).length ? 'No activity matches these filters.' : 'No activity yet.'}
             </p>}
             {visibleEvents.map((event, index) => {
               const when = new Date(event.timestamp)
@@ -840,7 +858,7 @@ function RecordStatusSelect({ kind, record, statuses, submit, disabled }) {
   )
 }
 
-function Goals({ goals, veins, showVein, actor, actors, submit, busy, pending, errorNotice, errorOrigin }) {
+function Goals({ goals, veins, showVein, actor, actors, attribution = null, submit, busy, pending, errorNotice, errorOrigin }) {
   const list = Object.values(goals).sort((a, b) =>
     GOAL_STATUSES.indexOf(a.status) - GOAL_STATUSES.indexOf(b.status) || a.created_at.localeCompare(b.created_at))
   const veinsByGoal = {}
@@ -881,6 +899,7 @@ function Goals({ goals, veins, showVein, actor, actors, submit, busy, pending, e
     <RecordConflicts
       kind={kind} record={record} actors={actors} goals={goals} labels={LABELS} labelActor={labelActor}
       submit={submit} disabled={!actor || disabled} onDone={keptRecord}
+      changedBy={(field, operationId) => alternativeChangedBySomeoneElse(attribution, `${kind}Fields`, `${record.id}:${field}`, operationId)}
     />
   )
   // The notice sits by its record: under a goal's heading, or in the first row that lists a vein.
@@ -1262,6 +1281,8 @@ function TaskDetail({
       </aside>
     )
   const { task, comments, history, conflicts, revisions } = context
+  // History is the task's Activity entries, each derived from the change that wrote it, newest first.
+  const historyRows = sortEvents(taskRows({ activity: lookups.activity, attribution: lookups.attribution }, taskId).filter(row => row.type !== 'comment.add'))
   const canWrite = Boolean(actor) && !busy
   const quickStatus = quickStatusEditable({ actor, editing: Boolean(draft), handingOff: handoffOpen, conflicts })
   const newCount = actor ? comments.filter(comment => isNewComment(comment, actor)).length : 0
@@ -1275,17 +1296,19 @@ function TaskDetail({
   const newerFields = draft
     ? Object.keys(draft.fields).filter(field => JSON.stringify(revisions[field]) !== JSON.stringify(draft.revisions[field]))
     : []
-  // Credit each newer field to the Actor whose History event last changed it.
+  // Credit each newer field to the Actor recorded in the newest History entry that changed it, from that entry's
+  // signed content; when that entry needs review, the name is marked unconfirmed.
   const newerGroups = []
   for (const field of newerFields) {
-    const by = [...history].reverse().find(event => event.changes.some(change => change.field === field))?.actorId ?? null
-    const group = newerGroups.find(candidate => candidate.by === by)
+    const last = historyRows.find(row => (row.changes ?? []).some(change => change?.field === field))
+    const by = last?.actorId ?? null, unconfirmed = Boolean(last?.entry.review)
+    const group = newerGroups.find(candidate => candidate.by === by && candidate.unconfirmed === unconfirmed)
     if (group) group.fields.push(field)
-    else newerGroups.push({ by, fields: [field] })
+    else newerGroups.push({ by, unconfirmed, fields: [field] })
   }
   const listFields = fields => fields.length < 2 ? fields.join('') : `${fields.slice(0, -1).join(', ')} and ${fields.at(-1)}`
-  const newerNotice = newerGroups.map(({ by, fields }) =>
-    `${by ? labelActor(actors[by]) : 'Someone'} saved ${fields.length === 1 && fields[0] === 'tags' ? '' : 'a '}newer ${listFields(fields)}`).join('; ')
+  const newerNotice = newerGroups.map(({ by, unconfirmed, fields }) =>
+    `${by ? `${labelActor(actors[by])}${unconfirmed ? ' (unconfirmed, see Activity)' : ''}` : 'Someone'} saved ${fields.length === 1 && fields[0] === 'tags' ? '' : 'a '}newer ${listFields(fields)}`).join('; ')
   const here = session.focus[taskId] ? focusedActors(session, session.focus[taskId]) : []
   // An edit error falls back to the panel top once its form has closed.
   // A handoff error does too while its form is closed, so Retry stays visible.
@@ -1471,6 +1494,8 @@ function TaskDetail({
           {choices.map((choice) => (
             <div key={choice.operationId}>
               <strong>{labelActor(actors[choice.actorId])}</strong>
+              {alternativeChangedBySomeoneElse(lookups.attribution, 'taskFields', `${taskId}:${field}`, choice.operationId)
+                && <p className="comment-changed" role="note">Changed by someone other than {labelActor(actors[choice.actorId])}. See Activity.</p>}
               <p>
                 {typeof choice.value === 'string'
                   ? choice.value
@@ -1607,10 +1632,14 @@ function TaskDetail({
               <time dateTime={comment.timestamp}>{new Date(comment.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
               {isNew && <span className="comment-tag">New</span>}
             </div>
+            {/* The comment as it is now names its recorded author, with no signer line; a change by anyone else to it says so. */}
+            {changedBySomeoneElse(lookups.attribution, comment.id) && <p className="comment-changed" role="note">Changed by someone other than its author. See Activity for who made each change.</p>}
             <MarkdownBody extraPlugins={[remarkMentionChips(deliveredFor(comment.id))]}>{comment.content}</MarkdownBody>
             {comment.conflicts.map((choice) => (
               <div className="conflict" key={choice.operationId}>
                 <strong>{labelActor(actors[choice.actorId])}</strong>
+                {alternativeChangedBySomeoneElse(lookups.attribution, 'commentBodies', comment.id, choice.operationId)
+                  && <p className="comment-changed" role="note">Changed by someone other than {labelActor(actors[choice.actorId])}. See Activity.</p>}
                 <p>{choice.value}</p>
                 <button
                   disabled={!canWrite || comment.actorId !== actor}
@@ -1676,7 +1705,8 @@ function TaskDetail({
       </section>
       <section>
         <h3>History</h3>
-        {sortEvents(history.filter(event => event.type !== 'comment.add')).map(event => (
+        {historyRows.length > 0 && <CurrentLegend />}
+        {historyRows.map(event => (
           <EventRow
             key={event.operationId}
             event={event}

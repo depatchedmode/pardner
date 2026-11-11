@@ -68,8 +68,9 @@ it('a change relayed by the hub to another member shows its original signer ther
     await eventually(() => signerOf(reader, impersonation.operationId)?.state === 'signed', 'never attributed')
     assert.equal(signerOf(reader, impersonation.operationId).actorMismatch, true)
     assert.equal(signerOf(reader, impersonation.operationId).machineId, project.keys[0].machineId, 'still shown as made by the machine that signed it')
-    assert.ok(reader.getDoc().attribution.review.some(entry => entry.operations.includes(impersonation.operationId) && entry.actorMismatch))
-    assert.ok(!reader.getDoc().attribution.review.some(entry => entry.operations.includes(operation.operationId)))
+    const review = reader.getDoc().attribution.review
+    assert.ok(review.some(entry => entry.change === signerOf(reader, impersonation.operationId).hash && entry.actorMismatch && entry.flags.actorMismatch))
+    assert.ok(!review.some(entry => entry.change === signer.hash))
   })
 })
 
@@ -205,7 +206,7 @@ it('a write is acknowledged locally with the hub unreachable; the hub’s acknow
       const { result, savedLocally, syncPending } = await execute(writer, 'Saved while the hub is away')
       assert.equal(savedLocally, true, 'acknowledged locally after the disk barrier')
       assert.equal(syncPending, true)
-      assert.equal(writer.getDoc().attribution.operations[operationOf(writer, result.taskId).operationId][0].state, 'signed', 'signed at once, before any sync')
+      assert.equal(stateOf(writer, operationOf(writer, result.taskId).operationId), 'signed', 'signed and shown at once, before any sync')
       // The board change reaches the hub, but the signature document's frames are held back: no acknowledgement yet.
       path.state.holdSignatures = true
       path.restore()
@@ -270,9 +271,28 @@ it('a change from a removed machine, relayed by a member, is applied and flagged
       assert.equal(signerOf(runtime, late.operationId).machineId, project.keys[0].machineId)
       assert.equal(stateOf(runtime, earlier.operationId), 'signed', 'work from before the removal stays attributed')
       assert.equal(runtime.getDoc().tasks[after.taskId].title, 'After the removal', 'applied, not dropped')
-      assert.ok(runtime.getDoc().attribution.review.some(entry => entry.state === 'removed' && entry.operations.includes(late.operationId)))
+      assert.ok(runtime.getDoc().attribution.review.some(entry => entry.state === 'removed' && entry.change === signerOf(runtime, late.operationId).hash))
     }
     await eventually(() => new Set([server.store, carrier, observer].map(runtime => A.getHeads(runtime.docHandle.doc()).join())).size === 1, 'the peers diverged')
+  })
+})
+
+it('work a machine signed before its removal stays attributed on a replica that derives the removal only after showing that work', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica }) => {
+    const removed = await replica(0)
+    const { result: before } = await execute(removed, 'Before the removal')
+    const earlier = await eventually(() => operationOf(server.store, before.taskId), 'never relayed')
+    await eventually(() => stateOf(server.store, earlier.operationId) === 'signed', 'never attributed')
+    await server.store.addRecords([project.remove(project.keys[0])])
+    // A replica that joins now learns the removal from its records at once, but derives the change that wrote the
+    // removal into the board last, in small slices; meanwhile it is asked what it shows, again and again.
+    const late = await replica(2, { attribution: { quietMs: 400, pollMs: 100, deriveOps: 10 } })
+    const seen = new Set()
+    await eventually(() => {
+      seen.add(stateOf(late, earlier.operationId))
+      return late.attribution.summary().checking === 0 && late.attribution.log.complete
+    }, 'the late replica never finished deriving')
+    assert.equal(stateOf(late, earlier.operationId), 'signed', `earlier work is shown as ${stateOf(late, earlier.operationId)} (seen: ${[...seen].join(', ')})`)
   })
 })
 

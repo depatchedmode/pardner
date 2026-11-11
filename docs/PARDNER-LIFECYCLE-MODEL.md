@@ -582,3 +582,66 @@ Fresh default check: 174614 states, 679456 transitions, all four invariants and
 `ShutdownCompletes` hold; all ten witnesses are reachable. All eight mutations
 were caught, reported as drift and reproduced by the model; the working tree was
 unchanged. See `attributionReviewOne` in the evidence JSON.
+
+## Acknowledgement pairing review (2026-11-11)
+
+The second attribution review changed how a replica asks for the hub's
+acknowledgement and what the local barrier covers, in `lib/workspace.js` and
+`lib/workspace-runtime.js`. Drift named `ReplicaEdit`, `SyncDown`,
+`ReplicaSendAck`, `Handle`, `Respond`, `StoreCloseBegin`, `StoreCloseComplete`,
+`ReplicaReceive` and `ReplicaAckCommit`; each was re-reviewed against the diff:
+- `ReplicaSendAck`: `synchronizeAcknowledgement` captures the board and
+  signature heads as one pair in the step that found the outbox empty, before
+  the local flush. A change made during that flush is in neither, so every
+  change this machine made in the requested board heads has its signature in
+  the requested signature heads. The request carries exactly that pair; the
+  unfair action already allows any older snapshot.
+- `Handle`: `Workspace.apply` and the record gate add this machine's signature
+  cache to the persistence barrier (`Workspace.confirm`,
+  `ChangeAttribution.confirmOwn`). A write whose own signature could not be saved
+  fails as a storage failure and is not acknowledged; a retry replays and asks
+  again. That is one more failure of the modeled flush job, which the
+  storage-failure bound already covers.
+- `ReplicaReceive`, `ReplicaAckCommit`, `Respond`: the requested-snapshot guards
+  and the two-document flush are unchanged.
+- `ReplicaEdit`, `SyncDown`, `StoreCloseBegin`, `StoreCloseComplete`: the mapped
+  code is unchanged.
+
+Changed: two new `Handle` anchors (`this.confirm()` and the gate's
+`confirmOwn`), notes on the `Handle` and `ReplicaSendAck` anchors, and the
+`receipt-before-persist` mutation's find text, which now ends at the flush line.
+No guard, effect, atomicity assumption, invariant or witness changed.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses are reachable. All eight mutations
+were caught, reported as drift and reproduced by the model; the working tree was
+unchanged. See `attributionReviewTwoAcknowledgement` in the evidence JSON.
+
+## Activity derivation review (2026-11-11)
+
+Deriving every Activity entry from the change that wrote it changed
+`lib/workspace-runtime.js`. Drift named `ReplicaEdit`, `SyncDown`,
+`ReplicaSendAck`, `Handle`, `StoreCloseBegin`, `StoreCloseComplete`,
+`ReplicaReceive` and `ReplicaAckCommit`; each was re-reviewed against the diff:
+- `getDoc` adds Activity (`lib/change-log.js`, `lib/activity.js`) and
+  `attributionView` is rebuilt on it, with read-only views of current comment
+  authorship, deletions and the authorship of each alternative of a conflicted
+  field or comment (re-reviewed again when that last view was added). Nothing
+  there writes or waits.
+- The standalone service, which signs nothing, derives its Activity in memory: a
+  `heads-changed` listener notes new changes and derives a small batch in that
+  same synchronous step, and larger ones in `setImmediate` slices. Nothing waits
+  on the disk; `closeResources` clears the slice timer and the listener before it
+  drains the operation queue.
+- `ReplicaEdit`, `Handle`: a local change is still made through `boardChange`
+  before the flush; deriving its entry is synchronous work in the change step,
+  like signing.
+- `ReplicaSendAck`, `ReplicaReceive`, `ReplicaAckCommit`, `SyncDown`,
+  `StoreCloseBegin`, `StoreCloseComplete`: the mapped code is unchanged.
+
+No anchor, guard, effect, atomicity assumption, invariant, witness or mutation
+text changed. Fresh default check: 174614 states, 679456 transitions, all four
+invariants and `ShutdownCompletes` hold; all ten witnesses are reachable. All
+eight mutations were caught, reported as drift and reproduced by the model; the
+working tree was unchanged. See `attributionReviewTwoActivity` in the evidence
+JSON.

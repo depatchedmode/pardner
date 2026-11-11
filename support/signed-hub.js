@@ -69,7 +69,10 @@ export async function withHub(run, { members = 3, hubOptions = {} } = {}) {
 
 export const execute = (runtime, title, actorId = 'alice') => runtime.execute({ operationId: randomUUID(), actorId, type: 'task.create', payload: { title } })
 export const operationOf = (runtime, taskId) => Object.values(runtime.getDoc().operations).find(event => event.taskId === taskId && event.type === 'task.create')
-export const signerOf = (runtime, operationId) => runtime.getDoc().attribution.operations[operationId]?.[0]
+/** The Activity entry derived from the change that wrote the event at key `operationId`, as `runtime` shows it. */
+export const entryOf = (runtime, operationId) => runtime.getDoc().activity.find(entry => entry.kind === 'operation' && entry.key === operationId)
+/** That entry's first change, with its verdict: its signer. Undefined until the change has been derived. */
+export const signerOf = (runtime, operationId) => entryOf(runtime, operationId)?.changes[0]
 export const stateOf = (runtime, operationId) => signerOf(runtime, operationId)?.state
 
 /** A task.create written straight into a bare repo's board, as a modified client could: one change, with an Activity entry. */

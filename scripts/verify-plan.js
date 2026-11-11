@@ -30,10 +30,11 @@ const groups = [
   {
     name: 'signed-changes', scripts: ['test:runtime', 'test:cli', 'test:ui'],
     qualification: 'Signed changes, the signature document and cache, attribution, and the two-document hub acknowledgement',
-    files: names(`lib/attribution.js lib/change-signatures.js lib/signature-cache.js lib/client-review.js support/signing-process.js support/unsigned-peer.js
-      support/signed-hub.js scripts/signing-benchmark.js test/signed-changes-ui.test.js test/attribution-rules.test.js`),
-    focused: [{ command: 'node --test test/change-signatures.test.js test/signed-changes.test.js test/attribution-rules.test.js test/signed-changes-ui.test.js',
-      note: 'Machine actors, signing only own writes and checking, content-bound signer lines, malformed signature documents, repairs and fair polling, pending then unattributed under cut, slow and silent links, removed machines, equivocation, kill between saves, and the board' }],
+    files: names(`lib/attribution.js lib/change-signatures.js lib/signature-cache.js lib/client-review.js lib/change-log.js lib/activity.js support/signing-process.js
+      support/unsigned-peer.js support/signed-hub.js support/activity-fixture.js scripts/signing-benchmark.js test/signed-changes-ui.test.js test/attribution-rules.test.js
+      test/change-log.test.js test/activity-property.test.js test/signed-entries.test.js test/cli-activity.test.js`),
+    focused: [{ command: 'node --test test/change-signatures.test.js test/signed-changes.test.js test/attribution-rules.test.js test/change-log.test.js test/activity-property.test.js test/signed-entries.test.js test/signed-changes-ui.test.js',
+      note: 'Machine actors, signing only own writes and checking, each Activity entry derived from its own change, malformed signature documents and concurrent shards, repairs and fair polling, pending then unattributed under cut, slow and silent links, removed machines, equivocation proofs, kill between saves, and the board' }],
   },
   {
     name: 'persistence', scripts: ['test:qualification', 'test:runtime'], qualification: 'Disk persistence and directory ownership',

@@ -228,7 +228,7 @@ it('broadcasts native replica changes to every UI subscriber and rejects JSON mu
     }
     const result = await replica.execute({ operationId: randomUUID(), actorId: 'builder', type: 'task.create', payload: { title: 'From a native peer' } })
     const signed = message => message.type === 'document-update' && message.doc.tasks[result.result.taskId]
-      && message.doc.attribution.operations[Object.keys(message.doc.operations).find(id => message.doc.operations[id].taskId === result.result.taskId)]?.[0]?.state === 'signed'
+      && message.doc.activity.find(entry => entry.kind === 'operation' && entry.event.taskId === result.result.taskId && entry.event.type === 'task.create')?.changes[0]?.state === 'signed'
     await eventually(() => inboxes.every(inbox => inbox.some(signed)))
     for (const inbox of inboxes) {
       // One update for the change itself, and at most one more when its signature has been checked.

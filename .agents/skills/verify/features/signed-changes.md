@@ -61,23 +61,32 @@ gate.
   modified client rewrites Alice's comment inside her signed entry and signs its
   edit: Activity shows Alice's words, "Signed by Alice · this computer" and
   "altered after signing by Bob · Bob’s laptop", never Bob's words; Needs review
-  lists Bob's change under his own signer.
+  lists Bob's change under his own signer. When Bob renames the task and his
+  modified client rewrites one of Alice's comments and marks another deleted, the
+  deleted comment's entry keeps Alice's words and signed time, says "This comment
+  was later deleted by a change listed for review", and shows the task's current
+  title with a dotted underline; the task panel says the rewritten comment was
+  "Changed by someone other than its author".
 - **CLI.** `client review` says no change needs review, then lists the unsigned
   change in words, with the change hash only as a detail; `--json` gives the data.
+  `pardner activity`, `timeline`, `trace task` and `diff` print each entry with its
+  change's signer line; a forged copy appears under its own signer (`cli-activity`).
 - **Signing only own writes** (`attribution-rules`). A member continues another
   machine's current actor and sequence number and syncs the change to it (a member
   replica, then the hub): that machine never signs it, every peer shows it
   unattributed, and the machine reports another machine's use of its actor. Its own
   next change, the board's creation change, the record gate's change and a record
   write-back are each signed by the machine that made them.
-- **Content-bound signer lines.** A signed edit inside another machine's Activity
-  entry, arriving by sync: on the writer, a reader and the hub the entry keeps its
-  signer, is marked altered by the editing change (named with its own signer), is
-  shown as signed (title, timestamp and a deleted list as they were), and the edit
-  is listed for review; all peers show the same. A replica that joins after an
-  unsigned edit of a nested list shows the same. A replacement, a deletion and a
-  change that leaves no Activity entry are each listed with their signers; ordinary
-  work never is.
+- **Entries derived from their own change** (`change-log`, `activity-property`,
+  `signed-entries`, `attribution-rules`). Each Activity entry is what its change
+  wrote, under that change's signer. A copy of another person's event under an
+  earlier key with other text, many concurrent values at one key, and an edit inside
+  another person's entry each appear only under their own signer, on two running
+  peers and a replica that joins later; the original stays as signed. A
+  replacement, a deletion and a change that leaves no Activity entry are each their
+  own entry listed with their signers; every ordinary operation type and record
+  flow is never listed. A property test over random unusual writes by a second
+  member checks every shown entry against Automerge's own reading of each change.
 - **Malformed signature document.** Shards replaced by a list, text, a number,
   bytes, a counter or nested lists, junk keys, wrong-shape and oversized values and
   an unexpected top-level key: the services keep running with no contained

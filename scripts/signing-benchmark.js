@@ -122,11 +122,12 @@ async function receiving(base, project, rate, seconds = 10) {
   await cp(base, directory, { recursive: true })
   const server = await copiedHub(directory, project)
   const attribution = server.store.attribution
-  // Checking slices, and the content check (scanSlice) a change gets in the step that applies it, outside a slice.
+  // Checking slices, and the derivation of its Activity entry (lib/change-log.js) a change gets in the step that
+  // applies it, outside a slice.
   let checking = 0, scanning = 0, inWork = false
-  const work = attribution.work.bind(attribution), scan = attribution.scanSlice.bind(attribution)
+  const work = attribution.work.bind(attribution), slice = attribution.log.slice.bind(attribution.log)
   attribution.work = () => { const started = performance.now(); inWork = true; try { work() } finally { inWork = false }; checking += performance.now() - started }
-  attribution.scanSlice = limit => { const started = performance.now(); scan(limit); if (!inWork) scanning += performance.now() - started }
+  attribution.log.slice = options => { const started = performance.now(); try { return slice(options) } finally { if (!inWork) scanning += performance.now() - started } }
   const repo = new Repo({ network: [memberAdapter(project, 0, `ws://127.0.0.1:${server.wsPort}/automerge`, { retryMs: 100 })], sharePolicy: async () => true })
   try {
     const board = await repo.find(server.store.manifest.url, { signal: AbortSignal.timeout(120000) })
@@ -204,7 +205,7 @@ async function firstCheck(base, project) {
     for (;;) {
       const { checking, changes, signed } = replica.attribution.summary()
       progress.push(checking)
-      if (!checking && signed >= changes && !replica.attribution.queue.length && replica.attribution.writersReady) break
+      if (!checking && signed >= changes && !replica.attribution.queue.length && replica.attribution.log.complete) break
       if (performance.now() - started > 600000) break
       await delay(10)
     }
@@ -305,7 +306,7 @@ function table(report) {
     const { authoring: a, firstCheck: f, open } = entry
     lines.push(`| ${size} | Authoring, execute to receipt (median / p90) | ${ms(a.signed.median)} / ${ms(a.signed.p90)} | ${ms(a.plain.median)} / ${ms(a.plain.p90)} | ${(a.overhead * 100).toFixed(1)}% on the median, ${a.samples} samples per arm, load ${entry.load.afterAuthoring[0]} |`)
     for (const r of entry.receiving) {
-      lines.push(`| ${size} | Receive and check at ${r.rate}/s | ${r.changes - r.unsigned} of ${r.changes} attributed; check ${ms(r.checkMsPerChange)} per change (${(r.budgetShare * 100).toFixed(2)}% of the budget${r.scanMsPerChange === undefined ? '' : `; content check ${ms(r.scanMsPerChange)} of it`}) | — | writer achieved ${r.achieved.toFixed(1)}/s; hub sees a change ${ms(r.seenAfter)} after it is written; pending ${ms(r.unattributedWindow.median)} median, ${ms(r.unattributedWindow.max)} worst |`)
+      lines.push(`| ${size} | Receive and check at ${r.rate}/s | ${r.changes - r.unsigned} of ${r.changes} attributed; check ${ms(r.checkMsPerChange)} per change (${(r.budgetShare * 100).toFixed(2)}% of the budget${r.scanMsPerChange === undefined ? '' : `; deriving its entry in the step that applies it ${ms(r.scanMsPerChange)} of it`}) | — | writer achieved ${r.achieved.toFixed(1)}/s; hub sees a change ${ms(r.seenAfter)} after it is written; pending ${ms(r.unattributedWindow.median)} median, ${ms(r.unattributedWindow.max)} worst |`)
     }
     lines.push(`| ${size} | New replica: open, then first full check | open ${ms(f.opened)}; all ${f.signed} of ${f.changes} checked in ${ms(f.checkWall)} after it (${ms(f.checkCpu)} CPU) | — | ${f.slices} slices, longest ${ms(f.longestSlice)}; changes still unchecked, sampled: ${f.progress.join(', ')} |`)
     const openMs = arm => median(open[arm].map(sample => sample.opened))

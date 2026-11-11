@@ -1,15 +1,18 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import * as A from '@automerge/automerge'
 import { SHARDS, createSignaturesData, machineActor, machinePrefix, shardOf, signChange, storedSignatures, verifyChange } from '../lib/change-signatures.js'
-import { ChangeAttribution, machineIndex } from '../lib/attribution.js'
-import { generateMachineKey } from '../lib/machine-key.js'
+import { machineIndex } from '../lib/attribution.js'
+import { ChangeLog } from '../lib/change-log.js'
+import { generateMachineKey, personIdFor } from '../lib/machine-key.js'
+import { actorId as actorFor } from '../lib/client-identity.js'
 import { hubRuntime } from '../support/machines.js'
+import { prepareOperation } from '../lib/workspace-commands.js'
 import { plain } from '../lib/workspace-schema.js'
 import { storageValue } from '../lib/workspace-values.js'
-import { actors, eventually, execute, operationOf, signerOf, stateOf, withHub, writeTask } from '../support/signed-hub.js'
+import { actors, entryOf, eventually, execute, operationOf, signerOf, stateOf, withHub, writeTask } from '../support/signed-hub.js'
 
 // The rules that make a signer line mean "this machine signed exactly this content" (docs/PARDNER-TRUST-DESIGN.md,
 // section 3), for every peer, even when another member's client writes unusual but well-formed data.
@@ -52,7 +55,7 @@ it('a machine signs only the changes its own write path made; a received change 
     const creation = A.getChangesMetaSince(server.store.docHandle.doc(), [])[0]
     assert.equal(server.store.attribution.stateOf(creation.hash).state, 'signed', 'the creation change is signed by the machine that created the board')
     await eventually(() => writer.attribution.stateOf(creation.hash).state === 'signed', 'a member never verified the creation change')
-    const gate = server.store.attribution.writers.membership.get(project.records[0].recordId)
+    const gate = server.store.attribution.recordWriters().get(project.records[0].recordId)
     assert.ok(gate?.length && gate.every(hash => server.store.attribution.stateOf(hash).state === 'signed'), 'the record gate’s change is signed')
   })
 })
@@ -63,16 +66,24 @@ it('a membership write-back is signed by the machine that writes it back', { tim
     const vandal = await bare(1)
     const recordId = project.records[2].recordId
     await eventually(() => vandal.board.doc().membership?.[recordId], 'the vandal never synced')
+    // Every change that ever wrote the record into the board, from the changes' own entries.
+    const writers = runtime => runtime.attribution.recordWriters().get(recordId) ?? []
+    await eventually(() => writers(server.store).length, 'the hub never derived the gate’s change')
+    const before = writers(server.store).length
     vandal.board.change(doc => { delete doc.membership[recordId] })
     // Every peer that stores the record writes it back; each write-back is that peer's own, signed change.
-    await eventually(() => server.store.attribution.writers.membership.get(recordId)?.length
-      && !A.getHeads(vandal.board.doc()).every(head => server.store.attribution.writers.membership.get(recordId).includes(head)), 'never written back')
-    await eventually(() => {
-      const writers = server.store.attribution.writers.membership.get(recordId) ?? []
-      return writers.length && writers.every(hash => server.store.attribution.stateOf(hash).state === 'signed')
-    }, 'a write-back change was never attributed')
-    await eventually(() => (reader.attribution.writers.membership.get(recordId) ?? []).every(hash => reader.attribution.stateOf(hash).state === 'signed')
-      && reader.attribution.writers.membership.get(recordId)?.length, 'the reader never attributed the write-back')
+    await eventually(() => writers(server.store).length > before, 'never written back')
+    await eventually(() => writers(server.store).every(hash => server.store.attribution.stateOf(hash).state === 'signed'), 'a write-back change was never attributed')
+    await eventually(() => writers(reader).length > before && writers(reader).every(hash => reader.attribution.stateOf(hash).state === 'signed'),
+      'the reader never attributed the write-back')
+    // The record is one Activity entry listing each change that wrote it; the deletion is its own entry, for review.
+    const [shown] = await eventually(() => {
+      const entries = server.store.getDoc().activity.filter(entry => entry.kind === 'record' && entry.key === recordId)
+      return entries.length === 1 && entries[0].changes.length > before && entries
+    }, 'the record was not shown as one entry')
+    assert.equal(shown.review, false)
+    const deletion = A.getHeads(vandal.board.doc()).find(head => !writers(server.store).includes(head))
+    if (deletion) await eventually(() => server.store.getDoc().activity.find(entry => entry.id === deletion)?.kind === 'unrecognised', 'the deletion was not listed on its own')
   })
 })
 
@@ -117,14 +128,14 @@ it('a signature-document shard replaced by a list or any other non-map value can
   })
 })
 
-it('what is read from the signature document is bounded: only map shards, change-hash keys and 64-byte values, and a few concurrent values', () => {
+it('what is read from the signature document is bounded: only map shards, change-hash keys and 64-byte values', () => {
   const projectId = 'ab'.repeat(32), key = generateMachineKey()
   const base = A.from(createSignaturesData())
   const hash = 'cd'.repeat(32), signature = signChange(key, projectId, hash)
   // Fifty members write concurrently under one hash; the one valid signature is among them.
   let doc = A.clone(base)
   for (let index = 0; index < 50; index++) doc = A.merge(doc, A.change(A.clone(base), d => { d[shardOf(hash)][hash] = new Uint8Array(randomBytes(64)) }))
-  assert.ok(storedSignatures(doc, hash).length <= 8, 'at most a few concurrent values are read')
+  assert.ok(storedSignatures(doc, hash).every(value => value.length === 64), 'only 64-byte values are read')
   // Values that are not exactly 64 bytes, and keys that are not change hashes, are never returned.
   const odd = A.change(A.clone(base), d => {
     d[shardOf(hash)][hash] = new Uint8Array(63)
@@ -142,6 +153,84 @@ it('what is read from the signature document is bounded: only map shards, change
   const right = A.change(A.clone(base), d => { d[shardOf(hash)] = {} })
   const both = A.merge(A.merge(A.clone(base), left), right)
   assert.equal(storedSignatures(both, hash).filter(value => verifyChange(key.publicKey, projectId, hash, value)).length, 1)
+})
+
+it('a signature held only in the winning map of many concurrent shard maps is found, and so is one among many concurrent values', () => {
+  const projectId = 'ab'.repeat(32), key = generateMachineKey()
+  const hash = 'ef'.repeat(32), signature = signChange(key, projectId, hash), shard = shardOf(hash)
+  const base = A.from(createSignaturesData())
+  // Twelve members replace the shard concurrently; Automerge lists the winner last.
+  let doc = A.clone(base)
+  for (let index = 0; index < 12; index++) doc = A.merge(doc, A.change(A.clone(base), d => { d[shard] = {} }))
+  doc = A.change(doc, d => { d[shard][hash] = signature })
+  const listed = A.getBackend(doc).getAll('_root', shard).map(([, id]) => id)
+  assert.equal(listed.length, 12)
+  assert.equal(listed.at(-1), A.getObjectId(doc[shard]), 'the winner is listed last')
+  assert.ok(storedSignatures(doc, hash).some(value => verifyChange(key.publicKey, projectId, hash, value)), 'a signature in the winning shard map is found')
+  // Fifty concurrent values under one hash: the valid one is found wherever Automerge lists it.
+  let crowded = A.clone(base)
+  for (let index = 0; index < 50; index++) crowded = A.merge(crowded, A.change(A.clone(base), d => { d[shard][hash] = index === 49 ? signature : new Uint8Array(randomBytes(64)) }))
+  assert.ok(storedSignatures(crowded, hash).some(value => verifyChange(key.publicKey, projectId, hash, value)), 'a valid value among fifty concurrent values is found')
+})
+
+it('many concurrent maps for one signature shard hide no signature on any peer; the hub resolves them into one map holding every verified entry', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const writer = await replica(0)
+    const { result } = await execute(writer, 'Its shard is split twelve ways')
+    const operation = await eventually(() => operationOf(server.store, result.taskId), 'never relayed')
+    await eventually(() => stateOf(server.store, operation.operationId) === 'signed', 'never attributed')
+    const hash = signerOf(server.store, operation.operationId).hash, shard = shardOf(hash)
+    const vandal = await bare(2)
+    await eventually(() => storedSignatures(vandal.signatures.doc(), hash).length, 'the vandal never received the entry')
+    // Twelve concurrent replacements of the shard, each an empty map: the entry is in none of them.
+    const base = vandal.signatures.doc()
+    let split = A.clone(base)
+    for (let index = 0; index < 12; index++) split = A.merge(split, A.change(A.clone(base), d => { d[shard] = {} }))
+    vandal.signatures.update(doc => A.merge(doc, split))
+    const vandalism = A.getHeads(vandal.signatures.doc())
+    await eventually(() => A.hasHeads(server.store.workspace.signatures.doc(), vandalism), 'the vandalism never arrived')
+    const late = await replica(1)
+    for (const runtime of [server.store, writer, late]) {
+      await eventually(() => storedSignatures(runtime.workspace.signatures.doc(), hash).some(value => verifyChange(project.keys[0].publicKey, project.projectId, hash, value)),
+        `${runtime.role} never found the signature again`)
+      await eventually(() => stateOf(runtime, operation.operationId) === 'signed', `${runtime.role} does not show the change signed`)
+    }
+    // The hub replaces the twelve maps with one that holds the entry, and repairs then stop.
+    const signatures = server.store.workspace.signatures
+    await eventually(() => A.getBackend(signatures.doc()).getAll('_root', shard).length === 1, 'the hub never resolved the shard')
+    assert.ok(storedSignatures(signatures.doc(), hash).length, 'the resolved shard holds the entry')
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    const settled = A.getHeads(signatures.doc()).join()
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    assert.equal(A.getHeads(signatures.doc()).join(), settled, 'repairs keep rewriting the signature document')
+  })
+})
+
+it('reading a signature shard materialises its concurrent values once per change to that shard, not once per read', { timeout: 90000 }, async () => {
+  await withHub(async ({ server, replica, bare }) => {
+    const writer = await replica(0)
+    const { result } = await execute(writer, 'Read many times')
+    const operation = await eventually(() => operationOf(server.store, result.taskId), 'never relayed')
+    await eventually(() => stateOf(server.store, operation.operationId) === 'signed', 'never attributed')
+    const hash = signerOf(server.store, operation.operationId).hash, shard = shardOf(hash)
+    const vandal = await bare(2)
+    await eventually(() => storedSignatures(vandal.signatures.doc(), hash).length, 'the vandal never received the entry')
+    const base = vandal.signatures.doc()
+    let junk = A.clone(base)
+    for (let index = 0; index < 40; index++) junk = A.merge(junk, A.change(A.clone(base), d => { d[shard] = new Uint8Array(4096) }))
+    vandal.signatures.update(doc => A.merge(doc, junk))
+    const signatures = server.store.workspace.signatures
+    await eventually(() => A.hasHeads(signatures.doc(), A.getHeads(vandal.signatures.doc())), 'the vandalism never arrived')
+    await eventually(() => storedSignatures(signatures.doc(), hash).length, 'the entry was never written back')
+    const backend = A.getBackend(signatures.doc())
+    const getAll = backend.getAll
+    let reads = 0
+    backend.getAll = function (obj, prop, ...rest) { if (obj === '_root' && prop === shard) reads++; return getAll.call(this, obj, prop, ...rest) }
+    try {
+      for (let index = 0; index < 100; index++) server.store.attribution.check(hash)
+    } finally { backend.getAll = getAll }
+    assert.ok(reads <= 1, `the shard's concurrent values were read ${reads} times for 100 reads`)
+  })
 })
 
 it('an exception in a background attribution task is contained, logged and shown in status, and the work resumes', { timeout: 90000 }, async () => {
@@ -195,6 +284,37 @@ it('repairs of signature entries are never lost when deletions coincide: every o
     const publicKey = server.store.records.membership().machines.find(machine => machine.id === writer.machineKey.machineId).publicKey
     const valid = hash => storedSignatures(signatures.doc(), hash).some(value => verifyChange(publicKey, server.store.manifest.workspaceId, hash, value))
     await eventually(() => hashes.every(valid), () => `not put back: ${hashes.filter(hash => !valid(hash)).join(', ')}`)
+  })
+})
+
+it('a repair that fails stays pending and is retried until the entry is put back', { timeout: 90000 }, async () => {
+  await withHub(async ({ server, replica, bare }) => {
+    const writer = await replica(0)
+    const { result } = await execute(writer, 'Its entry is deleted while writing fails')
+    const operation = await eventually(() => operationOf(server.store, result.taskId), 'never relayed')
+    await eventually(() => stateOf(server.store, operation.operationId) === 'signed', 'never attributed')
+    const hash = signerOf(server.store, operation.operationId).hash
+    const vandal = await bare(2)
+    await eventually(() => storedSignatures(vandal.signatures.doc(), hash).length, 'the vandal never received the entry')
+    await writer.close()
+    // The hub's first attempts to write the entry back fail; each failure is contained.
+    const attribution = server.store.attribution
+    const write = attribution.writeEntries.bind(attribution)
+    let failures = 0
+    attribution.writeEntries = entries => {
+      if (entries.some(entry => entry.hash === hash) && failures < 2) { failures++; throw new Error('simulated write failure') }
+      return write(entries)
+    }
+    const error = console.error
+    console.error = () => {}
+    try {
+      server.store.workspace.signatures.update(doc => A.merge(doc, A.change(A.clone(vandal.signatures.doc()), d => { delete d[shardOf(hash)][hash] })))
+      await eventually(() => failures >= 1, 'the repair was never attempted')
+      await eventually(() => storedSignatures(server.store.workspace.signatures.doc(), hash).length, 'the failed repair was dropped instead of retried')
+    } finally {
+      attribution.writeEntries = write
+      console.error = error
+    }
   })
 })
 
@@ -256,26 +376,26 @@ it('the signer line is bound to the content it signed: a later change that edits
       await eventually(() => A.hasHeads(runtime.docHandle.doc(), [edit]), `the edit never reached ${runtime.role}`)
       await checked(runtime)
       await eventually(() => runtime.attribution.stateOf(edit).state === 'signed', `${runtime.role} never verified the edit’s own signature`)
-      const [signer] = runtime.getDoc().attribution.operations[original.operationId]
-      assert.equal(signer.hash, signedBy.hash, 'still the change that wrote the entry')
-      assert.equal(signer.machineId, project.keys[0].machineId)
-      assert.deepEqual(signer.altered?.map(entry => [entry.hash, entry.state, entry.machineId]), [[edit, 'signed', project.keys[2].machineId]],
-        'marked as altered after signing, naming the altering change and its signer')
+      const shown = entryOf(runtime, original.operationId)
+      assert.deepEqual(shown.changes.map(change => [change.hash, change.machineId]), [[signedBy.hash, project.keys[0].machineId]], 'still the change that wrote the entry, alone')
       // What is shown under the signer is the content as its change wrote it.
-      const shown = runtime.getDoc().attribution.signed?.[original.operationId]
-      assert.equal(shown?.payload?.title, 'Written and signed by member 0')
-      assert.equal(shown?.timestamp, original.timestamp)
-      assert.deepEqual(shown?.changes, original.changes)
-      // The altering change has its own entry in the review list, with its own signer.
-      const review = await eventually(() => reviewEntry(runtime, edit), `${runtime.role} never listed the altering change`)
-      assert.equal(review.state, 'signed')
-      assert.equal(review.machineId, project.keys[2].machineId)
-      assert.deepEqual(review.rewrote, [{ map: 'operations', key: original.operationId, kind: 'edited' }])
+      assert.equal(shown.event.payload.title, 'Written and signed by member 0')
+      assert.equal(shown.event.timestamp, original.timestamp)
+      assert.equal(shown.timestamp, original.timestamp, 'the time shown is the signed one')
+      assert.deepEqual(shown.event.changes, original.changes)
+      // Member 0 acts as Alice here, which its machine is not certified for: that flag is its own; the edit adds none.
+      assert.deepEqual(Object.keys(shown.flags), ['actorMismatch'])
+      // The altering change is its own entry, in review, with its own signer, naming what it altered.
+      const altering = runtime.getDoc().activity.find(entry => entry.id === edit)
+      assert.equal(altering.kind, 'unrecognised')
+      assert.deepEqual(altering.altered, [signedBy.hash])
+      assert.deepEqual([altering.changes[0].state, altering.changes[0].machineId], ['signed', project.keys[2].machineId])
+      assert.ok(reviewEntry(runtime, edit), `${runtime.role} never listed the altering change`)
     }
     // Every peer shows the same thing, and the board itself is not changed by the check.
     assert.equal(server.store.getDoc().operations[original.operationId].payload.title, 'Rewritten by member 2')
-    const views = [reader, server.store, writer].map(runtime => JSON.stringify([runtime.getDoc().attribution.operations[original.operationId], runtime.getDoc().attribution.signed]))
-    assert.equal(new Set(views).size, 1)
+    const stable = runtime => JSON.stringify(runtime.getDoc().activity.map(({ changes, ...entry }) => ({ ...entry, changes: changes.map(({ hash, state, machineId }) => [hash, state, machineId]) })))
+    assert.equal(new Set([reader, server.store, writer].map(stable)).size, 1)
   })
 })
 
@@ -292,23 +412,27 @@ it('a replica that joins after an Activity entry was altered shows the same alte
     await eventually(() => A.hasHeads(server.store.docHandle.doc(), [edit]), 'the edit never reached the hub')
     const late = await replica(1)
     await checked(late)
-    const [signer] = late.getDoc().attribution.operations[original.operationId]
-    assert.equal(signer.state, 'signed')
-    assert.deepEqual(signer.altered?.map(entry => entry.hash), [edit])
-    assert.deepEqual(late.getDoc().attribution.signed[original.operationId].recordIds, original.recordIds)
+    const shown = entryOf(late, original.operationId)
+    assert.equal(shown.changes[0].state, 'signed')
+    assert.deepEqual(shown.event.recordIds, original.recordIds, 'shown as its change wrote it')
     await eventually(() => reviewEntry(late, edit)?.state === 'unattributed', 'the unsigned edit was never listed')
+    assert.deepEqual(late.getDoc().activity.find(entry => entry.id === edit).altered, [shown.changes[0].hash])
     await checked(server.store)
+    await eventually(() => reviewEntry(server.store, edit)?.state === 'unattributed', 'the hub never resolved the edit')
     // The same on the hub, apart from the replica naming the hub it learned the verdict through (`via`).
-    const stable = runtime => runtime.getDoc().attribution.operations[original.operationId]
-      .map(({ hash, state, machineId, altered }) => ({ hash, state, machineId, altered: altered?.map(({ hash: change, state: was, claimed }) => [change, was, claimed]) }))
-    assert.deepEqual(stable(late), stable(server.store))
+    const verdicts = changes => changes?.map(({ hash, state, machineId, claimed }) => [hash, state, machineId, claimed])
+    const stable = runtime => JSON.stringify(runtime.getDoc().activity.map(({ changes, alteredLater, ...entry }) => ({ ...entry, changes: verdicts(changes), alteredLater: verdicts(alteredLater) })))
+    assert.equal(stable(late), stable(server.store))
   })
 })
 
-it('replacing or deleting an Activity entry, or a signed change that leaves no Activity entry, is listed for review with its signer', { timeout: 90000 }, async () => {
+it('replacing or deleting an Activity entry, or a signed change that leaves no Activity entry, is its own entry listed for review with its signer, and the original stays shown', { timeout: 90000 }, async () => {
   await withHub(async ({ project, server, replica, bare }) => {
+    // Member 0 acts as its own person's Actor, so its entries carry no flag of their own.
+    const own = actorFor(personIdFor(project.keys[0].publicKey))
+    await server.store.execute({ operationId: randomUUID(), actorId: 'alice', type: 'actor.register', payload: { id: own, handle: 'member-zero', kind: 'human' } })
     const writer = await replica(0)
-    const first = await execute(writer, 'Replaced later'), second = await execute(writer, 'Deleted later')
+    const first = await execute(writer, 'Replaced later', own), second = await execute(writer, 'Deleted later', own)
     const [replaced, deleted] = await Promise.all([first, second].map(({ result }) => eventually(() => operationOf(server.store, result.taskId), 'never relayed')))
     const editor = await bare(2)
     await eventually(() => editor.board.doc().operations?.[deleted.operationId], 'the editor never synced')
@@ -327,17 +451,20 @@ it('replacing or deleting an Activity entry, or a signed change that leaves no A
     await checked(server.store)
     const review = hash => reviewEntry(server.store, hash)
     await eventually(() => [replacement, deletion, rename].every(hash => review(hash)?.state === 'signed'), 'not every change was listed with its signer')
-    assert.deepEqual(review(replacement).rewrote, [{ map: 'operations', key: replaced.operationId, kind: 'replaced' }])
     assert.equal(review(replacement).machineId, project.keys[2].machineId)
-    const [shown] = server.store.getDoc().attribution.operations[replaced.operationId]
-    assert.equal(shown.hash, replacement, 'a replaced entry is shown as signed by the change that wrote what is there now')
-    assert.equal(shown.replaces, true)
-    assert.deepEqual(review(deletion).rewrote, [{ map: 'operations', key: deleted.operationId, kind: 'deleted' }])
-    assert.equal(review(rename).noEntry, true)
-    assert.equal(review(rename).state, 'signed')
-    assert.equal(review(deletion).noEntry, true, 'a deletion leaves no entry of its own either')
-    // Ordinary work is never listed: operations and membership records each leave an entry.
-    assert.deepEqual(server.store.getDoc().attribution.review.filter(entry => entry.noEntry || entry.rewrote).map(entry => entry.change).sort(), [replacement, deletion, rename].sort())
+    const activity = server.store.getDoc().activity
+    // The replacement is its own entry; the entry it replaced is still shown, as its own change wrote it.
+    const replacing = activity.find(entry => entry.id === replacement)
+    assert.equal(replacing.event.timestamp, '2020-01-01T00:00:00.000Z')
+    const originals = activity.filter(entry => entry.kind === 'operation' && (entry.key === replaced.operationId || entry.key === deleted.operationId) && entry.id !== replacement)
+    assert.deepEqual(originals.map(entry => entry.event.payload.title).sort(), ['Deleted later', 'Replaced later'])
+    assert.ok(originals.every(entry => entry.changes.every(change => change.machineId === project.keys[0].machineId)))
+    assert.deepEqual(replacing.flags.sameKey, [originals.find(entry => entry.key === replaced.operationId).id])
+    assert.deepEqual([activity.find(entry => entry.id === deletion).kind, activity.find(entry => entry.id === rename).kind], ['unrecognised', 'unrecognised'])
+    // Ordinary work is never listed: only these three, and the entry whose key another change wrote again.
+    // (The hub's own registration of member 0's Actor, made here as Alice, is flagged too, and is not this test's.)
+    assert.deepEqual([...new Set(server.store.getDoc().attribution.review.filter(entry => entry.machineId !== project.owner.machineId).map(entry => entry.change))].sort(),
+      [replacement, deletion, rename, originals.find(entry => entry.key === replaced.operationId).id].sort())
   })
 })
 
@@ -354,6 +481,75 @@ it('a replica asks for the hub’s acknowledgement only once every signature it 
     await eventually(() => !writer.status().syncPending, 'never acknowledged once the signature was written')
     const hash = signerOf(writer, operation.operationId).hash
     assert.ok(storedSignatures(server.store.workspace.signatures.doc(), hash).length, 'the acknowledged signature heads hold its signature')
+  })
+})
+
+/** The 64-byte values stored for `hash` in a signature document as of `heads`, read with Automerge's history. */
+function signaturesAt(doc, heads, hash) {
+  const backend = A.getBackend(doc), values = []
+  for (const [type, shard] of backend.getAll('_root', shardOf(hash), heads)) {
+    if (type !== 'map') continue
+    for (const [kind, value] of backend.getAll(shard, hash, heads)) if (kind === 'bytes' && value.length === 64) values.push(value)
+  }
+  return values
+}
+
+it('a replica asks the hub to acknowledge one pair of heads captured when its outbox is empty, so a change made while it saves is in neither', { timeout: 60000 }, async () => {
+  await withHub(async ({ replica }) => {
+    const writer = await replica(0)
+    const requests = []
+    const requestHub = writer.requestHub.bind(writer)
+    writer.requestHub = (path, options) => {
+      if (path === '/automerge/sync-ack') requests.push(structuredClone(options.body))
+      return requestHub(path, options)
+    }
+    // While the acknowledgement request saves locally, this machine makes another change, whose signature stays
+    // in the outbox for the moment.
+    const flush = writer.repo.flush.bind(writer.repo)
+    let made = null
+    writer.repo.flush = documents => {
+      if (writer.syncing && !made) {
+        writer.attribution.holdOutbox = true
+        const prepared = prepareOperation(writer.workspace.handle.doc(), { operationId: randomUUID(), actorId: 'alice', type: 'task.create', payload: { title: 'Made during the save' } },
+          { replicaId: writer.manifest.replicaId, timestamp: new Date().toISOString() })
+        writer.boardChange(prepared.change)
+        made = A.getHeads(writer.workspace.handle.doc())[0]
+      }
+      return flush(documents)
+    }
+    await execute(writer, 'Saved before the request')
+    await eventually(() => made && requests.length, 'no acknowledgement was requested')
+    writer.attribution.holdOutbox = false
+    await eventually(() => !writer.status().syncPending, 'never acknowledged once the signature was written')
+    const board = writer.workspace.handle.doc(), signatures = writer.workspace.signatures.doc()
+    for (const request of requests) {
+      const contains = !A.getChangesMetaSince(board, request.heads).some(meta => meta.hash === made)
+      if (contains) assert.ok(signaturesAt(signatures, request.signatureHeads, made).length, 'a requested board head includes a change whose signature the requested signature heads lack')
+    }
+  })
+})
+
+it('a write whose signature cannot be saved in the local signature cache is not acknowledged; its retry is, once the signature is saved', { timeout: 60000 }, async () => {
+  await withHub(async ({ replica }) => {
+    const writer = await replica(0)
+    const add = writer.signatureCache.add.bind(writer.signatureCache)
+    const error = console.error
+    console.error = () => {}
+    const request = { operationId: randomUUID(), actorId: 'alice', type: 'task.create', payload: { title: 'Signed, not saved' } }
+    let hash
+    try {
+      writer.signatureCache.add = () => { throw new Error('simulated cache failure') }
+      await assert.rejects(writer.execute(request), failure => failure.code === 'STORAGE_FAILED', 'a write whose own signature is only in memory was acknowledged')
+      hash = A.getHeads(writer.workspace.handle.doc())[0]
+      assert.equal(writer.signatureCache.has(hash), false)
+    } finally {
+      writer.signatureCache.add = add
+      console.error = error
+    }
+    const receipt = await writer.execute(request)
+    assert.equal(receipt.replayed, true)
+    assert.equal(receipt.savedLocally, true)
+    assert.equal(writer.signatureCache.get(hash)?.machineId, writer.machineKey.machineId, 'the retry is acknowledged only once the signature is saved')
   })
 })
 
@@ -398,7 +594,72 @@ it('an equivocation report is kept across a restart', { timeout: 90000 }, async 
   })
 })
 
-it('a reopened replica reads only the changes it has not read before, and keeps what it found', { timeout: 90000 }, async () => {
+/** Two changes one member machine's key signed under one actor and sequence number, one sent by each bare member. */
+async function equivocate({ project, server, bare }, { sign: signNow = true } = {}) {
+  const [first, second] = [await bare(0), await bare(1)]
+  await eventually(() => A.getHeads(second.board.doc()).join() === A.getHeads(server.store.docHandle.doc()).join(), 'the second member never synced')
+  const base = second.board.doc(), actor = machineActor(project.keys[0])
+  const one = A.change(A.clone(base, { actor }), doc => { doc.name = new A.ImmutableString('One story') })
+  const two = A.change(A.clone(base, { actor }), doc => { doc.name = new A.ImmutableString('Another story') })
+  const hashes = [A.getHeads(one)[0], A.getHeads(two)[0]]
+  const sign = (member, hash) => member.signatures.change(d => { d[shardOf(hash)][hash] = signChange(project.keys[0], project.projectId, hash) })
+  if (signNow) {
+    sign(first, hashes[0])
+    sign(second, hashes[1])
+    await eventually(() => hashes.every(hash => storedSignatures(server.store.workspace.signatures.doc(), hash).length), 'the signatures never arrived')
+  }
+  first.board.update(doc => A.merge(doc, one))
+  second.board.update(doc => A.merge(doc, two))
+  return { first, second, hashes, sign }
+}
+
+it('an equivocation report keeps the signatures that prove it, so it stays proven when they are deleted from the signature document and after a restart', { timeout: 90000 }, async () => {
+  await withHub(async context => {
+    const { project, server } = context
+    const { first, second, hashes } = await equivocate(context)
+    await eventually(() => server.store.getDoc().attribution.summary.equivocations[0]?.proven, 'the equivocation was never proven')
+    // A member deletes both signatures from the shared document; then both members stop.
+    second.signatures.change(d => { for (const hash of hashes) delete d[shardOf(hash)][hash] })
+    const signatures = server.store.workspace.signatures
+    await eventually(() => A.hasHeads(signatures.doc(), A.getHeads(second.signatures.doc())), 'the deletion never arrived')
+    await first.repo.shutdown(); await second.repo.shutdown()
+    const directory = server.store.directory
+    await server.store.close()
+    const reopened = hubRuntime(directory, { actors, project })
+    await reopened.init()
+    try {
+      const [kept] = reopened.getDoc().attribution.summary.equivocations
+      assert.deepEqual([...kept.hashes].sort(), [...hashes].sort())
+      assert.equal(kept.proven, true, 'the proof was lost with the signature document’s entries')
+    } finally { await reopened.close() }
+  })
+})
+
+it('an equivocation report shown before both signatures arrived becomes proven when the second one arrives', { timeout: 90000 }, async () => {
+  await withHub(async context => {
+    const { server, bare } = context
+    const { first, second, hashes, sign } = await equivocate(context, { sign: false })
+    await eventually(() => server.store.getDoc().attribution.summary.equivocations[0], 'the equivocation was never reported')
+    // The change the hub holds is signed and checked as usual; the one it refused is not signed yet.
+    const held = hashes.find(hash => A.hasHeads(server.store.docHandle.doc(), [hash])), refused = hashes.find(hash => hash !== held)
+    sign(held === hashes[0] ? first : second, held)
+    await eventually(() => server.store.attribution.stateOf(held).state === 'signed', 'the held change was never checked')
+    // The members that sent the two changes stop, so nothing is refused again; a third member then supplies the
+    // missing signature.
+    await first.repo.shutdown(); await second.repo.shutdown()
+    await new Promise(resolve => setTimeout(resolve, 300))
+    const report = server.store.getDoc().attribution.summary.equivocations[0]
+    assert.deepEqual(report.signed, report.hashes.map(hash => hash === held), 'only the held change is signed so far')
+    const third = await bare(2)
+    await eventually(() => A.getHeads(third.signatures.doc()).join() === A.getHeads(server.store.workspace.signatures.doc()).join(), 'the third member never synced')
+    sign(third, refused)
+    await eventually(() => storedSignatures(server.store.workspace.signatures.doc(), refused).length, 'the second signature never arrived')
+    await eventually(() => server.store.getDoc().attribution.summary.equivocations[0].proven, 'the report was not refreshed when its signature arrived', 5000)
+    assert.equal(server.store.status().attribution.equivocations, 1)
+  })
+})
+
+it('a reopened replica derives only the changes it has no stored entry for, and shows the same entries', { timeout: 90000 }, async () => {
   await withHub(async ({ root, project, server, replica, bare }) => {
     const directory = join(root, 'reopened-reader')
     let reader = await replica(1, { directory })
@@ -410,21 +671,25 @@ it('a reopened replica reads only the changes it has not read before, and keeps 
     const edit = A.getHeads(editor.board.doc())[0]
     await eventually(() => A.hasHeads(reader.docHandle.doc(), [edit]), 'the edit never reached the reader')
     await checked(reader)
+    await eventually(() => reviewEntry(reader, edit), 'the edit was never listed')
     const changes = reader.attribution.metas.size
+    const before = JSON.stringify(reader.getDoc().activity.map(({ id, kind, event, flags }) => ({ id, kind, event, flags })))
     await reader.close()
-    // Count what the reopened replica reads: nothing it read before.
-    const scan = ChangeAttribution.prototype.scanChange
-    let read = 0
-    ChangeAttribution.prototype.scanChange = function (change) { if (!this.scan.scanned.has(change.hash)) read++; return scan.call(this, change) }
+    // Count what the reopened replica derives: nothing it derived before.
+    const add = ChangeLog.prototype.add
+    let derived = 0
+    ChangeLog.prototype.add = function (entry) { derived++; return add.call(this, entry) }
     try {
       reader = await replica(1, { directory })
       await checked(reader)
-    } finally { ChangeAttribution.prototype.scanChange = scan }
-    assert.ok(read <= reader.attribution.metas.size - changes, `read ${read} changes again`)
-    const [signer] = reader.getDoc().attribution.operations[original.operationId]
-    assert.equal(signer.state, 'signed')
-    assert.deepEqual(signer.altered?.map(entry => entry.hash), [edit], 'the alteration found before the restart is still shown')
-    assert.equal(reader.getDoc().attribution.signed[original.operationId].payload.title, 'Altered, then the reader reopens')
+    } finally { ChangeLog.prototype.add = add }
+    assert.ok(derived <= reader.attribution.metas.size - changes, `derived ${derived} changes again`)
+    const shown = entryOf(reader, original.operationId)
+    assert.equal(shown.changes[0].state, 'signed')
+    assert.equal(shown.event.payload.title, 'Altered, then the reader reopens', 'shown as signed, as before the restart')
+    assert.equal(reader.getDoc().activity.find(entry => entry.id === edit)?.kind, 'unrecognised')
     assert.ok(reviewEntry(reader, edit), 'and still listed for review')
+    const after = JSON.stringify(reader.getDoc().activity.filter(entry => before.includes(entry.id)).map(({ id, kind, event, flags }) => ({ id, kind, event, flags })))
+    assert.equal(after, before)
   })
 })

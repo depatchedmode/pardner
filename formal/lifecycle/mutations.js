@@ -39,8 +39,8 @@ export const MUTATIONS = [
   {
     name: 'receipt-before-persist', property: 'ReceiptAfterBarrier', file: WORKSPACE,
     description: 'workspace.apply returns savedLocally without awaiting the flush',
-    find: 'try {\n      await this.repo.flush([this.handle.documentId])\n    } catch (error) {',
-    replace: 'try {\n      void this.repo.flush([this.handle.documentId])\n    } catch (error) {',
+    find: 'try {\n      await this.repo.flush([this.handle.documentId])\n',
+    replace: 'try {\n      void this.repo.flush([this.handle.documentId])\n',
     check: { file: CONFORMANCE, pattern: 'local-save receipt only after the storage barrier' },
   },
   {

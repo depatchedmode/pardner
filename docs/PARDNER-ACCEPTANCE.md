@@ -139,29 +139,47 @@ checked independently for operation ID, Actor, type, full payload, originating
 replica, created task count, final task fields, comment contents/cardinality, and
 handoff comment/mention effects.
 
-Within ten seconds of convergence (`attribution` in the timings), every replica
-must show every operation in the board, baseline included, as signed by a named
-machine, with no flag for its Actor, no alteration after signing and no replaced
-entry, with nothing listed for review; and all three replicas must report the same
-stable attribution:
-- for each operation, each change that wrote it: the change hash, its state, the
-  signing machine, that machine's person, the entry's Actor and those flags;
-- for each membership record: its kind, subject, signer, the signer's person and
-  Actor, and when it reached the board;
-- the changes listed for review.
+As it enrolls, pairs and names agents, the runner also records the membership
+records each action must produce: creating the project, the genesis and the
+creator's setup-agent label, by Alice's desktop; pairing Alice's laptop, its
+certification by the desktop and the laptop's own setup-agent label; admitting Bob,
+his certification by the desktop and his laptop's setup-agent label; and Builder's
+and Reviewer's labels, each by the laptop it runs on.
 
-Replica-specific labels are left out of that comparison: which machine is this
-computer, the position in which a replica indexed a change, who relayed a verdict
-to it, and what a pending change waits for. The runner then checks the shared
-attribution against what it knows performed each act: each acknowledged operation
-was signed by the machine of the replica that acknowledged it, for the intended
-Actor, whose person is that machine's person; each baseline operation by Alice's
-desktop as Alice (the hub registers every Actor it enrolls); the genesis, admission
-and pairing records by Alice's desktop; Builder's and Reviewer's agent labels by
-the laptop each runs on, and every other agent label by a machine of that agent's
-person. Only then are snapshot hashes compared; they leave out each replica's own
-attribution view, so the board convergence check is exactly what it was. The
-report records the comparison's counts and the hash of the shared attribution.
+Within ten seconds of convergence (`attribution` in the timings), every replica
+must have derived and checked every board change, show every one in an Activity
+entry, and show every entry signed by a named machine with a person, with no flag
+and nothing listed for review; and all three replicas must report the same stable
+attribution, keyed by board change hash. For each change it holds:
+- the Activity entry it is shown in: its kind, its key, the group of changes the
+  entry lists, and its flags;
+- the content that change wrote: its operation event with that change's own
+  replica and time, or the membership record, or what an unrecognised change wrote;
+- that change's verdict: its state, the signing machine, that machine's person, and
+  whether the event names an Actor that machine may not act as.
+It also holds the changes listed for review.
+
+Left out of that comparison, because they name a replica or what it happened to
+observe: which machine is this computer, machine names, who relayed a verdict to
+it, what a pending change waits for, and the reason recorded for an unsigned one.
+The runner then checks the shared view against what it knows performed each act:
+- each acknowledged operation is exactly one entry of exactly one change, which
+  wrote the intended operation ID, request ID, type, Actor and payload, on the
+  replica that acknowledged it, and was signed by that replica's machine, whose
+  person is the Actor's person;
+- each baseline operation likewise, by Alice's desktop as Alice (the hub registers
+  every Actor it enrolls);
+- no other operation entry exists;
+- the membership records shown are exactly the ones recorded above, each written by
+  a signed change, valid, and signed by the expected machine.
+
+Only then are snapshot hashes compared; they leave out each replica's own Activity
+and attribution views, so the board convergence check is exactly what it was. The
+report records the comparison's counts (changes, operations, records) and the hash
+of the shared attribution. What this does not establish: that the replicas' current
+board state is the one each signer intended beyond the effects the manifest checks,
+or anything about a member's client that writes unusual data, which the runtime and
+property tests cover instead.
 
 Each agent has a durable SQLite inbox and effect ledger outside the workspace.
 The runner kills workers before acknowledgement and after effects have been saved,
