@@ -59,7 +59,8 @@ admin pairs another machine into that person's identity, and pairing never
 creates a second person. Removal (`member.remove`, `machine.remove`) and owner-only
 role changes are records too. Every new record enters through one gate on the hub
 that refuses removed machines and signers without the needed role. A removed
-machine or person returns only as a new machine key or a new person.
+machine or person returns only as a new machine key or a new person. A person
+can leave a project from their own machine; the owner can't.
 
 **Only member machines sync.** Machines authenticate to each other with their
 machine keys alone; no bearer token is issued, stored or accepted between machines.
@@ -77,11 +78,25 @@ shown by a member that it fell behind, serves no other machine until a member th
 saw a later state has synced its membership, or its operator runs
 `pardner client resume`. Two live sync sessions for one machine are reported.
 
+**The People panel** in each board's header lists every person with their role,
+who let them in, their machines (online or last seen where the hub knows it) and
+their agents, and lists removed people and machines with who removed them. It
+offers only the actions the viewer may take: inviting, approving join requests
+with the code, pairing machines, removing machines and people, changing roles,
+editing your own name and email (a `profile` record every member's board shows),
+and leaving, each removal confirmed with its consequences. Invitation history
+names who issued and used each invitation. A computer removed from a project
+keeps it listed as removed, says who removed it and how to come back, and is
+never shown as signed out. `client people` gives the same listing as text. Last
+seen is held in the hub's memory only, so it resets when the hub restarts.
+
 What is not enforced yet: **changes are not signed, so a member machine's word is
 taken for who made a change.** Any member may change anything, and the local
 service on the machine that made a change attributes it. Agent grants limit agents
-only on their own machine. A member running a modified client could still write a
-record signed by its own machine straight into the document. The hub harvests that
+only on their own machine. Activity entries do not yet show which machine signed a
+change, and nothing flags unattributed changes; both wait for signed changes. A
+member running a modified client could still write a record signed by its own
+machine straight into the document. The hub harvests that
 as history, without the role check, so a demoted admin could still remove a member
 that way; records from a removed machine are refused. Records are enforced only at
 the hub. A removed machine that synced after a hub's backup was taken, was removed

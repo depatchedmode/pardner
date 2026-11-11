@@ -3,7 +3,8 @@
 Run `node --test test/enrollment.test.js test/trust-enrollment.test.js` (both in
 `test:runtime`). `test/client-onboarding.test.js`, `test/client-recovery.test.js`,
 `test/onboarding-flow.test.js` and the browser test in
-`test/client-onboarding-ui.test.js` (Chromium and WebKit) cover the same flows
+`test/client-onboarding-ui.test.js` (Chromium and WebKit, approving from the
+People panel) cover the same flows
 through the existing public paths, and `npm run test:acceptance -- --seed 1`
 enrolls the acceptance topology through approvals.
 

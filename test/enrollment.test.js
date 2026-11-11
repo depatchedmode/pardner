@@ -99,6 +99,16 @@ test('the gate refuses records a signer may not author now, with reasons a perso
   assert.deepEqual(recordRefusal(membership, record(joiner, { kind: 'member.remove', subject: 'admin' })), ['Only the owner or an admin can remove people', 'FORBIDDEN'])
   assert.deepEqual(recordRefusal(membership, record(admin, { kind: 'member.remove', subject: 'owner' })), ['The project owner can’t be removed', 'FORBIDDEN'])
   assert.equal(recordRefusal(membership, record(admin, { kind: 'member.remove', subject: 'bob' })), null)
+  // Leaving: a person's own machine signs their removal; the owner can't leave.
+  assert.equal(recordRefusal(membership, record(joiner, { kind: 'member.remove', subject: 'bob' })), null)
+  assert.equal(recordRefusal(membership, record(admin, { kind: 'member.remove', subject: 'admin' })), null)
+  assert.deepEqual(recordRefusal(membership, record(owner, { kind: 'member.remove', subject: 'owner' })),
+    ['The project owner can’t leave. The owner stays with the project for as long as it exists.', 'FORBIDDEN'])
+  const box = generateMachineKey()
+  const withBox = computeMembership([...records, buildRecord(joiner, { projectId: pid, kind: 'machine.add', subject: box.machineId, personId: 'bob',
+    publicKey: box.publicKey, approval: {}, agentsOnly: true })])
+  assert.deepEqual(recordRefusal(withBox, record(box, { kind: 'member.remove', subject: 'bob' })),
+    ['This machine runs agents only, so it can’t act for you. Leave from one of your other machines.', 'FORBIDDEN'])
   assert.deepEqual(recordRefusal(membership, record(joiner, { kind: 'machine.remove', subject: joiner.machineId })),
     ['A machine can’t remove itself. Remove it from another of your machines, or ask an admin.', 'FORBIDDEN'])
   assert.deepEqual(recordRefusal(membership, record(admin, { kind: 'member.role', subject: 'bob', role: 'admin', replaces: null })), ['Only the owner can change roles', 'FORBIDDEN'])

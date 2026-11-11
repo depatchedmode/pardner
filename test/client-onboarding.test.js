@@ -594,16 +594,16 @@ test('identity, harness and revocation refusals name the actual problem', { time
   const { result: { project } } = await alice.api('/projects', { name: 'Refusals', operationId: 'create' })
   await refusal(alice.api, `/projects/${project.id}/agent-grant`, { harnessId: 'claude' }, 400, 'INVALID_ARGUMENT', harness)
   const aliceId = alice.client.registry.read().identity.id
+  // Removing your own person is leaving, which the owner can't do.
   await refusal(alice.api, `/projects/${project.id}/revoke`, { kind: 'member', id: aliceId, operationId: 'self' }, 403, 'FORBIDDEN',
-    'The project owner can’t be removed')
+    'The project owner can’t leave. The owner stays with the project for as long as it exists.')
   await refusal(alice.api, `/projects/${project.id}/revoke`, { kind: 'agent', id: 'actor-doesnotexist', operationId: 'missing-agent' }, 404, 'NOT_FOUND',
     'No agent with that ID in this project')
   const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
   await enroll(bob, alice, invitation.invitation)
   await refusal(bob.api, `/projects/${project.id}/revoke`, { kind: 'member', id: aliceId, operationId: 'not-owner' }, 403, 'FORBIDDEN',
     'The project owner can’t be removed')
-  await refusal(bob.api, `/projects/${project.id}/revoke`, { kind: 'member', id: bob.client.registry.read().identity.id, operationId: 'member' }, 403, 'FORBIDDEN',
-    'Only the owner or an admin can remove people')
+  // A member removing themselves leaves the project (test/trust-enrollment.test.js); removing anyone else is refused (test/enrollment.test.js).
   await refusal(bob.api, `/projects/${project.id}/invites`, { purpose: 'human', operationId: 'member-invite' }, 403, 'FORBIDDEN',
     'Only the owner or an admin can invite people. Ask an admin, or pair another of your own machines with My device.')
   const aliceAgent = Object.values(alice.client.project(project.id).people).find(person => person.kind === 'agent' && person.humanId === aliceId)
