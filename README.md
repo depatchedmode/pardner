@@ -62,14 +62,28 @@ that refuses removed machines and signers without the needed role. The hub admit
 a device's sync and API calls only while its machine is a current member, and
 decides which Actors it may act as from the records, so a removal takes effect
 from the records. A removed machine or person returns only as a new machine key
-or a new person.
+or a new person. A person can leave a project from their own machine; the owner
+can't.
+
+**The People panel** in each board's header lists every person with their role,
+who let them in, their machines (online or last seen where the hub knows it) and
+their agents, and lists removed people and machines with who removed them. It
+offers only the actions the viewer may take: inviting, approving join requests
+with the code, pairing machines, removing machines and people, changing roles,
+editing your own name and email (a `profile` record every member's board shows),
+and leaving, each removal confirmed with its consequences. Invitation history
+names who issued and used each invitation. A computer removed from a project
+keeps it listed as removed, says who removed it and how to come back, and is
+never shown as signed out. `client people` gives the same listing as text. Last
+seen is held in the hub's memory only, so it resets when the hub restarts.
 
 What is not enforced yet: the transport credential is still the bearer
 `deviceToken` and `replicaToken` that the hub issues on approval; peers do not
 check each other, and the machine-key handshake that replaces those tokens is a
 later step. Automerge changes are not signed, so a member's board edits are
 attributed by the local service, not by signature. Agent grants limit agents only
-on their own machine. A member running a modified client could still write a
+on their own machine. Activity entries do not yet show which machine signed a
+change, and nothing flags unattributed changes; both wait for signed changes. A member running a modified client could still write a
 record signed by its own machine straight into the document. The hub harvests
 that as history, without the role check, so a demoted admin could still remove a
 member that way. Such a record never yields a bearer credential, and records from

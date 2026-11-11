@@ -39,6 +39,15 @@ Joining and membership use signed records ([client guide](PARDNER-CLIENT.md#invi
 | `client reject --project ID --request REQUEST_ID` | Rejects a waiting request |
 | `client revoke --project ID --kind member\|machine\|agent --id ID --operation-id ID` | `member` signs `member.remove`; `machine` (or the older `device`, with a machine or device ID) signs `machine.remove`; `agent` revokes one of this machine's own agents locally |
 | `client role --project ID --person PERSON_ID --role admin\|member --operation-id ID` | The owner signs `member.role`, naming the role record it replaces |
+| `client people --project ID [--json]` | Lists, as text, each person with their role, who let them in, their machines (short ID, this machine, hosting the project, agents only, online or last seen), agents and person ID, then removed people and machines with who removed them. `--json` prints the same view as data |
+| `client leave --project ID --operation-id ID` | Signs `member.remove` for this machine's own person: every machine of theirs loses access. The owner can't leave |
+| `client profile --project ID --name NAME --email EMAIL --operation-id ID` | Signs a `profile` record so every member sees the new name and email; this computer also keeps them for later projects. Agent names don't change |
+| `client invites --project ID [--limit N] [--offset N]` | Lists invitations newest first (10 by default, at most 50 at a time), with who issued each and when, its state, and who used or revoked it |
+| `client revoke-invite --project ID --invite INVITE_ID` | Revokes an unused invitation |
+
+`client list` and `client status` also report `removedProjects`: each project this
+computer was removed from, or whose person was removed or left, with who removed
+it. The project's local copy stays, and `client export` still works.
 
 `client create` suggests pairing a second machine: if the owner loses every
 machine, nobody can remove or demote admins.
