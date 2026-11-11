@@ -253,6 +253,7 @@ not available on a particular entry:
 | Remove a person, invite a removed person again | Owner; admins for people who never held admin |
 | Make admin / Make member | Owner |
 | Edit name and email | Each person, on their own entry |
+| Stop an agent here (**Stop here**) | Each person, for their own agents running on this machine |
 | Leave project | Everyone but the owner |
 
 Nobody but the owner is offered controls on the owner's entry. The machine you are
@@ -274,7 +275,9 @@ paired.
 
 ### Removal, roles, leaving and re-admission
 
-`client revoke --project ID --kind member --id PERSON_ID` signs `member.remove`;
+`client revoke --project ID --kind member --id PERSON_ID` signs `member.remove`
+(the human Actor ID a profile shows works too; an agent's ID is refused with
+advice, and a refused ID leaves the operation ID free for the corrected request);
 `--kind machine --id MACHINE_ID` (or the device ID a profile lists) signs
 `machine.remove`. The owner removes anyone but the owner; an admin removes members
 who never held admin; a person's other machine removes one of their machines. A

@@ -37,7 +37,7 @@ Joining and membership use signed records ([client guide](PARDNER-CLIENT.md#invi
 | `client requests --project ID` | Lists the join requests this machine may approve, adding this approver's nonce so each shows its confirmation code |
 | `client approve --project ID --request REQUEST_ID --code CODE` | Signs the admission, only if CODE matches the code this machine derives for the request |
 | `client reject --project ID --request REQUEST_ID` | Rejects a waiting request |
-| `client revoke --project ID --kind member\|machine\|agent --id ID --operation-id ID` | `member` signs `member.remove`; `machine` (or the older `device`, with a machine or device ID) signs `machine.remove`; `agent` revokes one of this machine's own agents locally |
+| `client revoke --project ID --kind member\|machine\|agent --id ID --operation-id ID` | `member` signs `member.remove` for a person ID or a person's human Actor ID; `machine` (or the older `device`, with a machine or device ID) signs `machine.remove`; `agent` revokes one of this machine's own agents locally. A wrong kind of ID is refused before the operation ID is used |
 | `client role --project ID --person PERSON_ID --role admin\|member --operation-id ID` | The owner signs `member.role`, naming the role record it replaces |
 | `client people --project ID [--json]` | Lists, as text, each person with their role, who let them in, their machines (short ID, this machine, hosting the project, agents only, online or last seen), agents and person ID, then removed people and machines with who removed them. `--json` prints the same view as data |
 | `client leave --project ID --operation-id ID` | Signs `member.remove` for this machine's own person: every machine of theirs loses access. The owner can't leave |

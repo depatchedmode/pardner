@@ -204,6 +204,9 @@ function PersonRow({ api, project, person, index, now, editing, onEdit, onAction
             <Avatar actor={{ id: agent.id, kind: 'agent', displayName: agent.name }} state={presenceOf(index, agent.id)} size="sm" />
             <span>{agent.name}</span>
             <span className="muted small">{[harnessLabel(agent.harness), `on ${list(agent.machines.map(machine => machine.name))}`].filter(Boolean).join(' · ')}</span>
+            {agent.stoppedHere && <span className="tag removed-tag">Stopped on this machine</span>}
+            {agent.actions?.stopHere?.allowed && <button type="button" className="danger quiet" aria-label={`Stop ${agent.name} on this machine`}
+              onClick={event => onAction({ type: 'stop-agent', person, agent }, event.currentTarget)}>Stop here</button>}
           </li>)}
         </ul>
       </div>}
@@ -280,6 +283,18 @@ function confirmation(action, view) {
         'To use that computer again, pair it as a new machine from a fresh client directory.',
       ], confirmLabel: 'Remove machine', busyLabel: 'Removing…',
       run: api => api.removeMember(view.projectId, { kind: 'machine', id: machine.id, operationId: createOperationId() }) }
+  }
+  if (action.type === 'stop-agent') {
+    const { agent } = action
+    const elsewhere = agent.machines.filter(machine => machine.id !== view.you?.machineId).map(machine => machine.name)
+    return { title: `Stop ${agent.name} on this machine?`,
+      consequences: [
+        `${agent.name}’s access from this computer ends now: its grants and live sessions here stop.`,
+        elsewhere.length ? `It can still work from ${list(elsewhere)}.` : null,
+        `It stays named in the project, and its past work keeps its name.`,
+        'To use it here again, join a new Agent invitation on this computer.',
+      ], confirmLabel: 'Stop agent', busyLabel: 'Stopping…',
+      run: api => api.removeMember(view.projectId, { kind: 'agent', id: agent.id, operationId: createOperationId() }) }
   }
   if (action.type === 'role') {
     const promote = person.role !== 'admin'

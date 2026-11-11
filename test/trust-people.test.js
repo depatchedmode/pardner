@@ -162,6 +162,18 @@ test('removal is shown as removed, with who removed it, to everyone and to the r
   // The machine that hosts the project can't be removed, even by another of the owner's machines.
   const refused = await alice.fail(`/projects/${project.id}/revoke`, { kind: 'machine', id: alice.machineId, operationId: 'remove-hub' })
   assert.equal(refused.error, 'This machine hosts the project, so it can’t be removed.')
+  // Removal accepts the Actor ID a profile shows, explains an agent's or an unknown ID, and a refused ID leaves the
+  // operation ID free for the corrected request (#152).
+  const bobActor = actors.find(actor => actor.kind === 'human' && actor.humanId === bob.personId).id
+  const bobAgent = actors.find(actor => actor.kind === 'agent' && actor.humanId === bob.personId).id
+  const agentId = await alice.fail(`/projects/${project.id}/revoke`, { kind: 'member', id: bobAgent, operationId: 'remove-bob' })
+  assert.equal(agentId.code, 'INVALID_ARGUMENT'); assert.match(agentId.error, /^That is an agent’s ID/)
+  const unknown = await alice.fail(`/projects/${project.id}/revoke`, { kind: 'member', id: 'nobody', operationId: 'remove-bob' })
+  assert.deepEqual([unknown.code, unknown.error], ['NOT_FOUND', 'No current member has that ID. Use the person ID that pardner client people lists.'])
+  const removedAgain = await alice.fail(`/projects/${project.id}/revoke`, { kind: 'member', id: carolId, operationId: 'remove-bob' })
+  assert.deepEqual([removedAgain.code, removedAgain.error], ['NOT_FOUND', 'That person was already removed from this project'])
+  const byActor = await alice.call(`/projects/${project.id}/revoke`, { kind: 'member', id: bobActor, operationId: 'remove-bob' })
+  assert.equal(byActor.id, bob.personId)
 })
 
 test('a member or an admin leaves; the owner cannot; and leaving looks like leaving', { timeout: 180000 }, async t => {
@@ -187,6 +199,17 @@ test('a member or an admin leaves; the owner cannot; and leaving looks like leav
   // Leaving is final for that person: the old identity can't rejoin on the same invitation path.
   const back = await invite(alice, project, 'human')
   assert.equal((await carol.fail('/join', { invitation: back.invitation, operationId: 'back' })).code, 'REVOKED')
+})
+
+test('a person stops one of their own agents on this machine from the People view', { timeout: 120000 }, async t => {
+  const alice = await participant(t, 'Alice')
+  const { project } = await alice.call('/projects', { name: 'Agents', operationId: 'create' })
+  const [agent] = row(await people(alice, project), 'Alice').agents
+  assert.deepEqual(agent.actions, { stopHere: { allowed: true, reason: null } })
+  await alice.call(`/projects/${project.id}/revoke`, { kind: 'agent', id: agent.id, operationId: 'stop' })
+  const [after] = row(await people(alice, project), 'Alice').agents
+  assert.deepEqual([after.stoppedHere, after.actions], [true, {}])
+  assert.equal((await alice.fail(`/projects/${project.id}/agent-grant`, {})).code, 'ACTOR_REVOKED')
 })
 
 test('a profile edit renames the person on every member’s board; agent names stay as registered', { timeout: 180000 }, async t => {

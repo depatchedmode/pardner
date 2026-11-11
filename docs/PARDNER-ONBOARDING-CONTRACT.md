@@ -156,7 +156,8 @@ machines[]}`. Each person has `id`, `actorId`, `name`, `email`, `role`, `roleLab
 `you`, `admittedBy` (null for the owner, who started the project), `machines[]`
 (`id`, `shortId`, `name`, `thisMachine`, `hostsProject`, `agentsOnly`, `paired`,
 `status`: `this`, `online`, `offline` or `unreachable`, `lastSeenAt`, `admittedBy`,
-`actions`), `agents[]` (`id`, `name`, `harness`, `machines[]`) and `actions`. An action
+`actions`), `agents[]` (`id`, `name`, `harness`, `machines[]`, `actions.stopHere` for
+the viewer's own agents on this machine, `stoppedHere` once stopped) and `actions`. An action
 is `{allowed, reason}`, present only where the viewer could take it; on the owner's
 entry a non-owner gets `{note}` instead. Removed people carry `left`, `removedBy[]`
 and their former `machines[]`; removed machines of current people carry

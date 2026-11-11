@@ -199,5 +199,14 @@ for (const engine of [chromium, webkit]) it(`approves a join and pairs a machine
       await bobPage.getByText('You chose to leave this project.').waitFor()
       assert.ok(await bobPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no sideways scrolling at phone width')
       await panel.getByRole('region', { name: /^Removed/ }).getByRole('listitem', { name: 'Robert, left' }).getByText(/Left the project/).waitFor({ timeout: 30000 })
+
+      // Alice stops her own agent on this computer; it keeps working from her other machine.
+      const agents = member(panel, 'Alice').getByRole('list', { name: 'Alice’s agents' })
+      await agents.getByRole('button', { name: /^Stop .+ on this machine$/ }).click()
+      const stopping = alicePage.getByRole('dialog', { name: /^Stop .+ on this machine\?$/ })
+      await stopping.getByText('To use it here again, join a new Agent invitation on this computer.').waitFor()
+      await stopping.getByText(/^It can still work from /).waitFor()
+      await stopping.getByRole('button', { name: 'Stop agent' }).click()
+      await agents.getByText('Stopped on this machine').waitFor({ timeout: 30000 })
     })
   })
