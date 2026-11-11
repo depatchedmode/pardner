@@ -511,7 +511,7 @@ class AutomergeSyncServer {
     }))
     this.app.use((req, res, next) => this.authMiddleware(req, res, next))
     this.setupControlAPI()
-    const commands = new Set(['/automerge/operations', '/automerge/sync-ack', '/automerge/ws-ticket',
+    const commands = new Set(['/automerge/operations', '/automerge/sync-ack', '/automerge/ws-ticket', '/automerge/membership/records',
       '/automerge/deliveries/claim', '/automerge/deliveries/ack', '/automerge/deliveries/release'])
     this.app.use((req, res, next) => {
       const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
@@ -545,7 +545,7 @@ class AutomergeSyncServer {
     const operationFailure = (res, error) => {
       const statuses = { NOT_FOUND: 404, STALE_UPDATE: 409, OPERATION_ID_REUSED: 409, OPERATION_INTEGRITY_CONFLICT: 409,
         CONFLICT_REQUIRES_RESOLUTION: 409, WORKSPACE_MISMATCH: 409, STORAGE_FAILED: 507,
-        LOCAL_SERVICE_UNAVAILABLE: 503, HUB_UNAVAILABLE: 503, HUB_REQUIRED: 409, STALE_CLAIM: 409, AUTH_REQUIRED: 401 }
+        LOCAL_SERVICE_UNAVAILABLE: 503, HUB_UNAVAILABLE: 503, HUB_REQUIRED: 409, STALE_CLAIM: 409, AUTH_REQUIRED: 401, RECORD_REFUSED: 403 }
       res.status(statuses[error.code] ?? (error.code ? 400 : 500)).json({
         success: false, error: error.message, code: error.code ?? 'INTERNAL_ERROR', details: error.details ?? null,
       })
@@ -564,6 +564,13 @@ class AutomergeSyncServer {
     this.app.get('/automerge/membership', (req, res) => {
       try {
         res.json(this.store.membership())
+      } catch (error) { operationFailure(res, error) }
+    })
+
+    // The hub's gate for new membership records (WorkspaceRuntime.addRecords).
+    this.app.post('/automerge/membership/records', async (req, res) => {
+      try {
+        res.json(await this.store.addRecords(req.body?.records))
       } catch (error) { operationFailure(res, error) }
     })
 
