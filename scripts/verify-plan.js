@@ -20,6 +20,13 @@ const groups = [
       note: 'Machine-key refusals, prior-install refusal, genesis and project ID, record admission, harvest, write-back and kill survival' }],
   },
   {
+    name: 'trust-enrollment', scripts: ['test:runtime', 'test:cli', 'test:ui'],
+    qualification: 'Invitations, pairing, removal and hub admission derived from signed membership records',
+    files: names('lib/enrollment.js support/enrollment.js'),
+    focused: [{ command: 'node --test test/enrollment.test.js test/trust-enrollment.test.js',
+      note: 'Signed offers, join requests and codes; approval, expiry, single use, the request bound, pairing, roles, removal and re-admission' }],
+  },
+  {
     name: 'persistence', scripts: ['test:qualification', 'test:runtime'], qualification: 'Disk persistence and directory ownership',
     files: names(`lib/atomic-file.js lib/durable-repo.js lib/nodefs-storage-adapter.js lib/storage-key.js lib/storage-lease.js lib/private-state.js
       support/persistence-process.js`),
