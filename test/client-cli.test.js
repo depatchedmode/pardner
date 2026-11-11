@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { startClient } from '../lib/client-service.js'
 import { invitationData } from '../lib/client-invites.js'
 import { acquireStorageLease } from '../lib/storage-lease.js'
+import { joinApproved } from '../support/enrollment.js'
 
 const execute = promisify(execFile)
 const pardner = async (args, env = {}) => {
@@ -287,4 +288,57 @@ test('pardner open surfaces why a started client service exited', { timeout: 300
     const error = await pardnerFailure(['open', '--data', directory, '--output-file', join(directory, 'launch.txt')])
     assert.equal(error.code, 'STORAGE_IN_USE')
   } finally { lease.close(); await stopSpawned(directory); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('client people lists people, machines, agents and removed entries in words; leave and invites work from the CLI', { timeout: 90000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-cli-people-'))
+  const clients = []
+  try {
+    const start = async (name, deviceName) => {
+      const directory = join(root, name)
+      const client = await startClient({ directory, port: 0, deviceName, gitDirectory: root })
+      clients.push(client)
+      const call = async (path, body) => {
+        const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
+          headers: { Authorization: `Bearer ${client.registry.read().operatorToken}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+        const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result)); return result
+      }
+      await call('/identity', { name, email: `${name.toLowerCase()}@example.test`, operationId: 'identity' })
+      const text = async args => (await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', directory], { cwd: process.cwd() })).stdout
+      const json = async args => { const value = JSON.parse(await text([...args, '--json'])); assert.equal(value.success, true); return value }
+      return { client, call, text, json }
+    }
+    const alice = await start('Alice', 'Studio'), bob = await start('Bob', 'Workshop')
+    const { project } = await alice.call('/projects', { name: 'CLI people', operationId: 'create' })
+    const output = join(root, 'invite.txt')
+    await alice.json(['invite', '--project', project.id, '--purpose', 'human', '--operation-id', 'invite-bob', '--output-file', output])
+    await joinApproved({ join: body => bob.call('/join', body), approver: alice.call, invitation: await readFile(output, 'utf8'), operationId: 'join' })
+    // The listing is plain text by default, and the same view as data with --json.
+    const listing = await alice.text(['people', '--project', project.id])
+    assert.match(listing, /^CLI people: 2 people, 2 machines, 2 agents\n/)
+    assert.match(listing, /\nAlice \(you\) · Owner · alice@example\.test\n {2}Started the project\n {2}Machines:\n {4}Studio \[[a-z2-7]{6}\] · this machine · hosts the project\n/)
+    assert.match(listing, /\nBob · Member · bob@example\.test\n {2}Let in by Alice\n {2}Machines:\n {4}Workshop \[[a-z2-7]{6}\] · /)
+    assert.ok(!listing.includes('machine-'), 'machine IDs appear only as their short form')
+    const data = await alice.json(['people', '--project', project.id])
+    assert.deepEqual(data.people.people.map(person => person.name), ['Alice', 'Bob'])
+    assert.equal(data.listing, undefined)
+    // Invitations are listed, newest first, with who issued and used each, and can be revoked.
+    await alice.json(['invite', '--project', project.id, '--purpose', 'device', '--operation-id', 'invite-device', '--output-file', join(root, 'device.txt')])
+    const { invites } = await alice.json(['invites', '--project', project.id])
+    assert.deepEqual(invites.map(entry => [entry.purpose, entry.state, entry.issuedBy.name]), [['device', 'issued', 'Alice'], ['human', 'redeemed', 'Alice']])
+    assert.equal(invites[1].usedBy.name, 'Bob')
+    const revoked = await alice.json(['revoke-invite', '--project', project.id, '--invite', invites[0].id])
+    assert.equal(revoked.invite.state, 'revoked')
+    // Bob leaves from the CLI; Alice's listing then shows him as having left, and Bob's client lists the project as removed.
+    const left = await bob.json(['leave', '--project', project.id, '--operation-id', 'leave'])
+    assert.equal(left.left, true)
+    assert.match(await alice.text(['people', '--project', project.id]), /\nRemoved\n {2}Bob · was member · left the project · machines: Workshop\n/)
+    const status = await bob.json(['list'])
+    assert.deepEqual(status.projects, [])
+    assert.deepEqual(status.removedProjects.map(entry => [entry.name, entry.removal.left, entry.message]),
+      [['CLI people', true, 'You left this project. Its copy on this computer stays saved here.']])
+  } finally {
+    for (const client of clients.reverse()) await client.stop()
+    await rm(root, { recursive: true, force: true })
+  }
 })
