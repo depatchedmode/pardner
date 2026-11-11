@@ -443,10 +443,11 @@ it('a kill between the board’s save and the signature’s save loses nothing, 
     const runtime = hubRuntime(directory, { actors, project, attribution: timing })
     await runtime.init()
     try {
-      const [restored] = storedSignatures(runtime.workspace.signatures.doc(), hash)
+      const [restored] = await eventually(() => storedSignatures(runtime.workspace.signatures.doc(), hash).length && storedSignatures(runtime.workspace.signatures.doc(), hash),
+        'the entry was not written back')
       assert.deepEqual(Buffer.from(restored), Buffer.from(signChange(project.owner, project.projectId, hash)))
       const operation = operationOf(runtime, message.receipt.taskId)
-      assert.equal(stateOf(runtime, operation.operationId), 'signed')
+      await eventually(() => stateOf(runtime, operation.operationId) === 'signed', 'the change was never shown as signed')
     } finally { await runtime.close() }
   } finally {
     await rm(root, { recursive: true, force: true })

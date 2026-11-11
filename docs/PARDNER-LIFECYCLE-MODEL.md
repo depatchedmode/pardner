@@ -481,7 +481,16 @@ No action guard, effect, invariant or witness changed. The `ack-before-persist`,
 code; what each mutates is unchanged. A later commit in the same change adds
 people's names and each record signer's Actor to `attributionView`, which only
 reads the record store when the board is read; the mapping was re-reviewed and
-accepted again.
+accepted again. A third commit paces the signature document's background saves
+to at most one a second, by wrapping `storage.saveDoc` for that document only:
+explicit flushes (`Workspace.apply` for the board, `acknowledge` and the
+replica's acknowledgement for both documents, and `DurableRepo.shutdown`, whose
+flush persists every document directly) never pass through it, and
+`closeResources` clears its timer before `abort()` returns, so a pending one is
+dropped like any background save once closing. It also starts background
+checking only after `initialized` is set. Neither touches the board's
+persistence, an acknowledgement guard or shutdown ordering; the mapping was
+re-reviewed and accepted again.
 
 Fresh default check: 174614 states, 679456 transitions, all four invariants and
 `ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
