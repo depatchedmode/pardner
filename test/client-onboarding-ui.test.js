@@ -9,6 +9,9 @@ import { chromium, webkit } from 'playwright'
 import { bootstrapPath, createClientApi, projectConfiguration, takeBootstrapGrant } from '../ui-prototype/src/client-api.js'
 import { createConnection } from '../ui-prototype/src/connection.js'
 import { sameComputerRoute } from '../support/client-workspace.js'
+import { joinApproved } from '../support/enrollment.js'
+import { buildOffer, encodeInvitation } from '../lib/enrollment.js'
+import { generateMachineKey } from '../lib/machine-key.js'
 import { createPresenceReporter, focusByTask, presenceIndex, sortParticipants } from '../ui-prototype/src/presence.js'
 
 const run = promisify(execFile)
@@ -456,11 +459,11 @@ for (const engine of [chromium, webkit]) it(`refuses a loopback-only invitation 
       page.on('pageerror', error => errors.push(error.message))
       return page
     }
-    const openInvite = async (page, projectName) => {
+    const openInvite = async (page, projectName, { item = /^Human/, title = 'Invite a person' } = {}) => {
       await page.getByRole('button', { name: `Project: ${projectName}. Switch project` }).waitFor({ timeout: 30000 })
       await page.getByRole('button', { name: 'Invite' }).click()
-      await page.getByRole('menuitem', { name: /^Human/ }).click()
-      return page.getByRole('dialog', { name: 'Invite a person' })
+      await page.getByRole('menuitem', { name: item }).click()
+      return page.getByRole('dialog', { name: title })
     }
 
     // Carol's client was started without --public-url, so a Human invitation could only be used on her computer.
@@ -481,11 +484,12 @@ for (const engine of [chromium, webkit]) it(`refuses a loopback-only invitation 
     assert.equal(Object.keys(carol.client.registry.read().invites).length, 0, 'the refused invitation was never recorded')
     await refusing.getByRole('button', { name: 'Close' }).click()
 
-    // An older invitation that carries another computer's loopback address names it instead of advising a retry.
+    // An invitation whose only route is another computer's loopback address names it instead of advising a retry.
     const { port } = await sameComputerRoute()
     const unreachable = `http://127.0.0.1:${port}`
-    const loopbackInvitation = `pardner-invite-v1.${Buffer.from(JSON.stringify({ id: 'invite-1', projectId: 'project-1', purpose: 'human',
-      endpoint: `${unreachable}/pardner/client/v1/enroll`, secret: 'invitation-secret' })).toString('base64url')}`
+    const loopbackInvitation = encodeInvitation({ projectName: 'Elsewhere', secret: 'i'.repeat(43), offer: buildOffer(generateMachineKey(), {
+      projectId: 'a'.repeat(64), offerId: 'offer-unreachable-1', purpose: 'human', role: 'member', routes: [`${unreachable}/pardner/client/v1/enroll`],
+      expiresAt: Date.now() + 3600000 }) })
     await carolPage.getByRole('button', { name: 'Project: Loopback board. Switch project' }).click()
     await carolPage.getByRole('menuitem', { name: 'Start or join a project…' }).click()
     await carolPage.getByRole('button', { name: 'Join a project' }).click()
@@ -497,17 +501,18 @@ for (const engine of [chromium, webkit]) it(`refuses a loopback-only invitation 
     assert.doesNotMatch(await unreachableAlert.textContent(), /retry/i)
 
     // Bob joined Alice's project; with Alice's computer (the hub) down, his Invite dialog explains rather than loading forever.
+    // Bob is a member, so since #196 the invitation he may issue is My device (pairing his own machine), issued by the hub.
     const alice = await person(t, startClient, 'Alice')
     await alice.call('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
     const { project } = await alice.call('/projects', { name: 'Outage board', operationId: 'create' })
     const invite = await alice.call(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite-bob' })
     const bob = await person(t, startClient, 'Bob')
     await bob.call('/identity', { name: 'Bob', email: 'bob@example.test', operationId: 'identity' })
-    await bob.call('/join', { invitation: invite.invitation, operationId: 'join' })
+    await joinApproved({ join: body => bob.call('/join', body), approver: alice.call, invitation: invite.invitation, operationId: 'join' })
     await alice.client.stop()
     const bobPage = await newPage()
     await bobPage.goto(await bob.open())
-    const dialog = await openInvite(bobPage, 'Outage board')
+    const dialog = await openInvite(bobPage, 'Outage board', { item: /^My device/, title: 'Pair one of your machines' })
     const history = dialog.getByRole('region', { name: 'Invitations for this project' })
     await history.getByText('Couldn’t load invitations.').waitFor({ timeout: 20000 })
     await history.getByText('issued by its hub, the computer of the person who started it', { exact: false }).waitFor()
