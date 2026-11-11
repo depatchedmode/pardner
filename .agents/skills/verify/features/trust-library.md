@@ -19,7 +19,14 @@ an existing key or claim power-loss durability. Protocol domains are fixed const
 `verifyRecord(record, projectId, signerPublicKey)` checks authenticity, not authority;
 genesis needs only projectId. `computeMembership(records, { projectId }?)` returns
 sorted active people, machines, agent names, removal IDs and rejected record IDs
-with reasons. Each person exposes `everAdmin`, including after demotion, so arrival-time policy retains target protection. `isMember` checks the active machines.
+with reasons. It also reports who admitted each person and machine (`admittedBy`,
+null for the genesis), which machines were paired to an existing person
+(`paired`), each counted removal with its signer and whether the person left
+(`removals`), and what removed people and machines were (`formerPeople`,
+`formerMachines`); permutation tests cover these. A person's own machine may sign
+`member.remove` for that person, to leave; the owner can't leave and an
+agents-only machine can't leave for its person, in the reducer, `mayAuthor` and
+`maySign` alike. Each person exposes `everAdmin`, including after demotion, so arrival-time policy retains target protection. `isMember` checks the active machines.
 `maySign(membership, record)` checks authenticity and current signer membership/role, plus the kind's target restrictions; it is not used by the reducer and does not persist records. With no selector, a single
 valid genesis supplies the project ID; ambiguous roots fail closed.
 
