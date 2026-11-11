@@ -20,6 +20,7 @@ const FLAGS = {
   sameKey: 'another change also wrote this entry',
   alsoWrote: 'the change also altered content outside this entry',
   invalidRecord: 'its record signature doesn’t check out',
+  alsoCreated: 'another change also claims to create this board',
 }
 
 /** A machine as people know it: its person and its name, with a short ID only when it has no name. */

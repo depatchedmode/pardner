@@ -208,3 +208,31 @@ test('derivation is resumable: entries are stored by change hash, and a log load
   assert.equal(canonical([...reopened.entries.values()].filter(entry => entry.hash !== more.hash)), canonical([...first.entries.values()]))
   assert.equal(reopened.entries.get(more.hash).event.payload.title, 'After reopening')
 })
+
+test('a second change with no dependencies is never hidden: with no record it is unrecognised, and a copied genesis flags both creations', () => {
+  const { project, doc: start } = board()
+  // A change on a history of its own, writing a top-level key and no record.
+  const stray = A.change(A.init({ actor: bob(8) }), draft => { draft.name = new A.ImmutableString('Another board') })
+  const merged = A.merge(A.clone(start), stray)
+  const [strayHash] = A.getHeads(stray)
+  const shown = view(merged)
+  assert.equal(shown.find(entry => entry.id === strayHash)?.kind, 'unrecognised', 'it is shown, for review')
+  // A second creation that copies the genesis record: the record is one entry listing both, and both are flagged.
+  const twin = A.change(A.init({ actor: bob(9) }), draft => { draft.membership = { [project.genesis.recordId]: storageValue(project.genesis) } })
+  const both = A.merge(A.clone(start), twin)
+  const genesis = view(both, () => true).find(entry => entry.kind === 'record' && entry.key === project.genesis.recordId)
+  assert.equal(genesis.changes.length, 2)
+  assert.equal(genesis.flags.alsoCreated.length, 2)
+  assert.equal(genesis.review, true)
+})
+
+test('a records change that also writes anything else is flagged', () => {
+  const { project, doc: start } = board()
+  const doc = A.change(A.clone(start, { actor: bob(10) }), draft => {
+    draft.membership[project.records[0].recordId] = storageValue(project.records[0])
+    draft.taskFields['task-x:title'] = storageValue({ value: 'Beside a record', operationId: 'op-x', actorId: 'alice', replicaId: 'r', timestamp: '2026-01-01T00:00:00.000Z' })
+  })
+  const record = view(doc, () => true).find(entry => entry.kind === 'record' && entry.key === project.records[0].recordId)
+  assert.equal(record.flags.alsoWrote, true)
+  assert.equal(record.review, true)
+})

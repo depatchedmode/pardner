@@ -69,9 +69,12 @@ function unusualWrite(doc, next, actor) {
     }),
     // The membership map made again, with every record written back.
     () => (d => { const records = plain(d.membership ?? {}); d.membership = {}; for (const record of Object.values(records)) d.membership[record.recordId] = storageValue(record) }),
+    // A change on a history of its own, with no dependencies.
+    () => ({ root: true }),
   ]
   const write = pick(writes)()
   if (!write) return null
+  if (write.root) return A.merge(A.clone(doc), A.change(A.init({ actor }), d => { d.name = new A.ImmutableString(words) }))
   try { return A.change(A.clone(doc, { actor }), write) } catch { return null }
 }
 
