@@ -89,8 +89,9 @@ Keep an independent backup. Synchronization can propagate deletion or corruption
    with `--http-port`; issue a fresh `client open` link there. Do not initialize a
    new identity or create replacement projects in restored data. Incompatible
    formats fail instead of migrating old installations automatically. Client
-   directories before version 4 and storage before schema 9, made before changes
-   were signed, are refused unchanged. A client
+   directories before version 4 and storage before schema 10, made before changes
+   were signed or before the signature cache kept equivocation reports, are
+   refused unchanged. A client
    directory made before machine keys has no `machine-key.pem` and is refused,
    unchanged; recover its content with `client export` from the release that
    made it, and start this one with a fresh directory. A missing, exposed or

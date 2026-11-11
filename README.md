@@ -42,10 +42,10 @@ All document strings are immutable scalar values (Automerge `ImmutableString`),
 including field registers, operation history and membership records. Reads expose
 ordinary JavaScript strings. Different-field merging, authored same-field
 alternatives and explicit resolution retain their existing behavior; Pardner
-replaces whole values and does not splice collaborative text. Schema 9, whose
-changes are signed by the machine that made them, refuses earlier storage
-directories, and version 4 client directories refuse earlier ones, without
-migrating or deleting them.
+replaces whole values and does not splice collaborative text. Schema 10, whose
+changes are signed by the machine that made them and whose signature cache keeps
+equivocation reports, refuses earlier storage directories, and version 4 client
+directories refuse earlier ones, without migrating or deleting them.
 
 Each client directory has its own Ed25519 machine key, created on first start and
 reported as a machine ID by `client status`. Creating a project signs a
@@ -132,30 +132,53 @@ seen is held in the hub's memory only, so it resets when the hub restarts.
 **Every change shows which machine made it.** Each Automerge change carries an
 actor ID that starts with its machine's ID and ends with 8 random bytes drawn each
 time the document is loaded, so a restored backup and its original never reuse an
-actor and sequence number. The machine signs each change at once with its key, over
-the project ID and Automerge's change hash. It saves the signature in a local,
+actor and sequence number. A machine signs only the changes its own write path makes
+(operations, the record gate, record write-backs and the board's creation), each
+at once with its key, over the project ID and Automerge's change hash; it never
+infers authorship from a change's actor ID. It saves the signature in a local,
 grow-only signature cache before the change can be saved, and writes it into the
 project's signature document, a second document beside the board whose ID every
 member derives from the project ID; that document is saved and synced in the
-background, off the acknowledgement path, and at start-up a machine writes back any
-signature it holds that the document lacks. Every peer applies every change it
-receives, as before, then checks that the signature verifies under the machine the
-actor names and that this machine is or was a member, and keeps each signature it
-verified in its own cache, so deleting an entry from the shared document
-unattributes nothing it already checked. No change is refused, dropped or hidden.
+background, off the acknowledgement path, and at start-up and whenever an entry it
+verified is deleted or overwritten a machine writes back the signatures it holds
+that the document lacks. Every peer applies every change it receives, as before,
+then checks that the signature verifies under the machine the actor names and that
+this machine is or was a member, and keeps each signature it verified in its own
+cache, so deleting an entry from the shared document unattributes nothing it
+already checked. No change is refused, dropped or hidden. A received change that
+carries this machine's own actor but that it did not sign is unattributed, and the
+machine reports that another machine used its actor.
+
 Activity names each entry's signer, the person and the machine; says "signature
 pending" while a signature may still be on its way; says "unattributed" and names
 the machine that relayed it once the machine that delivered the change has had a
 second on a live connection to send one; and says "made by a removed machine" for a
 signed change that does not come before that machine's removal in the board's
-history. Work from before a removal stays attributed. Membership records appear in
-Activity with their signer. The board announces changes that need review, with a
-filter for them, and `pardner client review` lists them. Two different changes
-signed by one machine with the same actor and sequence number are reported as
-equivocation, naming the machine: Automerge refuses the second, so board changes
-from the peer that carries it stop applying until that machine is removed and its
-copy rebuilt. The hub's persistence acknowledgement covers the heads of both the
-board and the signature document.
+history. Work from before a removal stays attributed. **A signer line is bound to
+the content its change wrote.** Pardner writes every object below the board's
+top-level maps once, in the change that creates it, never replaces or deletes an
+Activity entry, and leaves an Activity entry or a membership record with every
+change; each peer reads every change's operations once and finds any change that
+breaks this. An entry a later change altered is shown as its signed change wrote
+it, read from the board's history, and marked "altered after signing" with the
+altering change's own signer; the altering change, a change that replaced or
+deleted an entry, and a change that left no Activity entry are listed for review.
+Membership records appear in Activity with their signer, from the verified record
+store. The board announces changes that need review, with a filter for them, and
+`pardner client review` lists them. Two different changes signed by one machine
+with the same actor and sequence number are reported as equivocation, naming the
+machine, and the report is kept across restarts: Automerge refuses the second, so
+board changes from the peer that carries it stop applying until that machine is
+removed and its copy rebuilt. The hub's persistence acknowledgement covers the heads
+of both the board and the signature document, and a replica asks for it only once
+every signature it made is in the signature document it asks about.
+
+Everything read from the signature document is checked for shape and bounded:
+only map shards, change-hash keys and 64-byte values, and a few concurrent values.
+A malformed shard is made again as a map and its entries written back. A failure in
+a background attribution task is contained, logged and shown in status
+(`attribution.failures`), and never stops the service. A member asks the hub about
+every change still waiting for a verdict in turn, 500 at a time.
 
 What is not enforced: **a member may still change anything**, as in git. Peers
 check who made a change, not whether it was allowed, and people review and undo a
@@ -385,9 +408,10 @@ its properties within that model only.
 
 ## Storage and dependencies
 
-A schema 9 directory contains workspace metadata, Automerge storage, the
-grow-only membership record store, an exclusive service lock, and local connection
-settings. The hub additionally holds the SQLite delivery ledger and its own
+A schema 10 directory contains workspace metadata, Automerge storage (the board
+and its signature document), the grow-only membership record store, the grow-only
+signature cache (`signatures.sqlite`: verified change signatures and equivocation
+reports), an exclusive service lock, and local connection settings. The hub additionally holds the SQLite delivery ledger and its own
 waiting state after a restore (`hub-state.json`). A client
 directory also holds its machine key. Client directories and storage directories
 using an earlier schema are refused and left unchanged; choose a fresh directory
