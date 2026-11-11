@@ -42,14 +42,20 @@ All document strings are immutable scalar values (Automerge `ImmutableString`),
 including field registers, operation history and membership records. Reads expose
 ordinary JavaScript strings. Different-field merging, authored same-field
 alternatives and explicit resolution retain their existing behavior; Pardner
-replaces whole values and does not splice collaborative text. Schema 7 refuses
-earlier storage directories without migrating or deleting them.
+replaces whole values and does not splice collaborative text. Schema 8, whose
+membership records carry each machine's consent, refuses earlier storage
+directories, and version 3 client directories refuse earlier ones, without
+migrating or deleting them.
 
 Each client directory has its own Ed25519 machine key, created on first start and
 reported as a machine ID by `client status`. Creating a project signs a
 `project.genesis` record with that key, naming the creator as owner, and the
 project ID is derived from that record, so anyone with the ID can check the
-genesis. Signed membership records live in the project document. Each project
+genesis. A person's ID is derived from the public key of the machine they were
+first admitted with (the creator's, for the owner), so nobody can admit a new key
+under an existing person. Further machines join a person only by pairing, and a
+computer paired into someone's identity can't start a project or join another as
+a new person. Signed membership records live in the project document. Each project
 also keeps a grow-only local store of every valid record its client has seen,
 saved before the client uses one. A record later removed from the document still
 counts and is written back. Tampered or foreign records are not stored, and
@@ -63,8 +69,17 @@ the project until approved. Approval follows a confirmation code that both sides
 derive from the offer, the joiner's key and a nonce the approver adds; the
 approving machine signs the admission. A person's own machine, the owner or an
 admin pairs another machine into that person's identity, and pairing never
-creates a second person. Removal (`member.remove`, `machine.remove`) and owner-only
-role changes are records too. Every new record enters through one gate on the hub
+creates a second person. Every admission or pairing record carries the joining
+machine's own signed join request, naming the project, the person and a hash of
+the whole offer, and counts only with it: nobody can certify a key they don't
+hold, and a consent can't be reused for another role or purpose. Certifications
+never displace each other, whatever order records arrive in: a key certified twice
+for one person is one machine, agents-only only if every certification says so; a
+person admitted twice holds the highest role any admission gave; and a key
+certified for two people is removed, while what it signed still counts. An
+agents-only machine signs only its own agents' labels: it can't admit, pair,
+remove, leave, change a role or edit a profile. Removal (`member.remove`,
+`machine.remove`) and owner-only role changes are records too. Every new record enters through one gate on the hub
 that refuses removed machines and signers without the needed role. A removed
 machine or person returns only as a new machine key or a new person. A person
 can leave a project from their own machine; the owner can't.
@@ -76,14 +91,19 @@ a transcript of the project ID, both machine IDs, both fresh nonces, both roles 
 the route dialled, so a recorded or relayed answer is useless elsewhere. The hub
 serves only a current member machine of its records, and a joining machine accepts
 nothing until the hub proves it is a member machine of the project its invitation
-named. Every other request between machines is signed by the machine key within a
+named. The hub answers every handshake alike and judges a machine only once it
+has proved its key, so nobody can learn without the private key whether a key was
+ever certified; a removed machine that proves its key is told who removed it. Every other request between machines is signed by the machine key within a
 short session opened the same way, and a replayed request is refused. When the hub
 applies a removal it closes that machine's sync and signed sessions at once. The
 Actors a machine may act as come from its records. A write checks this machine's
 own records locally and never waits on the hub. A hub restored from a backup, or
 shown by a member that it fell behind, serves no other machine until a member that
 saw a later state has synced its membership, or its operator runs
-`pardner client resume`. Two live sync sessions for one machine are reported.
+`pardner client resume`. That waiting state is saved with the point checkpoints
+are compared against, so it survives any number of restarts and a process kill at
+any step, and an established hub whose state file is missing waits too. Two live
+sync sessions for one machine are reported.
 
 **The People panel** in each board's header lists every person with their role,
 who let them in, their machines (online or last seen where the hub knows it) and
@@ -104,12 +124,16 @@ only on their own machine. Activity entries do not yet show which machine signed
 change, and nothing flags unattributed changes; both wait for signed changes. A
 member running a modified client could still write a record signed by its own
 machine straight into the document. The hub harvests that
-as history, without the role check, so a demoted admin could still remove a member
-that way; records from a removed machine are refused. Records are enforced only at
+as history, without the current-role check, so a demoted admin could still remove
+a member that way; records from a removed machine are refused. Consent, derived
+person IDs and the agents-only rule are part of computing membership, so they hold
+for such records too. Records are enforced only at
 the hub. A removed machine that synced after a hub's backup was taken, was removed
 while offline, and is the first to reach the restored hub can still be served
 until a member holding the removal connects. Peers do not sync directly, and hub
-routes rely on HTTPS for confidentiality. The rest of the trust rollout remains a
+routes rely on HTTPS for confidentiality. Because the hub answers every hello, any
+party can hold one of its 256 pending HTTP sessions for up to 30 seconds without
+a member's key. The rest of the trust rollout remains a
 [plan](docs/PARDNER-TRUST-PLAN.md).
 
 The [local client onboarding preview](docs/PARDNER-CLIENT.md) adds a private
@@ -308,9 +332,10 @@ its properties within that model only.
 
 ## Storage and dependencies
 
-A schema 7 directory contains workspace metadata, Automerge storage, the
+A schema 8 directory contains workspace metadata, Automerge storage, the
 grow-only membership record store, an exclusive service lock, and local connection
-settings. The hub additionally holds the SQLite delivery ledger. A client
+settings. The hub additionally holds the SQLite delivery ledger and its own
+waiting state after a restore (`hub-state.json`). A client
 directory also holds its machine key. Client directories and storage directories
 using an earlier schema are refused and left unchanged; choose a fresh directory
 rather than migrating or deleting existing data.

@@ -189,8 +189,7 @@ class AutomergeSyncServer {
     this.store.on?.('membership', this.onMembership)
     this.sessions = this.store.role === 'hub' && this.store.machineKey ? new SessionServer({ key: this.store.machineKey,
       projectId: this.store.manifest.workspaceId, acceptRoute: route => this.routes().http.includes(route),
-      member: machineId => this.memberKey(machineId), former: machineId => this.formerKey(machineId),
-      refusal: (machineId, proven) => this.notMember(machineId, proven),
+      member: machineId => this.memberKey(machineId), refusal: machineId => this.notMember(machineId),
       welcome: () => {
         if (this.store.hubStatus()?.waiting) throw new HandshakeError('HUB_WAITING', HUB_WAITING_MESSAGE)
         return { records: this.store.records.all(), checkpoint: this.store.checkpoint() }
@@ -465,11 +464,6 @@ class AutomergeSyncServer {
     return this.store.records.membership().machines.find(machine => machine.id === machineId)?.publicKey ?? null
   }
 
-  /** The key a removed machine held, so it can prove it before it is told of its removal; else null. */
-  formerKey(machineId) {
-    return this.store.records.membership().formerMachines?.find(machine => machine.id === machineId)?.publicKey ?? null
-  }
-
   /** The machine a signed request comes from; refused while this hub waits after a restore. */
   verifyMachine(request) {
     if (!this.sessions) throw new HandshakeError('NO_MACHINES', 'This service serves no other machine. Host projects with pardner client.')
@@ -479,34 +473,31 @@ class AutomergeSyncServer {
 
   /**
    * Admits another machine on a native socket: the handshake, then the
-   * Automerge adapter. Only a current member machine is welcomed, and it gets
-   * the records only after both signatures verify. While this hub waits after
-   * a restore, any machine that proves its key has its records merged first,
-   * since it may have been admitted after the backup; then only a member is
-   * welcomed, and only a member that saw a later state of this hub vouches
-   * for catching up. Every other machine is refused.
+   * Automerge adapter. Every well-formed hello is answered alike, and the
+   * machine is judged only once both signatures verify, so an unproven party
+   * cannot tell which keys this project knows. Only a current member machine
+   * is welcomed and gets the records. While this hub waits after a restore,
+   * any machine that proves its key has its records merged first, since it
+   * may have been admitted after the backup; then only a member is welcomed,
+   * and only a member that saw a later state of this hub vouches for catching
+   * up. Every other machine is refused.
    */
   async acceptMachine(ws, req) {
     ws.isAlive = true
     ws.on('pong', () => { ws.isAlive = true })
-    let vouches = false
     try {
       const { initiator } = await respondHandshake(ws, { key: this.store.machineKey, projectId: this.store.manifest.workspaceId, role: 'hub',
         acceptRoute: route => this.routes().ws.includes(route),
-        screen: hello => {
-          vouches = this.store.noteCheckpoint(hello.checkpoint)
-          // A removed machine holding its key finishes the signatures, so that only it is told who removed it (admit).
-          const { machineId, publicKey } = hello.initiator
-          if (!this.store.hubStatus()?.waiting && this.memberKey(machineId) !== publicKey && this.formerKey(machineId) !== publicKey) throw this.notMember(machineId)
-        },
         admit: async ({ hello, requestMembership }) => {
+          const { machineId, publicKey } = hello.initiator
+          const vouches = await this.store.noteCheckpoint(hello.checkpoint)
           if (this.store.hubStatus()?.waiting) {
             this.store.admitRecords(await requestMembership())
-            if (this.memberKey(hello.initiator.machineId) !== hello.initiator.publicKey) throw this.notMember(hello.initiator.machineId)
+            if (this.memberKey(machineId) !== publicKey) throw this.notMember(machineId)
             if (!vouches) throw new HandshakeError('HUB_WAITING', HUB_WAITING_MESSAGE)
-            await this.store.resumeHub({ machineId: hello.initiator.machineId })
+            await this.store.resumeHub({ machineId })
           }
-          if (this.memberKey(hello.initiator.machineId) !== hello.initiator.publicKey) throw this.notMember(hello.initiator.machineId, true)
+          if (this.memberKey(machineId) !== publicKey) throw this.notMember(machineId)
           return { records: this.store.records.all(), checkpoint: this.store.checkpoint(), documentUrl: this.store.manifest.url }
         } })
       // Membership may have changed while the welcome was sent; nothing reaches Automerge unless it still holds.
@@ -524,15 +515,16 @@ class AutomergeSyncServer {
   }
 
   /**
-   * The refusal for a machine that is not a current member. A removed machine
-   * that has proved its key (`proven`) is also told who removed it and whether
-   * its person left (#154), since it may never hold its own removal record.
+   * The refusal for a machine that has proved its key and is not a current
+   * member. A removed machine is told who removed it and whether its person
+   * left (#154), since it may never hold its own removal record. Nothing calls
+   * this before the machine has proved its key.
    */
-  notMember(machineId, proven = false) {
+  notMember(machineId) {
     const membership = this.store.records.membership()
     return membership.removedMachines.includes(machineId)
       ? new HandshakeError('REVOKED', 'This machine was removed from the project; nothing is served to it. Its local data is preserved.',
-        proven ? { removal: removalFor(membership, machineId) } : null)
+        { removal: removalFor(membership, machineId) })
       : new HandshakeError('NOT_MEMBER', 'This machine is not a member of the project; nothing is served to it')
   }
 

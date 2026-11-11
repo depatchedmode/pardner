@@ -5,18 +5,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { generateMachineKey } from '../lib/machine-key.js'
-import { buildRecord } from '../lib/membership.js'
 import { RECORD_STORE_FILE, RecordStore } from '../lib/record-store.js'
 import { testGenesis } from '../support/genesis.js'
+import { forge, permutations, trustProject } from '../support/trust-records.js'
 
 function fixture() {
-  const owner = generateMachineKey(), member = generateMachineKey(), second = generateMachineKey()
-  const genesis = testGenesis(owner), projectId = genesis.projectId
-  const add = buildRecord(owner, { projectId, kind: 'member.add', subject: 'member', displayName: 'Member', role: 'member',
-    machineId: member.machineId, publicKey: member.publicKey, offer: {}, joinRequest: {}, approval: {} })
+  const p = trustProject(), member = generateMachineKey(), second = generateMachineKey()
+  const memberId = p.person(member)
+  const add = p.admit(p.owner, member)
   // Signed by the member's machine, so it can be stored only once the member's admission is.
-  const pair = buildRecord(member, { projectId, kind: 'machine.add', subject: second.machineId, personId: 'member', publicKey: second.publicKey, approval: {} })
-  return { owner, member, genesis, projectId, add, pair }
+  const pair = p.pair(member, second, memberId)
+  return { ...p, member, memberId, second, add, pair }
 }
 
 test('the record store saves a batch whose records authorize each other, in any order, and keeps it across reopen', async () => {
@@ -56,16 +55,19 @@ test('the record store refuses unverifiable records and new records from a machi
     store.admit([f.genesis])
     const forged = { ...f.add, displayName: 'Forged' }
     const elsewhere = testGenesis()
-    const promotion = buildRecord(f.member, { projectId: f.projectId, kind: 'member.role', subject: 'member', role: 'admin', replaces: null })
-    assert.deepEqual(reasons([forged, elsewhere, 'not a record']), {
+    const promotion = f.role(f.member, f.memberId, 'admin')
+    // A certification without its machine's consent is never stored, so no peer's store ever holds it.
+    const unconsented = forge(f.owner, f.pair, { joinRequest: f.add.joinRequest })
+    assert.deepEqual(reasons([forged, elsewhere, 'not a record', unconsented]), {
       [forged.recordId]: 'Invalid signature', [elsewhere.recordId]: 'Wrong project', none: 'Wrong project',
+      [unconsented.recordId]: 'The certified machine did not consent to this certification',
     })
     store.admit([f.add])
     // Authority is computed from the store, not filtered into it: a member's promotion of themself is kept and grants nothing.
     assert.deepEqual(reasons([promotion]), {})
-    assert.equal(store.membership().people.find(person => person.id === 'member').role, 'member')
+    assert.equal(store.membership().people.find(person => person.id === f.memberId).role, 'member')
     assert.ok(store.membership().rejected.some(entry => entry.recordId === promotion.recordId))
-    const removal = buildRecord(f.owner, { projectId: f.projectId, kind: 'member.remove', subject: 'member' })
+    const removal = f.remove(f.owner, f.memberId)
     store.admit([removal])
     assert.deepEqual(reasons([f.pair]), { [f.pair.recordId]: 'Signer was removed before this record arrived' })
     assert.equal(store.size, 4)
@@ -75,18 +77,10 @@ test('the record store refuses unverifiable records and new records from a machi
   }
 })
 
-function* permutations(values) {
-  if (!values.length) { yield []; return }
-  for (let i = 0; i < values.length; i++) for (const tail of permutations(values.filter((_, index) => index !== i))) yield [values[i], ...tail]
-}
-
 test('a log received at once keeps a removed admin’s earlier admissions in every order, and refuses that admin’s later records', () => {
-  const owner = generateMachineKey(), admin = generateMachineKey(), member = generateMachineKey()
-  const genesis = testGenesis(owner), projectId = genesis.projectId
-  const add = (signer, person, machine, role) => buildRecord(signer, { projectId, kind: 'member.add', subject: person, displayName: person, role,
-    machineId: machine.machineId, publicKey: machine.publicKey, offer: {}, joinRequest: {}, approval: {} })
-  const log = [genesis, add(owner, 'admin', admin, 'admin'), add(admin, 'member', member, 'member'),
-    buildRecord(owner, { projectId, kind: 'member.remove', subject: 'admin' })]
+  const p = trustProject(), admin = generateMachineKey(), member = generateMachineKey()
+  const { genesis, projectId } = p
+  const log = [genesis, p.admit(p.owner, admin, { role: 'admin' }), p.admit(admin, member), p.remove(p.owner, p.person(admin))]
   let expected
   for (const order of permutations(log)) {
     const store = new RecordStore(':memory:', projectId)
@@ -96,11 +90,11 @@ test('a log received at once keeps a removed admin’s earlier admissions in eve
     assert.deepEqual({ people, machines, removedPeople }, expected)
     store.close()
   }
-  assert.deepEqual(expected.people.map(person => person.id).sort(), ['member', 'test-owner'])
-  assert.deepEqual(expected.removedPeople, ['admin'])
+  assert.deepEqual(expected.people.map(person => person.id).sort(), [p.person(member), p.ownerId].sort())
+  assert.deepEqual(expected.removedPeople, [p.person(admin)])
   const store = new RecordStore(':memory:', projectId)
   store.admit(log)
-  const late = add(admin, 'late', generateMachineKey(), 'member')
+  const late = p.admit(admin, generateMachineKey())
   assert.deepEqual(store.admit([late]).refused.map(entry => entry.reason), ['Signer was removed before this record arrived'])
   store.close()
 })

@@ -115,17 +115,19 @@ test('the joiner keeps a removal it already holds even when the responder omits 
   } finally { await pair.close() }
 })
 
-test('a refusal reaches the initiator with its code and nothing else is sent', async () => {
+test('a refusal reaches the initiator with its code once it has proved its key, and nothing else is sent', async () => {
   const project = testProject()
   const pair = await socketPair()
   try {
     const frames = []
     pair.client.on('message', data => frames.push(JSON.parse(data.toString())))
+    let judged = null
     const responding = respondHandshake(pair.socket, { key: project.owner, projectId: project.projectId, role: 'hub', acceptRoute: () => true,
-      screen: () => { throw Object.assign(new Error('Not a member'), { code: 'REVOKED' }) }, admit: async () => ({ records: project.all }) }).catch(error => error)
+      admit: async ({ hello }) => { judged = hello.initiator.machineId; throw Object.assign(new Error('Not a member'), { code: 'REVOKED' }) } }).catch(error => error)
     await assert.rejects(initiateHandshake(pair.client, { key: project.stranger, projectId: project.projectId, route: ROUTE, role: 'replica' }), { code: 'REVOKED' })
     assert.equal((await responding).code, 'REVOKED')
-    assert.deepEqual(frames.map(frame => frame.type), ['refused'])
+    assert.equal(judged, project.stranger.machineId, 'the responder judges the initiator only after both signatures verified')
+    assert.deepEqual(frames.map(frame => frame.type), ['hello-reply', 'refused'])
   } finally { await pair.close() }
 })
 

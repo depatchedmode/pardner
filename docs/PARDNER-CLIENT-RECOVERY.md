@@ -133,6 +133,16 @@ How the hub knows it may be stale (wall-clock time plays no part):
   the newest one. A member presenting a checkpoint the hub never reached, such as
   one from a run the restore lost, shows that the hub is behind even when its files
   look untouched (a filesystem snapshot rolled back in place).
+- **Its own state file is missing.** A hub that already holds a project but has
+  no `hub-state.json` can't tell whether it was restored, so it waits too.
+
+The waiting state is saved in `hub-state.json`, in the same write as the new file
+identity, together with the point checkpoints are compared against (the state the
+restored files represent, or where the hub was when it learned it was behind) and
+the newest checkpoint a member has shown. It survives any number of restarts and
+a process kill at any step: restarting does not end the wait or move the point a
+member's checkpoint is compared with, so a member that saw a later state can still
+vouch however often the hub restarted first.
 
 While it waits, other machines are told `HUB_WAITING` ("This hub was restored or
 fell behind, and waits to catch up with a current member machine…"), which their
@@ -156,8 +166,9 @@ How it resumes:
   node bin/pardner.js client resume --data /private/path/restored-client --project PROJECT_ID
   ```
 
-Either way the hub's next start number exceeds every one it reached before, so its
-new checkpoints are ahead of the lost run's. Known limit: a machine that synced after
+Either way the hub saves that it resumed before it serves anyone, and its next
+start number exceeds every one it reached or was shown before, so its new
+checkpoints are ahead of the lost run's. Known limit: a machine that synced after
 the backup, was then removed while it was offline, and is the first to reach the
 restored hub can vouch, and is served until a member holding the removal connects.
 To avoid it, resume only once a member you know is current has connected, or
@@ -223,6 +234,9 @@ every machine, and re-admission as a new machine key or a new person.
 the removed machine connecting first is refused, a member that synced after the
 backup brings the removal and the hub resumes; a hub nobody can vouch for waits for
 `resume`; a hub rolled back in place learns it is behind from a member's checkpoint;
-and two live copies of one machine are reported. The authority restore in
+and two live copies of one machine are reported. `test/hub-restore.test.js` keeps a
+restored hub waiting across restarts, a missing state file and a learned "behind"
+state, kills the hub process at each step of the sequence, and checks that a member
+can still vouch after the hub restarted. The authority restore in
 `test/client-recovery.test.js` waits for `client resume`. These process/filesystem tests do not prove
 power-loss durability, live-backup safety or backup of external files/harness state.

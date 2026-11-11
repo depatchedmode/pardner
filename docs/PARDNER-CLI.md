@@ -1,6 +1,6 @@
 # Pardner local service and CLI
 
-The default service and executable now use the schema 7 workspace. Human and
+The default service and executable now use the schema 8 workspace. Human and
 agent Actors author through the same local HTTP operations. See the
 [implementation evidence](PARDNER-EVIDENCE.md) for tested candidates and limitations.
 
@@ -169,7 +169,9 @@ schema 6 adds the signed project genesis and membership records, and derives the
 workspace ID from the genesis. Schema 7 stores every string as an immutable scalar
 value, including operation payload copies and membership records. Reads remain
 ordinary strings; field-level authored alternatives, explicit resolution and retry
-identity are unchanged. Earlier directories must be preserved and replaced with a fresh workspace; all
+identity are unchanged. Schema 8 moves membership records to version 2: each
+admission or pairing carries the joining machine's signed consent, and person IDs
+are derived from machine keys. Earlier directories must be preserved and replaced with a fresh workspace; all
 services participating in a workspace must use the same schema version.
 
 ## Read, edit, and hand off
@@ -219,7 +221,7 @@ No inspection or retry repairs/replays the conflicting mutations. Ordinary field
 resolution does not resolve operation integrity. Same-field collisions also
 require explicit field resolution.
 
-This identity format requires schema 7 on every service. Older workspace data is
+This identity format requires schema 8 on every service. Older workspace data is
 preserved and rejected as incompatible; do not overwrite or automatically migrate
 it. Enroll a new workspace using compatible services.
 

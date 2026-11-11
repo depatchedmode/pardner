@@ -1,27 +1,27 @@
-import { randomBytes } from 'node:crypto'
 import { once } from 'node:events'
 import { WebSocket } from 'ws'
 import { generateMachineKey } from '../lib/machine-key.js'
 import { initiateHandshake } from '../lib/machine-handshake.js'
 import { buildRecord } from '../lib/membership.js'
 import { TicketNetworkAdapter } from '../lib/ticket-network-adapter.js'
+import { trustProject } from './trust-records.js'
 import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
 
 /**
  * Test-only: a project whose genesis is signed by `owner`, the hub's machine,
- * with each further machine admitted as a member person by the owner. Keys
- * come from this fixture, never from flags or the environment.
+ * with each further machine admitted as a member person by the owner. Each
+ * admission carries the joining key's consent and a person ID derived from
+ * that key (support/trust-records.js). Keys come from this fixture, never
+ * from flags or the environment.
  */
 export function testProject({ members = 1, role = 'member' } = {}) {
-  const owner = generateMachineKey()
-  const genesis = buildRecord(owner, { kind: 'project.genesis', subject: 'person-owner', displayName: 'Owner', nonce: randomBytes(16).toString('base64url') })
-  const projectId = genesis.projectId
+  const trust = trustProject()
+  const { owner, genesis, projectId } = trust
   const keys = Array.from({ length: members }, () => generateMachineKey())
-  const admit = (key, index, admitted = role) => buildRecord(owner, { projectId, kind: 'member.add', subject: `person-${index}`, role: admitted,
-    displayName: `Member ${index}`, machineId: key.machineId, publicKey: key.publicKey, offer: {}, joinRequest: {}, approval: {} })
+  const admit = (key, index, admitted = role) => trust.admit(owner, key, { role: admitted, name: `Member ${index}` })
   const records = keys.map((key, index) => admit(key, index))
   const remove = (key, signer = owner) => buildRecord(signer, { projectId, kind: 'machine.remove', subject: key.machineId })
-  return { owner, genesis, projectId, keys, records, all: [genesis, ...records], admit, remove, stranger: generateMachineKey() }
+  return { owner, ownerId: trust.ownerId, genesis, projectId, keys, records, all: [genesis, ...records], admit, remove, stranger: generateMachineKey(), trust }
 }
 
 /**

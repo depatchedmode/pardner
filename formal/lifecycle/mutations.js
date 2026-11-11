@@ -119,6 +119,8 @@ export const MUTATIONS = [
     try {
       await this.workspace?.queue
       await this.harvests
+      // The hub's own state is written before the directory's lease is released.
+      await this.hubStateWrites?.catch(() => {})
       await this.repo?.shutdown()
     } finally {
       this.initialized = false
@@ -134,6 +136,8 @@ export const MUTATIONS = [
     try {
       await this.workspace?.queue
       await this.harvests
+      // The hub's own state is written before the directory's lease is released.
+      await this.hubStateWrites?.catch(() => {})
       await this.repo?.shutdown()
     } finally {
       this.initialized = false

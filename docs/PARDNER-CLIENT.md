@@ -51,7 +51,9 @@ The local client is the only way people open the board; the standalone
 
 Confirm the profile suggested by the local Git configuration. Git name and email
 are profile defaults, not proof of identity; Pardner generates the identity and
-does not edit Git settings. Start a project or join one. The setup agent becomes
+does not edit Git settings. The identity's person ID is derived from this client
+directory's machine key: a person belongs to the machine they first start or join
+a project with. Start a project or join one. The setup agent becomes
 an Actor with the first project. Registration alone does not show it as active.
 
 An agent is named after its owner and harness, such as “Maya’s Codex”, “Maya’s
@@ -196,6 +198,12 @@ and device, or, for a new machine, whose identity it joins (#155). A new person 
 a member is flagged, in case it is that member's second computer. Pairing never
 creates a second person.
 
+The admission or pairing record the approver's machine signs embeds the joining
+machine's own signed join request, which names the project, the person it joins
+and a hash of the whole offer. Every peer counts the record only with that
+consent, so nobody can certify a key they don't hold, and a consent given for one
+invitation can't be reused for another role or purpose.
+
 ### Joining from the CLI
 
 ```sh
@@ -205,7 +213,13 @@ node bin/pardner.js client join \
 
 Start the receiving client first. For a Human invitation, confirm its own identity
 before joining. My device and Agent invitations link to an existing person, so the
-client must have no identity yet or that same identity. In the browser, the
+client must have no identity yet or that same identity. A computer linked to
+someone this way holds the person ID of that person's first machine, so it can't
+start a project or join another one as a new person (`IDENTITY_MISMATCH`): do that
+from the first machine and pair this one, or use a fresh client directory. A
+machine joining with no agent name asks the hub first, and an agent the person
+already has keeps the name it was enrolled under, so the machine's signed agent
+label matches the Actor. In the browser, the
 identity step offers **Link this device instead**, which accepts only a My device
 invitation and says whose identity this computer will be linked as before
 anything is sent; Human and Agent invitations pasted there are refused before any
@@ -253,7 +267,11 @@ artifact to the chosen file and prints only the summary and file path. The same
 
 An Agent invitation used on another computer pairs that computer as a new machine
 of the person, for their agents only: it is approved like a new device, and the
-hub never lets it act as the person. An agent-only client cannot issue a human
+hub never lets it act as the person. It holds no membership authority either: it
+signs only its own agents' labels, and every peer ignores any admission, pairing,
+removal, leave, role change or profile it signs. If the same machine is also
+paired as a full machine, it is agents-only only while every pairing of it says
+so. An agent-only client cannot issue a human
 browser launch; it uses its scoped agent grant to read and edit the board.
 
 ### The People panel
@@ -340,14 +358,17 @@ on that computer and reaches nobody.
 
 **What the removed computer shows (#154).** The hub's `REVOKED` refusal tells the
 removed machine who removed it and whether its person left, once the machine has
-proved its key in the handshake; anyone else gets only the code. The project then stays listed in
+proved its key in the handshake. The hub answers every handshake alike until then,
+so anyone presenting a key without its private key gets the same failure whether
+that key belongs to a member, a removed machine or nobody. The project then stays listed in
 `removedProjects` (`client list`, and the browser's project switcher), and the
 browser shows **You were removed from “…”**, **This computer was removed from
 “…”** or **You left “…”**, with who removed it, what that means, how to come back
 and the export command. It never shows the signed-out screen for a removal, and it
 offers no Retry: removal is permanent for that machine and person.
 
-Removals are permanent for that machine key and person ID. A removed machine
+Removals are permanent for that machine key and person ID. A key that was ever
+certified for two different people is removed too. A removed machine
 returns as a new machine: start Pardner with a fresh `--data` directory on that
 computer and pair it. A removed person returns through a new Human invitation from
 a fresh client directory, and is admitted as a new person with a new person ID.
