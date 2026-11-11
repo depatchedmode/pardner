@@ -166,3 +166,47 @@ describe('local persistence qualification', () => {
     })
   })
 })
+
+it('reopening preserves upstream heads and board views across kills during and immediately after open', { timeout: 20000 }, async () => {
+  const { Repo } = await import('@automerge/automerge-repo')
+  const { WorkspaceRuntime } = await import('../lib/workspace-runtime.js')
+  const { Workspace } = await import('../lib/workspace.js')
+  await withStorage(async directory => {
+    const runtime = await new WorkspaceRuntime({ directory, actors: [{ id: 'writer', handle: 'writer', kind: 'human' }] }).init()
+    let expected, url
+    try {
+      for (let index = 0; index < 20; index++) {
+        const receipt = await runtime.execute({ operationId: `open-${index}`, actorId: 'writer', type: 'task.create',
+          payload: { title: `Task ${index}`, description: 'Persist this description. '.repeat(80) } })
+        await runtime.execute({ operationId: `comment-${index}`, actorId: 'writer', type: 'comment.add',
+          payload: { taskId: receipt.result.taskId, text: 'This acknowledged comment must survive.' } })
+      }
+      expected = runtime.getDoc()
+      url = runtime.docHandle.url
+    } finally { await runtime.close() }
+    // Independent upstream loader, against identical persisted chunks.
+    const upstream = new Repo({ storage: new NodeFSStorageAdapter(join(directory, 'repo')) })
+    try {
+      const handle = await upstream.find(url)
+      const workspace = new Workspace({ repo: upstream, handle, replicaId: 'comparison' })
+      assert.deepEqual(workspace.snapshot(), expected)
+    } finally { await upstream.shutdown() }
+    for (const phase of ['during', 'after', 'after']) {
+      const child = fork(new URL('../support/open-process.js', import.meta.url), [directory, phase],
+        { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] })
+      try {
+        const [message] = await once(child, 'message', { signal: AbortSignal.timeout(8000) })
+        assert.notEqual(message.type, 'error', message.message)
+        if (phase === 'during') assert.equal(message.type, 'opening')
+        else {
+          assert.deepEqual(message.snapshot, expected)
+          assert.equal(message.status.savedLocally, true)
+        }
+      } finally {
+        const exited = once(child, 'exit')
+        child.kill('SIGKILL')
+        await exited
+      }
+    }
+  })
+})
