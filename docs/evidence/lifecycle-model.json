@@ -548,5 +548,82 @@
       ]
     },
     "review": "automerge-sync-server.js no longer constructs LanAccess or opens LAN listeners: the persisted LAN block in start(), the lanServers entries in stop() and the /pardner/pair and /pardner/access routes are gone, /pardner/config drops canManageAccess, and the loopback admin check for control routes moved unchanged to lib/loopback.js. The listener set stop() closes with Promise.allSettled shrinks to the HTTP and WebSocket listeners; both still pass through listen(), the stopping 503 middleware stays first, and stop() still sets stopping, closes both listeners, terminates WebSocket clients, awaits listenersClosed and only then closes control and the store. Arrive, UpgradeArrive, StopBegin, IdleConnectionEnds, Respond, ReclaimIdle, ListenerClosed and StoreCloseBegin keep their guard, effect and atomicity; no action, anchor, invariant or witness changed. The close-store-before-drain mutation find/replace text dropped its lanServers line. Wider-bound records remain historical; not rerun."
+  },
+  "genesisRecordStoreReview": {
+    "recorded": "2026-11-11",
+    "issue": 195,
+    "mapping": {
+      "revision": "1280d5f791914b48c6dc3d0997c63c00719444c9",
+      "files": {
+        "automerge-sync-server.js": "c4d37d0eff4fda4a9d6b2eabda58bd69396a33cd414873807685228b180ddcb3",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "ec284442dd41b1c0e6d7399d8cd32dd095086e50fc38b1deae5131cef0b796a8",
+        "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "durationMs": 4580,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-11T07:44:26.213Z",
+      "finished": "2026-11-11T07:44:48.125Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "lib/workspace-runtime.js: a fresh hub takes a signed genesis (hand-run hubs sign one with a one-time key), derives workspaceId from it and saves it to a per-project grow-only record store before repo.create; init harvests membership records after the document is found and refuses a document without a valid genesis; the change handler schedules a harvest that admits new records to the store and writes back stored records the document lacks, as a handle.change with no request; closeResources awaits pending harvests after the operation queue and before repo.shutdown, and closes the record store in the finally block before the lease. automerge-sync-server.js adds a read-only GET /automerge/membership after the stopping and admission middleware. Admission, the flush barrier, acknowledgement guards and shutdown ordering keep their guard, effect and atomicity. The write-back is modeled as another local edit (ReplicaEdit gains its anchor); StoreCloseBegin gains the harvest drain anchor. No action, invariant or witness changed. The lease-before-drain mutation find/replace text gained the harvest drain and record store close lines. Wider-bound records remain historical; not rerun."
   }
 }
