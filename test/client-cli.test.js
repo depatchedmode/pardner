@@ -10,7 +10,8 @@ import { startClient } from '../lib/client-service.js'
 import { invitationData } from '../lib/client-invites.js'
 import { acquireStorageLease } from '../lib/storage-lease.js'
 import { joinApproved } from '../support/enrollment.js'
-import { sameComputerRoute } from '../support/client-workspace.js'
+import { eventually, sameComputerRoute } from '../support/client-workspace.js'
+import { unsignedWrite } from '../support/unsigned-peer.js'
 
 const execute = promisify(execFile)
 const pardner = async (args, env = {}) => {
@@ -355,6 +356,55 @@ test('client people lists people, machines, agents and removed entries in words;
     assert.deepEqual(status.removedProjects.map(entry => [entry.name, entry.removal.left, entry.message]),
       [['CLI people', true, 'You left this project. Its copy on this computer stays saved here.']])
   } finally {
+    for (const client of clients.reverse()) await client.stop()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('client review lists the changes whose signer could not be confirmed, in words, with who relayed them', { timeout: 90000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-cli-review-'))
+  const clients = []
+  let peer
+  try {
+    const start = async (name, deviceName) => {
+      const directory = join(root, name)
+      const client = await startClient({ directory, ...await sameComputerRoute(), deviceName, gitDirectory: root })
+      clients.push(client)
+      const call = async (path, body) => {
+        const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
+          headers: { Authorization: `Bearer ${client.registry.read().operatorToken}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+        const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result)); return result
+      }
+      await call('/identity', { name, email: `${name.toLowerCase()}@example.test`, operationId: 'identity' })
+      const text = async args => (await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', directory], { cwd: process.cwd() })).stdout
+      const json = async args => { const value = JSON.parse(await text([...args, '--json'])); assert.equal(value.success, true); return value }
+      return { client, call, text, json }
+    }
+    const alice = await start('Alice', 'Studio'), bob = await start('Bob', 'Workshop')
+    const { project } = await alice.call('/projects', { name: 'CLI review', operationId: 'create' })
+    const output = join(root, 'invite.txt')
+    await alice.json(['invite', '--project', project.id, '--purpose', 'human', '--operation-id', 'invite-bob', '--output-file', output])
+    await joinApproved({ join: body => bob.call('/join', body), approver: alice.call, invitation: await readFile(output, 'utf8'), operationId: 'join' })
+    await bob.call(`/projects/${project.id}/api/automerge/operations`, { type: 'task.create', operationId: 'signed', payload: { title: 'Signed on the workshop' } })
+    assert.match(await alice.text(['review', '--project', project.id]), /^CLI review: 0 changes need review\n[\s\S]*Every change here is signed by a member machine\.\n$/)
+    // A modified client on Bob's machine writes a change it never signs.
+    const bobActor = bob.client.project(project.id).actorId
+    const { url: boardUrl } = await alice.call(`/projects/${project.id}/api/automerge/url`)
+    peer = await unsignedWrite({ key: bob.client.registry.machineKey, projectId: project.id, boardUrl, actorId: bobActor, title: 'Never signed',
+      nativeUrl: `${alice.client.url.replace(/^http/, 'ws')}/pardner/client/v1/replica/${project.id}/native` })
+    const listing = await eventually(async () => {
+      const text = await alice.text(['review', '--project', project.id])
+      return text.startsWith('CLI review: 1 change needs review') && text
+    }, 'the unsigned change was never listed', 30000)
+    assert.match(listing, /\nUnattributed: no signature arrived · relayed by Bob · Workshop \[[a-z2-7]{6}\]\n {2}Bob: task\.create “Never signed” at /)
+    assert.match(listing, /\n {2}Change [a-f0-9]{64}/, 'the change hash only as a detail')
+    const data = await alice.json(['review', '--project', project.id])
+    assert.equal(data.changes.length, 1)
+    assert.equal(data.changes[0].state, 'unattributed')
+    assert.deepEqual(data.changes[0].operations, [peer.operationId])
+    assert.equal(data.listing, undefined)
+  } finally {
+    await peer?.repo.shutdown()
     for (const client of clients.reverse()) await client.stop()
     await rm(root, { recursive: true, force: true })
   }

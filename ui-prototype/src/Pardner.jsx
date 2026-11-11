@@ -15,12 +15,13 @@ import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js
 import { quickStatusEditable } from './task-status.js'
 import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
+import { describeChange, describeRecord, needsReview, recordEvents, recordSignerLine, reviewNotice, reviewOnlyEvents, signerLine } from './attribution.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const StatusOptions = ({ values = STATUSES }) => values.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
 const ACTIVITY_SHOWS = [
-  ['changes', 'All changes'], ['status', 'Status changes and handoffs'], ['comments', 'Comments'],
-  ['commits', 'Commits and branches'], ['plans', 'Goals and veins'], ['actors', 'Actors registered'], ['reads', 'Read receipts'],
+  ['changes', 'All changes'], ['review', 'Needs review'], ['status', 'Status changes and handoffs'], ['comments', 'Comments'],
+  ['commits', 'Commits and branches'], ['plans', 'Goals and veins'], ['members', 'People and machines'], ['actors', 'Actors registered'], ['reads', 'Read receipts'],
 ]
 const ACTIVITY_PAGE = 100
 const dayStart = date => new Date(date.getFullYear(), date.getMonth(), date.getDate())
@@ -154,8 +155,12 @@ function SaveStatus({ status, connected, busy, heads }) {
 // One event as a plain sentence. Activity passes handlers so subjects become
 // buttons; History passes none and stays plain text.
 function EventRow({ event, lookups, within, onTask, onVein, onGoal, formatTime, ...articleProps }) {
-  const description = describeEvent(event, lookups, { within })
-  const when = new Date(event.timestamp)
+  const { attribution } = lookups
+  const description = event.record ? describeRecord(event, attribution) : event.review ? describeChange(event, attribution) : describeEvent(event, lookups, { within })
+  const signer = event.record ? recordSignerLine(attribution, event.record)
+    : signerLine(attribution, event.review ? [event.review] : attribution?.operations?.[event.operationId])
+  const when = new Date(event.timestamp || 0)
+  const timed = Boolean(event.timestamp)
   const handlers = { task: onTask, vein: onVein, goal: onGoal }
   return (
     <article className="event" {...articleProps}>
@@ -172,7 +177,8 @@ function EventRow({ event, lookups, within, onTask, onVein, onGoal, formatTime, 
       </p>
       {description.detail && <p className="event-detail">{description.detail}</p>}
       {description.excerpt && <p className="event-detail">{description.excerpt}</p>}
-      <time dateTime={when.toISOString()} title={when.toLocaleString()}>{formatTime(when)}</time>
+      {signer && <p className="event-signer" data-tone={signer.tone}>{signer.text}</p>}
+      {timed ? <time dateTime={when.toISOString()} title={when.toLocaleString()}>{formatTime(when)}</time> : <time className="muted">Time unknown</time>}
     </article>
   )
 }
@@ -406,12 +412,16 @@ export function Workspace({ config, reloadConfiguration, session }) {
   }, [selected, creating])
   const activityEvents = useMemo(() => {
     const actorId = doc?.actors?.[activityActor] ? activityActor : ''
-    return sortEvents(Object.values(doc?.operations ?? {}).filter(event => {
+    const attribution = doc?.attribution
+    // Membership records and flagged changes that wrote no entry appear beside operations.
+    const all = [...Object.values(doc?.operations ?? {}), ...recordEvents(attribution), ...reviewOnlyEvents(attribution)]
+    return sortEvents(all.filter(event => {
       if (actorId && event.actorId !== actorId) return false
-      const group = eventGroup(event)
+      if (activityShow === 'review') return needsReview(attribution, event)
+      const group = event.record ? 'members' : event.review ? 'other' : eventGroup(event)
       return activityShow === 'changes' ? group !== 'reads' : group === activityShow
     }))
-  }, [doc?.operations, doc?.actors, activityActor, activityShow])
+  }, [doc?.operations, doc?.actors, doc?.attribution, activityActor, activityShow])
   const activityFocus = useRef(null)
   useEffect(() => {
     if (!activityCutoff && activityEvents.length) {
@@ -516,7 +526,9 @@ export function Workspace({ config, reloadConfiguration, session }) {
     activityFocus.current = activityEvents[visibleCount].operationId
     setActivityCutoff({ timestamp: next.timestamp, operationId: next.operationId })
   }
-  const lookups = { actors, tasks: doc.tasks, veins, goals, comments: doc.comments }
+  const lookups = { actors, tasks: doc.tasks, veins, goals, comments: doc.comments, attribution: doc.attribution ?? null }
+  // Changes whose signer couldn't be confirmed, or that came from a removed machine, are announced on every view.
+  const review = reviewNotice(doc.attribution)
   const openVein = (_element, veinId) => {
     focusAfterView.current = () => viewNav.current?.querySelector('[aria-pressed="true"]')?.focus()
     showVein(veinId)
@@ -573,6 +585,12 @@ export function Workspace({ config, reloadConfiguration, session }) {
       )}
       {connectionError && <div className="notice" role="status"><p>{connectionError.message}</p>
         <button onClick={retryConnection}>Retry connection</button>
+      </div>}
+      {review && <div className="notice warning review-notice" role="status">
+        {review.map(line => <p key={line}>{line}</p>)}
+        {!(view === 'activity' && activityShow === 'review') && <button onClick={() => { setView('activity'); setActivityShow('review'); setActivityCutoff(null) }}>
+          Review changes
+        </button>}
       </div>}
       <nav aria-label="Workspace views" ref={viewNav}>
         <button
@@ -709,7 +727,8 @@ export function Workspace({ config, reloadConfiguration, session }) {
               <span className="muted">Showing {visibleCount.toLocaleString()} of {activityEvents.length.toLocaleString()}</span>
             </div>
             {!activityEvents.length && <p className="empty">
-              {Object.keys(doc.operations).length ? 'No activity matches these filters.' : 'No activity yet.'}
+              {activityShow === 'review' ? 'Every change here is signed by a member machine.'
+                : Object.keys(doc.operations).length ? 'No activity matches these filters.' : 'No activity yet.'}
             </p>}
             {visibleEvents.map((event, index) => {
               const when = new Date(event.timestamp)

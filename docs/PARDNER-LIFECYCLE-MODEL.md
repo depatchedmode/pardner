@@ -478,7 +478,10 @@ signature document (#197).
 
 No action guard, effect, invariant or witness changed. The `ack-before-persist`,
 `stale-ack-accepted` and `lease-before-drain` mutation texts follow the new
-code; what each mutates is unchanged.
+code; what each mutates is unchanged. A later commit in the same change adds
+people's names and each record signer's Actor to `attributionView`, which only
+reads the record store when the board is read; the mapping was re-reviewed and
+accepted again.
 
 Fresh default check: 174614 states, 679456 transitions, all four invariants and
 `ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
