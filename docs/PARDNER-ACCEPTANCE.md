@@ -56,6 +56,10 @@ Chromium contexts, and two separate deterministic agent worker subprocesses:
   a short session. No bearer token passes between machines; a gate that relays
   them sees only signed messages. The local operator token, browser sessions and
   agent credentials authenticate to a laptop's own client only.
+- **Changes:** every Automerge change a client makes is signed by its machine key
+  in the project's signature document, and every client checks the changes it
+  receives. The hub's persistence acknowledgement a laptop waits for covers the
+  heads of both the board and the signature document.
 
 All task mutations go through a client's project API proxy
 (`…/projects/:id/api/automerge/operations`), using the local operator bearer for
@@ -133,7 +137,11 @@ document after enrollment (the hub's Actor registrations) are recorded as the
 baseline and excluded from the acknowledged-operation count. At the end, each replica is
 checked independently for operation ID, Actor, type, full payload, originating
 replica, created task count, final task fields, comment contents/cardinality, and
-handoff comment/mention effects. Only then are snapshot hashes compared.
+handoff comment/mention effects. Every acknowledged operation must also be shown
+as signed by a machine, with no flag for its Actor, on every replica within ten
+seconds of convergence (`attribution` in the timings). Only then are snapshot
+hashes compared; they leave out each replica's own attribution view, which names
+that replica's machine as this computer.
 
 Each agent has a durable SQLite inbox and effect ledger outside the workspace.
 The runner kills workers before acknowledgement and after effects have been saved,

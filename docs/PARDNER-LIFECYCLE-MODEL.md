@@ -79,7 +79,7 @@ and one WebSocket upgrade. Each request records its connection (`none`, `active`
 | `Respond` | yes | `res.json(...)` of the receipt or acknowledgement; `res.once('finish')` | writing the response and the socket becoming idle (keep-alive) or closed are one step |
 | `ReclaimIdle` | yes | `listen()` finish hook: `if (this.stopping) setImmediate(() => server.closeIdleConnections())` | the `setImmediate` callback eventually runs (fair); modeled for any idle connection while stopping, which also covers the idle connections `server.close()` closed itself |
 | `ListenerClosed` | yes | `server.close` callbacks settle (`listenersClosed`) | fires once no connection is active, idle or upgraded; one listener stands for the HTTP and WebSocket listeners, which `stop()` closes together with `Promise.allSettled` |
-| `StoreCloseBegin` | yes | `await this.store.close()` after `listenersClosed`; `closeResources`: `abort()`, `await workspace.queue`, `repo.shutdown()` sets `closing` | `workspace.queue` is already drained because every operation arrives through a drained listener. The upstream `Repo.shutdown()` flush is a no-op once `closing` is set, so the model does not persist anything here |
+| `StoreCloseBegin` | yes | `await this.store.close()` after `listenersClosed`; `closeResources`: `abort()`, `await workspace.queue`, a pending hub-state write settles, `repo.shutdown()` sets `closing` | `workspace.queue` is already drained because every operation arrives through a drained listener. The upstream `Repo.shutdown()` flush is a no-op once `closing` is set, so the model does not persist anything here |
 | `StoreCloseComplete` | yes | `await this.persistenceQueue`, then `lease.close()` and `closed = true` in `finally` | the queue drains before ownership is released |
 | `ReplicaReceive` | yes | `synchronizeAcknowledgement`: first guard `getHeads(doc) == requestedHeads && hasHeads(doc, hubHeads)`; errors only set `lastSyncError` | the response is consumed atomically up to the guard; the local flush that follows is a separate step |
 | `ReplicaAckCommit` | yes | second guard after the local flush; `acknowledgedHeads = requestedHeads` | the guard and the assignment are synchronous; the recorded value is the requested snapshot, never the current heads |
@@ -384,4 +384,127 @@ Fresh default check: 174614 states, 679456 transitions, all four invariants and
 demonstration was rerun: all eight mutations were caught by their implementation
 check, reported as drift and reproduced as a model counterexample, with the
 working tree unchanged. See `trustStageOneIntegrationReview` in
+`docs/evidence/lifecycle-model.json`.
+
+## Membership consent mapping review (2026-11-11)
+
+The mapping records source revision `0ee274a88ebedb53adef35879122593b6dcc9fd2`.
+Membership now counts a certification only with its machine's consent, and a
+person's ID is derived from the key they were admitted with. The only mapped
+change is in `lib/workspace-runtime.js`: the standalone service's throwaway
+genesis names the person ID derived from its one-time key. `standaloneGenesis`
+is a pure record builder called in `init` before the record store, the
+repository or any listener exists, so it touches no request, persistence
+barrier, acknowledgement or shutdown step. No action guard, effect, atomicity
+note, invariant, witness or mutation text changed, and no anchor moved.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught, reported as drift and
+reproduced as a model counterexample, with the working tree unchanged. See
+`membershipConsentReview` in `docs/evidence/lifecycle-model.json`.
+
+## Durable restored-hub state mapping review (2026-11-11)
+
+The mapping records source revision `d20c2a9086d821064481be320afde3a8fa395cb4`.
+A hub that waits after a restore now saves that state durably. In
+`lib/workspace-runtime.js`, `startHubState` writes the waiting state, its fixed
+comparison point and the newest checkpoint seen together with the new file
+identity, in one atomic write before the repository opens; `noteCheckpoint`
+saves a newly learned waiting state or a newer checkpoint before it answers,
+and does nothing once the runtime is stopping; `resumeHub` saves before it
+returns. These writes go through one serialized chain, and `closeResources`
+lets a pending write settle before `repo.shutdown()` and the lease release.
+That is a new anchor in `StoreCloseBegin`; it admits no request and touches no
+document persistence, so its guard and effect are unchanged. In
+`automerge-sync-server.js`, the handshake's screen awaits `noteCheckpoint`; it
+still runs before any welcome and never reaches the Automerge adapter
+(`UpgradeArrive`). The `lease-before-drain` mutation's text follows the new
+`closeResources` body; what it mutates is unchanged. No other action guard,
+effect, atomicity note, invariant or witness changed. The hub's own waiting
+state is outside the model's state; its kill and restart behaviour is checked
+by `test/hub-restore.test.js`.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught, reported as drift and
+reproduced as a model counterexample, with the working tree unchanged. See
+`durableHubStateReview` in `docs/evidence/lifecycle-model.json`.
+
+## Uniform handshake mapping review (2026-11-11)
+
+The mapping records source revision `3549af6a26652e22aac18a027b5e1849ce4cf307`.
+In `automerge-sync-server.js`, `acceptMachine` no longer judges a machine
+before it proves its key: every well-formed hello gets the same reply, and
+membership, the checkpoint comparison, a waiting hub's record exchange and the
+refusal all run in `admit`, after both signatures verify and before any
+welcome. A native upgrade therefore still reaches `registerSyncSession` and the
+Automerge adapter only as a current member (`UpgradeArrive`), and `stop()`
+still terminates it. No action guard, effect, atomicity note, invariant,
+witness or mutation text changed.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught, reported as drift and
+reproduced as a model counterexample, with the working tree unchanged. See
+`uniformHandshakeReview` in `docs/evidence/lifecycle-model.json`.
+
+## Signed changes mapping review (2026-11-11)
+
+The mapping was first recorded at source revision `f514d0b902d3bce17017d599b0511df5005ed045`
+and finally at `63cb8fc74c7939c1ad3407db1db92d0e47291ebe`.
+Every change is now signed by the machine that makes it (`lib/attribution.js`,
+not mapped), and the hub's persistence acknowledgement covers the board and its
+signature document (#197).
+
+- `lib/workspace.js`: `acknowledge(heads, signatureHeads)` refuses unless both
+  are held, then one flush job persists both documents before it answers
+  (`Handle(ack)`, `Respond`).
+- `lib/workspace-runtime.js`: the replica requests both heads. Its first guard
+  also requires the hub's reported signature heads to be held, and its second
+  guard records both requested snapshots, never the current heads
+  (`ReplicaReceive`, `ReplicaAckCommit`). `syncPending` stays true until both
+  are acknowledged, so the model's heads now stand for the pair of documents
+  (`ReplicaEdit`). Writing a signature into the signature document is a
+  deferred local change off the acknowledgement path, like a membership
+  write-back. `closeResources` stops asking the hub for signatures before
+  `abort()`, writes pending signatures into the signature document after the
+  operation queue drains and before `repo.shutdown()`, and closes the
+  signature cache in `finally`, before the lease (`StoreCloseBegin`).
+- `automerge-sync-server.js`: `sync-ack` passes the signature heads; a new
+  signed route answers a member's question about a change's signature.
+  `stop()` destroys connections that never carried a request: an aborted
+  `fetch` can leave one open for three seconds, and it holds no modeled request
+  (`StopBegin`).
+
+No action guard, effect, invariant or witness changed. The `ack-before-persist`,
+`stale-ack-accepted` and `lease-before-drain` mutation texts follow the new
+code; what each mutates is unchanged. A later commit in the same change adds
+people's names and each record signer's Actor to `attributionView`, which only
+reads the record store when the board is read; the mapping was re-reviewed and
+accepted again. A third commit paces the signature document's background saves
+to at most one a second, by wrapping `storage.saveDoc` for that document only:
+explicit flushes (`Workspace.apply` for the board, `acknowledge` and the
+replica's acknowledgement for both documents, and `DurableRepo.shutdown`, whose
+flush persists every document directly) never pass through it, and
+`closeResources` clears its timer before `abort()` returns, so a pending one is
+dropped like any background save once closing. It also starts background
+checking only after `initialized` is set. Neither touches the board's
+persistence, an acknowledgement guard or shutdown ordering; the mapping was
+re-reviewed and accepted again. A later commit passes each record's position to
+`recordEntry`, again only when the board is read, and the mapping was accepted
+once more. The last one changes `lib/durable-repo.js`: Repo 2.5.1 throttles
+sync-state saves per peer, not per document, so with a board and a signature
+document per peer only one document's state in each window was saved. DurableRepo
+now also saves each document's latest sync state, at most once a second per
+document and peer, through the same `background()` path, which drops it once closing. These
+are background jobs of a kind the model already has (`SyncUp`, `PersistRun`); no
+request waits on them, and no guard or effect changed. The mapping was accepted
+again.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught by their implementation
+check, reported as drift and reproduced as a model counterexample, with the
+working tree unchanged. See `signedChangesReview` in
 `docs/evidence/lifecycle-model.json`.

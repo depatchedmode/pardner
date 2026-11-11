@@ -183,6 +183,8 @@ test('offline restart preserves projects, identity, credentials and operation re
   await new Promise(resolve => badRuntime.child.once('exit', resolve))
   const independent = await call(`/projects/${local.id}/api/automerge/operations`, { type: 'task.create', operationId: 'independent', payload: { title: 'Other project works' } })
   assert.equal(independent.savedLocally, true)
+  // Stopped before Bob's fixture removes the directory this client uses: after hooks run in the order they were added.
+  await restarted.stop()
 })
 
 test('recipient proof, removal and changed retries cannot recover another admission', { timeout: 45000 }, async t => {
@@ -357,6 +359,39 @@ test('agents are named after their owner and harness; a different name for an en
   assert.deepEqual(agentNames(priya.client.project(project.id).people), ['Marcus Lee’s Claude', 'Overnight Claude', 'Priya Raman’s Codex'])
   const labels = (await priya.api(`/projects/${project.id}`)).result.membership.agentNames.map(label => label.displayName).sort()
   assert.deepEqual(labels, ['Marcus Lee’s Claude', 'Overnight Claude', 'Priya Raman’s Codex'])
+})
+
+test('a machine paired with no agent name given labels its agent with the name that agent was enrolled under', { timeout: 60000 }, async t => {
+  const priya = await fixture(t, 'Priya Raman', { agent: {} })
+  const { result: { project } } = await priya.api('/projects', { name: 'Labels', operationId: 'create' })
+  const machine = async setupAgent => {
+    const directory = await mkdtemp(join(tmpdir(), 'pardner-agent-'))
+    const client = await startClient({ directory, port: 0, setupAgent })
+    t.after(async () => { await client.stop(); await rm(directory, { recursive: true, force: true }) })
+    const call = async (path, body) => {
+      const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { Authorization: `Bearer ${client.registry.read().operatorToken}`,
+        'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+      const result = await response.json()
+      if (!response.ok) throw Object.assign(new Error(JSON.stringify(result)), { code: result.code })
+      return result
+    }
+    return { client, call }
+  }
+  const pair = async (box, operationId) => {
+    const { result: invitation } = await priya.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId })
+    await joinApproved({ join: body => box.call('/join', body), approver: priya.call, invitation: invitation.invitation, operationId })
+  }
+  // Priya's Claude agent is enrolled from one machine under a name of its own.
+  await pair(await machine({ harnessId: 'anthropic-claude-code', name: 'Overnight Claude' }), 'first')
+  // A second machine runs the same agent and gives no name.
+  const second = await machine({ harnessId: 'anthropic-claude-code' })
+  await pair(second, 'second')
+  const { actors, membership } = (await priya.api(`/projects/${project.id}`)).result
+  const actor = Object.values(actors).find(entry => entry.kind === 'agent' && entry.harnessId === 'anthropic-claude-code')
+  assert.equal(actor.displayName, 'Overnight Claude')
+  const label = membership.agentNames.find(entry => entry.machineId === second.client.registry.machineKey.machineId)
+  assert.equal(label.id, actor.id)
+  assert.equal(label.displayName, 'Overnight Claude', 'the new machine’s signed label agrees with the Actor')
 })
 
 test('reopening with a new browser principal replays setup instead of allocating projects or recipient proofs', { timeout: 30000 }, async t => {
@@ -656,14 +691,19 @@ test('a member asking a hub without --public-url is told the hub must be restart
   alice.client.registry.update(state => { state.publicUrl = null })
   await alice.client.stop()
   const hub = await startClient({ directory: alice.directory })
-  t.after(() => hub.stop())
-  assert.equal(hub.gatewayUrl, hub.url)
-  const { result, response } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'device', operationId: 'device' }, { failure: true })
-  assert.equal(response.status, 409); assert.equal(result.code, 'PUBLIC_URL_REQUIRED')
-  assert.match(result.error, /^A My device invitation is used on another computer, but this project's hub \(the computer that started the project, where its invitations are issued\) has no public address/)
-  assert.ok(result.error.includes(`would point to ${hub.url}, which only the hub's computer can reach. Restart the hub's client with \`pardner client serve --public-url <https origin>\``), result.error)
-  const { result: agent } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'agent' })
-  assert.equal(invitationData(agent.invitation).endpoint, `${hub.url}/pardner/client/v1/enroll`)
+  // Stopped before the fixture removes this directory: after hooks run in the order they were added, so a hook here
+  // would run after the removal, which then races the running client and can leave it running.
+  try {
+    assert.equal(hub.gatewayUrl, hub.url)
+    const { result, response } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'device', operationId: 'device' }, { failure: true })
+    assert.equal(response.status, 409); assert.equal(result.code, 'PUBLIC_URL_REQUIRED')
+    assert.match(result.error, /^A My device invitation is used on another computer, but this project's hub \(the computer that started the project, where its invitations are issued\) has no public address/)
+    assert.ok(result.error.includes(`would point to ${hub.url}, which only the hub's computer can reach. Restart the hub's client with \`pardner client serve --public-url <https origin>\``), result.error)
+    const { result: agent } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'agent' })
+    assert.equal(invitationData(agent.invitation).endpoint, `${hub.url}/pardner/client/v1/enroll`)
+  } finally {
+    await hub.stop()
+  }
 })
 
 test('joining names an unreachable loopback invitation address, while a reachable hub that is down still advises retry', { timeout: 45000 }, async t => {
@@ -741,8 +781,9 @@ test('identity, harness and revocation refusals name the actual problem', { time
 })
 
 test('enrollment normalises agent and device metadata at the boundary and leaves a refused invitation usable', { timeout: 30000 }, async t => {
-  const { generateMachineKey } = await import('../lib/machine-key.js')
+  const { generateMachineKey, personIdFor } = await import('../lib/machine-key.js')
   const { JOIN_DOMAIN, agentNameRecord, joinMac } = await import('../lib/enrollment.js')
+  const { offerHash } = await import('../lib/membership.js')
   const { invitationData } = await import('../lib/client-invites.js')
   const { canonical } = await import('../lib/workspace-schema.js')
   const alice = await fixture(t, 'Alice')
@@ -753,10 +794,10 @@ test('enrollment normalises agent and device metadata at the boundary and leaves
     const response = await fetch(`${alice.client.url}${CLIENT_API}/enroll`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request', ...body }) })
     return { status: response.status, result: await response.json() }
   }
-  const key = generateMachineKey(), personId = '11111111-2222-4333-8444-555555555555'
+  const key = generateMachineKey(), personId = personIdFor(key.publicKey)
   // A request signed and keyed correctly, but with metadata the joining client did not normalise.
   const signed = fields => {
-    const request = { v: 1, projectId: offer.projectId, offerId: offer.offerId, purpose: 'human', personId, machineId: key.machineId, publicKey: key.publicKey,
+    const request = { v: 2, projectId: offer.projectId, offerId: offer.offerId, offerHash: offerHash(offer), purpose: 'human', personId, machineId: key.machineId, publicKey: key.publicKey,
       device: { id: '66666666-7777-4888-9999-aaaaaaaaaaaa', name: 'Carol laptop' }, agent: setupAgent({ harnessId: 'openai-codex', name: 'Beta' }),
       profile: { name: 'Carol', email: 'carol@example.test' }, ...fields }
     const body = { ...request, signature: key.sign(JOIN_DOMAIN, Buffer.from(canonical(request))).toString('base64url') }

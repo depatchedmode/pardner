@@ -10,9 +10,12 @@ enrolls the acceptance topology through approvals.
 
 - **Library.** Offers verify only under their issuing machine's key; a join
   request verifies under its own key and its MAC only under the invitation
-  secret; codes are eight digits that change with the offer, the key and the
-  nonce. Agents-only machines act only as agents they named for their own
-  person. The gate's refusal reasons, mayAuthor and the role chain's head.
+  secret, names the hash of its offer, and for a new person names the person ID
+  derived from its key; codes are eight digits that change with the offer, the key
+  and the nonce. An approved request becomes a certification embedding the offer
+  and the joiner's consent. Agents-only machines act only as agents they named for
+  their own person and sign no other kind of record. The gate's refusal reasons,
+  mayAuthor and the role chain's head.
 - **Human invitation.** The joiner waits with no code and no project, sees the
   approver's code once the request is opened, and a wrong code is refused. The
   approval admits a member whose machine and agent label appear in the records.
@@ -23,7 +26,10 @@ enrolls the acceptance topology through approvals.
   use, and five pending requests per offer.
 - **Pairing.** By the person's own machine, by the owner for someone who lost
   every machine, and refusals for a member pairing into another person's
-  identity, through the hub's routes and at its gate.
+  identity, through the hub's routes and at its gate. A paired computer can't
+  start a project or join another as a new person. A machine paired with no agent
+  name labels its agent with the name it was enrolled under
+  (`test/client-onboarding.test.js`).
 - **Roles.** A member cannot invite people, an admin cannot offer the admin role,
   only the owner changes roles, and a demoted admin cannot admit anyone.
 - **Removal.** The hub refuses the removed machine's signed requests and handshake,
@@ -35,7 +41,8 @@ enrolls the acceptance topology through approvals.
   captured signed request fails when replayed; a bearer token is refused; the
   joiner refuses a hub machine that is not a member; removal closes live sync and
   signed sessions; two copies of one machine are reported; a restored hub waits
-  and resumes. `test/client-local-admission.test.js`: writes check local records
+  and resumes; an unproven party gets the same answer for an unknown, a removed and
+  a member's key. `test/client-local-admission.test.js`: writes check local records
   with no hub request.
 - **Re-admission.** A removed machine key and a removed person's directory are
   refused with advice before taking a place; a fresh directory pairs as a new
@@ -43,6 +50,7 @@ enrolls the acceptance topology through approvals.
 - **Lifecycle.** `test/lifecycle-conformance.test.js` observes that the record
   gate answers only after the storage barrier.
 
-Not covered: separate physical machines, a hostile modified client writing records
-straight into the document (harvested as history, without the role check), and
-power-loss durability.
+Not covered: separate physical machines, and power-loss durability. A hostile
+modified client writing records straight into the document is covered for
+consent, person IDs and agents-only authority (`test/membership-harvest.test.js`);
+such records are still harvested without the current-role check.

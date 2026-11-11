@@ -4,7 +4,7 @@ import { createHash, sign } from 'node:crypto'
 import { chmod, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { generateMachineKey, loadMachineKey, machineIdentity, MACHINE_KEY_FILE, rawPublicKey, saveMachineKey, verify } from '../lib/machine-key.js'
+import { generateMachineKey, loadMachineKey, machineIdentity, MACHINE_KEY_FILE, PERSON_ID, personIdFor, rawPublicKey, saveMachineKey, verify } from '../lib/machine-key.js'
 
 const MEMBERSHIP_DOMAIN = 'pardner/member/v1'
 
@@ -20,6 +20,19 @@ test('machine identity hashes raw Ed25519 bytes, encodes RFC 4648 base32, and ex
   assert.match(key.machineId, /^machine-[a-z2-7]{26}$/)
   assert.deepEqual(key.actorIdPrefix, digest.subarray(0, 16))
   assert.deepEqual(machineIdentity(key.publicKey), { machineId: key.machineId, actorIdPrefix: key.actorIdPrefix })
+})
+
+test('a person ID is a labelled hash of the raw public key of the machine the person was admitted with', () => {
+  const key = generateMachineKey()
+  const digest = createHash('sha256').update('pardner/person/v1').update(rawPublicKey(key.publicKey)).digest()
+  const bits = [...digest].map(byte => byte.toString(2).padStart(8, '0')).join('')
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz234567'
+  const base32 = bits.match(/.{1,5}/g).map(group => alphabet[parseInt(group.padEnd(5, '0'), 2)]).join('')
+  assert.equal(personIdFor(key.publicKey), `person-${base32.slice(0, 26)}`)
+  assert.match(personIdFor(key.publicKey), PERSON_ID)
+  assert.notEqual(personIdFor(key.publicKey).slice('person-'.length), key.machineId.slice('machine-'.length), 'the label separates it from the machine ID')
+  assert.notEqual(personIdFor(generateMachineKey().publicKey), personIdFor(key.publicKey))
+  assert.throws(() => personIdFor('invalid'))
 })
 
 test('signatures use the exact domain prefix and cannot cross protocol domains', () => {

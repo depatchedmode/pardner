@@ -1,6 +1,6 @@
 # Pardner local service and CLI
 
-The default service and executable now use the schema 7 workspace. Human and
+The default service and executable now use the schema 8 workspace. Human and
 agent Actors author through the same local HTTP operations. See the
 [implementation evidence](PARDNER-EVIDENCE.md) for tested candidates and limitations.
 
@@ -52,6 +52,7 @@ Joining and membership use signed records ([client guide](PARDNER-CLIENT.md#invi
 | `client role --project ID --person PERSON_ID --role admin\|member --operation-id ID` | The owner signs `member.role`, naming the role record it replaces |
 | `client resume --project ID` | On the computer that hosts the project: confirms that no machine holds newer state than this restored hub, so it serves other machines again ([recovery](PARDNER-CLIENT-RECOVERY.md#a-restored-hub)) |
 | `client people --project ID [--json]` | Lists, as text, each person with their role, who let them in, their machines (short ID, this machine, hosting the project, agents only, online or last seen), agents and person ID, then removed people and machines with who removed them. `--json` prints the same view as data |
+| `client review --project ID [--json]` | Lists, as text, the changes that need review: unattributed changes (no valid signature by a member machine, with the reason and the machine that relayed it), changes made by a removed machine, and changes claiming an Actor their machine may not act as, each with the Activity entries it wrote, then any equivocation with the machine it names. Change hashes appear only as details. `--json` prints `changes` and `equivocations` as data |
 | `client leave --project ID --operation-id ID` | Signs `member.remove` for this machine's own person: every machine of theirs loses access. The owner can't leave |
 | `client profile --project ID --name NAME --email EMAIL --operation-id ID` | Signs a `profile` record so every member sees the new name and email; this computer also keeps them for later projects. Agent names don't change |
 | `client invites --project ID [--limit N] [--offset N]` | Lists invitations newest first (10 by default, at most 50 at a time), with who issued each and when, its state, and who used or revoked it |
@@ -169,7 +170,9 @@ schema 6 adds the signed project genesis and membership records, and derives the
 workspace ID from the genesis. Schema 7 stores every string as an immutable scalar
 value, including operation payload copies and membership records. Reads remain
 ordinary strings; field-level authored alternatives, explicit resolution and retry
-identity are unchanged. Earlier directories must be preserved and replaced with a fresh workspace; all
+identity are unchanged. Schema 8 moves membership records to version 2: each
+admission or pairing carries the joining machine's signed consent, and person IDs
+are derived from machine keys. Earlier directories must be preserved and replaced with a fresh workspace; all
 services participating in a workspace must use the same schema version.
 
 ## Read, edit, and hand off
@@ -219,7 +222,7 @@ No inspection or retry repairs/replays the conflicting mutations. Ordinary field
 resolution does not resolve operation integrity. Same-field collisions also
 require explicit field resolution.
 
-This identity format requires schema 7 on every service. Older workspace data is
+This identity format requires schema 8 on every service. Older workspace data is
 preserved and rejected as incompatible; do not overwrite or automatically migrate
 it. Enroll a new workspace using compatible services.
 

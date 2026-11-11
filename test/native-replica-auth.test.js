@@ -73,7 +73,8 @@ it('a non-member machine is refused and served nothing, on the sync socket and o
     await assert.rejects(initiateHandshake(socket, { key: project.stranger, projectId: project.projectId, route: nativeUrl(server), role: 'replica' }),
       { code: 'NOT_MEMBER' })
     assert.equal((await closed)[0], 4403)
-    assert.deepEqual(frames.map(frame => frame.type), ['refused'], 'no reply, records or document data reach a stranger')
+    // A stranger proves its own key and is then refused; only the handshake reply reached it, no records or document data.
+    assert.deepEqual(frames.map(frame => frame.type), ['hello-reply', 'refused'])
     const session = await signedRequest(project.stranger, { projectId: project.projectId, route: httpRoute(server) }, '/automerge/sync-ack',
       { workspaceId: project.projectId, heads: [] })
     assert.equal(session.status, 403); assert.equal(session.result.code, 'NOT_MEMBER')
@@ -211,7 +212,7 @@ it('a removed machine is told who removed it only once it proves its key, on the
     const server = await hub()
     const removed = project.keys[0]
     await server.store.addRecords([project.remove(removed)])
-    const expected = { removal: { kind: 'machine', left: false, by: { personId: 'person-owner', name: 'Owner' } } }
+    const expected = { removal: { kind: 'machine', left: false, by: { personId: project.ownerId, name: 'Owner' } } }
     // The removed machine itself finishes the signatures and is refused with who removed it (#154).
     const { socket } = await rawSocket(server)
     const refused = await initiateHandshake(socket, { key: removed, projectId: project.projectId, route: nativeUrl(server), role: 'replica' }).catch(error => error)
@@ -238,6 +239,33 @@ it('a removed machine is told who removed it only once it proves its key, on the
     const hello = await new SessionClient({ key: impostor, projectId: project.projectId, route: httpRoute(server), send, knownRecords: async () => project.all })
       .request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } }).catch(error => error)
     assert.equal(hello.details, undefined, 'an impostor is told nothing about the removal over HTTP either')
+    assert.equal(server.sessions.active.size, 0)
+  })
+})
+
+it('an unproven party gets the same answer whether the key it presents is unknown, removed or a member’s, on the socket and over HTTP', async () => {
+  await withHub(async ({ project, hub }) => {
+    const server = await hub()
+    const [removed, current] = project.keys
+    await server.store.addRecords([project.remove(removed)])
+    // Each presents a public key and signs with a different private key, so none proves the key it names.
+    const posing = key => ({ machineId: key.machineId, publicKey: key.publicKey, sign: project.stranger.sign.bind(project.stranger) })
+    const unknown = (await import('../lib/machine-key.js')).generateMachineKey()
+    const answers = []
+    for (const key of [unknown, removed, current]) {
+      const { socket, frames } = await rawSocket(server)
+      const closed = once(socket, 'close')
+      const error = await initiateHandshake(socket, { key: posing(key), projectId: project.projectId, route: nativeUrl(server), role: 'replica' }).catch(failure => failure)
+      const [code] = await closed
+      const http = await signedRequest(posing(key), { projectId: project.projectId, route: httpRoute(server) }, '/automerge/sync-ack',
+        { workspaceId: project.projectId, heads: [] })
+      answers.push({ frames: frames.map(frame => [frame.type, frame.code ?? null, frame.details ?? null]), error: [error.code, error.details ?? null], close: code,
+        http: [http.status, http.result.code, http.result.details ?? null] })
+    }
+    assert.deepEqual(answers[1], answers[0], 'a removed machine’s key looks like an unknown one until it is proved')
+    assert.deepEqual(answers[2], answers[0], 'so does a current member’s key')
+    assert.deepEqual(answers[0].frames.map(([type]) => type), ['hello-reply', 'refused'], 'the reply carries no records or document data')
+    assert.equal(server.syncSessions.size, 0)
     assert.equal(server.sessions.active.size, 0)
   })
 })

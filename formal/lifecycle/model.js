@@ -132,8 +132,9 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: false,
     maps: [
       { file: WORKSPACE, anchor: 'this.queue = result.catch(() => {})', note: 'replica-local execute; its own local-save barrier is the same apply() path modeled by Handle(op)' },
-      { file: RUNTIME, anchor: "syncPending: !savedLocally || (this.role === 'replica' && canonical(heads) !== canonical(this.acknowledgedHeads))" },
+      { file: RUNTIME, anchor: "syncPending: !savedLocally || (this.role === 'replica' && (canonical(heads) !== canonical(this.acknowledgedHeads) || signaturesUnacknowledged))", note: 'heads stand for the board and its signature document together; a replica edit is pending until the hub acknowledges both' },
       { file: RUNTIME, anchor: 'for (const record of missing) doc.membership[record.recordId] = storageValue(record)', note: 'a membership write-back is a local change without a request, on a replica or the hub; it only advances heads, and every acknowledgement still flushes first' },
+      { file: RUNTIME, anchor: 'if (signatures) this.startAttribution(handle, signatures)', note: 'every local change is signed as it is made (lib/attribution.js) and its signature written to the signature document by a deferred local change; that only advances the signature heads, off the acknowledgement path' },
     ],
     apply: state => (state.done || state.replica.r >= bounds.replicaEdits ? [] : [{ next: { ...state, replica: { ...state.replica, r: state.replica.r + 1 } } }]),
   })
@@ -176,6 +177,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     maps: [
       { file: SERVER, anchor: 'this.stopping = true', note: 'set synchronously before any await in stop()' },
       { file: SERVER, anchor: '// Stop both listeners before draining upgraded sockets and in-flight requests.', note: 'server.close() refuses new connections and closes idle ones immediately' },
+      { file: SERVER, anchor: 'for (const socket of this.unusedSockets ?? []) socket.destroy()', note: 'a connection that never carried a request holds no modeled request; ending it changes no request state' },
       { file: SERVER, anchor: 'for (const client of this.nativeWsServer.clients) client.terminate()', note: 'accepted WebSocket clients are terminated' },
     ],
     apply: state => {
@@ -222,9 +224,10 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
   each('ack', (request, index) => action(`Handle(${request.id})`, {
     fair: true,
     maps: [
-      { file: RUNTIME, anchor: 'return this.workspace.acknowledge(heads)', note: 'no initialized/aborted guard on this path' },
+      { file: RUNTIME, anchor: 'return this.workspace.acknowledge(heads, signatureHeads)', note: 'no initialized/aborted guard on this path' },
       { file: WORKSPACE, anchor: 'if (!hasHeads(this.handle.doc(), heads)) return { acknowledged: false }' },
-      { file: WORKSPACE, anchor: 'return { acknowledged: true, acknowledgedHeads: heads, hubHeads: [...this.repo.persistedHeads.get(this.handle.documentId)] }' },
+      { file: WORKSPACE, anchor: 'if (signatureHeads && !(this.signatures && hasHeads(this.signatures.doc(), signatureHeads))) return { acknowledged: false }', note: 'the same guard for the signature document: both components of the modeled heads must be held' },
+      { file: WORKSPACE, anchor: 'await this.repo.flush(this.documents())\n    return { acknowledged: true', note: 'one flush job covers both documents' },
     ],
     apply: state => {
       const current = state.requests[index]
@@ -265,7 +268,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
   each('ack', (request, index) => action(`Respond(${request.id})`, { fair: true, maps: respondMaps(), apply: state => respond(state, index) }))
   function respondMaps() {
     return [
-      { file: SERVER, anchor: 'res.json(await this.store.acknowledge(req.body?.workspaceId, req.body?.heads))' },
+      { file: SERVER, anchor: 'res.json(await this.store.acknowledge(req.body?.workspaceId, req.body?.heads, req.body?.signatureHeads ?? null))' },
       { file: SERVER, anchor: 'res.json(await this.store.addRecords(req.body?.records))', note: 'the gate answers only after its flush' },
       { file: WORKSPACE, anchor: 'result: plain(event.result), replayed: prepared.replayed, savedLocally: true,' },
       { file: SERVER, anchor: "res.once('finish', () => {", note: 'response completion; keep-alive sockets become idle' },
@@ -307,6 +310,8 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
       { file: RUNTIME, anchor: 'this.stopController.abort()' },
       { file: RUNTIME, anchor: 'await this.workspace?.queue', note: 'operation queue is already empty: every operation and record gate request arrives through a drained listener' },
       { file: RUNTIME, anchor: 'await this.harvests', note: 'a pending membership harvest settles before the repo closes; it admits no request' },
+      { file: RUNTIME, anchor: 'this.attribution?.close()', note: 'pending signatures are written into the signature document in memory, after the operation queue drained; it admits no request, and each signature is already in the signature cache' },
+      { file: RUNTIME, anchor: 'await this.hubStateWrites?.catch(() => {})', note: 'a pending write of the hub’s own waiting state settles before the repo closes and the lease is released; it admits no request' },
       { file: REPO, anchor: 'this.closing = true' },
     ],
     apply: state => {
@@ -333,7 +338,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
   each('ack', (request, index) => action(`ReplicaReceive(${request.id})`, {
     fair: true,
     maps: [
-      { file: RUNTIME, anchor: 'if (canonical(getHeads(doc)) === canonical(requestedHeads) && hasHeads(doc, receipt.hubHeads)) {', note: 'first guard, before the local flush' },
+      { file: RUNTIME, anchor: 'if (canonical(getHeads(doc)) === canonical(requestedHeads) && hasHeads(doc, receipt.hubHeads) && signaturesHeld) {', note: 'first guard, before the local flush; the hub’s reported heads must be held for both documents' },
       { file: RUNTIME, anchor: 'if (!this.stopController.signal.aborted) this.lastSyncError = error.message', note: 'rejected or failed acknowledgements only record an error' },
     ],
     apply: state => {
@@ -350,7 +355,10 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
 
   each('ack', (request, index) => action(`ReplicaAckCommit(${request.id})`, {
     fair: true,
-    maps: [{ file: RUNTIME, anchor: 'if (canonical(getHeads(this.workspace.handle.doc())) === canonical(requestedHeads)) {\n            this.acknowledgedHeads = requestedHeads', note: 'second guard after the local flush; records the requested snapshot, not the current heads' }],
+    maps: [
+      { file: RUNTIME, anchor: 'if (canonical(getHeads(this.workspace.handle.doc())) === canonical(requestedHeads)) {\n            this.acknowledgedHeads = requestedHeads', note: 'second guard after the local flush; records the requested snapshot, not the current heads' },
+      { file: RUNTIME, anchor: 'if (signatures) this.acknowledgedSignatureHeads = requestedSignatureHeads', note: 'the signature document’s requested snapshot likewise, never its current heads' },
+    ],
     apply: state => {
       if (state.done || state.inflight?.req !== index || state.inflight.phase !== 'flushing') return []
       const current = state.requests[index]

@@ -37,7 +37,7 @@ const DEFAULT_WS_PORT = 8005
 const NATIVE_AUTOMERGE_WS_PATH = '/automerge'
 const REQUEST_LIMIT = '100kb'
 /** Routes another machine may call with a signed request instead of the local API token. */
-const MACHINE_ROUTES = new Set(['/automerge/sync-ack'])
+const MACHINE_ROUTES = new Set(['/automerge/sync-ack', '/automerge/attribution'])
 /** How long a second sync session for one machine waits for the first to answer a ping before the first is presumed gone. */
 const DUPLICATE_PROBE_MS = 3000
 const HUB_WAITING_MESSAGE = 'This hub was restored or fell behind, and waits to catch up with a current member machine before it serves another machine. '
@@ -137,6 +137,8 @@ class AutomergeSyncServer {
     // otherwise they are this service's own listener addresses.
     this.machineRoutes = options.machineRoutes ?? null
     this.syncSessions = new Map()
+    // The machine behind each admitted native socket, so a change's deliverer can be named (lib/attribution.js).
+    this.socketMachines = new WeakMap()
     this.duplicates = new Map()
     this.allowInsecureLocal = options.allowInsecureLocal ?? env.PARDNER_ALLOW_INSECURE_LOCAL === '1'
     this.allowLegacyWsQueryToken = options.allowLegacyWsQueryToken ?? env.PARDNER_ALLOW_LEGACY_WS_QUERY_TOKEN === '1'
@@ -187,10 +189,12 @@ class AutomergeSyncServer {
     this.store.docHandle.on('change', this.onDocumentChange)
     this.store.on?.('status', this.onRuntimeStatus)
     this.store.on?.('membership', this.onMembership)
+    // A change's signature state moved (pending, attributed, unattributed): the board is shown again.
+    this.store.on?.('attribution', this.onDocumentChange)
+    this.store.peerMachine = peerId => this.socketMachines.get(this.automergeWsAdapter?.sockets?.[peerId]) ?? null
     this.sessions = this.store.role === 'hub' && this.store.machineKey ? new SessionServer({ key: this.store.machineKey,
       projectId: this.store.manifest.workspaceId, acceptRoute: route => this.routes().http.includes(route),
-      member: machineId => this.memberKey(machineId), former: machineId => this.formerKey(machineId),
-      refusal: (machineId, proven) => this.notMember(machineId, proven),
+      member: machineId => this.memberKey(machineId), refusal: machineId => this.notMember(machineId),
       welcome: () => {
         if (this.store.hubStatus()?.waiting) throw new HandshakeError('HUB_WAITING', HUB_WAITING_MESSAGE)
         return { records: this.store.records.all(), checkpoint: this.store.checkpoint() }
@@ -250,6 +254,15 @@ class AutomergeSyncServer {
 
   async listen(server, port, host) {
     this.validateListenerHost(host)
+    // Connections that never carried a request hold no admitted work; stop() ends them (see unusedSockets).
+    this.unusedSockets ??= new Set()
+    server.on('connection', socket => {
+      this.unusedSockets.add(socket)
+      socket.once('close', () => this.unusedSockets.delete(socket))
+    })
+    const used = req => this.unusedSockets.delete(req.socket)
+    server.on('upgrade', used)
+    server.on('request', used)
     server.on('request', (_req, res) => {
       res.once('finish', () => {
         // A keep-alive socket whose accepted response finishes after stop() began must not hold shutdown
@@ -270,9 +283,13 @@ class AutomergeSyncServer {
     const listenersClosed = Promise.allSettled([
       this.closeServer(this.wsHttpServer), this.closeServer(this.httpServer),
     ])
+    // A client that opened a connection and never sent a request (an aborted fetch leaves one in its pool for
+    // seconds) would otherwise hold the listener open; such a connection carries no admitted request.
+    for (const socket of this.unusedSockets ?? []) socket.destroy()
     if (this.onDocumentChange) this.store.docHandle?.off('change', this.onDocumentChange)
     if (this.onRuntimeStatus) this.store.off?.('status', this.onRuntimeStatus)
     if (this.onMembership) this.store.off?.('membership', this.onMembership)
+    if (this.onDocumentChange) this.store.off?.('attribution', this.onDocumentChange)
     for (const client of this.connectedClients) {
       try {
         client.terminate()
@@ -465,11 +482,6 @@ class AutomergeSyncServer {
     return this.store.records.membership().machines.find(machine => machine.id === machineId)?.publicKey ?? null
   }
 
-  /** The key a removed machine held, so it can prove it before it is told of its removal; else null. */
-  formerKey(machineId) {
-    return this.store.records.membership().formerMachines?.find(machine => machine.id === machineId)?.publicKey ?? null
-  }
-
   /** The machine a signed request comes from; refused while this hub waits after a restore. */
   verifyMachine(request) {
     if (!this.sessions) throw new HandshakeError('NO_MACHINES', 'This service serves no other machine. Host projects with pardner client.')
@@ -479,34 +491,31 @@ class AutomergeSyncServer {
 
   /**
    * Admits another machine on a native socket: the handshake, then the
-   * Automerge adapter. Only a current member machine is welcomed, and it gets
-   * the records only after both signatures verify. While this hub waits after
-   * a restore, any machine that proves its key has its records merged first,
-   * since it may have been admitted after the backup; then only a member is
-   * welcomed, and only a member that saw a later state of this hub vouches
-   * for catching up. Every other machine is refused.
+   * Automerge adapter. Every well-formed hello is answered alike, and the
+   * machine is judged only once both signatures verify, so an unproven party
+   * cannot tell which keys this project knows. Only a current member machine
+   * is welcomed and gets the records. While this hub waits after a restore,
+   * any machine that proves its key has its records merged first, since it
+   * may have been admitted after the backup; then only a member is welcomed,
+   * and only a member that saw a later state of this hub vouches for catching
+   * up. Every other machine is refused.
    */
   async acceptMachine(ws, req) {
     ws.isAlive = true
     ws.on('pong', () => { ws.isAlive = true })
-    let vouches = false
     try {
       const { initiator } = await respondHandshake(ws, { key: this.store.machineKey, projectId: this.store.manifest.workspaceId, role: 'hub',
         acceptRoute: route => this.routes().ws.includes(route),
-        screen: hello => {
-          vouches = this.store.noteCheckpoint(hello.checkpoint)
-          // A removed machine holding its key finishes the signatures, so that only it is told who removed it (admit).
-          const { machineId, publicKey } = hello.initiator
-          if (!this.store.hubStatus()?.waiting && this.memberKey(machineId) !== publicKey && this.formerKey(machineId) !== publicKey) throw this.notMember(machineId)
-        },
         admit: async ({ hello, requestMembership }) => {
+          const { machineId, publicKey } = hello.initiator
+          const vouches = await this.store.noteCheckpoint(hello.checkpoint)
           if (this.store.hubStatus()?.waiting) {
             this.store.admitRecords(await requestMembership())
-            if (this.memberKey(hello.initiator.machineId) !== hello.initiator.publicKey) throw this.notMember(hello.initiator.machineId)
+            if (this.memberKey(machineId) !== publicKey) throw this.notMember(machineId)
             if (!vouches) throw new HandshakeError('HUB_WAITING', HUB_WAITING_MESSAGE)
-            await this.store.resumeHub({ machineId: hello.initiator.machineId })
+            await this.store.resumeHub({ machineId })
           }
-          if (this.memberKey(hello.initiator.machineId) !== hello.initiator.publicKey) throw this.notMember(hello.initiator.machineId, true)
+          if (this.memberKey(machineId) !== publicKey) throw this.notMember(machineId)
           return { records: this.store.records.all(), checkpoint: this.store.checkpoint(), documentUrl: this.store.manifest.url }
         } })
       // Membership may have changed while the welcome was sent; nothing reaches Automerge unless it still holds.
@@ -524,15 +533,16 @@ class AutomergeSyncServer {
   }
 
   /**
-   * The refusal for a machine that is not a current member. A removed machine
-   * that has proved its key (`proven`) is also told who removed it and whether
-   * its person left (#154), since it may never hold its own removal record.
+   * The refusal for a machine that has proved its key and is not a current
+   * member. A removed machine is told who removed it and whether its person
+   * left (#154), since it may never hold its own removal record. Nothing calls
+   * this before the machine has proved its key.
    */
-  notMember(machineId, proven = false) {
+  notMember(machineId) {
     const membership = this.store.records.membership()
     return membership.removedMachines.includes(machineId)
       ? new HandshakeError('REVOKED', 'This machine was removed from the project; nothing is served to it. Its local data is preserved.',
-        proven ? { removal: removalFor(membership, machineId) } : null)
+        { removal: removalFor(membership, machineId) })
       : new HandshakeError('NOT_MEMBER', 'This machine is not a member of the project; nothing is served to it')
   }
 
@@ -543,6 +553,7 @@ class AutomergeSyncServer {
    * running beside its original: that is reported, not refused (#165).
    */
   registerSyncSession(machineId, ws) {
+    this.socketMachines.set(ws, machineId)
     const live = this.syncSessions.get(machineId) ?? new Set()
     this.syncSessions.set(machineId, live)
     for (const other of live) this.probeDuplicate(machineId, other)
@@ -706,7 +717,7 @@ class AutomergeSyncServer {
     }))
     this.app.use((req, res, next) => this.authMiddleware(req, res, next))
     this.setupControlAPI()
-    const commands = new Set(['/automerge/operations', '/automerge/sync-ack', '/automerge/ws-ticket', '/automerge/membership/records',
+    const commands = new Set(['/automerge/operations', '/automerge/sync-ack', '/automerge/attribution', '/automerge/ws-ticket', '/automerge/membership/records',
       '/automerge/deliveries/claim', '/automerge/deliveries/ack', '/automerge/deliveries/release', '/automerge/machine/verify', '/automerge/hub/resume'])
     this.app.use((req, res, next) => {
       const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
@@ -824,7 +835,14 @@ class AutomergeSyncServer {
 
     this.app.post('/automerge/sync-ack', async (req, res) => {
       try {
-        res.json(await this.store.acknowledge(req.body?.workspaceId, req.body?.heads))
+        res.json(await this.store.acknowledge(req.body?.workspaceId, req.body?.heads, req.body?.signatureHeads ?? null))
+      } catch (error) { operationFailure(res, error) }
+    })
+
+    // A member machine asks the hub about changes it holds no valid signature for (lib/attribution.js).
+    this.app.post('/automerge/attribution', (req, res) => {
+      try {
+        res.json(this.store.attributionStates(req.body?.workspaceId, req.body?.hashes))
       } catch (error) { operationFailure(res, error) }
     })
 

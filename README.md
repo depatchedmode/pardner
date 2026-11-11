@@ -42,14 +42,20 @@ All document strings are immutable scalar values (Automerge `ImmutableString`),
 including field registers, operation history and membership records. Reads expose
 ordinary JavaScript strings. Different-field merging, authored same-field
 alternatives and explicit resolution retain their existing behavior; Pardner
-replaces whole values and does not splice collaborative text. Schema 7 refuses
-earlier storage directories without migrating or deleting them.
+replaces whole values and does not splice collaborative text. Schema 9, whose
+changes are signed by the machine that made them, refuses earlier storage
+directories, and version 4 client directories refuse earlier ones, without
+migrating or deleting them.
 
 Each client directory has its own Ed25519 machine key, created on first start and
 reported as a machine ID by `client status`. Creating a project signs a
 `project.genesis` record with that key, naming the creator as owner, and the
 project ID is derived from that record, so anyone with the ID can check the
-genesis. Signed membership records live in the project document. Each project
+genesis. A person's ID is derived from the public key of the machine they were
+first admitted with (the creator's, for the owner), so nobody can admit a new key
+under an existing person. Further machines join a person only by pairing, and a
+computer paired into someone's identity can't start a project or join another as
+a new person. Signed membership records live in the project document. Each project
 also keeps a grow-only local store of every valid record its client has seen,
 saved before the client uses one. A record later removed from the document still
 counts and is written back. Tampered or foreign records are not stored, and
@@ -63,8 +69,17 @@ the project until approved. Approval follows a confirmation code that both sides
 derive from the offer, the joiner's key and a nonce the approver adds; the
 approving machine signs the admission. A person's own machine, the owner or an
 admin pairs another machine into that person's identity, and pairing never
-creates a second person. Removal (`member.remove`, `machine.remove`) and owner-only
-role changes are records too. Every new record enters through one gate on the hub
+creates a second person. Every admission or pairing record carries the joining
+machine's own signed join request, naming the project, the person and a hash of
+the whole offer, and counts only with it: nobody can certify a key they don't
+hold, and a consent can't be reused for another role or purpose. Certifications
+never displace each other, whatever order records arrive in: a key certified twice
+for one person is one machine, agents-only only if every certification says so; a
+person admitted twice holds the highest role any admission gave; and a key
+certified for two people is removed, while what it signed still counts. An
+agents-only machine signs only its own agents' labels: it can't admit, pair,
+remove, leave, change a role or edit a profile. Removal (`member.remove`,
+`machine.remove`) and owner-only role changes are records too. Every new record enters through one gate on the hub
 that refuses removed machines and signers without the needed role. A removed
 machine or person returns only as a new machine key or a new person. A person
 can leave a project from their own machine; the owner can't.
@@ -76,14 +91,19 @@ a transcript of the project ID, both machine IDs, both fresh nonces, both roles 
 the route dialled, so a recorded or relayed answer is useless elsewhere. The hub
 serves only a current member machine of its records, and a joining machine accepts
 nothing until the hub proves it is a member machine of the project its invitation
-named. Every other request between machines is signed by the machine key within a
+named. The hub answers every handshake alike and judges a machine only once it
+has proved its key, so nobody can learn without the private key whether a key was
+ever certified; a removed machine that proves its key is told who removed it. Every other request between machines is signed by the machine key within a
 short session opened the same way, and a replayed request is refused. When the hub
 applies a removal it closes that machine's sync and signed sessions at once. The
 Actors a machine may act as come from its records. A write checks this machine's
 own records locally and never waits on the hub. A hub restored from a backup, or
 shown by a member that it fell behind, serves no other machine until a member that
 saw a later state has synced its membership, or its operator runs
-`pardner client resume`. Two live sync sessions for one machine are reported.
+`pardner client resume`. That waiting state is saved with the point checkpoints
+are compared against, so it survives any number of restarts and a process kill at
+any step, and an established hub whose state file is missing waits too. Two live
+sync sessions for one machine are reported.
 
 **The People panel** in each board's header lists every person with their role,
 who let them in, their machines (online or last seen where the hub knows it) and
@@ -97,19 +117,64 @@ keeps it listed as removed, says who removed it and how to come back, and is
 never shown as signed out. `client people` gives the same listing as text. Last
 seen is held in the hub's memory only, so it resets when the hub restarts.
 
-What is not enforced yet: **changes are not signed, so a member machine's word is
-taken for who made a change.** Any member may change anything, and the local
-service on the machine that made a change attributes it. Agent grants limit agents
-only on their own machine. Activity entries do not yet show which machine signed a
-change, and nothing flags unattributed changes; both wait for signed changes. A
-member running a modified client could still write a record signed by its own
+**Every change shows which machine made it.** Each Automerge change carries an
+actor ID that starts with its machine's ID and ends with 8 random bytes drawn each
+time the document is loaded, so a restored backup and its original never reuse an
+actor and sequence number. The machine signs each change at once with its key, over
+the project ID and Automerge's change hash. It saves the signature in a local,
+grow-only signature cache before the change can be saved, and writes it into the
+project's signature document, a second document beside the board whose ID every
+member derives from the project ID; that document is saved and synced in the
+background, off the acknowledgement path, and at start-up a machine writes back any
+signature it holds that the document lacks. Every peer applies every change it
+receives, as before, then checks that the signature verifies under the machine the
+actor names and that this machine is or was a member, and keeps each signature it
+verified in its own cache, so deleting an entry from the shared document
+unattributes nothing it already checked. No change is refused, dropped or hidden.
+Activity names each entry's signer, the person and the machine; says "signature
+pending" while a signature may still be on its way; says "unattributed" and names
+the machine that relayed it once the machine that delivered the change has had a
+second on a live connection to send one; and says "made by a removed machine" for a
+signed change that does not come before that machine's removal in the board's
+history. Work from before a removal stays attributed. Membership records appear in
+Activity with their signer. The board announces changes that need review, with a
+filter for them, and `pardner client review` lists them. Two different changes
+signed by one machine with the same actor and sequence number are reported as
+equivocation, naming the machine: Automerge refuses the second, so board changes
+from the peer that carries it stop applying until that machine is removed and its
+copy rebuilt. The hub's persistence acknowledgement covers the heads of both the
+board and the signature document.
+
+What is not enforced: **a member may still change anything**, as in git. Peers
+check who made a change, not whether it was allowed, and people review and undo a
+bad change. **A machine's word is taken for which of its Actors acted:** peers
+verify the machine and flag only a change claiming an Actor that machine is not
+certified for, such as another person's Actor, or a person on an agents-only
+machine; agent grants limit agents only on their own machine. **The sync stream
+after the handshake is protected only by TLS** (#215): whoever terminates TLS in
+front of the hub, such as a reverse proxy or tunnel provider, could relay a
+member's handshake and then inject sync traffic, which peers apply and flag as
+unattributed. Changes to the signature document are not signed themselves: a
+member can delete or overwrite an entry, which unattributes a change only on peers
+that never verified it. A member can also front-run another machine's next change
+with an unsigned change under that machine's actor and sequence number; the real
+change is then refused by Automerge where the forgery arrived first, which is
+reported as a conflicting change, not proven equivocation. Whether a change came
+after its machine's removal is read from the board's history, so a member who
+deletes a removal record from the document can move that point when peers write
+the record back; the machine stays removed either way. A member
+running a modified client could still write a record signed by its own
 machine straight into the document. The hub harvests that
-as history, without the role check, so a demoted admin could still remove a member
-that way; records from a removed machine are refused. Records are enforced only at
+as history, without the current-role check, so a demoted admin could still remove
+a member that way; records from a removed machine are refused. Consent, derived
+person IDs and the agents-only rule are part of computing membership, so they hold
+for such records too. Records are enforced only at
 the hub. A removed machine that synced after a hub's backup was taken, was removed
 while offline, and is the first to reach the restored hub can still be served
 until a member holding the removal connects. Peers do not sync directly, and hub
-routes rely on HTTPS for confidentiality. The rest of the trust rollout remains a
+routes rely on HTTPS for confidentiality. Because the hub answers every hello, any
+party can hold one of its 256 pending HTTP sessions for up to 30 seconds without
+a member's key. The rest of the trust rollout remains a
 [plan](docs/PARDNER-TRUST-PLAN.md).
 
 The [local client onboarding preview](docs/PARDNER-CLIENT.md) adds a private
@@ -135,7 +200,7 @@ identity, so the same Actor can work from more than one machine.
 Local operations are acknowledged only after a disk persistence barrier. Enrolled
 replicas reopen without the hub and reconnect with a fresh machine handshake.
 Member machines are trusted full document writers: their synchronized changes bypass
-operation validation. Ordinary API and Actor credentials authorize only a machine's
+operation validation, and each is attributed to the machine that signed it. Ordinary API and Actor credentials authorize only a machine's
 own API and UI subscriptions; they are never accepted between machines.
 Different-field edits merge; same-field alternatives retain their authors and
 require explicit resolution. A synced indicator requires an explicit hub
@@ -308,9 +373,10 @@ its properties within that model only.
 
 ## Storage and dependencies
 
-A schema 7 directory contains workspace metadata, Automerge storage, the
+A schema 8 directory contains workspace metadata, Automerge storage, the
 grow-only membership record store, an exclusive service lock, and local connection
-settings. The hub additionally holds the SQLite delivery ledger. A client
+settings. The hub additionally holds the SQLite delivery ledger and its own
+waiting state after a restore (`hub-state.json`). A client
 directory also holds its machine key. Client directories and storage directories
 using an earlier schema are refused and left unchanged; choose a fresh directory
 rather than migrating or deleting existing data.

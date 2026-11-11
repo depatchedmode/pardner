@@ -9,9 +9,10 @@ import { startClient } from '../lib/client-service.js'
 import { CLIENT_API, secret } from '../lib/client-identity.js'
 import { invitationData } from '../lib/client-invites.js'
 import { agentNameRecord, buildJoinRequest, confirmationCode, OFFER_TTL_MS } from '../lib/enrollment.js'
-import { generateMachineKey } from '../lib/machine-key.js'
+import { generateMachineKey, personIdFor } from '../lib/machine-key.js'
 import { buildRecord } from '../lib/membership.js'
 import { joinApproved } from '../support/enrollment.js'
+import { forge } from '../support/trust-records.js'
 import { sameComputerRoute } from '../support/client-workspace.js'
 import { handshakeSocket, signedRequest } from '../support/machines.js'
 import { createHello } from '../lib/machine-handshake.js'
@@ -70,7 +71,7 @@ const operation = (person, project, title = 'Work') => person.client.runtime(per
 /** A join request from a throwaway machine key, as a stranger holding a leaked invitation would send it. */
 function strangerRequest(invitation, name = 'Mallory') {
   const { offer, secret: invitationSecret } = invitationData(invitation)
-  const key = generateMachineKey(), personId = randomUUID()
+  const key = generateMachineKey(), personId = offer.purpose === 'human' ? personIdFor(key.publicKey) : offer.personId
   const { request, mac } = buildJoinRequest(key, invitationSecret, { offer, personId, identity: { name, email: `${name.toLowerCase()}@example.test` },
     device: { id: randomUUID(), name: `${name} laptop` }, agent: { harnessId: 'openai-codex', name: `${name} agent` } })
   return { key, offer, body: { action: 'request', request, mac, records: [agentNameRecord(key, offer.projectId, personId, { harnessId: 'openai-codex', name: `${name} agent` })], recipientProof: secret() } }
@@ -219,8 +220,9 @@ test('pairing: a person’s own machine or an admin approves, and nobody else ca
   assert.equal(offered.code, 'FORBIDDEN')
   assert.equal(offered.error, 'Only that person, the owner or an admin can pair a machine into their identity')
   const intruder = generateMachineKey()
-  const forged = buildRecord(carol.client.registry.machineKey, { projectId: project.id, kind: 'machine.add', subject: intruder.machineId,
-    personId: bob.personId, publicKey: intruder.publicKey, approval: {} })
+  // Signed by Carol's machine, without any consent from the intruder's key.
+  const forged = forge(carol.client.registry.machineKey, { v: 2, projectId: project.id, kind: 'machine.add', subject: intruder.machineId,
+    personId: bob.personId, publicKey: intruder.publicKey, offer: {}, joinRequest: {}, approval: {} })
   const submitted = await signed(carol, project, '/records', { records: [forged] })
   assert.equal(submitted.status, 403)
   assert.equal(submitted.result.error, 'Admissions enter only through an approved join request')
@@ -228,6 +230,25 @@ test('pairing: a person’s own machine or an admin approves, and nobody else ca
   const runtime = await alice.client.runtime(alice.client.project(project.id))
   await assert.rejects(runtime.request('/automerge/membership/records', { records: [forged] }), { code: 'RECORD_REFUSED' })
   assert.equal((await membership(alice, project)).machines.some(machine => machine.id === intruder.machineId), false)
+})
+
+test('a person belongs to their first machine: a paired computer cannot start a project or join another as a new person', { timeout: 90000 }, async t => {
+  const alice = await participant(t, 'Alice'), bob = await participant(t, 'Bob')
+  const { project } = await alice.call('/projects', { name: 'First machine', operationId: 'create' })
+  await approve(bob, alice, (await invite(alice, project, 'human')).invitation)
+  const laptop = await participant(t, 'Bob laptop', { identity: false })
+  await approve(laptop, bob, (await invite(bob, project, 'device')).invitation, 'pair')
+  assert.equal(laptop.personId, bob.personId, 'the paired computer holds the person ID of Bob’s first machine')
+  const started = await laptop.fail('/projects', { name: 'Elsewhere', operationId: 'create' })
+  assert.equal(started.code, 'IDENTITY_MISMATCH')
+  assert.match(started.error, /linked to Bob through another of their machines, so it can’t start a project/)
+  const { project: other } = await alice.call('/projects', { name: 'Second', operationId: 'second' })
+  const joined = await laptop.fail('/join', { invitation: (await invite(alice, other, 'human')).invitation, operationId: 'join-other' })
+  assert.equal(joined.code, 'IDENTITY_MISMATCH')
+  assert.match(joined.error, /can’t join a project as a new person/)
+  // Bob's first machine joins the second project as Bob, under the same person ID.
+  await approve(bob, alice, (await invite(alice, other, 'human')).invitation, 'join-second')
+  assert.ok((await membership(alice, other)).people.some(person => person.id === bob.personId))
 })
 
 test('roles: a member cannot invite people, an admin offers only the member role, and only the owner changes roles', { timeout: 90000 }, async t => {
@@ -331,15 +352,20 @@ test('an enrolled replica reopens offline after approval and keeps saving locall
   await alice.client.stop()
   await bob.client.stop()
   const reopened = await startClient({ directory: bob.directory, port: 0 })
-  t.after(() => reopened.stop())
-  const response = await fetch(`${reopened.url}${CLIENT_API}/projects/${project.id}/api/automerge/operations`, { method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${reopened.registry.read().operatorToken}` },
-    body: JSON.stringify({ type: 'task.create', operationId: 'offline', payload: { title: 'Saved with the hub down' } }) })
-  const saved = await response.json()
-  assert.equal(response.status, 200, JSON.stringify(saved))
-  assert.equal(saved.savedLocally, true); assert.equal(saved.syncPending, true)
-  const records = await (await reopened.runtime(reopened.project(project.id))).request('/automerge/membership')
-  assert.ok(records.machines.some(machine => machine.id === reopened.registry.machineKey.machineId), 'the replica holds its own admission record offline')
+  // Stopped before Bob's fixture removes this directory: after hooks run in the order they were added, so a hook
+  // here would run after the removal, which then races the running client and can leave it running.
+  try {
+    const response = await fetch(`${reopened.url}${CLIENT_API}/projects/${project.id}/api/automerge/operations`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${reopened.registry.read().operatorToken}` },
+      body: JSON.stringify({ type: 'task.create', operationId: 'offline', payload: { title: 'Saved with the hub down' } }) })
+    const saved = await response.json()
+    assert.equal(response.status, 200, JSON.stringify(saved))
+    assert.equal(saved.savedLocally, true); assert.equal(saved.syncPending, true)
+    const records = await (await reopened.runtime(reopened.project(project.id))).request('/automerge/membership')
+    assert.ok(records.machines.some(machine => machine.id === reopened.registry.machineKey.machineId), 'the replica holds its own admission record offline')
+  } finally {
+    await reopened.stop()
+  }
 })
 
 test('confirmation codes depend on the offer, the joiner’s key and the nonce', () => {
