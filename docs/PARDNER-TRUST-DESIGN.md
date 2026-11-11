@@ -194,6 +194,11 @@ Decision rule: keep the chosen mechanism and Automerge text if, at 10,000 operat
 - the document opens in under 3 seconds;
 - the README acceptance bounds (6 s offline open, 10 s convergence) still hold with verification on.
 
+Text-storage outcome (#208): the spike crossed this rule. Schema 7 now stores
+all strings as immutable scalar values, with ordinary strings at read boundaries
+and unchanged whole-field conflict semantics. Earlier schemas are refused and
+preserved. Further open-time improvements belong to #209.
+
 **Stage 1: the gate and attribution.** The guarantee: only member machines sync, and every change shows which machine made it. Members may change anything.
 1. **Keys, records and signed changes.**
    - Machine keys, the membership records and the grow-only store.
@@ -271,7 +276,7 @@ This is a plan. None of these scenarios has been run.
 | Admission rule | The handshake replaces bearer tokens, and AGENTS.md is reworded with it (Q2) |
 | Enrollment | Hub-only until the direct lane is qualified (Q3) |
 | Revocation | Enforced from arrival: new records and changes from a removed machine are refused once a peer holds the removal (Q1) |
-| Text storage | Keep Automerge text unless the spike's numbers cross the decision rule (Q7) |
+| Text storage | Schema 7 stores strings as immutable scalar values (#208); whole-field conflict resolution is unchanged. The spike crossed the text-storage decision rule. Further open-time work is tracked in #209. |
 
 ## Decision history
 

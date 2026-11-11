@@ -38,6 +38,13 @@ Plans in agent-assisted work are hypotheses, not blueprints. Pardner's vocabular
 
 ## Current implementation
 
+All document strings are immutable scalar values (Automerge `ImmutableString`),
+including field registers, operation history and membership records. Reads expose
+ordinary JavaScript strings. Different-field merging, authored same-field
+alternatives and explicit resolution retain their existing behavior; Pardner
+replaces whole values and does not splice collaborative text. Schema 7 refuses
+earlier storage directories without migrating or deleting them.
+
 Each client directory has its own Ed25519 machine key, created on first start and
 reported as a machine ID by `client status`. Creating a project signs a
 `project.genesis` record with that key, naming the creator as owner, and the
@@ -242,11 +249,11 @@ its properties within that model only.
 
 ## Storage and dependencies
 
-A schema 6 directory contains workspace metadata, Automerge storage, the
+A schema 7 directory contains workspace metadata, Automerge storage, the
 grow-only membership record store, an exclusive service lock, and local connection
 settings. The hub additionally holds the SQLite delivery ledger. A client
 directory also holds its machine key. Client directories and storage directories
-from before machine keys are refused and left unchanged; choose a fresh directory
+using an earlier schema are refused and left unchanged; choose a fresh directory
 rather than migrating or deleting existing data.
 
 Automerge **3.2.3** and Repo/network **2.5.1** are pinned. The persistence wrapper
