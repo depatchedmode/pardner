@@ -25,9 +25,17 @@ enrolls the acceptance topology through approvals.
   identity, through the hub's routes and at its gate.
 - **Roles.** A member cannot invite people, an admin cannot offer the admin role,
   only the owner changes roles, and a demoted admin cannot admit anyone.
-- **Removal.** The hub refuses the removed machine's bearer credential, closes its
-  sync socket, refuses its writes and its records; people a removed admin
-  admitted stay.
+- **Removal.** The hub refuses the removed machine's signed requests and handshake,
+  closes its sync session, and its own client then refuses its writes; its records
+  are refused; people a removed admin admitted stay.
+- **Transport admission.** `test/native-replica-auth.test.js` and
+  `test/machine-handshake.test.js`: a non-member is refused and served nothing; a
+  recorded handshake fails on a new connection, another hub and another project; a
+  captured signed request fails when replayed; a bearer token is refused; the
+  joiner refuses a hub machine that is not a member; removal closes live sync and
+  signed sessions; two copies of one machine are reported; a restored hub waits
+  and resumes. `test/client-local-admission.test.js`: writes check local records
+  with no hub request.
 - **Re-admission.** A removed machine key and a removed person's directory are
   refused with advice before taking a place; a fresh directory pairs as a new
   machine, or joins as a new person with a new person ID.

@@ -8,6 +8,14 @@ not an installed runtime.
 The historical schema-2 installation remains untouched. PR86's schema-5 candidate
 belongs to reliability and is not incorporated here.
 
+> **Superseded for transport (#199).** The enrolled replica secrets, replica
+> tickets and hub token described below are retired. Machines now admit each other
+> only with their machine keys: the sync socket opens with a mutual machine
+> handshake and every other request between machines is signed, so there is no
+> shared secret to provision or rotate; removing a machine ends its sessions at
+> once. See [PARDNER-CLI.md](PARDNER-CLI.md#another-machine) and README's
+> current-implementation section. The rest of this record is historical.
+
 ## Source dispositions
 
 All eight actual heads were fetched and reviewed against main before integration.

@@ -65,7 +65,10 @@ Keep an independent backup. Synchronization can propagate deletion or corruption
 1. Install the recorded revision and Node/dependencies, then build the UI. Stop
    the original client. Only one active copy of a restored device/replica identity
    may run: restoration replaces a device rather than enrolling another one.
-   Running both copies duplicates the machine key.
+   Running both copies duplicates the machine key. The hub reports two live sync
+   sessions for one machine in its project status (`client show` on the hub, and
+   its status line) but does not refuse either; the remedy is `machine.remove` and
+   a fresh client directory paired as a new machine.
 2. Copy the complete backup into a **new** private directory with the no-overwrite
    command above. On another machine, transfer it securely, preserve private modes
    and make files owned by the account running Pardner. Do not delete old installs.
@@ -94,7 +97,9 @@ Keep an independent backup. Synchronization can propagate deletion or corruption
    presence cannot be inferred while it is unavailable.
 5. Reconnect and check convergence and explicit hub acknowledgement. Retry an
    uncertain operation with its original ID and payload. Retain the source backup
-   until the restored content, external files and dependencies are confirmed.
+   until the restored content, external files and dependencies are confirmed. If
+   the restored client hosts projects, read [a restored hub](#a-restored-hub)
+   first: each hosted project waits before serving other machines.
 
 ## Replace the authority host
 
@@ -110,13 +115,53 @@ and delivery acknowledgements. Synchronized task data cannot reconstruct those
 decisions. Use a current complete backup and separately preserved security/receipt
 records, or keep admission closed until those decisions are reconciled.
 
+### A restored hub
+
 The hub admits a machine only while the records it holds say that machine is a
-member. A stale hub backup lacks removals made after it was taken; it learns them
-from the first member replica that syncs, because every replica writes back the
-records it holds. Until then, a machine removed after the backup can still
-connect. Waiting for a member peer before serving is a later trust step, so keep
-the restored hub isolated until a surviving member replica has synced, or until
-you have confirmed nothing newer exists.
+member, and a stale backup lacks removals made after it was taken. So a hosted
+project that starts from a restored or stale state **waits**: it serves no other
+machine, accepts no sync and enrolls nobody. The board on the hub computer itself
+keeps working, and its owner can still remove machines.
+
+How the hub knows it may be stale (wall-clock time plays no part):
+- **Its files were copied.** At each start the hub notes the identity of its
+  record store file. A cold backup copied back gets a new file, so a restored or
+  copied directory is detected at once. Moving the directory within one disk keeps
+  the file; moving it to another disk looks like a restore, and you confirm it.
+- **A member saw a later state.** The hub signs a checkpoint (its start count, a
+  random run ID and its record count) into every handshake, and each member keeps
+  the newest one. A member presenting a checkpoint the hub never reached, such as
+  one from a run the restore lost, shows that the hub is behind even when its files
+  look untouched (a filesystem snapshot rolled back in place).
+
+While it waits, other machines are told `HUB_WAITING` ("This hub was restored or
+fell behind, and waits to catch up with a current member machine…"), which their
+clients treat as an outage: they keep saving locally and show "the hub is catching
+up after a restore". The hub's own status line shows "Restored hub · waits for a
+member machine, or pardner client resume, before serving others", and `client show`
+reports `status.hub.waiting` with its reason.
+
+How it resumes:
+- **A member that saw a later state connects.** Every machine that proves its key
+  sends the records it holds, which the hub adds to its grow-only store. A member
+  whose checkpoint is ahead of the restored hub's then vouches for catching up: the
+  hub resumes, and any removal that member held now refuses the removed machine.
+  A machine that saw nothing newer than the backup cannot vouch, so a removed
+  machine connecting first is refused rather than served.
+- **The operator confirms nothing newer exists.** When no member synced after the
+  backup was taken (every member's checkpoint is from before it), nobody can vouch.
+  Check that no machine holds newer state, then run on the hub computer:
+
+  ```sh
+  node bin/pardner.js client resume --data /private/path/restored-client --project PROJECT_ID
+  ```
+
+Either way the hub's next start number exceeds every one it reached before, so its
+new checkpoints are ahead of the lost run's. Known limit: a machine that synced after
+the backup, was then removed while it was offline, and is the first to reach the
+restored hub can vouch, and is served until a member holding the removal connects.
+To avoid it, resume only once a member you know is current has connected, or
+confirm by hand after checking.
 
 Peers can supply newer document changes after reconnecting. Check every expected
 acknowledged operation, not just equal heads. A replica's document alone cannot
@@ -138,8 +183,8 @@ node bin/pardner.js client revoke --data /private/path/surviving-client \
 This signs a `machine.remove` record, which the hub records through its gate. The
 hub must be reachable. Retry uncertain requests with identical IDs and arguments.
 The owner or an admin can also remove the machine. A machine cannot remove
-itself. Removal also ends that machine's bearer admission at the hub, and the
-invitations it issued.
+itself. Removal also ends that machine's sync and signed sessions at the hub at
+once, and the invitations it issued.
 
 Pair the replacement as a new machine: start Pardner with a fresh client directory
 on the new computer, join a **My device** invitation from a surviving machine, and
@@ -173,5 +218,11 @@ offline work/retries, authority replacement at the same address, project isolati
 invitation recovery, delivery acknowledgement replay, removal of a lost machine by
 its owner's other machine and private local export after removal.
 `test/trust-enrollment.test.js` covers pairing by an admin for a person who lost
-every machine, and re-admission as a new machine key or a new person. These process/filesystem tests do not prove
+every machine, and re-admission as a new machine key or a new person.
+`test/native-replica-auth.test.js` restores a hub from a cold backup after a removal:
+the removed machine connecting first is refused, a member that synced after the
+backup brings the removal and the hub resumes; a hub nobody can vouch for waits for
+`resume`; a hub rolled back in place learns it is behind from a member's checkpoint;
+and two live copies of one machine are reported. The authority restore in
+`test/client-recovery.test.js` waits for `client resume`. These process/filesystem tests do not prove
 power-loss durability, live-backup safety or backup of external files/harness state.

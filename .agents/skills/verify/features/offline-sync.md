@@ -8,13 +8,14 @@ distinguish locally saved heads from explicit hub persistence acknowledgement.
 
 ## How to get to it (user POV)
 
-Join a hub with `pardner serve --role replica --hub URL --hub-ws ws://host:port/automerge --hub-token TOKEN`
-after provisioning a separate replica ID/secret and the hub registry as described
-in [the CLI guide](../../../../docs/PARDNER-CLI.md#enroll-another-machine)
-(there is no `enroll` command; without the hub's token the replica fails with
-`AUTH_REQUIRED`), then use its CLI. Later restarts reuse the saved role, hub
-settings, and ports. Keep that local service reachable while disconnecting its hub
-path. The standalone service serves no board; for the browser, each person's local
+Join a project from a second client with an invitation (`pardner client join`,
+approved on the hub after comparing the confirmation code); its project runtime
+syncs with the hub over the machine handshake, with no shared secret
+([CLI guide](../../../../docs/PARDNER-CLI.md#another-machine)). Later restarts reuse
+the saved routes. Keep that client reachable while disconnecting its hub path.
+Library-level fixtures (`support/machines.js`) build a hub and member replicas
+with test-only machine keys. The standalone service serves no board and no other
+machine; for the browser, each person's local
 client joins the project (`withClientReplicas` in `support/client-workspace.js`
 does this with a hub client and a human invite) and opens through `pardner client
 open`, authoring as its signed-in Actor. After reconnect, inspect alternatives and

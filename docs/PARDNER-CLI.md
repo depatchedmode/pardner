@@ -39,6 +39,7 @@ Joining and membership use signed records ([client guide](PARDNER-CLIENT.md#invi
 | `client reject --project ID --request REQUEST_ID` | Rejects a waiting request |
 | `client revoke --project ID --kind member\|machine\|agent --id ID --operation-id ID` | `member` signs `member.remove`; `machine` (or the older `device`, with a machine or device ID) signs `machine.remove`; `agent` revokes one of this machine's own agents locally |
 | `client role --project ID --person PERSON_ID --role admin\|member --operation-id ID` | The owner signs `member.role`, naming the role record it replaces |
+| `client resume --project ID` | On the computer that hosts the project: confirms that no machine holds newer state than this restored hub, so it serves other machines again ([recovery](PARDNER-CLIENT-RECOVERY.md#a-restored-hub)) |
 
 `client create` suggests pairing a second machine: if the owner loses every
 machine, nobody can remove or demote admins.
@@ -71,17 +72,19 @@ install the package to put `pardner` on PATH. The examples below use `pardner`.
 pardner serve --data .pardner
 ```
 
-This starts the hub on loopback ports 8004/8005. It generates a local API token and
-writes `.pardner/connection.json` with mode 0600. CLI commands discover that file;
-`--data`, `--server`, and `--token` override connection settings. The equivalent
-environment variables are `PARDNER_DATA_DIR`, `PARDNER_LOCAL_URL`, and
+This starts the standalone agent and integration service on loopback ports
+8004/8005: one project on this computer for agents and scripts. It generates a local
+API token and writes `.pardner/connection.json` with mode 0600. CLI commands discover
+that file; `--data`, `--server`, and `--token` override connection settings. The
+equivalent environment variables are `PARDNER_DATA_DIR`, `PARDNER_LOCAL_URL`, and
 `PARDNER_API_TOKEN`. `npm run sync` also starts this runtime.
 
-A new hand-run hub signs its project genesis with a one-time key that it does not
-keep. Its workspace ID is derived from that record like a client project's, but
-the hub can never sign another membership record. Hand-run hubs are retired by a
-later trust step; use the [local client](PARDNER-CLIENT.md) for projects with a
-machine key.
+The standalone service is **not** the client. It keeps its own data, so its tasks do
+not appear in `pardner open`, and the client's projects do not appear here. It serves
+no other machine: it signs its project genesis with a one-time key that it does not
+keep, so no machine can ever be admitted to it. Use the
+[local client](PARDNER-CLIENT.md) for a project that people open or that other
+machines join.
 
 Register the first Actor explicitly, then register the other humans and agents:
 
@@ -97,59 +100,40 @@ Actor IDs remain stable across replicas. Handles are accepted where an Actor is
 selected. Mutations require `--actor` or `PARDNER_ACTOR`; there is no implicit
 human or agent identity. `--agent` is an Actor-selection alias.
 
-## Enroll another machine
+## Another machine
 
-Each machine runs one service owning its own directory. Configure a reachable hub
-HTTP and native WebSocket address, its API token, and a separately enrolled replica
-credential at initial enrollment. On the hub, configure `PARDNER_REPLICA_CREDENTIALS`
-as a JSON object mapping administrator-chosen replica IDs to unique random secrets:
+Machines sync only through the client, and only as member machines: each client
+directory's machine key is its only credential towards other machines. Host a project
+in one client and join it from another with an invitation
+([client guide](PARDNER-CLIENT.md)). There is no shared secret to provision or
+rotate: to cut a machine off, remove it (`pardner client revoke --kind machine`).
 
-```sh
-export PARDNER_REPLICA_CREDENTIALS='{"laptop":"REPLACE_WITH_RANDOM_REPLICA_SECRET"}'
-pardner serve --data .pardner-hub
-```
+The hand-run hub and replica roles are retired. `pardner serve --role hub|replica`,
+`--hub`, `--hub-ws` and `--hub-token`, and the environment variables
+`PARDNER_ROLE`, `PARDNER_HUB_URL`, `PARDNER_HUB_WS_URL`, `PARDNER_HUB_TOKEN`,
+`PARDNER_REPLICA_ID`, `PARDNER_REPLICA_TOKEN` and `PARDNER_REPLICA_CREDENTIALS` are
+refused with an explanation. A directory that held a hand-run replica is left
+unchanged and refused (`ROLE_MISMATCH`); a hand-run hub's directory still opens as a
+standalone service.
 
-Generate each secret with `openssl rand -hex 32`. Never reuse the API token or
-another replica's secret. The default empty registry disables native replication.
-Distribute the matching ID and secret privately to that trusted machine, then run:
+How machines authenticate:
+- **Sync socket.** The native socket opens with the machine handshake: both sides
+  sign a transcript of the protocol version, project ID, both machine IDs, both
+  fresh nonces, both roles and the route as dialled. The hub serves only a current
+  member machine, and the joining machine accepts nothing until the hub is a member
+  machine in the log rooted at the project ID it expected.
+- **HTTP.** A session opens with the same exchange (`POST …/session`, then
+  `…/session/confirm`); each later request is signed by the machine key over the
+  session, a sequence number, the method, the URL as dialled, the body and the
+  project, in the `x-pardner-session`, `x-pardner-seq` and `x-pardner-signature`
+  headers. A replayed request is refused.
+- **Inside one machine.** The client's own loopback hop to its project runtime keeps
+  its local token and ticket, as do browser cookies, the operator token and agent
+  grants. None of them is accepted between machines.
 
-```sh
-export PARDNER_REPLICA_ID=laptop
-export PARDNER_REPLICA_TOKEN=REPLACE_WITH_RANDOM_REPLICA_SECRET
-```
-
-```sh
-pardner serve --data .pardner --role replica \
-  --hub http://hub-host:8004 --hub-ws ws://hub-host:8005/automerge \
-  --hub-token "$PARDNER_HUB_TOKEN"
-```
-
-The default binding is loopback. A hub accepting other machines must explicitly
-set `PARDNER_BIND_HOST` to the intended interface and expose its HTTP/WebSocket
-ports. Enrollment requires the hub; reopening an enrolled directory does not.
-`pardner serve --data .pardner` remembers the role, addresses, ports, and local
-credentials. CLI and UI should connect to the local service on each machine.
-
-Replica credentials grant **full document-write authority**. Native Automerge changes
-are merged and persisted without the operation API's schema, attribution, revision,
-or command validation. Enroll only machines trusted to uphold those invariants;
-ordinary Actor/API credentials cannot mint native tickets or open native sessions.
-The enrollment ID identifies the credential holder, not a signed Actor or CRDT
-mutation. API credentials remain necessary for discovery and API requests.
-
-Native clients request `POST /automerge/ws-ticket` with the ordinary API bearer
-token, an `x-pardner-replica-token` header, and JSON
-`{"purpose":"replica","replicaId":"laptop"}`. The returned ticket opens only
-`/automerge`; an ordinary ticket opens only UI subscriptions. Direct bearer,
-header, or legacy query API tokens never authorize `/automerge`.
-
-Tickets are short-lived, single-use, and scoped to either UI subscriptions or native
-replication. Insecure local mode does not bypass replica enrollment. Remove or rotate
-a credential in the hub configuration and restart the hub to disconnect existing
-sessions and invalidate outstanding tickets. CLI replicas save their enrollment
-credentials in the private `connection.json`; environment values override them.
-Existing replicas must be provisioned with these separate credentials before they
-can reconnect. Cached workspaces still open offline.
+Member machines are trusted full document writers: their synchronized changes bypass
+the operation API's schema, attribution, revision and command validation. Changes
+are not signed yet, so a member machine's word is taken for who made a change.
 
 Existing incompatible storage is rejected and left intact. Choose a fresh
 directory; there is no automatic migration. A second process cannot own the same
@@ -324,8 +308,8 @@ its deterministic workers do not establish the [real-agent rehearsal](PARDNER-CL
 
 ## Native transport diagnostics
 
-`npm run stress:native-peer -- all --runs 2` starts a temporary production hub and exercises one Actor across replicas, two Actors across replicas, and offline recovery. `--hub-restart` gives each run a fresh temporary hub. To target an existing hub, set `PARDNER_SYNC_SERVER`, `PARDNER_API_TOKEN`, `PARDNER_WS_BASE`, `PARDNER_ACTOR`, and `PARDNER_SECOND_ACTOR`; both Actors must already be registered. Remote runs create diagnostic tasks in that workspace.
-
-`npm run smoke:native-peer -- show-task <taskId>` returns complete task context. Set `PARDNER_PEER_STORAGE_PATH` to use a persisted replica, including cached offline reads. With `PARDNER_ACTOR`, `create-task [title]` and `set-task <taskId> <field> <value>` submit attributed operations. `PARDNER_OPERATION_ID` supplies a stable ID for retries. A successful write means saved locally; synchronization is reported separately in its receipt. `watch` streams snapshots until SIGINT/SIGTERM and closes its storage cleanly.
-
-Native diagnostic storage must be a separate directory from any running local service. These tools use the same runtime, disk barrier, directory ownership, schema checks, and fresh-ticket reconnect path as Pardner. They do not replace the full acceptance suite.
+The `smoke:native-peer` and `stress:native-peer` tools drove hand-run replicas with
+shared tokens and are retired with them. Their scenarios run in the regression suite
+with member machines: one Actor and two Actors across replicas and offline recovery
+(`test/sync-use-cases.test.js`), and transport admission
+(`test/native-replica-auth.test.js`).

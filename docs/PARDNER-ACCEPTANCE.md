@@ -47,11 +47,20 @@ Chromium contexts, and two separate deterministic agent worker subprocesses:
   hub advertises a gate as its loopback public URL (`--public-url
   http://127.0.0.1:<port>`) while that laptop enrolls, so the enrolled hub HTTP
   and native WebSocket URLs both cross that gate. The hub restarts once during
-  setup to advertise the second gate.
+  setup to advertise the second gate, and keeps accepting the handshake on the
+  first, since it advertised that route to Alice's laptop.
+- **Credentials between machines:** none but the machine keys. Each laptop's sync
+  socket opens with the machine handshake, bound to the route through its gate, and
+  every other request a laptop sends the hub (deliveries, presence, people, records,
+  invitations, join requests, acknowledgements) is signed by its machine key within
+  a short session. No bearer token passes between machines; a gate that relays
+  them sees only signed messages. The local operator token, browser sessions and
+  agent credentials authenticate to a laptop's own client only.
 
 All task mutations go through a client's project API proxy
 (`…/projects/:id/api/automerge/operations`), using the local operator bearer for
-the person, an agent credential for an agent, or the browser session. Workers
+the person, an agent credential for an agent, or the browser session; each write
+checks the writing machine's own membership records and never waits on the hub. Workers
 read their assignee lists and complete task context through the CLI. No live LLM
 is used in the automated gate.
 
