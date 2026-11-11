@@ -104,6 +104,8 @@ for (const uuidAvailable of [true, false]) it(
       await alice.getByText('Comments 2 · 1 new', { exact: true }).waitFor()
       assert.equal(await alice.getByText('New', { exact: true }).count(), 1)
       assert.equal(await alice.locator('.comment.is-new', { hasText: 'Seen' }).count(), 1, 'the tag sits on Bob\'s comment')
+      // Bob's board updates after his save answers; wait for its heading, which must not count his own comment as new.
+      await bob.getByText('Comments 2', { exact: true }).waitFor()
       assert.equal(await headingText(bob), 'Comments 2', 'Bob sees no new count for his own comment')
       assert.equal(await bob.locator('.mention', { hasText: '@builder' }).count(), 1, 'a delivered mention is chipped')
       await alice.getByLabel('Comment', { exact: true }).fill('ping @buildr ')
@@ -1162,7 +1164,11 @@ for (const engine of [chromium, webkit]) it(`changes a task's status in place fr
       await select.focus()
       await select.selectOption('completed')
       await page.waitForFunction(() => document.querySelector('.column[aria-label="Completed"] .task-card'))
-      assert.equal((await task(taskId)).task.status, 'completed')
+      // The card moves when the select changes; the stored status follows once the save answers.
+      for (const deadline = Date.now() + 10000; (await task(taskId)).task.status !== 'completed';) {
+        assert.ok(Date.now() < deadline, 'the status was never saved')
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
       assert.equal(await select.inputValue(), 'completed')
       await panel.getByText(/to Completed/).first().waitFor()
       assert.equal(await page.locator('.column[aria-label="Completed"] .task-card', { hasText: 'Approve release notes' }).count(), 1)
