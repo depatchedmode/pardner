@@ -4,6 +4,8 @@ import { randomBytes } from 'node:crypto'
 import * as A from '@automerge/automerge'
 import { SHARDS, createSignaturesData, shardOf, signChange, storedSignatures, verifyChange } from '../lib/change-signatures.js'
 import { generateMachineKey } from '../lib/machine-key.js'
+import { plain } from '../lib/workspace-schema.js'
+import { storageValue } from '../lib/workspace-values.js'
 import { eventually, execute, operationOf, signerOf, stateOf, withHub, writeTask } from '../support/signed-hub.js'
 
 // The rules that make a signer line mean "this machine signed exactly this content" (docs/PARDNER-TRUST-DESIGN.md,
@@ -222,5 +224,114 @@ it('a member asks the hub about every change it has no verdict for, in turn, so 
     assert.ok(unsigned.slice(10).every(hash => everyone.has(hash)), 'every unresolved change is asked about within a bounded number of polls')
     assert.ok(asked.every(batch => batch.length <= 500), 'each poll stays within the hub’s limit')
     assert.ok(!later.some(hash => settled.has(hash)), 'settled changes are not asked about again')
+  })
+})
+
+/** Waits until a runtime's attribution has finished checking, signatures and content alike. */
+const checked = runtime => eventually(() => runtime.attribution.summary().checking === 0, `${runtime.role} never finished checking`)
+
+it('the signer line is bound to the content it signed: a later change that edits an existing Activity entry is flagged, and listed with its own signer', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const writer = await replica(0), reader = await replica(1)
+    const { result } = await execute(writer, 'Written and signed by member 0')
+    const original = await eventually(() => operationOf(reader, result.taskId), 'never relayed')
+    await eventually(() => stateOf(reader, original.operationId) === 'signed', 'never attributed')
+    const signedBy = signerOf(reader, original.operationId)
+    // Another member edits fields inside that entry: what it says, and when; its own change is signed by its machine.
+    const editor = await bare(2)
+    await eventually(() => editor.board.doc().operations?.[original.operationId], 'the editor never synced')
+    editor.board.change(doc => {
+      const event = doc.operations[original.operationId]
+      event.payload.title = new A.ImmutableString('Rewritten by member 2')
+      event.timestamp = new A.ImmutableString('2020-01-01T00:00:00.000Z')
+      delete event.changes
+    })
+    const edit = A.getHeads(editor.board.doc())[0]
+    editor.signatures.change(doc => { doc[shardOf(edit)][edit] = signChange(editor.key, project.projectId, edit) })
+    for (const runtime of [reader, server.store, writer]) {
+      await eventually(() => A.hasHeads(runtime.docHandle.doc(), [edit]), `the edit never reached ${runtime.role}`)
+      await checked(runtime)
+      const [signer] = runtime.getDoc().attribution.operations[original.operationId]
+      assert.equal(signer.hash, signedBy.hash, 'still the change that wrote the entry')
+      assert.equal(signer.machineId, project.keys[0].machineId)
+      assert.deepEqual(signer.altered?.map(entry => [entry.hash, entry.state, entry.machineId]), [[edit, 'signed', project.keys[2].machineId]],
+        'marked as altered after signing, naming the altering change and its signer')
+      // What is shown under the signer is the content as its change wrote it.
+      const shown = runtime.getDoc().attribution.signed?.[original.operationId]
+      assert.equal(shown?.payload?.title, 'Written and signed by member 0')
+      assert.equal(shown?.timestamp, original.timestamp)
+      assert.deepEqual(shown?.changes, original.changes)
+      // The altering change has its own entry in the review list, with its own signer.
+      const review = await eventually(() => reviewEntry(runtime, edit), `${runtime.role} never listed the altering change`)
+      assert.equal(review.state, 'signed')
+      assert.equal(review.machineId, project.keys[2].machineId)
+      assert.deepEqual(review.rewrote, [{ map: 'operations', key: original.operationId, kind: 'edited' }])
+    }
+    // Every peer shows the same thing, and the board itself is not changed by the check.
+    assert.equal(server.store.getDoc().operations[original.operationId].payload.title, 'Rewritten by member 2')
+    const views = [reader, server.store, writer].map(runtime => JSON.stringify([runtime.getDoc().attribution.operations[original.operationId], runtime.getDoc().attribution.signed]))
+    assert.equal(new Set(views).size, 1)
+  })
+})
+
+it('a replica that joins after an Activity entry was altered shows the same alteration, from the documents alone', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const writer = await replica(0)
+    const { result } = await execute(writer, 'Altered before the reader joined')
+    const original = await eventually(() => operationOf(server.store, result.taskId), 'never relayed')
+    const editor = await bare(2)
+    await eventually(() => editor.board.doc().operations?.[original.operationId], 'the editor never synced')
+    // Unsigned this time, and it edits a nested list inside the entry.
+    editor.board.change(doc => { doc.operations[original.operationId].recordIds.push(new A.ImmutableString('task-000000000000000000000000')) })
+    const edit = A.getHeads(editor.board.doc())[0]
+    await eventually(() => A.hasHeads(server.store.docHandle.doc(), [edit]), 'the edit never reached the hub')
+    const late = await replica(1)
+    await checked(late)
+    const [signer] = late.getDoc().attribution.operations[original.operationId]
+    assert.equal(signer.state, 'signed')
+    assert.deepEqual(signer.altered?.map(entry => entry.hash), [edit])
+    assert.deepEqual(late.getDoc().attribution.signed[original.operationId].recordIds, original.recordIds)
+    await eventually(() => reviewEntry(late, edit)?.state === 'unattributed', 'the unsigned edit was never listed')
+    await checked(server.store)
+    // The same on the hub, apart from the replica naming the hub it learned the verdict through (`via`).
+    const stable = runtime => runtime.getDoc().attribution.operations[original.operationId]
+      .map(({ hash, state, machineId, altered }) => ({ hash, state, machineId, altered: altered?.map(({ hash: change, state: was, claimed }) => [change, was, claimed]) }))
+    assert.deepEqual(stable(late), stable(server.store))
+  })
+})
+
+it('replacing or deleting an Activity entry, or a signed change that leaves no Activity entry, is listed for review with its signer', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const writer = await replica(0)
+    const first = await execute(writer, 'Replaced later'), second = await execute(writer, 'Deleted later')
+    const [replaced, deleted] = await Promise.all([first, second].map(({ result }) => eventually(() => operationOf(server.store, result.taskId), 'never relayed')))
+    const editor = await bare(2)
+    await eventually(() => editor.board.doc().operations?.[deleted.operationId], 'the editor never synced')
+    const sign = () => {
+      const hash = A.getHeads(editor.board.doc())[0]
+      editor.signatures.change(doc => { doc[shardOf(hash)][hash] = signChange(editor.key, project.projectId, hash) })
+      return hash
+    }
+    editor.board.change(doc => { doc.operations[replaced.operationId] = storageValue({ ...plain(doc.operations[replaced.operationId]), timestamp: '2020-01-01T00:00:00.000Z' }) })
+    const replacement = sign()
+    editor.board.change(doc => { delete doc.operations[deleted.operationId] })
+    const deletion = sign()
+    editor.board.change(doc => { doc.name = new A.ImmutableString('Renamed with no Activity entry') })
+    const rename = sign()
+    await eventually(() => A.hasHeads(server.store.docHandle.doc(), [rename]), 'the edits never reached the hub')
+    await checked(server.store)
+    const review = hash => reviewEntry(server.store, hash)
+    await eventually(() => review(replacement) && review(deletion) && review(rename), 'not every change was listed')
+    assert.deepEqual(review(replacement).rewrote, [{ map: 'operations', key: replaced.operationId, kind: 'replaced' }])
+    assert.equal(review(replacement).machineId, project.keys[2].machineId)
+    const [shown] = server.store.getDoc().attribution.operations[replaced.operationId]
+    assert.equal(shown.hash, replacement, 'a replaced entry is shown as signed by the change that wrote what is there now')
+    assert.equal(shown.replaces, true)
+    assert.deepEqual(review(deletion).rewrote, [{ map: 'operations', key: deleted.operationId, kind: 'deleted' }])
+    assert.equal(review(rename).noEntry, true)
+    assert.equal(review(rename).state, 'signed')
+    assert.equal(review(deletion).noEntry, true, 'a deletion leaves no entry of its own either')
+    // Ordinary work is never listed: operations and membership records each leave an entry.
+    assert.deepEqual(server.store.getDoc().attribution.review.filter(entry => entry.noEntry || entry.rewrote).map(entry => entry.change).sort(), [replacement, deletion, rename].sort())
   })
 })

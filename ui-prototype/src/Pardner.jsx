@@ -15,7 +15,7 @@ import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js
 import { quickStatusEditable } from './task-status.js'
 import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
-import { describeChange, describeRecord, needsReview, recordEvents, recordSignerLine, reviewNotice, reviewOnlyEvents, signerLine } from './attribution.js'
+import { describeChange, describeRecord, needsReview, recordEvents, recordSignerLine, reviewNotice, reviewOnlyEvents, shownEvent, signerLine } from './attribution.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const StatusOptions = ({ values = STATUSES }) => values.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
@@ -156,7 +156,9 @@ function SaveStatus({ status, connected, busy, heads }) {
 // buttons; History passes none and stays plain text.
 function EventRow({ event, lookups, within, onTask, onVein, onGoal, formatTime, ...articleProps }) {
   const { attribution } = lookups
-  const description = event.record ? describeRecord(event, attribution) : event.review ? describeChange(event, attribution) : describeEvent(event, lookups, { within })
+  // An entry a later change altered is shown as its signed change wrote it, under that change's signer.
+  const description = event.record ? describeRecord(event, attribution) : event.review ? describeChange(event, attribution)
+    : describeEvent(shownEvent(attribution, event), lookups, { within })
   const signer = event.record ? recordSignerLine(attribution, event.record)
     : signerLine(attribution, event.review ? [event.review] : attribution?.operations?.[event.operationId])
   const when = new Date(event.timestamp || 0)

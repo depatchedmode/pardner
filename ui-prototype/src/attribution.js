@@ -24,6 +24,18 @@ export function machineLabel(attribution, machineId) {
 
 const signerOf = signers => (Array.isArray(signers) ? signers : [])
 
+/** Who made a change that altered an entry, as briefly as a signer line allows. */
+function changeLabel(attribution, change) {
+  if (change?.state === 'signed' || change?.state === 'removed') return machineLabel(attribution, change.machineId)
+  if (change?.state === 'unattributed') return `an unsigned change relayed by ${machineLabel(attribution, change.relayedBy)}`
+  return 'a change still being checked'
+}
+
+/** The content Activity shows for an entry: as its signed change wrote it, when a later change altered it. */
+export function shownEvent(attribution, event) {
+  return own(attribution?.signed, event?.operationId) ?? event
+}
+
 /**
  * The signer line under an Activity entry: `{ text, tone }`, where tone is `signed`, `pending` or `flag`. Null when
  * the service checks no signatures (the standalone service).
@@ -39,7 +51,10 @@ export function signerLine(attribution, signers) {
         const parts = [`Signed by ${machineLabel(attribution, signer.machineId)}`]
         if (machine?.removed) parts.push('machine since removed')
         if (signer.actorMismatch) parts.push('as an Actor this machine isn’t allowed to act as')
-        return { text: parts.join(' · '), tone: signer.actorMismatch ? 'flag' : 'signed' }
+        if (signer.replaces) parts.push('it replaced an entry another change wrote')
+        const altered = Array.isArray(signer.altered) ? signer.altered : []
+        if (altered.length) parts.push(`shown as signed; altered after signing by ${altered.map(change => changeLabel(attribution, change)).join(' and ')}`)
+        return { text: parts.join(' · '), tone: signer.actorMismatch || signer.replaces || altered.length ? 'flag' : 'signed' }
       }
       case 'removed':
         return { text: `Made by a removed machine: ${machineLabel(attribution, signer.machineId)}${signer.actorMismatch ? ' · as an Actor it isn’t allowed to act as' : ''}`, tone: 'flag' }
@@ -58,7 +73,8 @@ export function signerLine(attribution, signers) {
 /** Whether an Activity entry needs a person's review: one of its changes is unattributed, from a removed machine, or claims an Actor its machine may not act as. */
 export function needsReview(attribution, event) {
   if (event?.review) return true
-  return signerOf(attribution?.operations?.[event?.operationId]).some(signer => ['unattributed', 'removed'].includes(signer.state) || signer.actorMismatch)
+  return signerOf(attribution?.operations?.[event?.operationId]).some(signer => ['unattributed', 'removed'].includes(signer.state) || signer.actorMismatch
+    || signer.replaces || (Array.isArray(signer.altered) && signer.altered.length > 0))
 }
 
 const RECORD_STAMP = ''
@@ -107,10 +123,22 @@ export function describeRecord(event, attribution) {
   return { actor, parts, detail, excerpt: null }
 }
 
-/** A flagged change that wrote no Activity entry, as a sentence. */
+const REWROTE = {
+  edited: ' altered an Activity entry another change signed', replaced: ' replaced an Activity entry another change wrote', deleted: ' deleted an Activity entry',
+}
+
+/** A flagged change that wrote no Activity entry of its own, as a sentence: what it altered, or that it left no entry. */
 export function describeChange(event, attribution) {
   const claimed = event.review.claimed ?? event.review.machineId
-  return { actor: claimed ? machineLabel(attribution, claimed) : 'A machine', parts: [' made a change that left no Activity entry'], detail: null, excerpt: null }
+  const actor = claimed ? machineLabel(attribution, claimed) : 'A machine'
+  const rewrote = Array.isArray(event.review.rewrote) ? event.review.rewrote : []
+  const entry = rewrote.find(item => item.map === 'operations')
+  if (entry) {
+    const others = rewrote.length - 1
+    return { actor, parts: [REWROTE[entry.kind] ?? REWROTE.edited], detail: others > 0 ? `and ${others} more` : null, excerpt: null }
+  }
+  if (rewrote.length) return { actor, parts: [' changed content another change wrote'], detail: null, excerpt: null }
+  return { actor, parts: [' made a change that left no Activity entry'], detail: null, excerpt: null }
 }
 
 /** The signer line of a membership record: it was verified when this computer stored it. */
@@ -126,7 +154,7 @@ export function reviewNotice(attribution) {
   const ownActor = attribution?.summary?.ownActor ?? 0
   if (!count && !equivocations.length) return null
   const lines = []
-  if (count) lines.push(`${count === 1 ? 'One change needs' : `${count} changes need`} review: ${count === 1 ? 'its' : 'their'} signer couldn’t be confirmed, ${count === 1 ? 'it was' : 'they were'} made by a removed machine, or ${count === 1 ? 'it claims' : 'they claim'} an Actor ${count === 1 ? 'its' : 'their'} machine isn’t allowed to act as.`)
+  if (count) lines.push(`${count === 1 ? 'One change needs' : `${count} changes need`} review: ${count === 1 ? 'its' : 'their'} signer couldn’t be confirmed, ${count === 1 ? 'it was' : 'they were'} made by a removed machine, ${count === 1 ? 'it claims' : 'they claim'} an Actor ${count === 1 ? 'its' : 'their'} machine isn’t allowed to act as, or ${count === 1 ? 'it altered' : 'they altered'} what another change wrote.`)
   if (ownActor) lines.push(`${ownActor === 1 ? 'One change carries' : `${ownActor} changes carry`} this computer’s actor but ${ownActor === 1 ? 'wasn’t' : 'weren’t'} made here: another machine used it.`)
   for (const report of equivocations) {
     const relayer = machineLabel(attribution, report.relayedBy)

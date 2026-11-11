@@ -2,15 +2,17 @@ import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium, webkit } from 'playwright'
 import { withClientReplicas } from '../support/client-workspace.js'
-import { unsignedWrite } from '../support/unsigned-peer.js'
+import * as A from '@automerge/automerge'
+import { alterEntry, unsignedWrite } from '../support/unsigned-peer.js'
 
 // Who made each change, on real clients in Chromium and WebKit (#197): Activity names the signing person and
 // machine, membership records appear with their signer, and a change without a valid signature is announced on
-// the board with a way to review it. Nothing is hidden.
+// the board with a way to review it. An entry another change altered is shown as it was signed, and the altering
+// change is listed under its own signer. Nothing is hidden.
 
 const row = (page, text) => page.locator('article.event').filter({ hasText: text })
 
-for (const engine of [chromium, webkit]) it(`names who made each change, lists membership records, and announces an unsigned change in ${engine.name()}`,
+for (const engine of [chromium, webkit]) it(`names who made each change, lists membership records, announces an unsigned change, and shows an altered entry as it was signed in ${engine.name()}`,
   { timeout: 180000 }, async () => {
     await withClientReplicas(engine, { humans: ['Alice', 'Bob'] }, async ({ people, newPage, eventually, project }) => {
       const [alice, bob] = people
@@ -51,5 +53,25 @@ for (const engine of [chromium, webkit]) it(`names who made each change, lists m
         await page.getByRole('button', { name: 'Tasks', exact: true }).click()
         await page.locator('.task-card').filter({ hasText: 'Never signed' }).waitFor()
       } finally { await unsigned.repo.shutdown() }
+
+      // Bob's modified client rewrites Alice's comment inside her signed Activity entry, and signs its own edit.
+      const { result: comment } = await alice.operate('comment.add', { taskId: result.taskId, text: 'Alice’s own words' })
+      const entry = Object.values((await alice.doc()).operations).find(event => event.result?.commentId === comment.commentId)
+      const altered = await alterEntry({ key: bob.client.registry.machineKey, projectId: project.id, nativeUrl, boardUrl, operationId: entry.operationId,
+        edit: event => { event.payload.text = new A.ImmutableString('Bob’s words') } })
+      try {
+        await page.getByRole('button', { name: 'Activity', exact: true }).click()
+        await page.getByRole('combobox', { name: 'Show' }).selectOption('changes')
+        // Shown as Alice signed it, with the alteration and the machine that made it.
+        const signed = row(page, 'Alice’s own words')
+        await signed.locator('.event-signer').getByText('altered after signing by Bob · Bob’s laptop', { exact: false }).waitFor({ timeout: 30000 })
+        assert.match(await signed.locator('.event-signer').textContent(), /^Signed by Alice · this computer/)
+        assert.equal(await signed.locator('.event-signer').getAttribute('data-tone'), 'flag')
+        assert.equal(await row(page, 'Bob’s words').count(), 0, 'what Bob wrote is not shown under Alice’s signature')
+        // Bob's edit is listed for review under his own signer.
+        await page.getByRole('combobox', { name: 'Show' }).selectOption('review')
+        const edit = row(page, 'altered an Activity entry another change signed')
+        await edit.locator('.event-signer').getByText('Signed by Bob · Bob’s laptop').waitFor({ timeout: 30000 })
+      } finally { await altered.repo.shutdown() }
     })
   })
