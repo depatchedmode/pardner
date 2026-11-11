@@ -18,6 +18,8 @@ already covered. Match the exact assertions to the task's expected result.
   fixed-point authority, removals and deterministic conflict choices.
 - [Signed genesis and record store](trust-records.md): per-directory machine key,
   derived project ID, grow-only record store, write-back and prior-install refusal.
+- [Invitations, pairing and removal](trust-enrollment.md): signed offers, join
+  requests and codes, approval, bounds, pairing, roles, removal and re-admission.
 - [Client onboarding and presence](client-onboarding.md): authenticated Actor
   sessions, device aggregation, expiry and integration evidence boundaries.
 

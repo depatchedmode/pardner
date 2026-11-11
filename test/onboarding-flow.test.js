@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { performance } from 'node:perf_hooks'
 import { startClient } from '../lib/client-service.js'
+import { joinApproved } from '../support/enrollment.js'
 
 const base = '/pardner/client/v1'
 
@@ -67,7 +68,9 @@ it('keeps browser identity, project isolation and saved work through an offline 
     assert.notEqual(shared.id, privateProject.id)
     const invitation = await aliceApi(`${base}/projects/${shared.id}/invites`, { purpose: 'human', operationId: 'invite-bob' })
     assert.ok(invitation.setupPrompt.includes('client v1 CLI'))
-    const { project: joined } = await bobApi(base + '/join', { invitation: invitation.setupPrompt, operationId: 'bob-join' })
+    // Bob's browser shows the waiting state and code; Alice's browser opens the request and approves the same code.
+    const { project: joined } = await joinApproved({ join: body => bobApi(base + '/join', body), approver: (path, body) => aliceApi(base + path, body),
+      invitation: invitation.setupPrompt, operationId: 'bob-join' })
     assert.equal(joined.id, shared.id)
     assert.notEqual(joined.actorId, shared.actorId)
     const again = await bobApi(base + '/join', { invitation: invitation.setupPrompt, operationId: 'bob-join' })

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { startClient } from '../lib/client-service.js'
+import { joinApproved } from './enrollment.js'
 
 const CLIENT_API = '/pardner/client/v1'
 
@@ -116,7 +117,8 @@ export async function withClientWorkspace(engine, options, body) {
 /**
  * Runs `body` against several people's clients sharing one project. `humans[0]` hosts the project (the hub);
  * every other human joins from a separate client with a `human` invitation, or with a `device` invitation
- * when given as { name, device: true } (the same identity on a second device, so the same Actor).
+ * when given as { name, device: true } (the same identity on a second device, so the same Actor). The hub
+ * approves each join after comparing its confirmation code.
  * The body receives { people, hub, browser, newPage, partition, settled, eventually, project }; each person has
  * { name, client, call, actorId, open(page), operate, doc, task, show, status }.
  * `partition(writes, converged)` stops the hub, runs `writes` while every replica is disconnected, restarts
@@ -141,7 +143,7 @@ export async function withClientReplicas(engine, options, body) {
       const invite = await hubPerson.call(`/projects/${project.id}/invites`, { purpose, operationId: `invite-${index}` })
       const person = await participant(join(root, `replica-${index}`), entry.name)
       if (!entry.device) await person.call('/identity', { name: entry.name, email: email(entry.name), operationId: 'identity' })
-      await person.call('/join', { invitation: invite.invitation, operationId: 'join' })
+      await joinApproved({ join: body => person.call('/join', body), approver: hubPerson.call, invitation: invite.invitation, operationId: 'join' })
       people.push(person)
     }
     const replicas = () => people.slice(1)

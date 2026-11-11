@@ -36,5 +36,5 @@ assertions in `test/client-cli.test.js` cover the public outputs.
 - **Offline replica.** A replica stores the genesis it synced and reopens without
   the hub, with the same membership and a local save.
 
-Records do not govern admission yet, so these checks say nothing about enrollment
-or revocation; those still use bearer credentials.
+These checks cover storage and harvest. Admission, enrollment and removal on
+records are in [trust-enrollment.md](trust-enrollment.md).

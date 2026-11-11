@@ -625,5 +625,82 @@
       ]
     },
     "review": "lib/workspace-runtime.js: a fresh hub takes a signed genesis (hand-run hubs sign one with a one-time key), derives workspaceId from it and saves it to a per-project grow-only record store before repo.create; init harvests membership records after the document is found and refuses a document without a valid genesis; the change handler schedules a harvest that admits new records to the store and writes back stored records the document lacks, as a handle.change with no request; closeResources awaits pending harvests after the operation queue and before repo.shutdown, and closes the record store in the finally block before the lease. automerge-sync-server.js adds a read-only GET /automerge/membership after the stopping and admission middleware. Admission, the flush barrier, acknowledgement guards and shutdown ordering keep their guard, effect and atomicity. The write-back is modeled as another local edit (ReplicaEdit gains its anchor); StoreCloseBegin gains the harvest drain anchor. No action, invariant or witness changed. The lease-before-drain mutation find/replace text gained the harvest drain and record store close lines. Wider-bound records remain historical; not rerun."
+  },
+  "recordGateReview": {
+    "recorded": "2026-11-11",
+    "issue": 196,
+    "mapping": {
+      "revision": "aa0d0eae2ef91aeaea84f3ab2744211ece3d0633",
+      "files": {
+        "automerge-sync-server.js": "eaed54099cbd2d452591f86452c4ecef40b82ee26758ef322dc9a5365c2791b4",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "7fc25af7629485bddb35aeed196a70ca5eaba2f61eee704d759a3036a68ddcc4",
+        "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "durationMs": 4501,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-11T08:47:15.830Z",
+      "finished": "2026-11-11T08:47:37.253Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "lib/workspace-runtime.js: addRecords is the hub's gate for new membership records. It refuses before the runtime is ready or once closeResources aborted, joins the workspace operation queue, checks every record with maySign against the stored membership plus the batch so far, saves the batch to the grow-only record store, writes the records the document lacks with handle.change, and answers only after repo.flush, raising STORAGE_FAILED when the flush fails. automerge-sync-server.js adds POST /automerge/membership/records after the stopping and admission middleware and lists it among the mutation routes. The gate is a hub-authored operation answered after the disk barrier, so it maps onto the existing Arrive(op), Handle(op) and Respond(op) actions, which gain its anchors; StoreCloseBegin's note now covers gate requests drained with the operation queue. The harvest write-back keeps its ReplicaEdit anchor; the gate's loop variable differs so each anchor occurs once. No action, invariant or witness changed, and no mutation find text changed. A conformance check (test/lifecycle-conformance.test.js) observes that the gate's answer waits for the storage barrier and that a failed barrier advances no persisted heads. Wider-bound records remain historical; not rerun."
   }
 }

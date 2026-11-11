@@ -85,6 +85,7 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
     assert.deepEqual(shown.membership.machines.map(machine => machine.id), [machineId])
     assert.equal(shown.membership.people[0].role, 'owner')
     assert.deepEqual(shown.membership.notStored, [])
+    assert.match((await run(['create', '--name', 'Second', '--operation-id', 'second'])).value.suggestion, /Pair a second machine/)
   } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
 })
 

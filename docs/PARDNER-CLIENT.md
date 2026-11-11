@@ -91,10 +91,13 @@ read-only: `people`, `machines`, `agentNames`, removals, `storedRecords`, and
 the reason; it lasts until the project runtime restarts. `rejected` lists stored
 records that have no effect.
 
-These records do not yet admit anyone. Invitations, joins and revocation still
-work as described below, through hub-issued bearer credentials, and do not write
-records. A joined project therefore shows only the owner's machine until a later
-step writes member records.
+Membership records now decide who is admitted, as described below: each approved
+join writes a `member.add` or `machine.add`, each machine names its agents with
+`agent.name`, and removals and role changes are records. Every new record enters
+through one gate in the hub's project runtime, which applies the arrival rule:
+a removed machine, or a signer without the role a record needs, cannot add new
+records. History that arrives by sync is harvested without that check, so a new
+replica keeps a removed admin's earlier admissions.
 
 Directories made before machine keys are refused, whether a client directory
 without `machine-key.pem` or a storage directory with an earlier schema. They are
@@ -103,22 +106,70 @@ left byte-for-byte unchanged and are never migrated. Start Pardner with a fresh
 
 ## Invite and join
 
+The project's hub is the client that created it. It is the enrollment point: it
+keeps invitations and join requests in its registry and records every admission.
+
 The board's **Invite** menu offers:
 
-- **Human:** another person creates or reuses their own identity and joins with
-  their local client and setup agent.
-- **Agent:** another execution harness works for the inviting human. Sessions
-  and devices of the same human/harness share one Actor.
-- **My device:** another of the inviting human's machines links to that identity.
+- **Human:** another person joins with their own identity, their local client and
+  setup agent. Only the owner or an admin can create one. The owner chooses the
+  role (member or admin); an admin offers only the member role.
+- **Agent:** another execution harness works for the inviting person.
+- **My device:** another of the inviting person's computers links to that
+  identity. The owner or an admin can also create one for another person, for
+  someone who lost every computer.
 
-The default dialog shows purpose, project, expiry and state. **Copy invite** copies
-a short setup prompt and private versioned enrollment data. The credential stays
-out of the page until deliberately revealed. The receiving agent uses a trusted
-onboarding-preview checkout; this flow does not assume a published npm release.
-The Join form accepts either the complete prompt or the raw invitation.
+An invitation holds an offer signed by the issuing machine (project, offer ID,
+purpose, role or person, the hub's enrollment route, expiry) and a one-time
+secret. It expires after 24 hours. The default dialog shows purpose, project,
+expiry and state. **Copy invite** copies a short setup prompt and the private
+invitation. The invitation stays out of the page until deliberately revealed.
+The receiving agent uses a trusted onboarding-preview checkout; this flow does
+not assume a published npm release. The Join form accepts either the complete
+prompt or the raw invitation. Invitations from earlier Pardner versions are
+refused with a request for a new one.
 
-For an agent-managed join, save the invitation in a private file and use a stable
-operation ID:
+### Waiting for approval
+
+A new machine sends a join request to the hub: its new machine key, the person it
+joins as, its device name and setup agent, signed by that key and keyed with the
+invitation secret. The hub stores the request before anything else happens. At
+most 5 requests wait on one invitation, and 20 are kept in any state. A request
+expires 30 minutes after the hub stores it, or when its invitation expires,
+whichever comes first. A join that cannot succeed, from a removed machine, a
+removed person or someone already in the project, is refused before it takes a
+place, so the invitation stays usable.
+
+Until it is approved, the joining machine receives nothing from the project. The
+browser shows **Waiting for approval**; `client join` reports `{ join: { state,
+requestId, code, … } }` and is run again with the same operation ID to continue.
+
+**Confirmation code.** When the approver opens the request, their client adds a
+fresh random nonce. Both sides then derive the same eight-digit code from the
+offer, the joining machine's public key and that nonce, and each derives it
+itself. The approver compares the codes face to face or by voice, ideally not over
+the channel the invitation came through, and approves only on a match. Approving
+with any other code is refused. If two waiting requests on one invitation show the
+same code, both are rejected. A stranger holding a leaked invitation gets one
+guess per approval, with probability 10⁻⁸ of matching.
+
+**Approval.** The approving machine signs the admission: `member.add` for a new
+person or `machine.add` for a new machine, holding the offer, the request and the
+nonce. The hub checks expiry and single use at that moment, records the admission
+and the joining machine's own agent label through its gate, and only then issues
+that machine's sync credentials. The joining client then finishes on its next
+retry. The invitation is used up; other waiting requests on it are rejected. An
+admin on another computer approves the same way: their own machine signs, and the
+hub records it.
+
+The board shows **Join requests** to everyone who may approve one: the owner and
+admins for new people, and the person's own machines, the owner or an admin for a
+new machine. Each request shows the name, email and device, or, for a new
+machine, whose identity it joins (#155). A new person whose name or email matches
+a member is flagged, in case it is that member's second computer. Pairing never
+creates a second person.
+
+### Joining from the CLI
 
 ```sh
 node bin/pardner.js client join \
@@ -126,40 +177,81 @@ node bin/pardner.js client join \
 ```
 
 Start the receiving client first. For a Human invitation, confirm its own identity
-before joining. My device and Agent invitations prove the existing relationship;
-do not initialize a conflicting new identity first. In the browser, the identity
-step offers **Link this device instead**, which accepts only a My device
-invitation and adopts the inviting identity; Human and Agent invitations pasted
-there are refused before any request. If a response is uncertain, retry the same
-operation ID and unchanged invitation. Recipient proof and setup progress are
-stored privately so a retry does not consume another invitation. The authority
-validates a recipient before binding an invitation to them, so an attempt it
-rejects (for example the wrong person pasting a My device invitation) leaves the
-invitation usable by its intended recipient. A revocation that lands while an
-enrollment is still registering its Actors wins; the recipient receives
-`REVOKED` and no admission activates.
+before joining. My device and Agent invitations link to an existing person, so the
+client must have no identity yet or that same identity. In the browser, the
+identity step offers **Link this device instead**, which accepts only a My device
+invitation and says whose identity this computer will be linked as before
+anything is sent; Human and Agent invitations pasted there are refused before any
+request. `--wait SECONDS` keeps polling and prints the code to stderr when it
+appears. If a response is uncertain, retry the same operation ID and unchanged
+invitation. The request and its proof are stored privately, so a retry never uses
+another place on the invitation.
 
-Revoking a member or device ends that admission permanently. The same identity
-cannot be re-admitted by a new Human invitation, and a revoked device is not
-re-linked by a later My device invitation into the same local project entry.
-Recovery after revocation means a fresh client directory and new invitations.
-Re-linking revoked devices in place is tracked as follow-up work.
+The approver lists requests, which also adds their nonce, and approves with the
+code the joining person reads out:
 
-When another harness joins an existing client, supply its actual metadata on
-`client join`, for example `--harness anthropic-claude-code --name Gamma --model
-claude-opus-5-5 --managed-by T3`. It becomes a separate Actor for the same human;
-the original setup agent, project and persisted runtime remain. A later
-`client agent-grant` or `client operation` can select that enrolled harness with
-`--harness`. Selecting a harness that has not enrolled on this device fails.
+```sh
+node bin/pardner.js client requests --project ID
+node bin/pardner.js client approve --project ID --request REQUEST_ID --code "1234 5678"
+node bin/pardner.js client reject --project ID --request REQUEST_ID
+```
+
+### Agents
+
+Agents run under their machine's key. An Agent invitation joined on a computer
+that is already in the project needs no approval: that machine signs an
+`agent.name` record for the harness, and the hub records it through its gate.
+Supply the agent's actual metadata, for example `--harness anthropic-claude-code
+--name Gamma --model claude-opus-5-5 --managed-by T3`. It becomes a separate Actor
+for the same person; the original setup agent, project and persisted runtime
+remain. A later `client agent-grant` or `client operation` can select that harness
+with `--harness`. Selecting a harness that has no label on this machine fails.
 Private grants include that harness's configured model and manager when known.
 These are reporting defaults, not proof of the active model: agents must report
 their actual current model when opening or updating a presence session.
-An agent-only client cannot issue a human browser launch; it uses its scoped
-agent grant to read and edit the board.
 
-The CLI can also issue invitations through `client invite --project ID --purpose
-human|agent|device --output-file FILE --operation-id ID`. It writes the private
-artifact to the chosen file and prints only the summary and file path.
+An Agent invitation used on another computer pairs that computer as a new machine
+of the person, for their agents only: it is approved like a new device, and the
+hub never lets it act as the person. An agent-only client cannot issue a human
+browser launch; it uses its scoped agent grant to read and edit the board.
+
+### Removal, roles and re-admission
+
+`client revoke --project ID --kind member --id PERSON_ID` signs `member.remove`;
+`--kind machine --id MACHINE_ID` (or the device ID a profile lists) signs
+`machine.remove`. The owner removes anyone but the owner; an admin removes members
+who never held admin; a person's other machine removes one of their machines. A
+machine cannot remove itself. `client role --project ID --person PERSON_ID --role
+admin|member` is the owner's alone; each change names the role record it replaces.
+People an admin admitted stay when that admin is removed or demoted.
+
+Removal also ends the machine's bearer admission at the hub at once: its sync
+socket closes, its presence ends, its open invitations are revoked, and the hub
+refuses its API calls and new records. A removed computer keeps its local data and
+export. It learns of the removal at its next hub check, so one write inside the
+10-second admission cache can still save locally without reaching anyone.
+
+Removals are permanent for that machine key and person ID. A removed machine
+returns as a new machine: start Pardner with a fresh `--data` directory on that
+computer and pair it. A removed person returns through a new Human invitation from
+a fresh client directory, and is admitted as a new person with a new person ID.
+The board and `client show` then list the new person; the old person stays in
+`removedPeople`, and their earlier work stays attributed to the old Actor. Joining
+from the removed directory is refused with this advice before it takes a place on
+the invitation.
+
+`client revoke --kind agent --id ACTOR_ID` revokes one of this machine's own agents:
+its grants and sessions here end. It writes no record. Joining a new Agent
+invitation on this machine restores it.
+
+The CLI issues invitations with `client invite --project ID --purpose
+human|agent|device --output-file FILE --operation-id ID`, with `--role admin|member`
+for a Human invitation and `--person PERSON_ID` for pairing someone else's
+machine. It writes the private artifact to the chosen file and prints only the
+summary and file path.
+
+After creating a project, Pardner suggests pairing a second computer: if the owner
+loses every machine, nobody can remove or demote admins any more.
 
 ## Actors and presence
 

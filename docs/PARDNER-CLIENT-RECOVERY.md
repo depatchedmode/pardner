@@ -110,40 +110,68 @@ and delivery acknowledgements. Synchronized task data cannot reconstruct those
 decisions. Use a current complete backup and separately preserved security/receipt
 records, or keep admission closed until those decisions are reconciled.
 
+The hub admits a machine only while the records it holds say that machine is a
+member. A stale hub backup lacks removals made after it was taken; it learns them
+from the first member replica that syncs, because every replica writes back the
+records it holds. Until then, a machine removed after the backup can still
+connect. Waiting for a member peer before serving is a later trust step, so keep
+the restored hub isolated until a surviving member replica has synced, or until
+you have confirmed nothing newer exists.
+
 Peers can supply newer document changes after reconnecting. Check every expected
 acknowledged operation, not just equal heads. A replica's document alone cannot
 recreate hub admission/lease state. Without a complete authority backup, preserve
 and export surviving work; a new project and explicit re-enrollment are a separate
 recovery decision.
 
-## Lost or revoked device
+## Lost or removed machine
 
-On a surviving device of the same human, use `client show` to select the lost
-device's **ID**, not its display name:
+On a surviving machine of the same person, use `client show` to select the lost
+machine's **machine ID** (or the device ID its profile lists), not its display name:
 
 ```sh
 node bin/pardner.js client revoke --data /private/path/surviving-client \
-  --project PROJECT_ID --kind device --id LOST_DEVICE_ID \
-  --operation-id revoke-lost-device-2026-11-06
+  --project PROJECT_ID --kind machine --id LOST_MACHINE_ID \
+  --operation-id remove-lost-machine-2026-11-06
 ```
 
-The authority must be reachable. Retry uncertain requests with identical IDs and
-arguments. Owners may revoke owned agents (`--kind agent`); creators may revoke
-other memberships (`--kind member`). A creator cannot impersonate another human
-to link their devices. If every device of a human is lost, restore their private
-identity backup; matching Git name/email does not prove ownership.
+This signs a `machine.remove` record, which the hub records through its gate. The
+hub must be reachable. Retry uncertain requests with identical IDs and arguments.
+The owner or an admin can also remove the machine. A machine cannot remove
+itself. Removal also ends that machine's bearer admission at the hub, and the
+invitations it issued.
 
-Revoke access before enrolling a replacement through **My device** in a new client
-directory. Downloaded data cannot be erased remotely. The revoked device's local
-operator may export retained content but cannot acquire new remote authority.
-Offline clients retain last-known policy until reconnecting. These steps do not
-claim full key rotation or recovery from compromise of the authority or a complete
-identity backup.
+Pair the replacement as a new machine: start Pardner with a fresh client directory
+on the new computer, join a **My device** invitation from a surviving machine, and
+approve it there after comparing the confirmation code. A removed machine key never
+returns; a restored backup of the removed directory is refused too.
+
+**A person who lost every machine.** The owner or an admin pairs a new machine for
+them: create a My device invitation for that person (`client invite --purpose
+device --person PERSON_ID`), join it from a fresh client directory, and approve it
+after comparing the code. The new machine joins the same person, so their past
+work stays attributed to them. Remove the lost machines as well. Matching Git name
+or email proves nothing; only an approval links a machine to a person.
+
+**The owner lost every machine.** Admins keep admitting and removing members, but
+nobody can remove or demote an admin any more, because only the owner can. Owners
+should pair a second machine early; Pardner suggests it when a project is created.
+If the owner's machines are all gone, the remedy is a new project. A cold backup
+of an owner machine restores that machine (below), which avoids this.
+
+`client revoke --kind agent` revokes one of this machine's own agents locally; a
+new Agent invitation joined on this machine restores it. Downloaded data cannot be
+erased remotely. A removed machine's local operator may export retained content
+but cannot acquire new remote authority. Offline clients keep last-known access
+until they reconnect. These steps do not claim full key rotation or recovery from
+compromise of the hub or of a complete client backup.
 
 ## Evidence boundary
 
 `test/client-recovery.test.js` exercises cold copies restored into new directories,
 offline work/retries, authority replacement at the same address, project isolation,
-invitation recovery, delivery acknowledgement replay, owned-device revocation and
-private local export after revocation. These process/filesystem tests do not prove
+invitation recovery, delivery acknowledgement replay, removal of a lost machine by
+its owner's other machine and private local export after removal.
+`test/trust-enrollment.test.js` covers pairing by an admin for a person who lost
+every machine, and re-admission as a new machine key or a new person. These process/filesystem tests do not prove
 power-loss durability, live-backup safety or backup of external files/harness state.

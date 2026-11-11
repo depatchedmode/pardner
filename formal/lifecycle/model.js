@@ -75,6 +75,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     maps: [
       { file: SERVER, anchor: "return res.set('Connection', 'close').status(503).json({", note: 'first middleware; stopping is read synchronously' },
       { file: SERVER, anchor: "this.app.post('/automerge/operations'", note: 'route reached only after admission' },
+      { file: SERVER, anchor: "this.app.post('/automerge/membership/records'", note: 'the record gate is a hub operation behind the same admission' },
     ],
     apply: state => arrive(state, index, 'new'),
   }))
@@ -203,6 +204,10 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
       { file: RUNTIME, anchor: "async execute(request) {\n    requireValue(this.initialized && !this.stopController.signal.aborted", note: 'execute() refuses once closeResources aborted' },
       { file: WORKSPACE, anchor: 'if (!prepared.replayed) this.handle.change(prepared.change)' },
       { file: WORKSPACE, anchor: "throw new OperationError('STORAGE_FAILED', 'Local persistence was not confirmed. Retry with the same operation ID.'" },
+      { file: RUNTIME, anchor: "addRecords(records) {\n    requireValue(this.initialized && !this.stopController.signal.aborted", note: 'the record gate refuses once closeResources aborted' },
+      { file: RUNTIME, anchor: 'const result = this.workspace.queue.then(() => this.gateRecords(records))', note: 'the gate joins the operation queue that closeResources drains' },
+      { file: RUNTIME, anchor: 'for (const entry of missing) doc.membership[entry.recordId] = entry', note: 'the gate’s change, then its flush; a refused record changes nothing' },
+      { file: RUNTIME, anchor: "throw new OperationError('STORAGE_FAILED', 'Local persistence of the membership records was not confirmed. Retry the same request.'" },
     ],
     apply: state => {
       if (state.done || state.requests[index].state !== 'admitted') return []
@@ -261,6 +266,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
   function respondMaps() {
     return [
       { file: SERVER, anchor: 'res.json(await this.store.acknowledge(req.body?.workspaceId, req.body?.heads))' },
+      { file: SERVER, anchor: 'res.json(await this.store.addRecords(req.body?.records))', note: 'the gate answers only after its flush' },
       { file: WORKSPACE, anchor: 'result: plain(event.result), replayed: prepared.replayed, savedLocally: true,' },
       { file: SERVER, anchor: "res.once('finish', () => {", note: 'response completion; keep-alive sockets become idle' },
     ]
@@ -299,7 +305,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     maps: [
       { file: SERVER, anchor: 'await this.store.close()', note: 'after listenersClosed settled' },
       { file: RUNTIME, anchor: 'this.stopController.abort()' },
-      { file: RUNTIME, anchor: 'await this.workspace?.queue', note: 'operation queue is already empty: every operation arrives through a drained listener' },
+      { file: RUNTIME, anchor: 'await this.workspace?.queue', note: 'operation queue is already empty: every operation and record gate request arrives through a drained listener' },
       { file: RUNTIME, anchor: 'await this.harvests', note: 'a pending membership harvest settles before the repo closes; it admits no request' },
       { file: REPO, anchor: 'this.closing = true' },
     ],

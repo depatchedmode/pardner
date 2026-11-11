@@ -53,7 +53,9 @@ test('project creation signs a genesis that verifies from the project ID alone a
     assert.equal(membership.projectId, project.id)
     assert.deepEqual(membership.people.map(person => [person.id, person.role, person.displayName]), [[identity.id, 'owner', 'Ada']])
     assert.deepEqual(membership.machines.map(machine => [machine.id, machine.personId]), [[first.device.machineId, identity.id]])
-    assert.equal(membership.storedRecords, 1)
+    // The genesis, and the setup agent's label signed by the same machine.
+    assert.equal(membership.storedRecords, 2)
+    assert.deepEqual(membership.agentNames.map(agent => [agent.machineId, agent.harness]), [[first.device.machineId, 'openai-codex']])
     assert.deepEqual(membership.notStored, [])
 
     const key = local.service.project(project.id).key
