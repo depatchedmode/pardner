@@ -202,8 +202,8 @@ into the signature document whose heads it sends, so each of its acknowledged
 changes has its signature on the hub's disk too.
 
 Directories made before machine keys are refused, whether a client directory
-without `machine-key.pem` or a storage directory with an earlier schema. Schema 10
-storage, with signed changes and kept equivocation reports, and version 4 client
+without `machine-key.pem` or a storage directory with an earlier schema. Schema 11
+storage, with signed changes and equivocation reports kept with their proof, and version 4 client
 directories are the current ones. Earlier directories are left byte-for-byte unchanged and are never migrated.
 Start Pardner with a fresh `--data` directory.
 

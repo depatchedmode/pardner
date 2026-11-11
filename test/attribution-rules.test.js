@@ -577,6 +577,71 @@ it('an equivocation report is kept across a restart', { timeout: 90000 }, async 
   })
 })
 
+/** Two changes one member machine's key signed under one actor and sequence number, one sent by each bare member. */
+async function equivocate({ project, server, bare }, { sign: signNow = true } = {}) {
+  const [first, second] = [await bare(0), await bare(1)]
+  await eventually(() => A.getHeads(second.board.doc()).join() === A.getHeads(server.store.docHandle.doc()).join(), 'the second member never synced')
+  const base = second.board.doc(), actor = machineActor(project.keys[0])
+  const one = A.change(A.clone(base, { actor }), doc => { doc.name = new A.ImmutableString('One story') })
+  const two = A.change(A.clone(base, { actor }), doc => { doc.name = new A.ImmutableString('Another story') })
+  const hashes = [A.getHeads(one)[0], A.getHeads(two)[0]]
+  const sign = (member, hash) => member.signatures.change(d => { d[shardOf(hash)][hash] = signChange(project.keys[0], project.projectId, hash) })
+  if (signNow) {
+    sign(first, hashes[0])
+    sign(second, hashes[1])
+    await eventually(() => hashes.every(hash => storedSignatures(server.store.workspace.signatures.doc(), hash).length), 'the signatures never arrived')
+  }
+  first.board.update(doc => A.merge(doc, one))
+  second.board.update(doc => A.merge(doc, two))
+  return { first, second, hashes, sign }
+}
+
+it('an equivocation report keeps the signatures that prove it, so it stays proven when they are deleted from the signature document and after a restart', { timeout: 90000 }, async () => {
+  await withHub(async context => {
+    const { project, server } = context
+    const { first, second, hashes } = await equivocate(context)
+    await eventually(() => server.store.getDoc().attribution.summary.equivocations[0]?.proven, 'the equivocation was never proven')
+    // A member deletes both signatures from the shared document; then both members stop.
+    second.signatures.change(d => { for (const hash of hashes) delete d[shardOf(hash)][hash] })
+    const signatures = server.store.workspace.signatures
+    await eventually(() => A.hasHeads(signatures.doc(), A.getHeads(second.signatures.doc())), 'the deletion never arrived')
+    await first.repo.shutdown(); await second.repo.shutdown()
+    const directory = server.store.directory
+    await server.store.close()
+    const reopened = hubRuntime(directory, { actors, project })
+    await reopened.init()
+    try {
+      const [kept] = reopened.getDoc().attribution.summary.equivocations
+      assert.deepEqual([...kept.hashes].sort(), [...hashes].sort())
+      assert.equal(kept.proven, true, 'the proof was lost with the signature document’s entries')
+    } finally { await reopened.close() }
+  })
+})
+
+it('an equivocation report shown before both signatures arrived becomes proven when the second one arrives', { timeout: 90000 }, async () => {
+  await withHub(async context => {
+    const { server, bare } = context
+    const { first, second, hashes, sign } = await equivocate(context, { sign: false })
+    await eventually(() => server.store.getDoc().attribution.summary.equivocations[0], 'the equivocation was never reported')
+    // The change the hub holds is signed and checked as usual; the one it refused is not signed yet.
+    const held = hashes.find(hash => A.hasHeads(server.store.docHandle.doc(), [hash])), refused = hashes.find(hash => hash !== held)
+    sign(held === hashes[0] ? first : second, held)
+    await eventually(() => server.store.attribution.stateOf(held).state === 'signed', 'the held change was never checked')
+    // The members that sent the two changes stop, so nothing is refused again; a third member then supplies the
+    // missing signature.
+    await first.repo.shutdown(); await second.repo.shutdown()
+    await new Promise(resolve => setTimeout(resolve, 300))
+    const report = server.store.getDoc().attribution.summary.equivocations[0]
+    assert.deepEqual(report.signed, report.hashes.map(hash => hash === held), 'only the held change is signed so far')
+    const third = await bare(2)
+    await eventually(() => A.getHeads(third.signatures.doc()).join() === A.getHeads(server.store.workspace.signatures.doc()).join(), 'the third member never synced')
+    sign(third, refused)
+    await eventually(() => storedSignatures(server.store.workspace.signatures.doc(), refused).length, 'the second signature never arrived')
+    await eventually(() => server.store.getDoc().attribution.summary.equivocations[0].proven, 'the report was not refreshed when its signature arrived', 5000)
+    assert.equal(server.store.status().attribution.equivocations, 1)
+  })
+})
+
 it('a reopened replica reads only the changes it has not read before, and keeps what it found', { timeout: 90000 }, async () => {
   await withHub(async ({ root, project, server, replica, bare }) => {
     const directory = join(root, 'reopened-reader')

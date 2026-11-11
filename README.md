@@ -42,9 +42,10 @@ All document strings are immutable scalar values (Automerge `ImmutableString`),
 including field registers, operation history and membership records. Reads expose
 ordinary JavaScript strings. Different-field merging, authored same-field
 alternatives and explicit resolution retain their existing behavior; Pardner
-replaces whole values and does not splice collaborative text. Schema 10, whose
+replaces whole values and does not splice collaborative text. Schema 11, whose
 changes are signed by the machine that made them and whose signature cache keeps
-equivocation reports, refuses earlier storage directories, and version 4 client
+equivocation reports with the signatures that prove them, refuses earlier storage
+directories, and version 4 client
 directories refuse earlier ones, without migrating or deleting them.
 
 Each client directory has its own Ed25519 machine key, created on first start and
@@ -409,10 +410,11 @@ its properties within that model only.
 
 ## Storage and dependencies
 
-A schema 10 directory contains workspace metadata, Automerge storage (the board
+A schema 11 directory contains workspace metadata, Automerge storage (the board
 and its signature document), the grow-only membership record store, the grow-only
 signature cache (`signatures.sqlite`: verified change signatures, equivocation
-reports, and which board changes this replica has read for the content check), an
+reports with the signatures that prove them, and which board changes this replica
+has read for the content check), an
 exclusive service lock, and local connection settings. The hub additionally holds the SQLite delivery ledger and its own
 waiting state after a restore (`hub-state.json`). A client
 directory also holds its machine key. Client directories and storage directories

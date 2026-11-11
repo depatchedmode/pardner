@@ -81,8 +81,9 @@ test('project creation signs a genesis that verifies from the project ID alone a
 
 test('a storage directory from an earlier schema is refused and left byte-identical', { timeout: 30000 }, async () => {
   // Schema 7 is the last before person IDs were derived from keys and certifications carried their machine's consent;
-  // schema 8 the last before every change was signed; schema 9 the last whose signature cache held no equivocation reports.
-  for (const schemaVersion of [6, 7, 8, 9]) {
+  // schema 8 the last before every change was signed; schema 9 the last whose signature cache held no equivocation reports;
+  // schema 10 the last whose signature cache kept no proof with them.
+  for (const schemaVersion of [6, 7, 8, 9, 10]) {
     const storage = await mkdtemp(join(tmpdir(), 'pardner-prior-storage-'))
     try {
       ;(await acquireStorageLease(storage)).close()
@@ -90,7 +91,7 @@ test('a storage directory from an earlier schema is refused and left byte-identi
       await mkdir(join(storage, 'repo'))
       await writeFile(join(storage, 'repo', 'chunk'), 'prior document bytes')
       await writeFile(join(storage, RECORD_STORE_FILE), 'prior membership records')
-      if (schemaVersion === 9) {
+      if (schemaVersion >= 9) {
         // A signature cache left by a killed process, write-ahead log included.
         await writeFile(join(storage, 'signatures.sqlite'), 'prior signature cache')
         await writeFile(join(storage, 'signatures.sqlite-wal'), 'prior signature log')

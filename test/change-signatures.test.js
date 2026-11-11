@@ -139,21 +139,28 @@ test('the signature cache only grows, belongs to one project, is private, and su
   }
 })
 
-test('the signature cache keeps equivocation reports across reopening, and they only grow', async () => {
+test('the signature cache keeps equivocation reports and the signatures that prove them across reopening, and they only grow', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-signature-reports-'))
   const path = join(directory, SIGNATURE_CACHE_FILE)
   try {
     const report = { document: 'board', actor: 'ab'.repeat(24), seq: 3, hashes: ['cd'.repeat(32), 'ef'.repeat(32)], machineId: null }
+    const proof = new Uint8Array(64).fill(7)
     let cache = new SignatureCache(path, projectId)
     cache.addEquivocation('board:a:3', report)
     cache.addEquivocation('board:a:3', { ...report, seq: 4 })
+    cache.addEquivocationProof('board:a:3', report.hashes[0], proof)
+    cache.addEquivocationProof('board:a:3', report.hashes[0], new Uint8Array(64))
+    assert.throws(() => cache.addEquivocationProof('board:a:3', 'not-a-hash', proof), /Invalid equivocation proof/)
     cache.close()
     cache = new SignatureCache(path, projectId)
     assert.deepEqual(cache.equivocations(100), [['board:a:3', report]], 'the first report under a key is kept as it was')
+    assert.deepEqual([...cache.equivocationProofs('board:a:3')], [[report.hashes[0], proof]], 'the first proof of a change is kept as it was')
     cache.close()
     const database = new DatabaseSync(path)
     assert.throws(() => database.exec('DELETE FROM equivocations'), /only grow/)
     assert.throws(() => database.exec("UPDATE equivocations SET report = '{}'"), /only grow/)
+    assert.throws(() => database.exec('DELETE FROM equivocation_proofs'), /only grow/)
+    assert.throws(() => database.exec("UPDATE equivocation_proofs SET hash = 'x'"), /only grow/)
     database.close()
   } finally {
     await rm(directory, { recursive: true, force: true })
