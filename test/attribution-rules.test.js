@@ -201,10 +201,11 @@ it('repairs of signature entries are never lost when deletions coincide: every o
 it('a member asks the hub about every change it has no verdict for, in turn, so one batch cannot starve the rest', { timeout: 120000 }, async () => {
   await withHub(async ({ replica, bare }) => {
     const reader = await replica(1)
-    const asked = []
+    const asked = [], answered = new Map()
     // The hub's answer is held at pending for most changes, so the first batch would stay unresolved for ever.
     reader.attribution.askHub = async hashes => {
       asked.push([...hashes])
+      for (const hash of hashes) if (settled.has(hash) && !answered.has(hash)) answered.set(hash, asked.length - 1)
       return { states: Object.fromEntries(hashes.map(hash => [hash, settled.has(hash) ? { state: 'unsigned', relayedBy: null } : { state: 'pending', waitingFor: null }])) }
     }
     const settled = new Set()
@@ -221,12 +222,12 @@ it('a member asks the hub about every change it has no verdict for, in turn, so 
     // A few are settled by the hub: they leave the rotation.
     for (const hash of unsigned.slice(0, 10)) settled.add(hash)
     const start = asked.length
-    await eventually(() => asked.length >= start + 4, 'the reader stopped asking', 30000)
-    const later = asked.slice(start + 1).flat()
+    await eventually(() => asked.length >= start + 4 && unsigned.slice(0, 10).every(hash => answered.has(hash)), 'the reader stopped asking', 30000)
     const everyone = new Set(asked.slice(start, start + 4).flat())
     assert.ok(unsigned.slice(10).every(hash => everyone.has(hash)), 'every unresolved change is asked about within a bounded number of polls')
     assert.ok(asked.every(batch => batch.length <= 500), 'each poll stays within the hub’s limit')
-    assert.ok(!later.some(hash => settled.has(hash)), 'settled changes are not asked about again')
+    // A change the hub settled is never asked about after the poll that settled it.
+    assert.ok([...answered].every(([hash, poll]) => asked.slice(poll + 1).every(batch => !batch.includes(hash))), 'settled changes are not asked about again')
   })
 })
 
@@ -324,7 +325,7 @@ it('replacing or deleting an Activity entry, or a signed change that leaves no A
     await eventually(() => A.hasHeads(server.store.docHandle.doc(), [rename]), 'the edits never reached the hub')
     await checked(server.store)
     const review = hash => reviewEntry(server.store, hash)
-    await eventually(() => review(replacement) && review(deletion) && review(rename), 'not every change was listed')
+    await eventually(() => [replacement, deletion, rename].every(hash => review(hash)?.state === 'signed'), 'not every change was listed with its signer')
     assert.deepEqual(review(replacement).rewrote, [{ map: 'operations', key: replaced.operationId, kind: 'replaced' }])
     assert.equal(review(replacement).machineId, project.keys[2].machineId)
     const [shown] = server.store.getDoc().attribution.operations[replaced.operationId]
