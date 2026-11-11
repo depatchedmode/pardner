@@ -28,6 +28,7 @@ import { ControlPane } from './lib/control-pane.js'
 import { T3Busy, T3Rejected, T3Unknown } from './lib/t3-mcp-client.js'
 import { HandshakeError, respondHandshake } from './lib/machine-handshake.js'
 import { SessionServer, signedBody, signedHeaders } from './lib/machine-session.js'
+import { removalFor } from './lib/membership.js'
 
 const DEFAULT_HTTP_PORT = 8004
 const DEFAULT_WS_PORT = 8005
@@ -188,7 +189,8 @@ class AutomergeSyncServer {
     this.store.on?.('membership', this.onMembership)
     this.sessions = this.store.role === 'hub' && this.store.machineKey ? new SessionServer({ key: this.store.machineKey,
       projectId: this.store.manifest.workspaceId, acceptRoute: route => this.routes().http.includes(route),
-      member: machineId => this.memberKey(machineId), refusal: machineId => this.notMember(machineId),
+      member: machineId => this.memberKey(machineId), former: machineId => this.formerKey(machineId),
+      refusal: (machineId, proven) => this.notMember(machineId, proven),
       welcome: () => {
         if (this.store.hubStatus()?.waiting) throw new HandshakeError('HUB_WAITING', HUB_WAITING_MESSAGE)
         return { records: this.store.records.all(), checkpoint: this.store.checkpoint() }
@@ -463,6 +465,11 @@ class AutomergeSyncServer {
     return this.store.records.membership().machines.find(machine => machine.id === machineId)?.publicKey ?? null
   }
 
+  /** The key a removed machine held, so it can prove it before it is told of its removal; else null. */
+  formerKey(machineId) {
+    return this.store.records.membership().formerMachines?.find(machine => machine.id === machineId)?.publicKey ?? null
+  }
+
   /** The machine a signed request comes from; refused while this hub waits after a restore. */
   verifyMachine(request) {
     if (!this.sessions) throw new HandshakeError('NO_MACHINES', 'This service serves no other machine. Host projects with pardner client.')
@@ -488,7 +495,9 @@ class AutomergeSyncServer {
         acceptRoute: route => this.routes().ws.includes(route),
         screen: hello => {
           vouches = this.store.noteCheckpoint(hello.checkpoint)
-          if (!this.store.hubStatus()?.waiting && this.memberKey(hello.initiator.machineId) !== hello.initiator.publicKey) throw this.notMember(hello.initiator.machineId)
+          // A removed machine holding its key finishes the signatures, so that only it is told who removed it (admit).
+          const { machineId, publicKey } = hello.initiator
+          if (!this.store.hubStatus()?.waiting && this.memberKey(machineId) !== publicKey && this.formerKey(machineId) !== publicKey) throw this.notMember(machineId)
         },
         admit: async ({ hello, requestMembership }) => {
           if (this.store.hubStatus()?.waiting) {
@@ -497,7 +506,7 @@ class AutomergeSyncServer {
             if (!vouches) throw new HandshakeError('HUB_WAITING', HUB_WAITING_MESSAGE)
             await this.store.resumeHub({ machineId: hello.initiator.machineId })
           }
-          if (this.memberKey(hello.initiator.machineId) !== hello.initiator.publicKey) throw this.notMember(hello.initiator.machineId)
+          if (this.memberKey(hello.initiator.machineId) !== hello.initiator.publicKey) throw this.notMember(hello.initiator.machineId, true)
           return { records: this.store.records.all(), checkpoint: this.store.checkpoint(), documentUrl: this.store.manifest.url }
         } })
       // Membership may have changed while the welcome was sent; nothing reaches Automerge unless it still holds.
@@ -514,9 +523,16 @@ class AutomergeSyncServer {
     }
   }
 
-  notMember(machineId) {
-    return this.store.records.membership().removedMachines.includes(machineId)
-      ? new HandshakeError('REVOKED', 'This machine was removed from the project; nothing is served to it. Its local data is preserved.')
+  /**
+   * The refusal for a machine that is not a current member. A removed machine
+   * that has proved its key (`proven`) is also told who removed it and whether
+   * its person left (#154), since it may never hold its own removal record.
+   */
+  notMember(machineId, proven = false) {
+    const membership = this.store.records.membership()
+    return membership.removedMachines.includes(machineId)
+      ? new HandshakeError('REVOKED', 'This machine was removed from the project; nothing is served to it. Its local data is preserved.',
+        proven ? { removal: removalFor(membership, machineId) } : null)
       : new HandshakeError('NOT_MEMBER', 'This machine is not a member of the project; nothing is served to it')
   }
 
@@ -652,7 +668,8 @@ class AutomergeSyncServer {
       workspaceId: this.store.manifest.workspaceId,
     }))
     // The machine handshake carried by HTTP: it opens a signed session (lib/machine-session.js).
-    const sessionFailure = (res, error) => res.status(machineStatus(error.code)).json({ code: error.code ?? 'HANDSHAKE_INVALID', error: error.message })
+    const sessionFailure = (res, error) => res.status(machineStatus(error.code)).json({ code: error.code ?? 'HANDSHAKE_INVALID', error: error.message,
+      ...(error.details ? { details: error.details } : {}) })
     this.app.post('/session', (req, res) => {
       res.set('Cache-Control', 'no-store')
       try {

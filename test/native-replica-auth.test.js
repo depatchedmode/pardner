@@ -206,6 +206,42 @@ it('a removed machine is refused, and its open sync session closes when the remo
   })
 })
 
+it('a removed machine is told who removed it only once it proves its key, on the socket and over HTTP', async () => {
+  await withHub(async ({ project, hub }) => {
+    const server = await hub()
+    const removed = project.keys[0]
+    await server.store.addRecords([project.remove(removed)])
+    const expected = { removal: { kind: 'machine', left: false, by: { personId: 'person-owner', name: 'Owner' } } }
+    // The removed machine itself finishes the signatures and is refused with who removed it (#154).
+    const { socket } = await rawSocket(server)
+    const refused = await initiateHandshake(socket, { key: removed, projectId: project.projectId, route: nativeUrl(server), role: 'replica' }).catch(error => error)
+    assert.deepEqual([refused.code, refused.details], ['REVOKED', expected])
+    // Someone who presents the removed machine's public key without its private key learns nothing beyond the code.
+    const impostor = { machineId: removed.machineId, publicKey: removed.publicKey, sign: project.stranger.sign.bind(project.stranger) }
+    const posing = await rawSocket(server)
+    const failed = await initiateHandshake(posing.socket, { key: impostor, projectId: project.projectId, route: nativeUrl(server), role: 'replica' }).catch(error => error)
+    assert.notEqual(failed.code, undefined)
+    assert.equal(failed.details, undefined, 'an impostor is told nothing about the removal')
+    assert.equal(posing.frames.some(frame => frame.type === 'welcome' || frame.records), false)
+    // The same over HTTP: the session's confirmation carries the details, never its hello.
+    const { SessionClient } = await import('../lib/machine-session.js')
+    const send = async (url, { headers = {}, body }) => {
+      const response = await fetch(url, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+      const result = await response.json()
+      if (!response.ok) throw Object.assign(new Error(result.error), { code: result.code, details: result.details })
+      return result
+    }
+    const told = await new SessionClient({ key: removed, projectId: project.projectId, route: httpRoute(server), send, knownRecords: async () => project.all })
+      .request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } }).catch(error => error)
+    assert.deepEqual([told.code, told.details], ['REVOKED', expected])
+    const hello = await new SessionClient({ key: impostor, projectId: project.projectId, route: httpRoute(server), send, knownRecords: async () => project.all })
+      .request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } }).catch(error => error)
+    assert.equal(hello.details, undefined, 'an impostor is told nothing about the removal over HTTP either')
+    assert.equal(server.sessions.active.size, 0)
+  })
+})
+
 it('removal also ends a live signed HTTP session at once', async () => {
   await withHub(async ({ project, hub }) => {
     const server = await hub()
