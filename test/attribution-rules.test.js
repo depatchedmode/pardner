@@ -118,14 +118,14 @@ it('a signature-document shard replaced by a list or any other non-map value can
   })
 })
 
-it('what is read from the signature document is bounded: only map shards, change-hash keys and 64-byte values, and a few concurrent values', () => {
+it('what is read from the signature document is bounded: only map shards, change-hash keys and 64-byte values', () => {
   const projectId = 'ab'.repeat(32), key = generateMachineKey()
   const base = A.from(createSignaturesData())
   const hash = 'cd'.repeat(32), signature = signChange(key, projectId, hash)
   // Fifty members write concurrently under one hash; the one valid signature is among them.
   let doc = A.clone(base)
   for (let index = 0; index < 50; index++) doc = A.merge(doc, A.change(A.clone(base), d => { d[shardOf(hash)][hash] = new Uint8Array(randomBytes(64)) }))
-  assert.ok(storedSignatures(doc, hash).length <= 8, 'at most a few concurrent values are read')
+  assert.ok(storedSignatures(doc, hash).every(value => value.length === 64), 'only 64-byte values are read')
   // Values that are not exactly 64 bytes, and keys that are not change hashes, are never returned.
   const odd = A.change(A.clone(base), d => {
     d[shardOf(hash)][hash] = new Uint8Array(63)
@@ -143,6 +143,84 @@ it('what is read from the signature document is bounded: only map shards, change
   const right = A.change(A.clone(base), d => { d[shardOf(hash)] = {} })
   const both = A.merge(A.merge(A.clone(base), left), right)
   assert.equal(storedSignatures(both, hash).filter(value => verifyChange(key.publicKey, projectId, hash, value)).length, 1)
+})
+
+it('a signature held only in the winning map of many concurrent shard maps is found, and so is one among many concurrent values', () => {
+  const projectId = 'ab'.repeat(32), key = generateMachineKey()
+  const hash = 'ef'.repeat(32), signature = signChange(key, projectId, hash), shard = shardOf(hash)
+  const base = A.from(createSignaturesData())
+  // Twelve members replace the shard concurrently; Automerge lists the winner last.
+  let doc = A.clone(base)
+  for (let index = 0; index < 12; index++) doc = A.merge(doc, A.change(A.clone(base), d => { d[shard] = {} }))
+  doc = A.change(doc, d => { d[shard][hash] = signature })
+  const listed = A.getBackend(doc).getAll('_root', shard).map(([, id]) => id)
+  assert.equal(listed.length, 12)
+  assert.equal(listed.at(-1), A.getObjectId(doc[shard]), 'the winner is listed last')
+  assert.ok(storedSignatures(doc, hash).some(value => verifyChange(key.publicKey, projectId, hash, value)), 'a signature in the winning shard map is found')
+  // Fifty concurrent values under one hash: the valid one is found wherever Automerge lists it.
+  let crowded = A.clone(base)
+  for (let index = 0; index < 50; index++) crowded = A.merge(crowded, A.change(A.clone(base), d => { d[shard][hash] = index === 49 ? signature : new Uint8Array(randomBytes(64)) }))
+  assert.ok(storedSignatures(crowded, hash).some(value => verifyChange(key.publicKey, projectId, hash, value)), 'a valid value among fifty concurrent values is found')
+})
+
+it('many concurrent maps for one signature shard hide no signature on any peer; the hub resolves them into one map holding every verified entry', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const writer = await replica(0)
+    const { result } = await execute(writer, 'Its shard is split twelve ways')
+    const operation = await eventually(() => operationOf(server.store, result.taskId), 'never relayed')
+    await eventually(() => stateOf(server.store, operation.operationId) === 'signed', 'never attributed')
+    const hash = signerOf(server.store, operation.operationId).hash, shard = shardOf(hash)
+    const vandal = await bare(2)
+    await eventually(() => storedSignatures(vandal.signatures.doc(), hash).length, 'the vandal never received the entry')
+    // Twelve concurrent replacements of the shard, each an empty map: the entry is in none of them.
+    const base = vandal.signatures.doc()
+    let split = A.clone(base)
+    for (let index = 0; index < 12; index++) split = A.merge(split, A.change(A.clone(base), d => { d[shard] = {} }))
+    vandal.signatures.update(doc => A.merge(doc, split))
+    const vandalism = A.getHeads(vandal.signatures.doc())
+    await eventually(() => A.hasHeads(server.store.workspace.signatures.doc(), vandalism), 'the vandalism never arrived')
+    const late = await replica(1)
+    for (const runtime of [server.store, writer, late]) {
+      await eventually(() => storedSignatures(runtime.workspace.signatures.doc(), hash).some(value => verifyChange(project.keys[0].publicKey, project.projectId, hash, value)),
+        `${runtime.role} never found the signature again`)
+      await eventually(() => stateOf(runtime, operation.operationId) === 'signed', `${runtime.role} does not show the change signed`)
+    }
+    // The hub replaces the twelve maps with one that holds the entry, and repairs then stop.
+    const signatures = server.store.workspace.signatures
+    await eventually(() => A.getBackend(signatures.doc()).getAll('_root', shard).length === 1, 'the hub never resolved the shard')
+    assert.ok(storedSignatures(signatures.doc(), hash).length, 'the resolved shard holds the entry')
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    const settled = A.getHeads(signatures.doc()).join()
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    assert.equal(A.getHeads(signatures.doc()).join(), settled, 'repairs keep rewriting the signature document')
+  })
+})
+
+it('reading a signature shard materialises its concurrent values once per change to that shard, not once per read', { timeout: 90000 }, async () => {
+  await withHub(async ({ server, replica, bare }) => {
+    const writer = await replica(0)
+    const { result } = await execute(writer, 'Read many times')
+    const operation = await eventually(() => operationOf(server.store, result.taskId), 'never relayed')
+    await eventually(() => stateOf(server.store, operation.operationId) === 'signed', 'never attributed')
+    const hash = signerOf(server.store, operation.operationId).hash, shard = shardOf(hash)
+    const vandal = await bare(2)
+    await eventually(() => storedSignatures(vandal.signatures.doc(), hash).length, 'the vandal never received the entry')
+    const base = vandal.signatures.doc()
+    let junk = A.clone(base)
+    for (let index = 0; index < 40; index++) junk = A.merge(junk, A.change(A.clone(base), d => { d[shard] = new Uint8Array(4096) }))
+    vandal.signatures.update(doc => A.merge(doc, junk))
+    const signatures = server.store.workspace.signatures
+    await eventually(() => A.hasHeads(signatures.doc(), A.getHeads(vandal.signatures.doc())), 'the vandalism never arrived')
+    await eventually(() => storedSignatures(signatures.doc(), hash).length, 'the entry was never written back')
+    const backend = A.getBackend(signatures.doc())
+    const getAll = backend.getAll
+    let reads = 0
+    backend.getAll = function (obj, prop, ...rest) { if (obj === '_root' && prop === shard) reads++; return getAll.call(this, obj, prop, ...rest) }
+    try {
+      for (let index = 0; index < 100; index++) server.store.attribution.check(hash)
+    } finally { backend.getAll = getAll }
+    assert.ok(reads <= 1, `the shard's concurrent values were read ${reads} times for 100 reads`)
+  })
 })
 
 it('an exception in a background attribution task is contained, logged and shown in status, and the work resumes', { timeout: 90000 }, async () => {
