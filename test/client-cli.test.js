@@ -63,6 +63,12 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
     assert.equal(grant.managedBy, 'T3')
     assert.ok(!grantOutput.stdout.includes(grant.token))
     assert.equal((await stat(grantFile)).mode & 0o777, 0o600)
+    // A name given at grant time selects the agent it names, or is refused; it is never ignored.
+    assert.equal((await run(['agent-grant', '--project', project.id, '--name', 'Alice’s Codex', '--output-file', grantFile])).value.actorId, grant.actorId)
+    const misnamed = await refused(['agent-grant', '--project', project.id, '--name', 'Overnight Codex', '--output-file', grantFile])
+    assert.equal(misnamed.code, 'AGENT_NAME_CONFLICT')
+    assert.match(misnamed.message, /^Alice already has a Codex agent in this project named “Alice’s Codex”\./)
+    assert.deepEqual(misnamed.details, { actorId: grant.actorId, name: 'Alice’s Codex' })
     const output = join(directory, 'invite.txt')
     const { stdout } = await run(['invite', '--project', project.id, '--purpose', 'human', '--operation-id', 'invite', '--output-file', output])
     const invitation = await readFile(output, 'utf8')
