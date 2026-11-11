@@ -208,11 +208,6 @@ README states each stage's guarantee as it lands, so no stage claims more than i
 - **Open time:** still fails the 3-second rule with plain values through automerge-repo (6.5 s; 2.8 s with a direct `Automerge.load`). This needs its own work before signed changes land.
 - **Not shown:** the README acceptance bounds with signing on. They were reasoned from parts, not run.
 
-Text-storage status (#208): schema 7 stores all strings as immutable scalar
-values, with ordinary strings at read boundaries and unchanged whole-field
-conflict semantics. Earlier schemas are refused and preserved. Further open-time
-work is #209.
-
 **Stage 1: the gate and attribution.** The guarantee: only member machines sync, and every change shows which machine made it. Members may change anything.
 1. **Keys, records and signed changes.**
    - Machine keys, the membership records and the grow-only store.
@@ -294,7 +289,7 @@ This is a plan. None of these scenarios has been run.
 | Admission rule | The handshake replaces bearer tokens, and AGENTS.md is reworded with it (Q2) |
 | Enrollment | Hub-only until the direct lane is qualified (Q3) |
 | Revocation | Enforced from arrival at the gate: a removed machine's session is closed and its new records are refused. Its changes that arrive as history are flagged, not refused (Q1) |
-| Text storage | Plain string values. Automerge text crossed the decision rule (Q7). Implemented as schema 7 (#208) |
+| Text storage | Plain string values. Automerge text crossed the decision rule (Q7) |
 
 ## Decision history
 
