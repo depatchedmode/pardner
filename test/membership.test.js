@@ -72,9 +72,9 @@ test('only the owner can add, remove or change admins; no one can remove or re-r
   const base = [f.genesis, f.adminAdd, f.add(f.admin, 'member', f.member)]
   const forbidden = [
     f.add(f.admin, 'other', other, 'admin'), f.add(f.member, 'other', other),
-    f.record(f.admin, 'member.remove', 'admin'), f.record(f.admin, 'member.role', 'admin', { role: 'member' }),
-    f.record(f.admin, 'member.role', 'member', { role: 'admin' }),
-    f.record(f.owner, 'member.remove', 'owner'), f.record(f.owner, 'member.role', 'owner', { role: 'member' }),
+    f.record(f.admin, 'member.remove', 'admin'), f.record(f.admin, 'member.role', 'admin', { role: 'member', replaces: null }),
+    f.record(f.admin, 'member.role', 'member', { role: 'admin', replaces: null }),
+    f.record(f.owner, 'member.remove', 'owner'), f.record(f.owner, 'member.role', 'owner', { role: 'member', replaces: null }),
     f.record(f.admin, 'member.remove', 'owner'),
   ]
   for (const record of forbidden) {
@@ -82,10 +82,10 @@ test('only the owner can add, remove or change admins; no one can remove or re-r
     assert.equal(state.rejected.length, 1, record.kind)
     assert.equal(state.people.find(person => person.id === 'owner').role, 'owner')
   }
-  const promoted = computeMembership([...base, f.record(f.owner, 'member.role', 'member', { role: 'admin' })])
+  const promoted = computeMembership([...base, f.record(f.owner, 'member.role', 'member', { role: 'admin', replaces: null })])
   assert.equal(promoted.people.find(person => person.id === 'member').role, 'admin')
   assert.deepEqual(promoted.rejected, [])
-  const demoted = computeMembership([f.genesis, f.adminAdd, f.record(f.owner, 'member.role', 'admin', { role: 'member' })])
+  const demoted = computeMembership([f.genesis, f.adminAdd, f.record(f.owner, 'member.role', 'admin', { role: 'member', replaces: null })])
   assert.equal(demoted.people.find(person => person.id === 'admin').role, 'member')
   const removed = computeMembership([...base, f.record(f.admin, 'member.remove', 'member')])
   assert.equal(isMember(removed, f.member.machineId), false)
@@ -111,9 +111,9 @@ test('machine authority respects person roles and owner machines resolve before 
     assert.equal(computeMembership([...base, forbidden]).rejected.length, 1)
   }
   const records = [...base, f.pair(f.owner, 'owner', secondOwner), f.pair(f.admin, 'admin', secondAdmin), f.pair(f.admin, 'member', secondMember),
-    f.record(secondOwner, 'member.role', 'member', { role: 'admin' })]
+    f.record(secondOwner, 'member.role', 'member', { role: 'admin', replaces: null })]
   const state = computeMembership(records)
-  // The final role protects the newly promoted admin from the other admin's pairing.
+  // Having ever held admin protects the newly promoted admin from the other admin's pairing.
   assert.equal(isMember(state, secondMember.machineId), false)
   assert.equal(state.rejected.length, 1)
   for (let seed = 0; seed < 100; seed++) assert.deepEqual(computeMembership(shuffled(records, seed)), state)
@@ -165,14 +165,14 @@ test('profiles and agent labels are self-authored, project-bound and determinist
   assert.deepEqual(records, original)
 })
 
-test('conflicting owner roles choose greatest recordId and final roles govern the whole set', () => {
+test('concurrent owner role heads choose greatest recordId without undoing admissions', () => {
   const f = fixture()
-  const roles = ['member', 'admin'].map(role => f.record(f.owner, 'member.role', 'admin', { role }))
+  const roles = ['member', 'admin'].map(role => f.record(f.owner, 'member.role', 'admin', { role, replaces: null }))
   const records = [f.genesis, f.adminAdd, ...roles, f.add(f.admin, 'member', f.member)]
   const role = roles.sort((a, b) => a.recordId.localeCompare(b.recordId)).at(-1).role
   const state = computeMembership(records)
   assert.equal(state.people.find(person => person.id === 'admin').role, role)
-  assert.equal(isMember(state, f.member.machineId), role === 'admin')
+  assert.equal(isMember(state, f.member.machineId), true)
   for (let seed = 0; seed < 100; seed++) assert.deepEqual(computeMembership(shuffled(records, seed)), state)
 })
 
@@ -204,4 +204,145 @@ test('a member cannot poison another person’s key through their own removal hi
     f.pair(f.member, 'member', f.owner), f.record(f.admin, 'member.remove', 'member')])
   assert.equal(isMember(state, f.owner.machineId), true)
   assert.equal(state.rejected.length, 1)
+})
+
+test('role records require a signed replaces field and only owner machines may change roles', () => {
+  const f = fixture()
+  const fields = { role: 'member', replaces: null }
+  const valid = f.record(f.owner, 'member.role', 'admin', fields)
+  for (const replaces of [undefined, '', 4, 'missing', 'A'.repeat(64)]) {
+    assert.throws(() => f.record(f.owner, 'member.role', 'admin', { role: 'member', replaces }), /JSON|replaces/)
+    const malformed = { ...valid }
+    if (replaces === undefined) delete malformed.replaces
+    else malformed.replaces = replaces
+    assert.equal(verifyRecord(resign(f.owner, malformed), f.genesis.projectId, f.owner.publicKey).valid, false)
+  }
+  assert.throws(() => f.record(f.owner, 'member.role', 'admin', { role: 'member' }), /replaces/)
+  assert.equal(verifyRecord({ ...valid, replaces: '0'.repeat(64) }, f.genesis.projectId, f.owner.publicKey).valid, false)
+  const forbidden = f.record(f.admin, 'member.role', 'member', fields)
+  const state = computeMembership([f.genesis, f.adminAdd, f.add(f.admin, 'member', f.member), forbidden])
+  assert.deepEqual(state.rejected.map(record => record.recordId), [forbidden.recordId])
+})
+
+test('demotion and removal preserve both person and machine admissions in every permutation', () => {
+  const f = fixture(), second = generateMachineKey()
+  const records = [f.genesis, f.adminAdd, f.add(f.admin, 'member', f.member),
+    f.pair(f.admin, 'member', second),
+    f.record(f.owner, 'member.role', 'admin', { role: 'member', replaces: null }),
+    f.record(f.owner, 'member.remove', 'admin')]
+  const expected = computeMembership(records)
+  assert.equal(isMember(expected, f.member.machineId), true)
+  assert.equal(isMember(expected, second.machineId), true)
+  assert.equal(isMember(expected, f.admin.machineId), false)
+  assert.deepEqual(expected.rejected, [])
+  for (const permutation of permutations(records)) assert.deepEqual(computeMembership(permutation), expected)
+})
+
+test('a role chain follows replaces even when the successor has a smaller recordId', () => {
+  const f = fixture()
+  let promote, demote
+  for (let nonce = 0; nonce < 100; nonce++) {
+    promote = f.record(f.owner, 'member.role', 'member', { role: 'admin', replaces: null, nonce })
+    demote = f.record(f.owner, 'member.role', 'member', { role: 'member', replaces: promote.recordId })
+    if (demote.recordId < promote.recordId) break
+  }
+  assert.ok(demote.recordId < promote.recordId)
+  const records = [f.genesis, f.add(f.owner, 'member', f.member), promote, demote, f.add(f.member, 'admin', f.admin)]
+  const expected = computeMembership(records)
+  assert.equal(expected.people.find(person => person.id === 'member').role, 'member')
+  assert.equal(expected.people.find(person => person.id === 'member').everAdmin, true)
+  assert.equal(isMember(expected, f.admin.machineId), true)
+  assert.deepEqual(expected.rejected, [])
+  for (const permutation of permutations(records)) assert.deepEqual(computeMembership(permutation), expected)
+})
+
+test('missing and cross-person predecessors leave heads; invalid roles cannot replace or grant authority', () => {
+  const f = fixture()
+  const first = f.record(f.owner, 'member.role', 'member', { role: 'admin', replaces: null })
+  const missing = f.record(f.owner, 'member.role', 'member', { role: 'member', replaces: '0'.repeat(64) })
+  const crossPerson = f.record(f.owner, 'member.role', 'admin', { role: 'member', replaces: first.recordId })
+  const invalid = f.record(f.admin, 'member.role', 'member', { role: 'member', replaces: first.recordId })
+  const forged = { ...f.record(f.owner, 'member.role', 'member', { role: 'admin', replaces: missing.recordId }), signature: 'invalid' }
+  const records = [f.genesis, f.adminAdd, f.add(f.owner, 'member', f.member), first, missing, crossPerson, invalid, forged]
+  const expected = computeMembership(records)
+  assert.equal(expected.people.find(person => person.id === 'member').role,
+    [first, missing].sort((a, b) => a.recordId.localeCompare(b.recordId)).at(-1).role)
+  assert.equal(expected.people.find(person => person.id === 'admin').role, 'member')
+  assert.equal(expected.rejected.length, 2)
+  const noPromotion = computeMembership([f.genesis, f.adminAdd, f.add(f.owner, 'member', f.member),
+    forged, f.record(f.admin, 'member.role', 'member', { role: 'admin', replaces: null }),
+    f.pair(f.member, 'admin', generateMachineKey())])
+  assert.equal(noPromotion.people.find(person => person.id === 'member').everAdmin, false)
+  assert.equal(noPromotion.rejected.length, 3)
+  for (let seed = 0; seed < 100; seed++) assert.deepEqual(computeMembership(shuffled(records, seed)), expected)
+})
+
+test('promotion racing admin removal protects the person and their machines in every permutation', () => {
+  const f = fixture()
+  const base = [f.genesis, f.adminAdd, f.add(f.owner, 'member', f.member),
+    f.record(f.owner, 'member.role', 'member', { role: 'admin', replaces: null })]
+  for (const removal of [f.record(f.admin, 'member.remove', 'member'), f.record(f.admin, 'machine.remove', f.member.machineId)]) {
+    const records = [...base, removal]
+    const expected = computeMembership(records)
+    assert.equal(isMember(expected, f.member.machineId), true)
+    assert.deepEqual(expected.rejected.map(record => record.recordId), [removal.recordId])
+    for (const permutation of permutations(records)) assert.deepEqual(computeMembership(permutation), expected)
+  }
+})
+
+test('ever-admin protection survives demotion, including other-person machine additions', () => {
+  const f = fixture(), second = generateMachineKey()
+  for (const admissionRole of ['admin', 'member']) {
+    const promote = f.record(f.owner, 'member.role', 'member', { role: 'admin', replaces: null })
+    const base = [f.genesis, f.adminAdd, f.add(f.owner, 'member', f.member, admissionRole),
+      ...(admissionRole === 'member' ? [promote] : []),
+      f.record(f.owner, 'member.role', 'member', { role: 'member', replaces: admissionRole === 'member' ? promote.recordId : null })]
+    const forbidden = [f.record(f.admin, 'member.remove', 'member'),
+      f.record(f.admin, 'machine.remove', f.member.machineId), f.pair(f.admin, 'member', second)]
+    const state = computeMembership([...base, ...forbidden])
+    assert.equal(state.people.find(person => person.id === 'member').role, 'member')
+    assert.equal(isMember(state, f.member.machineId), true)
+    assert.equal(isMember(state, second.machineId), false)
+    assert.equal(state.rejected.length, 3)
+    assert.equal(isMember(computeMembership([...base, f.pair(f.member, 'member', second)]), second.machineId), true)
+    assert.equal(isMember(computeMembership([...base, f.pair(f.owner, 'member', second)]), second.machineId), true)
+    assert.equal(isMember(computeMembership([...base, f.record(f.owner, 'member.remove', 'member')]), f.member.machineId), false)
+    assert.equal(isMember(computeMembership([...base, f.record(f.owner, 'machine.remove', f.member.machineId)]), f.member.machineId), false)
+    for (let seed = 0; seed < 100; seed++) assert.deepEqual(computeMembership(shuffled([...base, ...forbidden], seed)), state)
+  }
+})
+
+test('concurrent owner machines, chained roles, historical admissions and racing removals shuffle identically', () => {
+  const f = fixture(), secondOwner = generateMachineKey(), admitted = generateMachineKey()
+  const promote = f.record(f.owner, 'member.role', 'member', { role: 'admin', replaces: null })
+  const heads = [f.record(f.owner, 'member.role', 'member', { role: 'member', replaces: promote.recordId }),
+    f.record(secondOwner, 'member.role', 'member', { role: 'admin', replaces: promote.recordId })]
+  const records = [f.genesis, f.pair(f.owner, 'owner', secondOwner), f.adminAdd, f.add(f.admin, 'member', f.member),
+    f.record(f.owner, 'member.role', 'admin', { role: 'member', replaces: null }),
+    promote, ...heads, f.add(f.member, 'admitted', admitted), f.record(f.admin, 'member.remove', 'member')]
+  const expected = computeMembership(records)
+  assert.equal(isMember(expected, admitted.machineId), true)
+  assert.equal(isMember(expected, f.member.machineId), true)
+  assert.equal(expected.people.find(person => person.id === 'member').role,
+    heads.sort((a, b) => a.recordId.localeCompare(b.recordId)).at(-1).role)
+  assert.equal(expected.rejected.length, 1)
+  for (let seed = 0; seed < 200; seed++) assert.deepEqual(computeMembership(shuffled(records, seed)), expected)
+})
+
+test('hundreds of records reach an authority fixed point within a generous time bound', { timeout: 10000 }, () => {
+  const f = fixture(), records = [f.genesis]
+  let signer = f.owner
+  for (let index = 0; index < 150; index++) {
+    const machine = generateMachineKey(), person = `person-${index}`
+    records.push(f.add(signer, person, machine),
+      f.record(f.owner, 'member.role', person, { role: 'admin', replaces: null }))
+    signer = machine
+  }
+  const start = performance.now()
+  const state = computeMembership(records.reverse())
+  const elapsed = performance.now() - start
+  assert.equal(state.people.length, 151)
+  assert.equal(state.machines.length, 151)
+  assert.deepEqual(state.rejected, [])
+  assert.ok(elapsed < 5000, `301 records took ${elapsed.toFixed(0)} ms`)
 })
