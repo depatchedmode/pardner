@@ -10,6 +10,7 @@ import { startClient } from '../lib/client-service.js'
 import { invitationData } from '../lib/client-invites.js'
 import { acquireStorageLease } from '../lib/storage-lease.js'
 import { joinApproved } from '../support/enrollment.js'
+import { sameComputerRoute } from '../support/client-workspace.js'
 
 const execute = promisify(execFile)
 const pardner = async (args, env = {}) => {
@@ -311,7 +312,8 @@ test('client people lists people, machines, agents and removed entries in words;
   try {
     const start = async (name, deviceName) => {
       const directory = join(root, name)
-      const client = await startClient({ directory, port: 0, deviceName, gitDirectory: root })
+      // An explicit loopback route: Alice's Human invitation is used by another client on this computer (#162).
+      const client = await startClient({ directory, ...await sameComputerRoute(), deviceName, gitDirectory: root })
       clients.push(client)
       const call = async (path, body) => {
         const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
