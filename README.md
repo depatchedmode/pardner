@@ -47,14 +47,38 @@ also keeps a grow-only local store of every valid record its client has seen,
 saved before the client uses one. A record later removed from the document still
 counts and is written back. Tampered or foreign records are not stored, and
 `client show` reports them beside the membership computed from the store.
-**Records are stored and verified but grant nothing yet.** Only the genesis is
-written today. Admission, enrollment, revocation and sync still use the bearer
-credentials described below until later trust steps. The rest of the trust
-rollout remains a [plan](docs/PARDNER-TRUST-PLAN.md).
+
+**Joining is approved on signed records.** Invitations carry an offer signed by
+the issuing machine; only the owner or an admin invites people, and an admin
+offers only the member role. A new machine's join request waits in a bounded,
+expiring queue on the hub, the project's host client, and receives nothing from
+the project until approved. Approval follows a confirmation code that both sides
+derive from the offer, the joiner's key and a nonce the approver adds; the
+approving machine signs the admission. A person's own machine, the owner or an
+admin pairs another machine into that person's identity, and pairing never
+creates a second person. Removal (`member.remove`, `machine.remove`) and owner-only
+role changes are records too. Every new record enters through one gate on the hub
+that refuses removed machines and signers without the needed role. The hub admits
+a device's sync and API calls only while its machine is a current member, and
+decides which Actors it may act as from the records, so a removal takes effect
+from the records. A removed machine or person returns only as a new machine key
+or a new person.
+
+What is not enforced yet: the transport credential is still the bearer
+`deviceToken` and `replicaToken` that the hub issues on approval; peers do not
+check each other, and the machine-key handshake that replaces those tokens is a
+later step. Automerge changes are not signed, so a member's board edits are
+attributed by the local service, not by signature. Agent grants limit agents only
+on their own machine. A member running a modified client could still write a
+record signed by its own machine straight into the document. The hub harvests
+that as history, without the role check, so a demoted admin could still remove a
+member that way. Such a record never yields a bearer credential, and records from
+a removed machine are refused. Records are enforced only at the hub. The rest of
+the trust rollout remains a [plan](docs/PARDNER-TRUST-PLAN.md).
 
 The [local client onboarding preview](docs/PARDNER-CLIENT.md) adds a private
 identity and project registry, isolated project runtimes, Start/Join, purpose-specific
-invitations and authenticated Actor sessions. `pardner open` (or a bare `pardner`)
+invitations with approval, and authenticated Actor sessions. `pardner open` (or a bare `pardner`)
 starts the client service when it is not running and signs the local browser in
 through a one-time link, with no token screen or Actor picker. Git supplies profile defaults; the session
 determines authorship. The browser can switch projects and show reported Actor

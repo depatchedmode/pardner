@@ -23,11 +23,25 @@ until it releases its data directory. Each project runs in a separate local
 runtime. The standalone `pardner serve` instructions below are for agents and
 integrations.
 
-The client also supports `show --project ID`, `revoke --project ID --kind
-device|agent|member --id ID --operation-id ID`, and `export --project ID
+The client also supports `show --project ID` and `export --project ID
 --output-file FILE`. Use the [recovery guide](PARDNER-CLIENT-RECOVERY.md) for full
 cold backups, fresh-install restoration and authority replacement. A content
 export does not replace the private registry and replica backup.
+
+Joining and membership use signed records ([client guide](PARDNER-CLIENT.md#invite-and-join)):
+
+| Command | What it does |
+| --- | --- |
+| `client invite --project ID --purpose human\|agent\|device --output-file FILE --operation-id ID [--role admin\|member] [--person PERSON_ID]` | Signs an offer with this machine's key and writes the private invitation to FILE. Human invitations are for the owner and admins; `--role admin` is the owner's alone. `--person` pairs a machine for someone else (owner or admin) |
+| `client join --invitation-file FILE --operation-id ID [--wait SECONDS]` | Sends a join request and reports `{ join: { state, requestId, code } }` until it is approved, then `{ project }`. Run it again with the same operation ID to continue; `--wait` polls and prints the code to stderr |
+| `client requests --project ID` | Lists the join requests this machine may approve, adding this approver's nonce so each shows its confirmation code |
+| `client approve --project ID --request REQUEST_ID --code CODE` | Signs the admission, only if CODE matches the code this machine derives for the request |
+| `client reject --project ID --request REQUEST_ID` | Rejects a waiting request |
+| `client revoke --project ID --kind member\|machine\|agent --id ID --operation-id ID` | `member` signs `member.remove`; `machine` (or the older `device`, with a machine or device ID) signs `machine.remove`; `agent` revokes one of this machine's own agents locally |
+| `client role --project ID --person PERSON_ID --role admin\|member --operation-id ID` | The owner signs `member.role`, naming the role record it replaces |
+
+`client create` suggests pairing a second machine: if the owner loses every
+machine, nobody can remove or demote admins.
 
 Build the browser client with `npm ci --prefix ui-prototype` and `npm run ui:build`
 before opening it. The board is signed in by the client session: the signed-in
