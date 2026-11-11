@@ -44,12 +44,16 @@ project does not reproduce operation identity or history. Use a cold backup belo
    ```
 
    Keep `client.sqlite` and its sidecars, `machine-key.pem`, all `projects/`
-   directories, each `workspace.json`, Automerge `repo/`, each project's
-   `records.sqlite` membership record store, hub `deliveries.sqlite` and other
-   private files. Copying only `repo/` loses identity, admission, retry and
-   delivery state. Without `machine-key.pem` the restored directory is refused.
-   Without a project's `records.sqlite`, records since deleted from that
-   project's document are lost.
+   directories, each `workspace.json`, Automerge `repo/` (which holds both the
+   board and its signature document), each project's `records.sqlite` membership
+   record store and `signatures.sqlite` signature cache with their sidecars, hub
+   `deliveries.sqlite` and other private files. Copying only `repo/` loses
+   identity, admission, retry and delivery state. Without `machine-key.pem` the
+   restored directory is refused. Without a project's `records.sqlite`, records
+   since deleted from that project's document are lost. Without its
+   `signatures.sqlite`, signatures since deleted from the signature document are
+   lost here, and so are this machine's own signatures that the signature document
+   had not saved yet: those changes stay on the board but show as unattributed.
    **A backup is a credential.** It holds the machine key, so anyone with a copy
    can sign as this machine. Keep backups as private as the original, with the
    key at mode 0600.
@@ -84,14 +88,21 @@ Keep an independent backup. Synchronization can propagate deletion or corruption
    The saved port is reused. A non-authority client may choose another local port
    with `--http-port`; issue a fresh `client open` link there. Do not initialize a
    new identity or create replacement projects in restored data. Incompatible
-   formats fail instead of migrating old installations automatically. A client
+   formats fail instead of migrating old installations automatically. Client
+   directories before version 4 and storage before schema 9, made before changes
+   were signed, are refused unchanged. A client
    directory made before machine keys has no `machine-key.pem` and is refused,
    unchanged; recover its content with `client export` from the release that
    made it, and start this one with a fresh directory. A missing, exposed or
    foreign key also refuses to start. Restore the directory's own key at mode
    0600; Pardner never generates a replacement for an existing directory.
 4. Compare identity, device and machine IDs, project IDs and content with the
-   backup record. A restored client is the same machine and signs as it.
+   backup record. A restored client is the same machine and signs as it. Each
+   time it opens a project it draws a new actor suffix, so its changes and those
+   of the original, if the original also runs, never reuse an actor and sequence
+   number and merge without corrupting history; running both is still a
+   duplicated credential (step 1). On start it writes back into the signature
+   document any signature from its cache that the document lacks.
    Enrolled replicas reopen without their authority; new local edits remain
    pending sync. Enrollment and delivery claims require the authority. Remote
    presence cannot be inferred while it is unavailable.

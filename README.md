@@ -42,9 +42,9 @@ All document strings are immutable scalar values (Automerge `ImmutableString`),
 including field registers, operation history and membership records. Reads expose
 ordinary JavaScript strings. Different-field merging, authored same-field
 alternatives and explicit resolution retain their existing behavior; Pardner
-replaces whole values and does not splice collaborative text. Schema 8, whose
-membership records carry each machine's consent, refuses earlier storage
-directories, and version 3 client directories refuse earlier ones, without
+replaces whole values and does not splice collaborative text. Schema 9, whose
+changes are signed by the machine that made them, refuses earlier storage
+directories, and version 4 client directories refuse earlier ones, without
 migrating or deleting them.
 
 Each client directory has its own Ed25519 machine key, created on first start and
@@ -117,12 +117,53 @@ keeps it listed as removed, says who removed it and how to come back, and is
 never shown as signed out. `client people` gives the same listing as text. Last
 seen is held in the hub's memory only, so it resets when the hub restarts.
 
-What is not enforced yet: **changes are not signed, so a member machine's word is
-taken for who made a change.** Any member may change anything, and the local
-service on the machine that made a change attributes it. Agent grants limit agents
-only on their own machine. Activity entries do not yet show which machine signed a
-change, and nothing flags unattributed changes; both wait for signed changes. A
-member running a modified client could still write a record signed by its own
+**Every change shows which machine made it.** Each Automerge change carries an
+actor ID that starts with its machine's ID and ends with 8 random bytes drawn each
+time the document is loaded, so a restored backup and its original never reuse an
+actor and sequence number. The machine signs each change at once with its key, over
+the project ID and Automerge's change hash. It saves the signature in a local,
+grow-only signature cache before the change can be saved, and writes it into the
+project's signature document, a second document beside the board whose ID every
+member derives from the project ID; that document is saved and synced in the
+background, off the acknowledgement path, and at start-up a machine writes back any
+signature it holds that the document lacks. Every peer applies every change it
+receives, as before, then checks that the signature verifies under the machine the
+actor names and that this machine is or was a member, and keeps each signature it
+verified in its own cache, so deleting an entry from the shared document
+unattributes nothing it already checked. No change is refused, dropped or hidden.
+Activity names each entry's signer, the person and the machine; says "signature
+pending" while a signature may still be on its way; says "unattributed" and names
+the machine that relayed it once the machine that delivered the change has had a
+second on a live connection to send one; and says "made by a removed machine" for a
+signed change that does not come before that machine's removal in the board's
+history. Work from before a removal stays attributed. Membership records appear in
+Activity with their signer. The board announces changes that need review, with a
+filter for them, and `pardner client review` lists them. Two different changes
+signed by one machine with the same actor and sequence number are reported as
+equivocation, naming the machine: Automerge refuses the second, so board changes
+from the peer that carries it stop applying until that machine is removed and its
+copy rebuilt. The hub's persistence acknowledgement covers the heads of both the
+board and the signature document.
+
+What is not enforced: **a member may still change anything**, as in git. Peers
+check who made a change, not whether it was allowed, and people review and undo a
+bad change. **A machine's word is taken for which of its Actors acted:** peers
+verify the machine and flag only a change claiming an Actor that machine is not
+certified for, such as another person's Actor, or a person on an agents-only
+machine; agent grants limit agents only on their own machine. **The sync stream
+after the handshake is protected only by TLS** (#215): whoever terminates TLS in
+front of the hub, such as a reverse proxy or tunnel provider, could relay a
+member's handshake and then inject sync traffic, which peers apply and flag as
+unattributed. Changes to the signature document are not signed themselves: a
+member can delete or overwrite an entry, which unattributes a change only on peers
+that never verified it. A member can also front-run another machine's next change
+with an unsigned change under that machine's actor and sequence number; the real
+change is then refused by Automerge where the forgery arrived first, which is
+reported as a conflicting change, not proven equivocation. Whether a change came
+after its machine's removal is read from the board's history, so a member who
+deletes a removal record from the document can move that point when peers write
+the record back; the machine stays removed either way. A member
+running a modified client could still write a record signed by its own
 machine straight into the document. The hub harvests that
 as history, without the current-role check, so a demoted admin could still remove
 a member that way; records from a removed machine are refused. Consent, derived
@@ -159,7 +200,7 @@ identity, so the same Actor can work from more than one machine.
 Local operations are acknowledged only after a disk persistence barrier. Enrolled
 replicas reopen without the hub and reconnect with a fresh machine handshake.
 Member machines are trusted full document writers: their synchronized changes bypass
-operation validation. Ordinary API and Actor credentials authorize only a machine's
+operation validation, and each is attributed to the machine that signed it. Ordinary API and Actor credentials authorize only a machine's
 own API and UI subscriptions; they are never accepted between machines.
 Different-field edits merge; same-field alternatives retain their authors and
 require explicit resolution. A synced indicator requires an explicit hub
