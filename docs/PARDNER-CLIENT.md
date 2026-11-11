@@ -58,6 +58,46 @@ One client can switch between projects. Each project retains its own runtime,
 storage, participant identity and save/sync status. The browser has no separate
 Automerge database and needs its local client service to stay available.
 
+## Machine key and project records
+
+The first `client serve` creates `machine-key.pem` (mode 0600), an Ed25519 key
+that makes this directory one machine. `client status` reports its machine ID as
+`device.machineId`. The key itself is never shown or given to a browser or agent.
+Later starts load the same key. A key that is missing, unreadable, linked,
+readable by others, or from another directory stops the client with a clear
+error. Pardner never creates a replacement key for an existing directory.
+
+**Start a project.** The client signs a `project.genesis` record that names you
+as owner and certifies this machine. The project ID is derived from that record,
+so the ID alone verifies it. A retried create reuses the saved genesis and gets
+the same ID.
+
+**Records in the project.** The project document holds signed membership records
+in a map keyed by record ID. Each project directory also has a grow-only record
+store, `records.sqlite`. On load and after every document change, the project
+runtime verifies new records and saves the valid ones before using them. It then
+writes back any stored record the document lacks, so a deleted record still
+counts and returns to other peers. A record is stored if it is this project's
+genesis, or if a current member machine signed it, its signature verifies, and
+that machine may make it in the current membership. A record signed by a removed
+machine is therefore refused once the store holds the removal.
+
+`client show --project ID` includes the membership computed from the store,
+read-only: `people`, `machines`, `agentNames`, removals, `storedRecords`, and
+`notStored`. `notStored` lists records seen in the document but refused, with
+the reason; it lasts until the project runtime restarts. `rejected` lists stored
+records that have no effect.
+
+These records do not yet admit anyone. Invitations, joins and revocation still
+work as described below, through hub-issued bearer credentials, and do not write
+records. A joined project therefore shows only the owner's machine until a later
+step writes member records.
+
+Directories made before machine keys are refused, whether a client directory
+without `machine-key.pem` or a storage directory with an earlier schema. They are
+left byte-for-byte unchanged and are never migrated. Start Pardner with a fresh
+`--data` directory.
+
 ## Invite and join
 
 The board's **Invite** menu offers:
@@ -194,7 +234,8 @@ arbitrary synchronized changes.
 Revocation cannot erase an offline device's already received data.
 
 Keep the complete private client directory for recovery: registry and sidecars,
-project directories, metadata, credentials and delivery state. Stop the client
+the machine key, project directories with their record stores, metadata,
+credentials and delivery state. A backup holding the machine key is a credential. Stop the client
 before a cold backup and keep only one restored copy active. Synchronization is
 not a backup. External files referenced by tasks need their own backup. Existing
 standalone `.pardner` installations are preserved; use a fresh client directory.

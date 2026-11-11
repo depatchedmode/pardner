@@ -1,6 +1,6 @@
 # Pardner local service and CLI
 
-The default service and executable now use the schema 5 workspace. Human and
+The default service and executable now use the schema 6 workspace. Human and
 agent Actors author through the same local HTTP operations. See the
 [implementation evidence](PARDNER-EVIDENCE.md) for tested candidates and limitations.
 
@@ -62,6 +62,12 @@ writes `.pardner/connection.json` with mode 0600. CLI commands discover that fil
 `--data`, `--server`, and `--token` override connection settings. The equivalent
 environment variables are `PARDNER_DATA_DIR`, `PARDNER_LOCAL_URL`, and
 `PARDNER_API_TOKEN`. `npm run sync` also starts this runtime.
+
+A new hand-run hub signs its project genesis with a one-time key that it does not
+keep. Its workspace ID is derived from that record like a client project's, but
+the hub can never sign another membership record. Hand-run hubs are retired by a
+later trust step; use the [local client](PARDNER-CLIENT.md) for projects with a
+machine key.
 
 Register the first Actor explicitly, then register the other humans and agents:
 
@@ -140,8 +146,9 @@ register maps. Retried creation requests on disconnected replicas therefore shar
 each field's merge location. A shared map records superseded field revisions, so
 a late retry cannot resurrect an initial value after an edit or explicit
 resolution. Version 4 added goals, veins, and task–vein links to version 3;
-schema 5 adds request-bound stored operation identities and integrity inspection.
-Earlier directories must be preserved and replaced with a fresh workspace; all
+schema 5 adds request-bound stored operation identities and integrity inspection;
+schema 6 adds the signed project genesis and membership records, and derives the
+workspace ID from the genesis. Earlier directories must be preserved and replaced with a fresh workspace; all
 services participating in a workspace must use the same schema version.
 
 ## Read, edit, and hand off
@@ -191,7 +198,7 @@ No inspection or retry repairs/replays the conflicting mutations. Ordinary field
 resolution does not resolve operation integrity. Same-field collisions also
 require explicit field resolution.
 
-This identity format requires schema 5 on every service. Older workspace data is
+This identity format requires schema 6 on every service. Older workspace data is
 preserved and rejected as incompatible; do not overwrite or automatically migrate
 it. Enroll a new workspace using compatible services.
 

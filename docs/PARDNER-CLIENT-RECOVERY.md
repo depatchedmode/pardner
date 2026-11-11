@@ -2,7 +2,7 @@
 
 Use the recorded Pardner revision, Node 24.11.1 and matching dependency locks.
 Keep prior installations intact. The [local client's](PARDNER-CLIENT.md) private
-registry and project runtimes must be recovered together.
+registry, machine key and project runtimes must be recovered together.
 
 ## Inspect and export retained work
 
@@ -28,7 +28,8 @@ project does not reproduce operation identity or history. Use a cold backup belo
 ## Make a complete cold backup
 
 1. Record the code revision, Node version, both lockfile hashes and `client list`.
-   Keep project IDs, Actor IDs, roles and local save/sync status. Require
+   Keep the machine ID (`device.machineId`), project IDs, Actor IDs, roles and
+   local save/sync status. Require
    `savedLocally: true` and no storage error; record pending sync as pending.
 2. Stop the client gracefully with Ctrl-C in its owning terminal and wait for
    exit. Its supervised project children stop with it. Do not copy a live
@@ -42,10 +43,16 @@ project does not reproduce operation identity or history. Use a cold backup belo
    test ! -e "$client_backup" && cp -Rp "$client_source" "$client_backup"
    ```
 
-   Keep `client.sqlite` and its sidecars, all `projects/` directories, each
-   `workspace.json`, Automerge `repo/`, hub `deliveries.sqlite` and other private
-   files. Copying only `repo/` loses identity, admission, retry and delivery state.
-   Keep backups as private as the original credentials.
+   Keep `client.sqlite` and its sidecars, `machine-key.pem`, all `projects/`
+   directories, each `workspace.json`, Automerge `repo/`, each project's
+   `records.sqlite` membership record store, hub `deliveries.sqlite` and other
+   private files. Copying only `repo/` loses identity, admission, retry and
+   delivery state. Without `machine-key.pem` the restored directory is refused.
+   Without a project's `records.sqlite`, records since deleted from that
+   project's document are lost.
+   **A backup is a credential.** It holds the machine key, so anyone with a copy
+   can sign as this machine. Keep backups as private as the original, with the
+   key at mode 0600.
 4. Back up external files/attachments separately and record restore paths. Save
    browser drafts first: browser storage and unsaved drafts are separate. Preserve
    external harness inbox/effect ledgers when used; the hub delivery database does
@@ -58,6 +65,7 @@ Keep an independent backup. Synchronization can propagate deletion or corruption
 1. Install the recorded revision and Node/dependencies, then build the UI. Stop
    the original client. Only one active copy of a restored device/replica identity
    may run: restoration replaces a device rather than enrolling another one.
+   Running both copies duplicates the machine key.
 2. Copy the complete backup into a **new** private directory with the no-overwrite
    command above. On another machine, transfer it securely, preserve private modes
    and make files owned by the account running Pardner. Do not delete old installs.
@@ -73,8 +81,14 @@ Keep an independent backup. Synchronization can propagate deletion or corruption
    The saved port is reused. A non-authority client may choose another local port
    with `--http-port`; issue a fresh `client open` link there. Do not initialize a
    new identity or create replacement projects in restored data. Incompatible
-   formats fail instead of migrating old installations automatically.
-4. Compare identity/device IDs, project IDs and content with the backup record.
+   formats fail instead of migrating old installations automatically. A client
+   directory made before machine keys has no `machine-key.pem` and is refused,
+   unchanged; recover its content with `client export` from the release that
+   made it, and start this one with a fresh directory. A missing, exposed or
+   foreign key also refuses to start. Restore the directory's own key at mode
+   0600; Pardner never generates a replacement for an existing directory.
+4. Compare identity, device and machine IDs, project IDs and content with the
+   backup record. A restored client is the same machine and signs as it.
    Enrolled replicas reopen without their authority; new local edits remain
    pending sync. Enrollment and delivery claims require the authority. Remote
    presence cannot be inferred while it is unavailable.
