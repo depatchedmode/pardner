@@ -1108,10 +1108,10 @@
     "recorded": "2026-11-11",
     "issue": 197,
     "mapping": {
-      "revision": "45c1449baccd400867aad38e2e1406770db3e844",
+      "revision": "84baf47a6c06bc9d1cd20bed7786ce521a1aa0bf",
       "files": {
         "automerge-sync-server.js": "01f9b82b230d0dabc2d11d7814b2d2e52254fcaab30bb9f6dd0d1eadd952472b",
-        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/durable-repo.js": "79dce9317376bda39e0147f01ec9162b635a3217934783c770d2682241ae3023",
         "lib/workspace-runtime.js": "36114ae0a330ed85e5afb5724b5a7957b4cf698245ba82877f1d82eb65b92e48",
         "lib/workspace.js": "d9926568c6f48d929955b0d0b2b85d23de09dfb143327e84d7c8f9c6c51f3c52"
       }
@@ -1123,8 +1123,8 @@
     "result": "passed",
     "mutationDemonstration": {
       "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
-      "started": "2026-11-11T15:44:29.690Z",
-      "finished": "2026-11-11T15:44:52.320Z",
+      "started": "2026-11-11T15:52:56.458Z",
+      "finished": "2026-11-11T15:53:18.886Z",
       "workingTreeUnchanged": true,
       "ok": true,
       "mutations": [
@@ -1178,6 +1178,6 @@
         }
       ]
     },
-    "review": "Every change is signed (lib/attribution.js, not mapped) and the hub's persistence acknowledgement covers the board and its signature document. lib/workspace.js: acknowledge(heads, signatureHeads) refuses unless both are held, then one flush job persists both documents before the answer (Handle(ack), Respond). lib/workspace-runtime.js: documents are created with this machine's actor and every loaded one adopts a fresh machine actor before any local change; the replica requests both heads, its first guard also requires the hub's signature heads to be held, and its second guard records both requested snapshots, never current heads (ReplicaReceive, ReplicaAckCommit); syncPending stays true until both are acknowledged (ReplicaEdit: heads now stand for the pair); a signature-document change is a deferred local change off the acknowledgement path, like a membership write-back; closeResources pauses the hub poll before abort() and writes pending signatures into the signature document after the operation queue drains, before repo.shutdown(); the cache closes in finally before the lease. automerge-sync-server.js: sync-ack passes signatureHeads; a new signed route answers attribution queries; stop() destroys connections that never carried a request, which hold no modeled request (StopBegin). No action guard, effect, invariant or witness changed; the mutation texts for ack-before-persist, stale-ack-accepted and lease-before-drain follow the new code. Later commits in the same change pace the signature document's background saves to one a second through a storage.saveDoc wrapper that explicit flushes (including DurableRepo.shutdown) bypass, clear its timer in closeResources, start background checking only after initialized is set, and pass record positions to recordEntry when the board is read; each was re-reviewed and accepted, and the mapping recorded here is the final one."
+    "review": "Every change is signed (lib/attribution.js, not mapped) and the hub's persistence acknowledgement covers the board and its signature document. lib/workspace.js: acknowledge(heads, signatureHeads) refuses unless both are held, then one flush job persists both documents before the answer (Handle(ack), Respond). lib/workspace-runtime.js: documents are created with this machine's actor and every loaded one adopts a fresh machine actor before any local change; the replica requests both heads, its first guard also requires the hub's signature heads to be held, and its second guard records both requested snapshots, never current heads (ReplicaReceive, ReplicaAckCommit); syncPending stays true until both are acknowledged (ReplicaEdit: heads now stand for the pair); a signature-document change is a deferred local change off the acknowledgement path, like a membership write-back; closeResources pauses the hub poll before abort() and writes pending signatures into the signature document after the operation queue drains, before repo.shutdown(); the cache closes in finally before the lease. automerge-sync-server.js: sync-ack passes signatureHeads; a new signed route answers attribution queries; stop() destroys connections that never carried a request, which hold no modeled request (StopBegin). No action guard, effect, invariant or witness changed; the mutation texts for ack-before-persist, stale-ack-accepted and lease-before-drain follow the new code. Later commits in the same change pace the signature document's background saves to one a second through a storage.saveDoc wrapper that explicit flushes (including DurableRepo.shutdown) bypass, clear its timer in closeResources, start background checking only after initialized is set, and pass record positions to recordEntry when the board is read; each was re-reviewed and accepted, and the mapping recorded here is the final one. The last commit also saves each document's sync state per document and peer in DurableRepo, through background(), because Repo 2.5.1 throttles those saves per peer and dropped the board's state behind the signature document's."
   }
 }
