@@ -192,7 +192,9 @@ test('recipient proof, removal and changed retries cannot recover another admiss
   // The same request, resent, reports its approval and the same credential; nothing else does.
   const retry = await enroll2({ action: 'request', ...attempt.recipient })
   assert.equal(retry.status, 200)
-  assert.equal(retry.result.receipt.deviceToken, attempt.receipt.deviceToken)
+  assert.equal(retry.result.receipt.admissionId, attempt.receipt.admissionId)
+  assert.equal(retry.result.receipt.machineId, bob.client.registry.machineKey.machineId)
+  for (const field of ['deviceToken', 'replicaToken']) assert.equal(retry.result.receipt[field], undefined, 'no bearer credential is issued between machines')
   assert.equal((await enroll2({ action: 'request', ...attempt.recipient, recipientProof: 'different'.repeat(8) })).result.code, 'INVITE_USED')
   assert.equal((await enroll2({ action: 'status', offerId: attempt.recipient.request.offerId, requestId: attempt.requestId, recipientProof: 'different'.repeat(8) })).result.code, 'AUTH_REQUIRED')
   const changed = { ...attempt.recipient, request: { ...attempt.recipient.request, device: { ...attempt.recipient.request.device, name: 'changed' } } }
@@ -534,7 +536,14 @@ test('gateway error pages and hub 5xx responses are outages: replicas keep savin
   reply = { status: 503, type: 'application/json', body: JSON.stringify({ code: 'SERVICE_STOPPING', error: 'The service is stopping' }) }
   const { result: stopping } = await bob.api(path, { type: 'task.create', operationId: 'through-503', payload: { title: 'Saved while the hub restarts' } })
   assert.equal(stopping.savedLocally, true)
-  reply = { status: 401, type: 'application/json', body: JSON.stringify({ code: 'AUTH_REQUIRED', error: 'Device is not admitted to this project' }) }
+  // A write checks this machine's own records and never waits on the hub; an authentication failure is not a removal.
+  reply = { status: 401, type: 'application/json', body: JSON.stringify({ code: 'AUTH_REQUIRED', error: 'Sign in again' }) }
+  const { result: unauthenticated } = await bob.api(path, { type: 'task.create', operationId: 'through-401', payload: { title: 'Saved through a 401' } })
+  assert.equal(unauthenticated.savedLocally, true)
+  // Only the hub saying this machine was removed revokes it.
+  reply = { status: 403, type: 'application/json', body: JSON.stringify({ code: 'REVOKED', error: 'This machine was removed from the project' }) }
+  const { result: removed, response: removal } = await bob.api(`/projects/${project.id}`, undefined, { failure: true })
+  assert.equal(removal.status, 403); assert.equal(removed.code, 'REVOKED')
   const { result: revoked, response } = await bob.api(path, { type: 'task.create', operationId: 'denied', payload: { title: 'denied' } }, { failure: true })
   assert.equal(response.status, 403); assert.equal(revoked.code, 'REVOKED')
 })

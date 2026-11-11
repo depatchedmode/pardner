@@ -83,7 +83,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: false,
     maps: [
       { file: SERVER, anchor: "return res.set('Connection', 'close').status(503).json({", note: 'first middleware; stopping is read synchronously' },
-      { file: SERVER, anchor: "this.app.post('/automerge/sync-ack'", note: 'route reached only after admission' },
+      { file: SERVER, anchor: "this.app.post('/automerge/sync-ack'", note: 'route reached only after admission: the local API token, or a request signed by a member machine; a refused signature is a failed acknowledgement (ReplicaReceive)' },
     ],
     apply: state => arrive(state, index, 'sent'),
   }))
@@ -111,7 +111,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: false,
     maps: [
       { file: SERVER, anchor: "this.rejectWebSocketUpgrade(socket, 503, 'Service Unavailable', { error: 'The service is stopping' })" },
-      { file: SERVER, anchor: 'target.handleUpgrade(req, socket, head, ws => {', note: 'accepted upgrade becomes a WebSocket client' },
+      { file: SERVER, anchor: 'target.handleUpgrade(req, socket, head, ws => {', note: 'accepted upgrade becomes a WebSocket client; a native one reaches Automerge only after the machine handshake, and stop() terminates it either way' },
     ],
     apply: state => {
       if (state.done || state.requests[index].state !== 'new') return []

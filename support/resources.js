@@ -1,4 +1,3 @@
-import { replicaOptions, replicaCredentials } from './replica-credentials.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
 import { tmpdir } from 'node:os'
@@ -6,11 +5,11 @@ import { join } from 'node:path'
 import { once } from 'node:events'
 import { WebSocket } from 'ws'
 import { Repo } from '@automerge/automerge-repo'
-import { WebSocketClientAdapter } from '@automerge/automerge-repo-network-websocket'
 
 import AutomergeSyncServer from '../automerge-sync-server.js'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
 import { randomUUID } from 'node:crypto'
+import { admitMembers, handshakeSocket, hubRuntime, memberAdapter, projectFor } from './machines.js'
 
 export const noopLogger = {
   log() {},
@@ -34,18 +33,21 @@ export const NATIVE_AUTOMERGE_RETRY_MS = 60_000
 export const SYNC_WAIT_TIMEOUT_MS = 5000
 export const POLL_INTERVAL_MS = 25
 
+const TEST_ACTORS = [{ id: 'alice', handle: 'alice', kind: 'human' }, { id: 'builder', handle: 'builder', kind: 'agent' }]
+
+/** A test hub: its store is signed by a fixture machine key (support/machines.js), so member peers can sync with it. */
 export function createServer(storagePath, overrides = {}) {
-  return new AutomergeSyncServer({ replicaCredentials,
-    actors: [{ id: 'alice', handle: 'alice', kind: 'human' }, { id: 'builder', handle: 'builder', kind: 'agent' }],
+  const { actors = TEST_ACTORS, ...rest } = overrides
+  return new AutomergeSyncServer({
+    store: rest.store ?? hubRuntime(storagePath, { actors }),
     env: {},
     apiToken: TEST_TOKEN,
     allowedOrigins: ['http://allowed.example'],
     httpPort: 0,
     wsPort: 0,
     storagePath,
-    usePersistedUrl: false,
     logger: noopLogger,
-    ...overrides,
+    ...rest,
   })
 }
 
@@ -216,22 +218,20 @@ export function nativeAutomergeWsUrl(server, query = {}) {
   return wsUrl(server, `${NATIVE_AUTOMERGE_WS_PATH}${suffix}`)
 }
 
-export async function mintReplicaTicket(server) {
-  const response = await authedFetch(server, '/automerge/ws-ticket', {
-    method: 'POST', headers: { 'x-pardner-replica-token': replicaOptions.replicaToken },
-    body: JSON.stringify({ purpose: 'replica', replicaId: replicaOptions.replicaCredentialId }),
-  })
-  if (!response.ok) throw new Error(await response.text())
-  return (await response.json()).ticket
+/** A raw native socket to `server` that has completed the machine handshake as one of its member machines. */
+export async function memberSocket(server, { member = 0 } = {}) {
+  const project = await admitMembers(server.store, projectFor(server.store.directory))
+  return handshakeSocket(nativeAutomergeWsUrl(server), { key: project.keys[member], projectId: project.projectId, records: project.all })
 }
 
-export async function openNativePeer(server, storagePath = createTempDir('pardner-peer-')) {
-  const ticket = await mintReplicaTicket(server)
+/**
+ * A bare Automerge Repo syncing with `server` as one of its member machines:
+ * its socket opens with the machine handshake, as a replica's does.
+ */
+export async function openNativePeer(server, storagePath = createTempDir('pardner-peer-'), { member = 0 } = {}) {
+  const project = await admitMembers(server.store, projectFor(server.store.directory))
   const { url: documentUrl } = await authedGet(server, '/automerge/url')
-  const adapter = new WebSocketClientAdapter(
-    nativeAutomergeWsUrl(server, { ticket }),
-    NATIVE_AUTOMERGE_RETRY_MS
-  )
+  const adapter = memberAdapter(project, member, nativeAutomergeWsUrl(server), { retryMs: NATIVE_AUTOMERGE_RETRY_MS })
   const repo = new Repo({
     storage: new NodeFSStorageAdapter(storagePath),
     network: [adapter],
@@ -242,7 +242,7 @@ export async function openNativePeer(server, storagePath = createTempDir('pardne
 }
 
 export async function disconnectNativePeer(peer) {
-  const socket = peer?.adapter?.socket
+  const socket = peer?.adapter?.child?.socket ?? peer?.adapter?.socket
   if (!socket || socket.readyState === WebSocket.CLOSED) return
 
   const closed = once(socket, 'close').catch(() => {})

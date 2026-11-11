@@ -12,6 +12,8 @@ import { agentNameRecord, buildJoinRequest, confirmationCode, OFFER_TTL_MS } fro
 import { generateMachineKey } from '../lib/machine-key.js'
 import { buildRecord } from '../lib/membership.js'
 import { joinApproved } from '../support/enrollment.js'
+import { handshakeSocket, signedRequest } from '../support/machines.js'
+import { createHello } from '../lib/machine-handshake.js'
 
 // Scenarios for invitations, pairing, removal and re-admission on signed records
 // (docs/PARDNER-TRUST-DESIGN.md, sections 2, 4 and 5). Every client is a real
@@ -54,6 +56,9 @@ const invite = (issuer, project, purpose, fields = {}) => issuer.call(`/projects
 const approve = (joiner, approver, invitation, operationId = 'join') =>
   joinApproved({ join: body => joiner.call('/join', body), approver: approver.call, invitation, operationId })
 const membership = async (person, project) => (await person.call(`/projects/${project.id}`)).membership
+/** A request to the project's hub signed by `person`'s machine key, as its client would send it. */
+const signed = (person, project, suffix, body) => signedRequest(person.client.registry.machineKey,
+  { projectId: project.id, route: person.client.project(project.id).hubUrl }, suffix, body)
 const operation = (person, project, title = 'Work') => person.client.runtime(person.client.project(project.id))
   .then(() => fetch(`${person.client.url}${CLIENT_API}/projects/${project.id}/api/automerge/operations`, { method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${person.client.registry.read().operatorToken}` },
@@ -213,11 +218,9 @@ test('pairing: a person’s own machine or an admin approves, and nobody else ca
   const intruder = generateMachineKey()
   const forged = buildRecord(carol.client.registry.machineKey, { projectId: project.id, kind: 'machine.add', subject: intruder.machineId,
     personId: bob.personId, publicKey: intruder.publicKey, approval: {} })
-  const carolProject = carol.client.project(project.id)
-  const submitted = await fetch(`${carolProject.hubUrl}/records`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${carolProject.deviceToken}` },
-    body: JSON.stringify({ records: [forged] }) })
+  const submitted = await signed(carol, project, '/records', { records: [forged] })
   assert.equal(submitted.status, 403)
-  assert.equal((await submitted.json()).error, 'Admissions enter only through an approved join request')
+  assert.equal(submitted.result.error, 'Admissions enter only through an approved join request')
   // Even past the hub's routes, the gate itself refuses it.
   const runtime = await alice.client.runtime(alice.client.project(project.id))
   await assert.rejects(runtime.request('/automerge/membership/records', { records: [forged] }), { code: 'RECORD_REFUSED' })
@@ -267,18 +270,17 @@ test('removal ends sync and API access, a removed machine adds no records, and p
   assert.equal(records.machines.some(machine => machine.id === bob.machineId), false)
   assert.ok(records.people.some(person => person.id === carol.personId), 'Carol, admitted by the removed admin, stays')
   assert.equal(Object.values(alice.client.project(project.id).admissions).find(admission => admission.machineId === bob.machineId).state, 'revoked')
-  // The hub refuses Bob's bearer credential from the records, closes his sync socket and refuses his writes.
-  const bobProject = bob.client.project(project.id)
-  const policy = await fetch(`${bobProject.hubUrl}/policy`, { headers: { Authorization: `Bearer ${bobProject.deviceToken}` } })
-  assert.equal(policy.status, 403); assert.equal((await policy.json()).code, 'REVOKED')
-  const bobAdmission = Object.values(alice.client.project(project.id).admissions).find(admission => admission.machineId === bob.machineId).id
-  await eventually(() => ![...alice.client.sockets].some(socket => socket.clientAdmission === bobAdmission), 'Bob’s sync socket stayed open')
+  // The hub refuses Bob's signed requests from the records, closes his sync session and refuses his handshake, so his
+  // own client stops his writes; his local data stays.
+  const refused = await signed(bob, project, '/membership')
+  assert.equal(refused.status, 403); assert.equal(refused.result.code, 'REVOKED')
+  await eventually(async () => (await status(bob)).hubConnected === false, 'Bob’s sync session stayed open')
+  await eventually(async () => (await status(bob)).hubRefusal?.code === 'REVOKED', 'Bob’s handshake was never refused')
   await eventually(async () => (await operation(bob, project)).result.code === 'REVOKED', 'Bob’s writes were never refused')
   // A removed machine cannot add a record, through the hub's routes or its gate.
   const record = buildRecord(bob.client.registry.machineKey, { projectId: project.id, kind: 'member.remove', subject: carol.personId })
-  const submitted = await fetch(`${bobProject.hubUrl}/records`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bobProject.deviceToken}` },
-    body: JSON.stringify({ records: [record] }) })
-  assert.equal(submitted.status, 403)
+  const submitted = await signed(bob, project, '/records', { records: [record] })
+  assert.equal(submitted.status, 403); assert.equal(submitted.result.code, 'REVOKED')
   const runtime = await alice.client.runtime(alice.client.project(project.id))
   await assert.rejects(runtime.request('/automerge/membership/records', { records: [record] }),
     { code: 'RECORD_REFUSED', message: 'The signing machine is not a current member of this project; removed machines cannot add records' })
@@ -345,4 +347,34 @@ test('confirmation codes depend on the offer, the joiner’s key and the nonce',
   assert.notEqual(confirmationCode(offer, one.publicKey, nonce), confirmationCode(offer, two.publicKey, nonce))
   assert.notEqual(confirmationCode(offer, one.publicKey, nonce), confirmationCode(offer, one.publicKey, secret()))
   assert.notEqual(confirmationCode(offer, one.publicKey, nonce), confirmationCode({ ...offer, offerId: 'offer-identifier-2' }, one.publicKey, nonce))
+})
+
+test('the hub’s routes for other machines take no bearer token, serve no stranger and refuse a route they never advertised', { timeout: 60000 }, async t => {
+  const alice = await participant(t, 'Alice'), bob = await participant(t, 'Bob')
+  const { project } = await alice.call('/projects', { name: 'Gate', operationId: 'create' })
+  await approve(bob, alice, (await invite(alice, project, 'human')).invitation)
+  const route = bob.client.project(project.id).hubUrl
+  // No bearer token is accepted between machines, not even the hub's own operator token.
+  for (const suffix of ['/people', '/membership', '/policy', '/automerge/sync-ack']) {
+    for (const headers of [{ Authorization: 'Bearer device-token-from-an-earlier-version' }, { Authorization: `Bearer ${alice.client.registry.read().operatorToken}` }, {}]) {
+      const response = await fetch(`${route}${suffix}`, { headers })
+      assert.equal(response.status, 401, `${suffix} ${JSON.stringify(headers)}`)
+      assert.equal((await response.json()).code, 'AUTH_REQUIRED')
+    }
+  }
+  // A machine no record certifies opens no session and no sync socket.
+  const stranger = generateMachineKey()
+  const refused = await signedRequest(stranger, { projectId: project.id, route }, '/people')
+  assert.equal(refused.status, 403); assert.equal(refused.result.code, 'NOT_MEMBER')
+  const native = bob.client.project(project.id).hubWsUrl
+  await assert.rejects(handshakeSocket(native, { key: stranger, projectId: project.id, records: [] }), { code: 'NOT_MEMBER' })
+  // A member's hello naming a route this hub never served (a relay's) is refused.
+  const hello = createHello(bob.client.registry.machineKey, { projectId: project.id, route: `https://relay.example/pardner/client/v1/replica/${project.id}`, role: 'replica' })
+  const relayed = await fetch(`${route}/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hello }) })
+  assert.equal(relayed.status, 403); assert.equal((await relayed.json()).code, 'ROUTE_REJECTED')
+  // The member itself is served over both.
+  assert.equal((await signed(bob, project, '/membership')).status, 200)
+  const socket = await handshakeSocket(native, { key: bob.client.registry.machineKey, projectId: project.id, records: [] }).catch(error => error)
+  assert.equal(socket.code, undefined, socket.message)
+  socket.terminate()
 })

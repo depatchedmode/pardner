@@ -133,8 +133,10 @@ function sessions(project, { now = () => 0 } = {}) {
   const live = new Map(project.all.filter(record => record.kind === 'member.add').map(record => [record.machineId, record.publicKey]))
   live.set(project.owner.machineId, project.owner.publicKey)
   const route = 'https://hub.example/pardner/client/v1/replica/p'
+  const removed = new Set()
   const server = new SessionServer({ key: project.owner, projectId: project.projectId, acceptRoute: value => value === route,
-    member: id => live.get(id) ?? null, welcome: () => ({ records: project.all }), now })
+    member: id => live.get(id) ?? null, welcome: () => ({ records: project.all }), now,
+    refusal: id => Object.assign(new Error(removed.has(id) ? 'Removed' : 'Not a member'), { code: removed.has(id) ? 'REVOKED' : 'NOT_MEMBER' }) })
   const requests = []
   const send = async (url, { method, headers = {}, body }) => {
     const suffix = url.slice(route.length)
@@ -145,7 +147,7 @@ function sessions(project, { now = () => 0 } = {}) {
     return { caller: server.verify(request).machineId }
   }
   const client = new SessionClient({ key: project.keys[0], projectId: project.projectId, route, send })
-  return { server, client, requests, live, route }
+  return { server, client, requests, live, route, remove: id => { live.delete(id); removed.add(id) } }
 }
 
 test('a signed request authenticates the calling machine, and a captured request cannot be replayed', async () => {
@@ -181,11 +183,11 @@ test('requests may arrive out of order within the window, never twice and never 
 
 test('a non-member opens no session, and a removal ends a live session at once', async () => {
   const project = testProject({ members: 2 })
-  const { server, client, live } = sessions(project)
+  const { server, client, remove } = sessions(project)
   const stranger = new SessionClient({ key: project.stranger, projectId: project.projectId, route: client.route, send: client.send })
-  await assert.rejects(stranger.request('/people'), { code: 'REVOKED' })
+  await assert.rejects(stranger.request('/people'), { code: 'NOT_MEMBER' })
   await client.request('/people')
-  live.delete(project.keys[0].machineId)
+  remove(project.keys[0].machineId)
   server.revokeNonMembers()
   assert.equal(server.active.size, 0)
   await assert.rejects(client.request('/people'), { code: 'REVOKED' })

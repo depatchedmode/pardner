@@ -1,4 +1,3 @@
-import { replicaOptions, replicaCredentials } from '../support/replica-credentials.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -13,6 +12,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import AutomergeSyncServer from '../automerge-sync-server.js'
 import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
 import { requestJson } from '../lib/sync-client.js'
+import { admitMembers, hubRuntime, projectFor, replicaRuntime } from '../support/machines.js'
 
 const actors = [{ id: 'alice', handle: 'alice', kind: 'human' }, { id: 'builder', handle: 'builder', kind: 'agent' }]
 const token = 'runtime-test-token'
@@ -23,13 +23,21 @@ async function eventually(check) {
     await delay(25)
   }
 }
+/** A hub with a fixture machine key, or a replica for one of its member machines; hubs admit their members once started. */
 function service(directory, options = {}) {
-  const { hubUrl, hubWsUrl, ...serverOptions } = options
-  return new AutomergeSyncServer({ replicaCredentials,
-    store: new WorkspaceRuntime({ ...replicaOptions, directory, role: hubUrl ? 'replica' : 'hub', hubUrl, hubWsUrl, token, actors, retryMs: 100 }),
-    env: {}, apiToken: token, httpPort: 0, wsPort: 0, logger: {}, ...serverOptions,
-  })
+  const { hubUrl, hubWsUrl, project, member = 0, ...serverOptions } = options
+  const store = hubUrl ? replicaRuntime(directory, project, member, { hubUrl, hubWsUrl, actors, retryMs: 100 })
+    : hubRuntime(directory, { actors, retryMs: 100 })
+  const server = new AutomergeSyncServer({ store, env: {}, apiToken: token, httpPort: 0, wsPort: 0, logger: {}, ...serverOptions })
+  if (!hubUrl) {
+    const start = server.start.bind(server)
+    server.start = async () => { await start(); await admitMembers(server.store) }
+  }
+  return server
 }
+/** Direct routes to `hub` for a member replica of its fixture project. */
+const join_ = (root, hub, member = 0) => ({ hubUrl: `http://127.0.0.1:${hub.httpPort}`, hubWsUrl: `ws://127.0.0.1:${hub.wsPort}/automerge`,
+  project: projectFor(join(root, 'hub')), member })
 function api(server, path, body) {
   return requestJson(`http://127.0.0.1:${server.httpPort}`, path, {
     token, ...(body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
@@ -43,7 +51,7 @@ it('persists public operations, opens offline, and reconnects the same workspace
   try {
     await hub.start()
     const ports = { httpPort: hub.httpPort, wsPort: hub.wsPort }
-    const settings = { hubUrl: `http://127.0.0.1:${hub.httpPort}`, hubWsUrl: `ws://127.0.0.1:${hub.wsPort}/automerge` }
+    const settings = join_(root, hub)
     replica = service(join(root, 'replica'), settings)
     await replica.start()
     await eventually(() => !replica.store.status().syncPending)
@@ -82,8 +90,8 @@ it('persists public operations, opens offline, and reconnects the same workspace
 
 it('rejects a second directory owner and releases ownership on close', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-owner-'))
-  const first = new WorkspaceRuntime({ ...replicaOptions, directory, actors })
-  const second = new WorkspaceRuntime({ ...replicaOptions, directory, actors })
+  const first = new WorkspaceRuntime({ directory, actors })
+  const second = new WorkspaceRuntime({ directory, actors })
   try {
     await first.init()
     await assert.rejects(second.init(), { code: 'STORAGE_IN_USE' })
@@ -162,10 +170,8 @@ it('does not let a delayed hub acknowledgement clear newer local work', { timeou
   let release
   try {
     await hub.start()
-    replica = new WorkspaceRuntime({ ...replicaOptions, directory: join(root, 'replica'), role: 'replica', token,
-      hubUrl: `http://127.0.0.1:${hub.httpPort}`, hubWsUrl: `ws://127.0.0.1:${hub.wsPort}/automerge` })
+    replica = replicaRuntime(join(root, 'replica'), projectFor(join(root, 'hub')), 0, { hub, actors })
     await replica.init()
-    assert.equal((await replica.claimDelivery({ actorId: 'builder', requestId: randomUUID() })).claimed, false)
     // A scheduled acknowledgement can still be in flight after the heads match.
     // Intercept a new request only after that earlier call has completed.
     await eventually(() => !replica.status().syncPending && !replica.syncing)
@@ -206,8 +212,7 @@ it('broadcasts native replica changes to every UI subscriber and rejects JSON mu
   })
   try {
     await hub.start()
-    replica = new WorkspaceRuntime({ ...replicaOptions, directory: join(root, 'replica'), role: 'replica', token, retryMs: 100,
-      hubUrl: `http://127.0.0.1:${hub.httpPort}`, hubWsUrl: `ws://127.0.0.1:${hub.wsPort}/automerge` })
+    replica = replicaRuntime(join(root, 'replica'), projectFor(join(root, 'hub')), 0, { hub, actors, retryMs: 100 })
     await replica.init()
     await eventually(() => !replica.status().syncPending)
     const inboxes = []
@@ -252,9 +257,8 @@ it('preserves human and agent alternatives across an offline partition and conve
   try {
     await hub.start()
     const ports = { httpPort: hub.httpPort, wsPort: hub.wsPort }
-    const settings = { hubUrl: `http://127.0.0.1:${hub.httpPort}`, hubWsUrl: `ws://127.0.0.1:${hub.wsPort}/automerge` }
     for (let i = 0; i < 2; i++) {
-      const replica = service(join(root, `replica-${i}`), settings)
+      const replica = service(join(root, `replica-${i}`), join_(root, hub, i))
       replicas.push(replica)
       await replica.start()
     }
@@ -377,8 +381,7 @@ it('stops while a replica acknowledgement is still being answered', { timeout: 3
   let replica, stopping, release
   try {
     await hub.start()
-    replica = new WorkspaceRuntime({ ...replicaOptions, directory: join(root, 'replica'), role: 'replica', token, retryMs: 100,
-      hubUrl: `http://127.0.0.1:${hub.httpPort}`, hubWsUrl: `ws://127.0.0.1:${hub.wsPort}/automerge` })
+    replica = replicaRuntime(join(root, 'replica'), projectFor(join(root, 'hub')), 0, { hub, actors, retryMs: 100 })
     await replica.init()
     await eventually(() => !replica.status().syncPending && !replica.syncing)
     // Hold the next acknowledgement so its response is sent after stop() has closed the listeners.

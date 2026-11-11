@@ -98,6 +98,12 @@ test('cold backups restore both client and authority to fresh directories with i
     assert.deepEqual(restored.identity, aliceIdentity.identity)
     assert.deepEqual(restored.device, aliceIdentity.device)
     assert.equal(restored.projects.length, 2)
+    // A restored hub serves no other machine until it catches up: Bob saw nothing newer than the backup, so he cannot
+    // vouch for it, and the operator confirms that no machine holds newer state.
+    const waiting = restored.projects.find(entry => entry.id === project.id).status.hub
+    assert.equal(waiting.waiting, true); assert.equal(waiting.reason, 'restored')
+    await eventually(() => bob.api(path + '/status'), s => s.hubRefusal?.code === 'HUB_WAITING')
+    assert.equal((await alice.cli(['resume', '--project', project.id])).hub.waiting, false)
     const replayInvite = await invite(alice, project.id, 'device', 'unused-device')
     assert.equal(replayInvite.invitation, unusedInvite.invitation)
     const context = await eventually(() => alice.api(`${path}/task/${saved.result.taskId}/context`), c => c.comments.length === 2)
@@ -146,14 +152,15 @@ test('a surviving owned device revokes a lost device while its retained work rem
     assert.equal(revoked.id, bob.client.registry.machineKey.machineId)
     const again = await spare.cli(['revoke', '--project', project.id, '--kind', 'device', '--id', bobIdentity.device.id, '--operation-id', 'lost-device'])
     assert.deepEqual(again, revoked)
-    // The lost laptop learns of a revocation made elsewhere from its next hub check. A write inside the 10 s admission
-    // cache window may still save locally (the hub no longer synchronizes it); the background check it starts revokes.
-    const windowed = await fetch(bob.client.url + base + path + '/operations', { method: 'POST',
-      headers: { Authorization: `Bearer ${bob.connection.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'task.create', operationId: 'inside-cache-window', payload: { title: 'Saved only locally' } }) })
-    assert.ok([200, 403].includes(windowed.status), `${windowed.status}`)
-    await Promise.allSettled([...bob.client.admissionRefreshes.values()])
-    const denied = await bob.api(path + '/operations', { type: 'task.create', operationId: 'after-loss', payload: { title: 'Must not save' } }, { expected: 403 })
+    // The lost laptop learns of a removal made elsewhere when the hub closes its sync session and refuses its next
+    // handshake; a write saved before that stays only local, because the hub no longer syncs with it.
+    let written = 0
+    const denied = await eventually(async () => {
+      const response = await fetch(bob.client.url + base + path + '/operations', { method: 'POST',
+        headers: { Authorization: `Bearer ${bob.connection.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'task.create', operationId: `before-refusal-${written++}`, payload: { title: 'Saved only locally' } }) })
+      return { status: response.status, ...await response.json() }
+    }, result => result.status === 403)
     assert.equal(denied.code, 'REVOKED')
     const exportFile = join(root, 'revoked-content.json')
     const exported = await bob.cli(['export', '--project', project.id, '--output-file', exportFile])
@@ -163,9 +170,10 @@ test('a surviving owned device revokes a lost device while its retained work rem
     assert.equal(content.format, 'pardner-workspace-view-v1')
     assert.equal(content.doc.tasks[saved.result.taskId].title, 'Retained after revocation')
     assert.equal((await stat(exportFile)).mode & 0o777, 0o600)
-    for (const secret of [bob.connection.token, agent.token, bob.client.project(project.id).deviceToken, bob.client.project(project.id).replicaToken]) {
+    for (const secret of [bob.connection.token, agent.token]) {
       assert.equal(text.includes(secret), false, 'Export must omit service/enrollment credentials')
     }
+    assert.equal(text.includes('BEGIN PRIVATE KEY'), false, 'Export must omit the machine key')
     const continued = await spare.api(path + '/operations', { type: 'comment.add', operationId: 'surviving-device', payload: { taskId: saved.result.taskId, text: 'Still authorized on spare device.' } })
     assert.equal(continued.savedLocally, true)
     await eventually(() => alice.api(`${path}/task/${saved.result.taskId}/context`), c => c.comments.length === 1)
@@ -173,6 +181,7 @@ test('a surviving owned device revokes a lost device while its retained work rem
     await alice.client.stop(); alice = null
     await cp(join(root, 'alice'), join(root, 'restored-authority'), { recursive: true, force: false, errorOnExist: true })
     alice = await participant(join(root, 'restored-authority'), 'Restored authority', { port: authorityPort })
+    await alice.cli(['resume', '--project', project.id])
     await bob.client.stop(); bob = null
     bob = await participant(join(root, 'bob'), 'Reopened revoked device')
     await bob.cli(['export', '--project', project.id, '--output-file', exportFile])

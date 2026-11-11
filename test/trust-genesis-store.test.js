@@ -18,7 +18,7 @@ import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
 import { plain } from '../lib/workspace-schema.js'
 import { operatorClient as client, snapshot } from '../support/client-directory.js'
 import { testGenesis } from '../support/genesis.js'
-import { replicaCredentials, replicaOptions } from '../support/replica-credentials.js'
+import { admitMembers, hubRuntime, projectFor, replicaRuntime } from '../support/machines.js'
 
 const actors = [{ id: 'alice', handle: 'alice', kind: 'human' }]
 
@@ -185,16 +185,19 @@ test('a record saved to the store survives a process kill before it is used, and
 test('an enrolled replica stores the genesis it synced and reopens offline with its membership', { timeout: 30000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'pardner-replica-records-'))
   const token = 'records-test-token'
-  const service = (directory, settings = {}) => new AutomergeSyncServer({ replicaCredentials, env: {}, apiToken: token, httpPort: 0, wsPort: 0, logger: {},
-    store: new WorkspaceRuntime({ ...replicaOptions, directory, role: settings.hubUrl ? 'replica' : 'hub', token, actors, retryMs: 100, ...settings }) })
+  const project = projectFor(join(root, 'hub'), { members: 1 })
+  const service = (directory, settings) => new AutomergeSyncServer({ env: {}, apiToken: token, httpPort: 0, wsPort: 0, logger: {},
+    store: settings ? replicaRuntime(directory, project, 0, { ...settings, actors, retryMs: 100 }) : hubRuntime(directory, { actors, retryMs: 100 }) })
   let hub = service(join(root, 'hub')), replica
   try {
     await hub.start()
+    await admitMembers(hub.store, project)
     const settings = { hubUrl: `http://127.0.0.1:${hub.httpPort}`, hubWsUrl: `ws://127.0.0.1:${hub.wsPort}/automerge` }
     replica = service(join(root, 'replica'), settings)
     await replica.start()
+    // The replica holds the owner's machine and its own, certified by the genesis and the owner's admission.
     const owner = hub.store.membership().machines
-    assert.equal(owner.length, 1)
+    assert.deepEqual(owner.map(machine => machine.id).sort(), [project.owner.machineId, project.keys[0].machineId].sort())
     assert.deepEqual(replica.store.membership().machines, owner)
     assert.equal(replica.store.manifest.workspaceId, hub.store.manifest.workspaceId)
     await replica.stop()

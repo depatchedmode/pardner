@@ -8,9 +8,11 @@ import { Workspace } from '../lib/workspace.js'
 import { DurableRepo } from '../lib/durable-repo.js'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
 import { TicketNetworkAdapter } from '../lib/ticket-network-adapter.js'
+import { initiateHandshake } from '../lib/machine-handshake.js'
+import { admitMembers, projectFor } from '../support/machines.js'
 import {
   withStartedServer, createTask, createTempDir, cleanupTempDir,
-  mintReplicaTicket, nativeAutomergeWsUrl, waitFor,
+  nativeAutomergeWsUrl, waitFor,
 } from '../support/resources.js'
 
 it('renews its ticket after a stalled handshake and connects without restarting', { timeout: 5000 }, async () => {
@@ -75,16 +77,20 @@ it('shuts down safely while a WebSocket handshake is still pending', { timeout: 
   }
 })
 
-it('native transport mints fresh tickets after repeated disconnects without recreating its Repo', { timeout: 15000 }, async () => {
+it('native transport runs a fresh machine handshake after repeated disconnects without recreating its Repo', { timeout: 15000 }, async () => {
   await withStartedServer({}, async server => {
     const directory = createTempDir('pardner-renewal-')
     const taskId = await createTask(server)
+    const project = await admitMembers(server.store, projectFor(server.store.directory))
+    const route = nativeAutomergeWsUrl(server)
     const tickets = []
-    const adapter = new TicketNetworkAdapter({ retryMs: 30, getUrl: async () => {
-      const ticket = await mintReplicaTicket(server)
-      tickets.push(ticket)
-      return nativeAutomergeWsUrl(server, { ticket })
-    } })
+    // Each attempt proves the member key again over that connection's own nonces.
+    const adapter = new TicketNetworkAdapter({ retryMs: 30, getUrl: async () => route,
+      handshake: async (socket, signal) => {
+        const { transcript } = await initiateHandshake(socket, { key: project.keys[0], projectId: project.projectId, route, role: 'replica',
+          expectRole: 'hub', knownRecords: () => project.all, signal })
+        tickets.push(transcript.responder.nonce)
+      } })
     const repo = new DurableRepo({ storage: new NodeFSStorageAdapter(directory), network: [adapter] })
     try {
       const handle = await repo.find(server.store.docHandle.url)
