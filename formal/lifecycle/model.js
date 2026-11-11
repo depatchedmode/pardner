@@ -133,7 +133,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     maps: [
       { file: WORKSPACE, anchor: 'this.queue = result.catch(() => {})', note: 'replica-local execute; its own local-save barrier is the same apply() path modeled by Handle(op)' },
       { file: RUNTIME, anchor: "syncPending: !savedLocally || (this.role === 'replica' && canonical(heads) !== canonical(this.acknowledgedHeads))" },
-      { file: RUNTIME, anchor: 'for (const record of missing) doc.membership[record.recordId] = record', note: 'a membership write-back is a local change without a request, on a replica or the hub; it only advances heads, and every acknowledgement still flushes first' },
+      { file: RUNTIME, anchor: 'for (const record of missing) doc.membership[record.recordId] = storageValue(record)', note: 'a membership write-back is a local change without a request, on a replica or the hub; it only advances heads, and every acknowledgement still flushes first' },
     ],
     apply: state => (state.done || state.replica.r >= bounds.replicaEdits ? [] : [{ next: { ...state, replica: { ...state.replica, r: state.replica.r + 1 } } }]),
   })

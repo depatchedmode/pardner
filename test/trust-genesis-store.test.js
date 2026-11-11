@@ -1,4 +1,5 @@
 import test from 'node:test'
+import { assertNoText } from '../support/plain-value-assertions.js'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { fork } from 'node:child_process'
@@ -82,7 +83,7 @@ test('a storage directory from an earlier schema is refused and left byte-identi
   const storage = await mkdtemp(join(tmpdir(), 'pardner-prior-storage-'))
   try {
     ;(await acquireStorageLease(storage)).close()
-    await writeFile(join(storage, 'workspace.json'), JSON.stringify({ schemaVersion: 5, role: 'hub', replicaId: 'replica-old', workspaceId: randomUUID(), url: generateAutomergeUrl(), state: 'ready' }))
+    await writeFile(join(storage, 'workspace.json'), JSON.stringify({ schemaVersion: 6, role: 'hub', replicaId: 'replica-old', workspaceId: 'a'.repeat(64), url: generateAutomergeUrl(), state: 'ready' }))
     await mkdir(join(storage, 'repo'))
     await writeFile(join(storage, 'repo', 'chunk'), 'prior document bytes')
     const before = await snapshot(storage)
@@ -176,6 +177,7 @@ test('a record saved to the store survives a process kill before it is used, and
     await runtime.init()
     assert.deepEqual(plain(runtime.docHandle.doc().membership[record.recordId]), record)
     assert.equal(runtime.membership().people.some(person => person.id === 'member'), true)
+    assertNoText(runtime.docHandle.doc())
   } finally {
     await runtime?.close()
     await rm(directory, { recursive: true, force: true })

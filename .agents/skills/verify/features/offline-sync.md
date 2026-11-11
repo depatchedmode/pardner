@@ -72,3 +72,11 @@ cannot open the raw native writer, even in insecure-local mode, and that enrolle
 tickets are scoped, single-use and expiring. Enrolled replicas remain trusted full
 writers. `test/private-state.test.js` checks private workspace/database/trace modes,
 existing sidecar repair and unsafe final-link rejection under permissive umasks.
+
+## Plain string storage
+
+`test/workspace-operations.test.js` exercises every registered operation and
+checks all decoded changes for `makeText`, including losing alternatives and
+retries, then reopens the document. It asserts ordinary JavaScript output and
+retains explicit resolution and duplicate retry behavior. Schema 6 documents
+are refused without changing their bytes.

@@ -779,5 +779,25 @@
       ]
     },
     "review": "automerge-sync-server.js: /automerge/sync-ack is still reached only after the stopping middleware and admission, which now accepts either the local API token or a request signed by a member machine's key within a session (lib/machine-session.js); a refused signature answers 401/403/503 like any failed acknowledgement, which ReplicaReceive covers. The new /session routes and /automerge/hub/resume sit behind the same stopping middleware and listener drain and never touch the persistence queue. A native upgrade still becomes a WebSocket client at handleUpgrade, which stop() terminates; it reaches the Automerge adapter only after the machine handshake. stop() clears signed sessions synchronously before any await. lib/workspace-runtime.js: the replica opens its socket with the handshake and signs its acknowledgement request through requestHub; synchronizeAcknowledgement's guards are unchanged. Records offered in a welcome or a membership exchange are admitted to the grow-only store and written back by the existing harvest; admitRecords and resumeHub refuse once closeResources aborted. closeResources is unchanged. No action guard, effect, atomicity, invariant, witness or mutation text changed; the notes on Arrive(ack) and UpgradeArrive describe the new admission."
+  },
+  "plainStringStorageReview": {
+    "recorded": "2026-11-11",
+    "issue": 208,
+    "mapping": {
+      "revision": "55416f9d80ab0c859ea3f095d58daf36ccf4041c",
+      "files": {
+        "automerge-sync-server.js": "c4d37d0eff4fda4a9d6b2eabda58bd69396a33cd414873807685228b180ddcb3",
+        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
+        "lib/workspace-runtime.js": "42ba10b5209662d57759ade06c6bfc1fb579ff61337c21065ee08edf5749a5c7",
+        "lib/workspace.js": "15803b62df46222217e15e406768478c369505cf7459db7dad9af969fb582af1"
+      }
+    },
+    "reason": "Workspace reads unwrap immutable strings; membership write-back uses storageValue. Re-reviewed ReplicaEdit, SyncDown, ReplicaSendAck, Handle, Respond, StoreCloseBegin, StoreCloseComplete, ReplicaReceive and ReplicaAckCommit: guards, effects and atomicity are unchanged. Updated only the membership write-back source anchor.",
+    "states": 174614,
+    "transitions": 679456,
+    "allInvariants": true,
+    "progress": true,
+    "allWitnesses": true,
+    "mutationDemonstration": "All eight implementation mutations caught, source drift reported, and mirrored model counterexamples found; working tree unchanged."
   }
 }

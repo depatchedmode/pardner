@@ -44,7 +44,7 @@ const groups = [
   },
   {
     name: 'domain', scripts: ['test:runtime', 'test:qualification', 'test:cli'],
-    files: names('lib/workspace.js lib/workspace-commands.js lib/workspace-schema.js support/workspace-test.js'),
+    files: names('lib/workspace.js lib/workspace-commands.js lib/workspace-schema.js lib/workspace-values.js support/plain-value-assertions.js support/workspace-test.js'),
   },
   {
     name: 'cli', scripts: ['test:cli'],

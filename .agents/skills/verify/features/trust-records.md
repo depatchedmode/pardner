@@ -15,7 +15,7 @@ assertions in `test/client-cli.test.js` cover the public outputs.
   gets another. The stored genesis verifies from the ID alone and names the creator
   and this machine.
 - **Prior installs.** A version 1 client directory, whether cleanly closed or left
-  with a write-ahead log by a killed process, and a schema 5 storage directory are
+  with a write-ahead log by a killed process, and a schema 6 storage directory are
   refused, and their paths, modes and bytes are compared before and after.
 - **Admission.** `test/record-store.test.js` stores a batch whose records
   certify each other in either order. It refuses a forged signature, another
@@ -38,3 +38,6 @@ assertions in `test/client-cli.test.js` cover the public outputs.
 
 These checks cover storage and harvest. Admission, enrollment and removal on
 records are in [trust-enrollment.md](trust-enrollment.md).
+
+`test/trust-genesis-store.test.js` also checks that membership write-back after
+a process kill leaves no Automerge text anywhere in the document history.

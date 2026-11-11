@@ -1,3 +1,4 @@
+import { plain } from '../lib/workspace-schema.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { withWorkspaceServer } from '../support/workspace-test.js'
@@ -17,7 +18,7 @@ it('links complete commit evidence atomically with Actor and replica attribution
     assert.equal(event.actorId, 'builder')
     assert.equal(event.replicaId, server.store.manifest.replicaId)
     assert.deepEqual(event.payload, { taskId, commit })
-    assert.deepEqual(server.store.workspace.handle.doc().operations[receipt.operationId].payload.commit, commit)
+    assert.deepEqual(plain(server.store.workspace.handle.doc().operations[receipt.operationId].payload.commit), commit)
     const replay = await operation('task.link-commit', { taskId, commit }, 'builder', 'link-first-commit')
     assert.equal(replay.replayed, true)
     assert.equal((await context(taskId)).evidence.length, 1)

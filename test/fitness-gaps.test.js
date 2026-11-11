@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { Repo } from '@automerge/automerge-repo'
 import { withWorkspaceServer } from '../support/workspace-test.js'
 import { admitMembers, memberAdapter } from '../support/machines.js'
-import { SCHEMA_VERSION, taskView } from '../lib/workspace-schema.js'
+import { SCHEMA_VERSION, taskView, plain } from '../lib/workspace-schema.js'
 
 it('a native Automerge Repo peer resolves the production schema over the CBOR WebSocket endpoint', { timeout: 10000 }, async () => {
   await withWorkspaceServer(async ({ server, api, create }) => {
@@ -18,7 +18,7 @@ it('a native Automerge Repo peer resolves the production schema over the CBOR We
       const doc = handle.doc()
       assert.equal(doc.schemaVersion, SCHEMA_VERSION)
       assert.equal(taskView(doc, taskId).title, 'Native wire contract')
-      assert.equal(doc.actors.builder.kind, 'agent')
+      assert.equal(plain(doc.actors.builder.kind), 'agent')
     } finally {
       adapter.disconnect()
       await repo.shutdown()
@@ -53,7 +53,7 @@ it('field effects and attributed history become visible in one Automerge change'
     const observe = () => {
       const doc = server.store.docHandle.doc()
       observations.push({ status: taskView(doc, taskId).status,
-        events: Object.values(doc.operations).filter(event => event.taskId === taskId && event.type === 'task.update') })
+        events: Object.values(doc.operations).map(plain).filter(event => event.taskId === taskId && event.type === 'task.update') })
     }
     server.store.docHandle.on('change', observe)
     let receipt

@@ -1,3 +1,4 @@
+import { plain } from '../lib/workspace-schema.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { withWorkspaceServer } from '../support/workspace-test.js'
@@ -68,7 +69,7 @@ it('records branch activity once for both parent and branch with Actor attributi
       assert.equal(events[0].actorId, 'builder')
       assert.equal(events[0].result.parentId, taskId)
     }
-    assert.equal(Object.values(server.store.workspace.handle.doc().operations).filter(event => event.operationId === receipt.operationId).length, 1)
+    assert.equal(Object.values(server.store.workspace.handle.doc().operations).map(plain).filter(event => event.operationId === receipt.operationId).length, 1)
   })
 })
 
