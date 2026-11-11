@@ -207,6 +207,11 @@ it('a signature entry deleted from the shared document stays attributed where it
     await eventually(() => A.hasHeads(server.store.workspace.signatures.doc(), deletion), 'the deletion never reached the hub')
     assert.equal(stateOf(reader, operation.operationId), 'signed', 'still attributed where it was verified')
     assert.equal(stateOf(server.store, operation.operationId), 'signed')
+    // The same deletion applied in the reader's own copy: before anything is written back, the cache still attributes it.
+    reader.workspace.signatures.change(doc => { delete doc[shardOf(hash)][hash] })
+    assert.deepEqual(storedSignatures(reader.workspace.signatures.doc(), hash), [], 'the entry is gone from this copy')
+    assert.equal(stateOf(reader, operation.operationId), 'signed', 'the signature cache keeps it attributed')
+    await eventually(() => storedSignatures(reader.workspace.signatures.doc(), hash).length, 'the reader did not write it back')
     // Peers that verified it write it back, so a member that never saw it can still check it.
     await eventually(() => server.store.workspace.signatures.doc()[shardOf(hash)]?.[hash], 'the entry was not written back')
     await eventually(() => vandal.signatures.doc()[shardOf(hash)]?.[hash], 'the written-back entry did not reach the vandal')
