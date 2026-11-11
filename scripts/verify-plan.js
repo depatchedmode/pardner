@@ -10,14 +10,15 @@ const names = text => text.trim().split(/\s+/)
 const groups = [
   {
     name: 'trust-library', scripts: ['test:runtime'],
-    files: names('lib/machine-key.js lib/membership.js test/machine-key.test.js test/membership.test.js'),
-    focused: [{ command: 'node --test test/machine-key.test.js test/membership.test.js', note: 'Machine keys and order-free signed records, as a library' }],
+    files: names('lib/machine-key.js lib/membership.js support/trust-records.js test/machine-key.test.js test/membership.test.js test/membership-rules.test.js'),
+    focused: [{ command: 'node --test test/machine-key.test.js test/membership.test.js test/membership-rules.test.js',
+      note: 'Machine keys and order-free signed records, as a library: consent, derived person IDs, no displacement, agents-only authority' }],
   },
   {
     name: 'trust-records', scripts: ['test:runtime', 'test:cli'], qualification: 'Signed genesis, derived project ID and grow-only membership record persistence',
     files: names('lib/record-store.js support/genesis.js support/record-store-process.js support/client-directory.js'),
-    focused: [{ command: 'node --test test/client-machine-key.test.js test/record-store.test.js test/trust-genesis-store.test.js',
-      note: 'Machine-key refusals, prior-install refusal, genesis and project ID, record admission, harvest, write-back and kill survival' }],
+    focused: [{ command: 'node --test test/client-machine-key.test.js test/record-store.test.js test/trust-genesis-store.test.js test/membership-harvest.test.js',
+      note: 'Machine-key refusals, prior-install refusal, genesis and project ID, record admission, harvest, write-back, kill survival, and the membership rules for records synced as history' }],
   },
   {
     name: 'trust-enrollment', scripts: ['test:runtime', 'test:cli', 'test:ui'],

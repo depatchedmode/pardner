@@ -9,9 +9,10 @@ import { startClient } from '../lib/client-service.js'
 import { CLIENT_API, secret } from '../lib/client-identity.js'
 import { invitationData } from '../lib/client-invites.js'
 import { agentNameRecord, buildJoinRequest, confirmationCode, OFFER_TTL_MS } from '../lib/enrollment.js'
-import { generateMachineKey } from '../lib/machine-key.js'
+import { generateMachineKey, personIdFor } from '../lib/machine-key.js'
 import { buildRecord } from '../lib/membership.js'
 import { joinApproved } from '../support/enrollment.js'
+import { forge } from '../support/trust-records.js'
 import { sameComputerRoute } from '../support/client-workspace.js'
 import { handshakeSocket, signedRequest } from '../support/machines.js'
 import { createHello } from '../lib/machine-handshake.js'
@@ -70,7 +71,7 @@ const operation = (person, project, title = 'Work') => person.client.runtime(per
 /** A join request from a throwaway machine key, as a stranger holding a leaked invitation would send it. */
 function strangerRequest(invitation, name = 'Mallory') {
   const { offer, secret: invitationSecret } = invitationData(invitation)
-  const key = generateMachineKey(), personId = randomUUID()
+  const key = generateMachineKey(), personId = offer.purpose === 'human' ? personIdFor(key.publicKey) : offer.personId
   const { request, mac } = buildJoinRequest(key, invitationSecret, { offer, personId, identity: { name, email: `${name.toLowerCase()}@example.test` },
     device: { id: randomUUID(), name: `${name} laptop` }, agent: { harnessId: 'openai-codex', name: `${name} agent` } })
   return { key, offer, body: { action: 'request', request, mac, records: [agentNameRecord(key, offer.projectId, personId, { harnessId: 'openai-codex', name: `${name} agent` })], recipientProof: secret() } }
@@ -219,8 +220,9 @@ test('pairing: a person’s own machine or an admin approves, and nobody else ca
   assert.equal(offered.code, 'FORBIDDEN')
   assert.equal(offered.error, 'Only that person, the owner or an admin can pair a machine into their identity')
   const intruder = generateMachineKey()
-  const forged = buildRecord(carol.client.registry.machineKey, { projectId: project.id, kind: 'machine.add', subject: intruder.machineId,
-    personId: bob.personId, publicKey: intruder.publicKey, approval: {} })
+  // Signed by Carol's machine, without any consent from the intruder's key.
+  const forged = forge(carol.client.registry.machineKey, { v: 2, projectId: project.id, kind: 'machine.add', subject: intruder.machineId,
+    personId: bob.personId, publicKey: intruder.publicKey, offer: {}, joinRequest: {}, approval: {} })
   const submitted = await signed(carol, project, '/records', { records: [forged] })
   assert.equal(submitted.status, 403)
   assert.equal(submitted.result.error, 'Admissions enter only through an approved join request')

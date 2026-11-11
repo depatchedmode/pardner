@@ -385,3 +385,21 @@ demonstration was rerun: all eight mutations were caught by their implementation
 check, reported as drift and reproduced as a model counterexample, with the
 working tree unchanged. See `trustStageOneIntegrationReview` in
 `docs/evidence/lifecycle-model.json`.
+
+## Membership consent mapping review (2026-11-11)
+
+The mapping records source revision `0ee274a88ebedb53adef35879122593b6dcc9fd2`.
+Membership now counts a certification only with its machine's consent, and a
+person's ID is derived from the key they were admitted with. The only mapped
+change is in `lib/workspace-runtime.js`: the standalone service's throwaway
+genesis names the person ID derived from its one-time key. `standaloneGenesis`
+is a pure record builder called in `init` before the record store, the
+repository or any listener exists, so it touches no request, persistence
+barrier, acknowledgement or shutdown step. No action guard, effect, atomicity
+note, invariant, witness or mutation text changed, and no anchor moved.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught, reported as drift and
+reproduced as a model counterexample, with the working tree unchanged. See
+`membershipConsentReview` in `docs/evidence/lifecycle-model.json`.

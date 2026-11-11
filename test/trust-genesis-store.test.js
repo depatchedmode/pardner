@@ -20,6 +20,8 @@ import { plain } from '../lib/workspace-schema.js'
 import { operatorClient as client, snapshot } from '../support/client-directory.js'
 import { testGenesis } from '../support/genesis.js'
 import { admitMembers, hubRuntime, projectFor, replicaRuntime } from '../support/machines.js'
+import { trustProject } from '../support/trust-records.js'
+import { actorId } from '../lib/client-identity.js'
 
 const actors = [{ id: 'alice', handle: 'alice', kind: 'human' }]
 
@@ -33,8 +35,6 @@ async function eventually(check, message = 'Condition was not met within ten sec
   }
 }
 
-const memberAdd = (signer, projectId, person, machine, role = 'member') => buildRecord(signer, { projectId, kind: 'member.add', subject: person,
-  displayName: person, role, machineId: machine.machineId, publicKey: machine.publicKey, offer: {}, joinRequest: {}, approval: {} })
 
 test('project creation signs a genesis that verifies from the project ID alone and keeps its membership across restart', { timeout: 60000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-genesis-'))
@@ -99,7 +99,8 @@ test('the record store keeps valid records, refuses tampered and foreign ones, a
   const directory = await mkdtemp(join(tmpdir(), 'pardner-records-'))
   const owner = generateMachineKey(), member = generateMachineKey()
   const genesis = testGenesis(owner), projectId = genesis.projectId
-  const add = memberAdd(owner, projectId, 'member', member)
+  const trust = trustProject({ owner, genesis }), memberId = trust.person(member)
+  const add = trust.admit(owner, member)
   const forged = { ...buildRecord(owner, { projectId, kind: 'agent.name', subject: 'agent-1', machineId: owner.machineId, displayName: 'Codex', harness: 'openai-codex' }), displayName: 'Forged' }
   const elsewhere = testGenesis(generateMachineKey())
   const foreign = buildRecord(owner, { projectId: elsewhere.projectId, kind: 'profile', subject: 'test-owner', displayName: 'Elsewhere', email: '' })
@@ -111,7 +112,7 @@ test('the record store keeps valid records, refuses tampered and foreign ones, a
     await runtime.init()
     assert.equal(runtime.manifest.workspaceId, projectId)
     runtime.docHandle.change(doc => { for (const record of [add, forged, elsewhere, foreign, unsigned]) doc.membership[record.recordId] = record })
-    await eventually(() => runtime.membership().people.some(person => person.id === 'member'))
+    await eventually(() => runtime.membership().people.some(person => person.id === memberId))
     assert.deepEqual(runtime.membership().machines.map(machine => machine.id).sort(), [owner.machineId, member.machineId].sort())
     assert.deepEqual(reasons(), { [forged.recordId]: 'Invalid signature', [elsewhere.recordId]: 'Wrong project',
       [foreign.recordId]: 'Wrong project', [unsigned.recordId]: 'Signer is not a machine certified in this project' })
@@ -124,7 +125,7 @@ test('the record store keeps valid records, refuses tampered and foreign ones, a
     assert.deepEqual(records()[add.recordId], add)
     runtime.docHandle.change(doc => { delete doc.membership })
     await eventually(() => records()[genesis.recordId] && records()[add.recordId])
-    assert.equal(runtime.membership().people.some(person => person.id === 'member'), true)
+    assert.equal(runtime.membership().people.some(person => person.id === memberId), true)
     // A written-back record reads back exactly, so the harvest settles instead of rewriting it.
     await delay(50)
     const heads = getHeads(runtime.docHandle.doc())
@@ -132,14 +133,14 @@ test('the record store keeps valid records, refuses tampered and foreign ones, a
     assert.deepEqual(getHeads(runtime.docHandle.doc()), heads)
 
     // A removal that disappears from the document still holds, and is written back.
-    const removal = buildRecord(owner, { projectId, kind: 'member.remove', subject: 'member' })
+    const removal = trust.remove(owner, memberId)
     runtime.docHandle.change(doc => { doc.membership[removal.recordId] = removal })
-    await eventually(() => runtime.membership().removedPeople.includes('member'))
+    await eventually(() => runtime.membership().removedPeople.includes(memberId))
     runtime.docHandle.change(doc => { delete doc.membership[removal.recordId] })
     await eventually(() => records()[removal.recordId])
-    assert.deepEqual(runtime.membership().removedPeople, ['member'])
+    assert.deepEqual(runtime.membership().removedPeople, [memberId])
     // Arrival-time policy: a removed machine's new records are refused, even if correctly signed.
-    const late = memberAdd(member, projectId, 'late', generateMachineKey())
+    const late = trust.admit(member, generateMachineKey())
     runtime.docHandle.change(doc => { doc.membership[late.recordId] = late })
     await eventually(() => reasons()[late.recordId])
     assert.equal(reasons()[late.recordId], 'Signer was removed before this record arrived')
@@ -147,7 +148,7 @@ test('the record store keeps valid records, refuses tampered and foreign ones, a
     await runtime.close()
     runtime = new WorkspaceRuntime({ directory, actors })
     await runtime.init()
-    assert.deepEqual(runtime.membership().removedPeople, ['member'])
+    assert.deepEqual(runtime.membership().removedPeople, [memberId])
     assert.equal(runtime.membership().storedRecords, 3)
     assert.equal(reasons()[late.recordId], 'Signer was removed before this record arrived', 'refused records still in the document are reported again after a restart')
     assert.equal(reasons()[forged.recordId], undefined, 'the forged record left the document with the deleted map')
@@ -160,8 +161,8 @@ test('the record store keeps valid records, refuses tampered and foreign ones, a
 test('a record saved to the store survives a process kill before it is used, and is written back on restart', { timeout: 30000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-record-kill-'))
   const owner = generateMachineKey()
-  const genesis = testGenesis(owner)
-  const record = memberAdd(owner, genesis.projectId, 'member', generateMachineKey())
+  const genesis = testGenesis(owner), trust = trustProject({ owner, genesis }), member = generateMachineKey()
+  const record = trust.admit(owner, member)
   let runtime
   try {
     const child = fork(new URL('../support/record-store-process.js', import.meta.url), [JSON.stringify({ directory, genesis, record })],
@@ -176,7 +177,7 @@ test('a record saved to the store survives a process kill before it is used, and
     runtime = new WorkspaceRuntime({ directory, actors })
     await runtime.init()
     assert.deepEqual(plain(runtime.docHandle.doc().membership[record.recordId]), record)
-    assert.equal(runtime.membership().people.some(person => person.id === 'member'), true)
+    assert.equal(runtime.membership().people.some(person => person.id === trust.person(member)), true)
     assertNoText(runtime.docHandle.doc())
   } finally {
     await runtime?.close()
@@ -229,16 +230,16 @@ test('records entering through the hub gate are stored as plain values, for ever
   try {
     await runtime.init()
     const projectId = genesis.projectId, bob = generateMachineKey(), spare = generateMachineKey(), carol = generateMachineKey()
-    const admitted = memberAdd(owner, projectId, 'bob', bob)
+    const trust = trustProject({ owner, genesis }), bobId = trust.person(bob)
     const records = [
-      admitted,
-      memberAdd(owner, projectId, 'carol', carol),
-      buildRecord(owner, { projectId, kind: 'member.role', subject: 'bob', role: 'admin', replaces: null }),
-      buildRecord(owner, { projectId, kind: 'machine.add', subject: spare.machineId, personId: 'bob', publicKey: spare.publicKey, approval: {} }),
-      buildRecord(bob, { projectId, kind: 'agent.name', subject: 'actor-bob-openai-codex', machineId: bob.machineId, displayName: 'Bob’s Codex', harness: 'openai-codex' }),
-      buildRecord(bob, { projectId, kind: 'profile', subject: 'bob', displayName: 'Bob Example', email: 'bob@example.test' }),
-      buildRecord(owner, { projectId, kind: 'machine.remove', subject: spare.machineId }),
-      buildRecord(owner, { projectId, kind: 'member.remove', subject: 'carol' }),
+      trust.admit(owner, bob),
+      trust.admit(owner, carol),
+      trust.role(owner, bobId, 'admin'),
+      trust.pair(owner, spare, bobId),
+      buildRecord(bob, { projectId, kind: 'agent.name', subject: actorId(bobId, 'openai-codex'), machineId: bob.machineId, displayName: 'Bob’s Codex', harness: 'openai-codex' }),
+      buildRecord(bob, { projectId, kind: 'profile', subject: bobId, displayName: 'Bob Example', email: 'bob@example.test' }),
+      trust.removeMachine(owner, spare),
+      trust.remove(owner, trust.person(carol)),
     ]
     // One record per gate call, as the hub's routes send them.
     for (const record of records) await runtime.addRecords([record])

@@ -211,7 +211,7 @@ it('a removed machine is told who removed it only once it proves its key, on the
     const server = await hub()
     const removed = project.keys[0]
     await server.store.addRecords([project.remove(removed)])
-    const expected = { removal: { kind: 'machine', left: false, by: { personId: 'person-owner', name: 'Owner' } } }
+    const expected = { removal: { kind: 'machine', left: false, by: { personId: project.ownerId, name: 'Owner' } } }
     // The removed machine itself finishes the signatures and is refused with who removed it (#154).
     const { socket } = await rawSocket(server)
     const refused = await initiateHandshake(socket, { key: removed, projectId: project.projectId, route: nativeUrl(server), role: 'replica' }).catch(error => error)
