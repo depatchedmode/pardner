@@ -11,7 +11,7 @@ import { ExpectedOperations, hash } from '../support/acceptance/expected-operati
 import { candidateFingerprint } from '../support/acceptance/candidate.js'
 import { AgentProcess } from '../support/acceptance/agent-process.js'
 import { joinApproved } from '../support/enrollment.js'
-import { HARNESS_IDS, actorId as actorFor } from '../lib/client-identity.js'
+import { actorId as actorFor } from '../lib/client-identity.js'
 
 const args = process.argv.slice(2)
 const option = (key, fallback) => { const index = args.indexOf(`--${key}`); return index < 0 ? fallback : args[index + 1] }
@@ -31,6 +31,8 @@ const childPids = pid => { try { return execFileSync('pgrep', ['-P', String(pid)
 const alive = pid => { try { process.kill(pid, 0); return true } catch { return false } }
 const email = name => `${name.toLowerCase()}@example.test`
 const AGENT_HARNESS = 'anthropic-claude-code'
+// The harness every client in this run reports for its setup agent (it starts no client with --harness).
+const SETUP_HARNESS = 'openai-codex'
 
 /**
  * Client topology: side 0 is Alice's always-on desktop client, the project authority (hub), with no browser. Side 1
@@ -100,20 +102,15 @@ async function runSeed(seed) {
   const knownSigners = docs => {
     const machine = docs.map(doc => doc.attribution.machineId)
     const personOf = id => docs[0].attribution.machines[id]?.personId
-    const personOfActor = { [actors.alice]: personOf(machine[0]), [actors.builder]: personOf(machine[1]), [actors.bob]: personOf(machine[2]), [actors.reviewer]: personOf(machine[2]) }
-    assert.equal(personOf(machine[1]), personOf(machine[0]), 'Alice’s laptop is Alice’s machine')
-    const agentMachine = { [actors.builder]: machine[1], [actors.reviewer]: machine[2] }
-    const machinesOf = personId => [...new Set(machine.filter(id => personOf(id) === personId))]
-    // Every other agent label (a machine labels its person's agents when it pairs) is signed by a machine of that agent's person.
-    const agentPerson = subject => [...new Set(machine.map(personOf))].find(personId => HARNESS_IDS.some(harness => actorFor(personId, harness) === subject))
-    const recordSigner = record => {
-      if (['project.genesis', 'member.add', 'machine.add'].includes(record.kind)) return [machine[0]]
-      if (record.kind === 'agent.name') return agentMachine[record.subject] ? [agentMachine[record.subject]] : machinesOf(agentPerson(record.subject))
-      if (record.kind === 'profile') return machinesOf(record.subject)
-      return []
-    }
+    const person = { alice: personOf(machine[0]), bob: personOf(machine[2]) }
+    const personOfActor = { [actors.alice]: person.alice, [actors.builder]: personOf(machine[1]), [actors.bob]: person.bob, [actors.reviewer]: personOf(machine[2]) }
+    assert.equal(personOf(machine[1]), person.alice, 'Alice’s laptop is Alice’s machine')
+    // An expected record names sides, people and Actors of the harness; these are their IDs in this run.
+    const value = ref => (ref?.side !== undefined ? machine[ref.side] : ref?.person ? person[ref.person] : ref?.actor ? actors[ref.actor]
+      : ref?.agent ? actorFor(person[ref.agent[0]], ref.agent[1]) : ref)
+    const resolve = ({ action, ...fields }) => ({ action, fields: Object.fromEntries(Object.entries(fields).map(([field, ref]) => [field, value(ref)])) })
     return { machineOfReplica: Object.fromEntries(replicaIds.map((replicaId, side) => [replicaId, machine[side]])), personOfActor,
-      baseline: { machineId: machine[0], actorId: actors.alice }, recordSigner }
+      baseline: { machineId: machine[0], actorId: actors.alice }, resolve }
   }
   const converge = async () => {
     const started = performance.now()
@@ -150,18 +147,29 @@ async function runSeed(seed) {
     await services[0].call('/identity', { name: 'Alice', email: email('Alice'), operationId: 'identity' })
     ;({ project } = await services[0].call('/projects', { name: `Acceptance ${seed}`, operationId: 'create' }))
     actors.alice = project.actorId
+    // Creating a project signs its genesis and labels the creator's setup agent, both on Alice's desktop.
+    expected.expectRecords('create the project', [{ kind: 'project.genesis', subject: { person: 'alice' }, signer: { side: 0 } },
+      { kind: 'agent.name', subject: { agent: ['alice', SETUP_HARNESS] }, signer: { side: 0 } }])
     services[1] = await start(1)
     const device = await services[0].call(`/projects/${project.id}/invites`, { purpose: 'device', operationId: 'invite-laptop' })
     assert.equal((await enroll(1, device.invitation, 'join-laptop')).actorId, actors.alice)
+    // Pairing the laptop: the desktop certifies it, and the laptop labels its own setup agent.
+    expected.expectRecords('pair Alice’s laptop', [{ kind: 'machine.add', subject: { side: 1 }, personId: { person: 'alice' }, signer: { side: 0 } },
+      { kind: 'agent.name', subject: { agent: ['alice', SETUP_HARNESS] }, signer: { side: 1 } }])
     const builderInvite = await services[1].call(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'invite-builder' })
     await enroll(1, builderInvite.invitation, 'join-builder', { harnessId: AGENT_HARNESS, name: 'Builder' })
+    expected.expectRecords('name Builder', [{ kind: 'agent.name', subject: { agent: ['alice', AGENT_HARNESS] }, displayName: 'Builder', signer: { side: 1 } }])
     await advertise(gates[1])
     services[2] = await start(2)
     await services[2].call('/identity', { name: 'Bob', email: email('Bob'), operationId: 'identity' })
     const bobInvite = await services[0].call(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite-bob' })
     actors.bob = (await enroll(2, bobInvite.invitation, 'join-bob')).actorId
+    // Admitting Bob: the desktop certifies his machine as a member, and his laptop labels its setup agent.
+    expected.expectRecords('admit Bob', [{ kind: 'member.add', subject: { person: 'bob' }, displayName: 'Bob', signer: { side: 0 } },
+      { kind: 'agent.name', subject: { agent: ['bob', SETUP_HARNESS] }, signer: { side: 2 } }])
     const reviewerInvite = await services[2].call(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'invite-reviewer' })
     await enroll(2, reviewerInvite.invitation, 'join-reviewer', { harnessId: AGENT_HARNESS, name: 'Reviewer' })
+    expected.expectRecords('name Reviewer', [{ kind: 'agent.name', subject: { agent: ['bob', AGENT_HARNESS] }, displayName: 'Reviewer', signer: { side: 2 } }])
     for (const [side, who] of [[1, 'builder'], [2, 'reviewer']]) {
       const grant = await services[side].call(`/projects/${project.id}/agent-grant`, { harnessId: AGENT_HARNESS })
       grants[who] = { ...grant, apiBase: `${services[side].url}/pardner/client/v1/projects/${project.id}/api`, file: join(root, `${who}-credential.json`) }

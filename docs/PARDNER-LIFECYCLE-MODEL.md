@@ -616,3 +616,30 @@ Fresh default check: 174614 states, 679456 transitions, all four invariants and
 `ShutdownCompletes` hold; all ten witnesses are reachable. All eight mutations
 were caught, reported as drift and reproduced by the model; the working tree was
 unchanged. See `attributionReviewTwoAcknowledgement` in the evidence JSON.
+
+## Activity derivation review (2026-11-11)
+
+Deriving every Activity entry from the change that wrote it changed
+`lib/workspace-runtime.js`. Drift named `ReplicaEdit`, `SyncDown`,
+`ReplicaSendAck`, `Handle`, `StoreCloseBegin`, `StoreCloseComplete`,
+`ReplicaReceive` and `ReplicaAckCommit`; each was re-reviewed against the diff:
+- `getDoc` adds Activity (`lib/change-log.js`, `lib/activity.js`) and
+  `attributionView` is rebuilt on it, with read-only views of current comment
+  authorship and deletions. Nothing there writes or waits.
+- The standalone service, which signs nothing, derives its Activity in memory: a
+  `heads-changed` listener notes new changes and derives a small batch in that
+  same synchronous step, and larger ones in `setImmediate` slices. Nothing waits
+  on the disk; `closeResources` clears the slice timer and the listener before it
+  drains the operation queue.
+- `ReplicaEdit`, `Handle`: a local change is still made through `boardChange`
+  before the flush; deriving its entry is synchronous work in the change step,
+  like signing.
+- `ReplicaSendAck`, `ReplicaReceive`, `ReplicaAckCommit`, `SyncDown`,
+  `StoreCloseBegin`, `StoreCloseComplete`: the mapped code is unchanged.
+
+No anchor, guard, effect, atomicity assumption, invariant, witness or mutation
+text changed. Fresh default check: 174614 states, 679456 transitions, all four
+invariants and `ShutdownCompletes` hold; all ten witnesses are reachable. All
+eight mutations were caught, reported as drift and reproduced by the model; the
+working tree was unchanged. See `attributionReviewTwoActivity` in the evidence
+JSON.

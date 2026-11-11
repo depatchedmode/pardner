@@ -1,6 +1,7 @@
-// Who made each change, as this computer's Pardner checked it (lib/attribution.js on the service). Every change is
-// signed by the machine that made it; a change without a valid signature is shown, never hidden. Plain words first:
-// people and machine names, never a raw hash as the main label.
+// Who made each change, as this computer's Pardner checked it (lib/activity.js on the service). Every Activity entry
+// is derived from one change, and its signer line is that change's own verdict: it means "this machine signed
+// exactly this content". A change without a valid signature is shown, never hidden. Plain words first: people and
+// machine names, never a raw hash as the main label. Names of people and machines are as they are now.
 
 const own = (map, key) => (map && typeof key === 'string' && Object.hasOwn(map, key) ? map[key] : null)
 
@@ -9,7 +10,16 @@ const REASONS = {
   invalid: 'its signature doesn’t check out',
   'unknown-signer': 'its signer isn’t a machine of this project',
   'not-machine': 'it wasn’t made by a Pardner machine',
+  'ambiguous-signer': 'its actor names more than one machine',
   checking: 'still being checked',
+}
+
+const FLAGS = {
+  keyMismatch: 'written under a key other than its own operation ID',
+  idMismatch: 'its operation ID doesn’t match its content',
+  sameKey: 'another change also wrote this entry',
+  alsoWrote: 'the change also altered content outside this entry',
+  invalidRecord: 'its record signature doesn’t check out',
 }
 
 /** A machine as people know it: its person and its name, with a short ID only when it has no name. */
@@ -22,83 +32,89 @@ export function machineLabel(attribution, machineId) {
   return machine.personName ? `${machine.personName} · ${name}` : name
 }
 
-const signerOf = signers => (Array.isArray(signers) ? signers : [])
-
-/** Who made a change that altered an entry, as briefly as a signer line allows. */
+/** Who made a change, as briefly as a signer line allows. */
 function changeLabel(attribution, change) {
   if (change?.state === 'signed' || change?.state === 'removed') return machineLabel(attribution, change.machineId)
   if (change?.state === 'unattributed') return `an unsigned change relayed by ${machineLabel(attribution, change.relayedBy)}`
   return 'a change still being checked'
 }
 
-/** The content Activity shows for an entry: as its signed change wrote it, when a later change altered it. */
-export function shownEvent(attribution, event) {
-  return own(attribution?.signed, event?.operationId) ?? event
-}
+/** The Actor a record entry is filed under: the human Actor of the person whose machine signed it, when known. */
+const recordActor = (attribution, record) => own(attribution?.personActors, own(attribution?.machines, record?.signer)?.personId) ?? null
 
 /**
- * The signer line under an Activity entry: `{ text, tone }`, where tone is `signed`, `pending` or `flag`. Null when
- * the service checks no signatures (the standalone service).
+ * Activity entries (lib/activity.js) as rows for the list: each keeps its entry, and carries what sorting and
+ * filtering use, all of it signed: the entry's time and Actor, and the type of its event.
  */
-export function signerLine(attribution, signers) {
-  if (!attribution) return null
-  const list = signerOf(signers)
-  if (!list.length) return { text: 'Signature pending', tone: 'pending' }
-  const lines = list.map(signer => {
-    const machine = own(attribution.machines, signer.machineId)
-    switch (signer.state) {
-      case 'signed': {
-        const parts = [`Signed by ${machineLabel(attribution, signer.machineId)}`]
-        if (machine?.removed) parts.push('machine since removed')
-        if (signer.actorMismatch) parts.push('as an Actor this machine isn’t allowed to act as')
-        if (signer.replaces) parts.push('it replaced an entry another change wrote')
-        const altered = Array.isArray(signer.altered) ? signer.altered : []
-        if (altered.length) parts.push(`shown as signed; altered after signing by ${altered.map(change => changeLabel(attribution, change)).join(' and ')}`)
-        return { text: parts.join(' · '), tone: signer.actorMismatch || signer.replaces || altered.length ? 'flag' : 'signed' }
-      }
-      case 'removed':
-        return { text: `Made by a removed machine: ${machineLabel(attribution, signer.machineId)}${signer.actorMismatch ? ' · as an Actor it isn’t allowed to act as' : ''}`, tone: 'flag' }
-      case 'unattributed':
-        return { text: `Unattributed: ${REASONS[signer.reason] ?? 'no valid signature'} · relayed by ${machineLabel(attribution, signer.relayedBy)}${signer.ownActor ? ' · it carries this computer’s actor, but this computer didn’t make it' : ''}`, tone: 'flag' }
-      default: {
-        const waiting = signer.waitingFor ? ` · waiting for ${machineLabel(attribution, signer.waitingFor)}` : ''
-        return { text: `Signature pending${waiting}`, tone: 'pending' }
-      }
+export function activityRows(doc) {
+  const attribution = doc?.attribution ?? null
+  return (Array.isArray(doc?.activity) ? doc.activity : []).map(entry => ({
+    entry, operationId: entry.id, timestamp: entry.timestamp ?? '',
+    actorId: entry.kind === 'operation' ? entry.event.actorId : entry.kind === 'record' ? recordActor(attribution, entry.record) : null,
+    type: entry.kind === 'operation' ? entry.event.type : entry.kind === 'record' ? `record.${entry.record.kind}` : 'change.other',
+    ...(entry.kind === 'operation' ? { changes: entry.event.changes, taskId: entry.event.taskId, recordIds: entry.event.recordIds } : {}),
+  }))
+}
+
+/** The rows of one task's History: entries whose signed event names the task. */
+export function taskRows(doc, taskId) {
+  return activityRows(doc).filter(row => row.entry.kind === 'operation' && (row.taskId === taskId || (Array.isArray(row.recordIds) && row.recordIds.includes(taskId))))
+}
+
+/** One change's verdict as words and a tone: `signed`, `pending` or `flag`. */
+function changeLine(attribution, change) {
+  const machine = own(attribution?.machines, change.machineId)
+  switch (change.state) {
+    case 'signed': {
+      const parts = [`Signed by ${machineLabel(attribution, change.machineId)}`]
+      if (machine?.removed) parts.push('machine since removed')
+      if (change.actorMismatch) parts.push('as an Actor this machine isn’t allowed to act as')
+      return { text: parts.join(' · '), tone: change.actorMismatch ? 'flag' : 'signed' }
     }
-  })
-  const flagged = lines.find(line => line.tone === 'flag')
-  return { text: lines.map(line => line.text).join('; '), tone: flagged ? 'flag' : lines.every(line => line.tone === 'signed') ? 'signed' : 'pending' }
+    case 'removed':
+      return { text: `Made by a removed machine: ${machineLabel(attribution, change.machineId)}${change.actorMismatch ? ' · as an Actor it isn’t allowed to act as' : ''}`, tone: 'flag' }
+    case 'unattributed':
+      return { text: `Unattributed: ${REASONS[change.reason] ?? 'no valid signature'} · relayed by ${machineLabel(attribution, change.relayedBy)}${change.ownActor ? ' · it carries this computer’s actor, but this computer didn’t make it' : ''}`, tone: 'flag' }
+    default: {
+      const waiting = change.waitingFor ? ` · waiting for ${machineLabel(attribution, change.waitingFor)}` : ''
+      return { text: `Signature pending${waiting}`, tone: 'pending' }
+    }
+  }
 }
-
-/** Whether an Activity entry needs a person's review: one of its changes is unattributed, from a removed machine, or claims an Actor its machine may not act as. */
-export function needsReview(attribution, event) {
-  if (event?.review) return true
-  return signerOf(attribution?.operations?.[event?.operationId]).some(signer => ['unattributed', 'removed'].includes(signer.state) || signer.actorMismatch
-    || signer.replaces || (Array.isArray(signer.altered) && signer.altered.length > 0))
-}
-
-const RECORD_STAMP = ''
 
 /**
- * Membership records as Activity entries, signed by the machine that signed each record. Their times have
- * one-second resolution; the key sorts records of one second in the order they reached the board.
+ * The signer line under an Activity entry: `{ text, tone }`. One part per change the entry lists (several only for
+ * one operation retried on two replicas, or one record written back), then the entry's flags. For a membership
+ * record the line is the record's own signature, which covers exactly the record shown, followed by any change that
+ * wrote it into the board without a valid signature. Null when the service checks no signatures.
  */
-export function recordEvents(attribution) {
-  return (attribution?.records ?? []).map(record => ({ operationId: `record-${String(record.position ?? 0).padStart(9, '0')}-${record.recordId}`,
-    type: `record.${record.kind}`, timestamp: record.at ?? RECORD_STAMP, actorId: record.signerActorId ?? null, record }))
+export function signerLine(attribution, entry) {
+  if (!attribution || !entry) return null
+  const changes = Array.isArray(entry.changes) ? entry.changes : []
+  let lines
+  if (entry.kind === 'record') {
+    lines = [{ text: `Signed by ${machineLabel(attribution, entry.record.signer)}`, tone: entry.flags?.invalidRecord ? 'flag' : 'signed' }]
+    for (const change of changes) if (['unattributed', 'removed'].includes(change.state)) lines.push({ ...changeLine(attribution, change), text: `written to the board by ${changeLine(attribution, change).text.toLowerCase()}` })
+  } else {
+    lines = changes.length ? changes.map(change => changeLine(attribution, change)) : [{ text: 'Signature pending', tone: 'pending' }]
+    if (changes.length > 1) lines = lines.map((line, index) => ({ ...line, text: `${line.text} (${changes[index].replicaId ? 'on another replica, ' : ''}${new Date(changes[index].timestamp).toLocaleString()})` }))
+  }
+  const flags = Object.entries(FLAGS).filter(([flag]) => entry.flags?.[flag]).map(([, text]) => ({ text, tone: 'flag' }))
+  const later = (entry.alteredLater ?? []).length
+    ? [{ text: `shown as signed; its stored copy was altered after signing by ${entry.alteredLater.map(change => changeLabel(attribution, change)).join(' and ')}`, tone: 'flag' }] : []
+  const all = [...lines, ...flags, ...later]
+  const tone = all.some(line => line.tone === 'flag') ? 'flag' : all.every(line => line.tone === 'signed') ? 'signed' : 'pending'
+  return { text: [lines.map(line => line.text).join('; '), ...flags.map(line => line.text), ...later.map(line => line.text)].join(' · '), tone }
 }
 
-/** Changes that need review but wrote no Activity entry, so they are still listed. */
-export function reviewOnlyEvents(attribution) {
-  return (attribution?.review ?? []).filter(entry => !entry.operations?.length).map(entry => ({ operationId: `change-${entry.change}`, type: 'change.other',
-    timestamp: entry.at ?? RECORD_STAMP, review: entry }))
-}
+/** Whether an Activity entry needs a person's review (lib/activity.js decides; this reads it). */
+export const needsReview = row => Boolean(row?.entry?.review)
 
 const ROLE = { admin: 'an admin', member: 'a member' }
 
-/** One membership record as a plain sentence, in the shape describeEvent returns. */
-export function describeRecord(event, attribution) {
-  const record = event.record
+/** One membership record entry as a plain sentence, in the shape describeEvent returns. Names are as they are now. */
+export function describeRecord(row, attribution) {
+  const { record } = row.entry
   const person = id => own(attribution?.people, id) ?? 'someone'
   const signerPerson = own(attribution?.machines, record.signer)?.personId
   const actor = signerPerson ? person(signerPerson) : machineLabel(attribution, record.signer)
@@ -106,45 +122,40 @@ export function describeRecord(event, attribution) {
   switch (record.kind) {
     case 'project.genesis': parts = [' started the project']; break
     case 'member.add': parts = [` let ${record.displayName ?? 'someone'} in as ${ROLE[record.role] ?? 'a member'}`]; break
-    case 'member.role': parts = [` made ${person(record.subject)} ${ROLE[record.role] ?? 'a member'}`]; break
+    case 'member.role': parts = [' made ', { label: person(record.subject), current: true }, ` ${ROLE[record.role] ?? 'a member'}`]; break
     case 'member.remove':
-      parts = record.subject === signerPerson ? [' left the project'] : [` removed ${person(record.subject)} from the project`]
+      parts = record.subject === signerPerson ? [' left the project'] : [' removed ', { label: person(record.subject), current: true }, ' from the project']
       break
     case 'machine.add':
       parts = record.personId === signerPerson ? [` paired a new machine${record.agentsOnly ? ' for agents only' : ''}`]
-        : [` paired a machine for ${person(record.personId)}${record.agentsOnly ? ', for agents only' : ''}`]
+        : [' paired a machine for ', { label: person(record.personId), current: true }, record.agentsOnly ? ', for agents only' : '']
       detail = machineLabel(attribution, record.subject)
       break
-    case 'machine.remove': parts = [` removed the machine ${machineLabel(attribution, record.subject)}`]; break
+    case 'machine.remove': parts = [' removed the machine ', { label: machineLabel(attribution, record.subject), current: true }]; break
     case 'agent.name': parts = [` named an agent “${record.displayName ?? ''}”`]; break
     case 'profile': parts = [` updated their name to ${record.displayName ?? ''}`]; break
     default: parts = [` recorded ${record.kind}`]
   }
-  return { actor, parts, detail, excerpt: null }
+  return { actor, actorCurrent: Boolean(signerPerson), parts, detail, excerpt: null }
 }
 
-const REWROTE = {
-  edited: ' altered an Activity entry another change signed', replaced: ' replaced an Activity entry another change wrote', deleted: ' deleted an Activity entry',
-}
-
-/** A flagged change that wrote no Activity entry of its own, as a sentence: what it altered, or that it left no entry. */
-export function describeChange(event, attribution) {
-  const claimed = event.review.claimed ?? event.review.machineId
+/** A change that wrote neither one Activity entry nor a record, as a sentence: what it altered or wrote. */
+export function describeChange(row, attribution) {
+  const { entry } = row
+  const [change] = entry.changes
+  const claimed = change?.claimed ?? change?.machineId
   const actor = claimed ? machineLabel(attribution, claimed) : 'A machine'
-  const rewrote = Array.isArray(event.review.rewrote) ? event.review.rewrote : []
-  const entry = rewrote.find(item => item.map === 'operations')
-  if (entry) {
-    const others = rewrote.length - 1
-    return { actor, parts: [REWROTE[entry.kind] ?? REWROTE.edited], detail: others > 0 ? `and ${others} more` : null, excerpt: null }
+  if (entry.oversized) return { actor, actorCurrent: true, parts: [` made a change too large to read (${entry.ops} operations)`], detail: null, excerpt: null }
+  if (entry.altered?.length) {
+    const others = entry.altered.length - 1
+    return { actor, actorCurrent: true, parts: [' altered an Activity entry another change signed'], detail: others > 0 ? `and ${others} more` : null, excerpt: null }
   }
-  if (rewrote.length) return { actor, parts: [' changed content another change wrote'], detail: null, excerpt: null }
-  return { actor, parts: [' made a change that left no Activity entry'], detail: null, excerpt: null }
-}
-
-/** The signer line of a membership record: it was verified when this computer stored it. */
-export function recordSignerLine(attribution, record) {
-  if (!attribution) return null
-  return { text: `Signed by ${machineLabel(attribution, record.signer)}`, tone: 'signed' }
+  const events = entry.wrote?.events?.length ?? 0
+  if (events) return { actor, actorCurrent: true, parts: [events === 1 ? ' wrote an Activity entry that isn’t well formed' : ` wrote ${events} Activity entries in one change`], detail: null, excerpt: null }
+  if (entry.alteredContent?.length) return { actor, actorCurrent: true, parts: [' changed content another change wrote'], detail: null, excerpt: null }
+  if (change?.unusual?.deleted?.length) return { actor, actorCurrent: true, parts: [' deleted content another change wrote'], detail: null, excerpt: null }
+  if (entry.wrote?.empty) return { actor, actorCurrent: true, parts: [' made a change that wrote nothing'], detail: null, excerpt: null }
+  return { actor, actorCurrent: true, parts: [' made a change that left no Activity entry'], detail: null, excerpt: null }
 }
 
 /** The board's notice: how many changes need review, and any equivocation, in plain words; null when there is nothing. */
@@ -154,7 +165,7 @@ export function reviewNotice(attribution) {
   const ownActor = attribution?.summary?.ownActor ?? 0
   if (!count && !equivocations.length) return null
   const lines = []
-  if (count) lines.push(`${count === 1 ? 'One change needs' : `${count} changes need`} review: ${count === 1 ? 'its' : 'their'} signer couldn’t be confirmed, ${count === 1 ? 'it was' : 'they were'} made by a removed machine, ${count === 1 ? 'it claims' : 'they claim'} an Actor ${count === 1 ? 'its' : 'their'} machine isn’t allowed to act as, or ${count === 1 ? 'it altered' : 'they altered'} what another change wrote.`)
+  if (count) lines.push(`${count === 1 ? 'One change needs' : `${count} changes need`} review: ${count === 1 ? 'its' : 'their'} signer couldn’t be confirmed, ${count === 1 ? 'it was' : 'they were'} made by a removed machine, ${count === 1 ? 'it claims' : 'they claim'} an Actor ${count === 1 ? 'its' : 'their'} machine isn’t allowed to act as, or ${count === 1 ? 'it wrote' : 'they wrote'} something other than one Activity entry of ${count === 1 ? 'its' : 'their'} own.`)
   if (ownActor) lines.push(`${ownActor === 1 ? 'One change carries' : `${ownActor} changes carry`} this computer’s actor but ${ownActor === 1 ? 'wasn’t' : 'weren’t'} made here: another machine used it.`)
   for (const report of equivocations) {
     const relayer = machineLabel(attribution, report.relayedBy)
@@ -164,3 +175,10 @@ export function reviewNotice(attribution) {
   }
   return lines
 }
+
+/**
+ * For the task panel, which shows comments as they are now: whether a comment's record or current text was written
+ * by a change other than its recorded author's own signed operation on it. Such a comment says so, and points to
+ * Activity, where that change has its own entry under its own signer.
+ */
+export const changedBySomeoneElse = (attribution, commentId) => Boolean(own(attribution?.comments, commentId)?.changedBy?.length)

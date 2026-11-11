@@ -143,6 +143,13 @@ test('one operation retried on two replicas is one entry listing both changes, e
   assert.deepEqual(shown[0].changes.map(change => [change.hash, change.replicaId, change.timestamp]),
     [[left.hash, 'replica-left', '2026-11-01T10:00:00.000Z'], [right.hash, 'replica-right', '2026-11-01T10:00:05.000Z']])
   assert.equal(shown[0].review, false)
+  // Another member's copy, equal apart from its time, is not a retry of Alice's operation: it is its own entry.
+  const copy = A.change(A.clone(doc, { actor: bob(7) }), draft => { draft.operations[left.event.operationId] = storageValue({ ...left.event, timestamp: '2020-01-01T00:00:00.000Z' }) })
+  const withCopy = operations(view(copy)).filter(entry => entry.key === left.event.operationId)
+  assert.equal(withCopy.length, 2)
+  const copied = withCopy.find(entry => entry.changes.some(change => change.machineId === MACHINES[BOB]))
+  assert.deepEqual([copied.changes.length, Boolean(copied.flags.actorMismatch), copied.review], [1, true, true])
+  assert.ok(withCopy.every(entry => entry.flags.sameKey?.length), 'and both are flagged: two changes wrote the key')
   // A third replica that observed another state wrote other `changes`: its own entry, and every entry is flagged.
   const other = A.change(A.clone(start, { actor: bob(4) }), draft => { draft.operations[left.event.operationId] = storageValue({ ...left.event, changes: [], replicaId: 'replica-bob' }) })
   const all = operations(view(A.merge(A.clone(doc), other))).filter(entry => entry.key === left.event.operationId)

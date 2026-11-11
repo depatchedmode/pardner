@@ -4,13 +4,15 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import * as A from '@automerge/automerge'
 import { SHARDS, createSignaturesData, machineActor, machinePrefix, shardOf, signChange, storedSignatures, verifyChange } from '../lib/change-signatures.js'
-import { ChangeAttribution, machineIndex } from '../lib/attribution.js'
-import { generateMachineKey } from '../lib/machine-key.js'
+import { machineIndex } from '../lib/attribution.js'
+import { ChangeLog } from '../lib/change-log.js'
+import { generateMachineKey, personIdFor } from '../lib/machine-key.js'
+import { actorId as actorFor } from '../lib/client-identity.js'
 import { hubRuntime } from '../support/machines.js'
 import { prepareOperation } from '../lib/workspace-commands.js'
 import { plain } from '../lib/workspace-schema.js'
 import { storageValue } from '../lib/workspace-values.js'
-import { actors, eventually, execute, operationOf, signerOf, stateOf, withHub, writeTask } from '../support/signed-hub.js'
+import { actors, entryOf, eventually, execute, operationOf, signerOf, stateOf, withHub, writeTask } from '../support/signed-hub.js'
 
 // The rules that make a signer line mean "this machine signed exactly this content" (docs/PARDNER-TRUST-DESIGN.md,
 // section 3), for every peer, even when another member's client writes unusual but well-formed data.
@@ -53,7 +55,7 @@ it('a machine signs only the changes its own write path made; a received change 
     const creation = A.getChangesMetaSince(server.store.docHandle.doc(), [])[0]
     assert.equal(server.store.attribution.stateOf(creation.hash).state, 'signed', 'the creation change is signed by the machine that created the board')
     await eventually(() => writer.attribution.stateOf(creation.hash).state === 'signed', 'a member never verified the creation change')
-    const gate = server.store.attribution.writers.membership.get(project.records[0].recordId)
+    const gate = server.store.attribution.recordWriters().get(project.records[0].recordId)
     assert.ok(gate?.length && gate.every(hash => server.store.attribution.stateOf(hash).state === 'signed'), 'the record gate’s change is signed')
   })
 })
@@ -64,16 +66,24 @@ it('a membership write-back is signed by the machine that writes it back', { tim
     const vandal = await bare(1)
     const recordId = project.records[2].recordId
     await eventually(() => vandal.board.doc().membership?.[recordId], 'the vandal never synced')
+    // Every change that ever wrote the record into the board, from the changes' own entries.
+    const writers = runtime => runtime.attribution.recordWriters().get(recordId) ?? []
+    await eventually(() => writers(server.store).length, 'the hub never derived the gate’s change')
+    const before = writers(server.store).length
     vandal.board.change(doc => { delete doc.membership[recordId] })
     // Every peer that stores the record writes it back; each write-back is that peer's own, signed change.
-    await eventually(() => server.store.attribution.writers.membership.get(recordId)?.length
-      && !A.getHeads(vandal.board.doc()).every(head => server.store.attribution.writers.membership.get(recordId).includes(head)), 'never written back')
-    await eventually(() => {
-      const writers = server.store.attribution.writers.membership.get(recordId) ?? []
-      return writers.length && writers.every(hash => server.store.attribution.stateOf(hash).state === 'signed')
-    }, 'a write-back change was never attributed')
-    await eventually(() => (reader.attribution.writers.membership.get(recordId) ?? []).every(hash => reader.attribution.stateOf(hash).state === 'signed')
-      && reader.attribution.writers.membership.get(recordId)?.length, 'the reader never attributed the write-back')
+    await eventually(() => writers(server.store).length > before, 'never written back')
+    await eventually(() => writers(server.store).every(hash => server.store.attribution.stateOf(hash).state === 'signed'), 'a write-back change was never attributed')
+    await eventually(() => writers(reader).length > before && writers(reader).every(hash => reader.attribution.stateOf(hash).state === 'signed'),
+      'the reader never attributed the write-back')
+    // The record is one Activity entry listing each change that wrote it; the deletion is its own entry, for review.
+    const [shown] = await eventually(() => {
+      const entries = server.store.getDoc().activity.filter(entry => entry.kind === 'record' && entry.key === recordId)
+      return entries.length === 1 && entries[0].changes.length > before && entries
+    }, 'the record was not shown as one entry')
+    assert.equal(shown.review, false)
+    const deletion = A.getHeads(vandal.board.doc()).find(head => !writers(server.store).includes(head))
+    if (deletion) await eventually(() => server.store.getDoc().activity.find(entry => entry.id === deletion)?.kind === 'unrecognised', 'the deletion was not listed on its own')
   })
 })
 
@@ -366,26 +376,26 @@ it('the signer line is bound to the content it signed: a later change that edits
       await eventually(() => A.hasHeads(runtime.docHandle.doc(), [edit]), `the edit never reached ${runtime.role}`)
       await checked(runtime)
       await eventually(() => runtime.attribution.stateOf(edit).state === 'signed', `${runtime.role} never verified the edit’s own signature`)
-      const [signer] = runtime.getDoc().attribution.operations[original.operationId]
-      assert.equal(signer.hash, signedBy.hash, 'still the change that wrote the entry')
-      assert.equal(signer.machineId, project.keys[0].machineId)
-      assert.deepEqual(signer.altered?.map(entry => [entry.hash, entry.state, entry.machineId]), [[edit, 'signed', project.keys[2].machineId]],
-        'marked as altered after signing, naming the altering change and its signer')
+      const shown = entryOf(runtime, original.operationId)
+      assert.deepEqual(shown.changes.map(change => [change.hash, change.machineId]), [[signedBy.hash, project.keys[0].machineId]], 'still the change that wrote the entry, alone')
       // What is shown under the signer is the content as its change wrote it.
-      const shown = runtime.getDoc().attribution.signed?.[original.operationId]
-      assert.equal(shown?.payload?.title, 'Written and signed by member 0')
-      assert.equal(shown?.timestamp, original.timestamp)
-      assert.deepEqual(shown?.changes, original.changes)
-      // The altering change has its own entry in the review list, with its own signer.
-      const review = await eventually(() => reviewEntry(runtime, edit), `${runtime.role} never listed the altering change`)
-      assert.equal(review.state, 'signed')
-      assert.equal(review.machineId, project.keys[2].machineId)
-      assert.deepEqual(review.rewrote, [{ map: 'operations', key: original.operationId, kind: 'edited' }])
+      assert.equal(shown.event.payload.title, 'Written and signed by member 0')
+      assert.equal(shown.event.timestamp, original.timestamp)
+      assert.equal(shown.timestamp, original.timestamp, 'the time shown is the signed one')
+      assert.deepEqual(shown.event.changes, original.changes)
+      // Member 0 acts as Alice here, which its machine is not certified for: that flag is its own; the edit adds none.
+      assert.deepEqual(Object.keys(shown.flags), ['actorMismatch'])
+      // The altering change is its own entry, in review, with its own signer, naming what it altered.
+      const altering = runtime.getDoc().activity.find(entry => entry.id === edit)
+      assert.equal(altering.kind, 'unrecognised')
+      assert.deepEqual(altering.altered, [signedBy.hash])
+      assert.deepEqual([altering.changes[0].state, altering.changes[0].machineId], ['signed', project.keys[2].machineId])
+      assert.ok(reviewEntry(runtime, edit), `${runtime.role} never listed the altering change`)
     }
     // Every peer shows the same thing, and the board itself is not changed by the check.
     assert.equal(server.store.getDoc().operations[original.operationId].payload.title, 'Rewritten by member 2')
-    const views = [reader, server.store, writer].map(runtime => JSON.stringify([runtime.getDoc().attribution.operations[original.operationId], runtime.getDoc().attribution.signed]))
-    assert.equal(new Set(views).size, 1)
+    const stable = runtime => JSON.stringify(runtime.getDoc().activity.map(({ changes, ...entry }) => ({ ...entry, changes: changes.map(({ hash, state, machineId }) => [hash, state, machineId]) })))
+    assert.equal(new Set([reader, server.store, writer].map(stable)).size, 1)
   })
 })
 
@@ -402,23 +412,27 @@ it('a replica that joins after an Activity entry was altered shows the same alte
     await eventually(() => A.hasHeads(server.store.docHandle.doc(), [edit]), 'the edit never reached the hub')
     const late = await replica(1)
     await checked(late)
-    const [signer] = late.getDoc().attribution.operations[original.operationId]
-    assert.equal(signer.state, 'signed')
-    assert.deepEqual(signer.altered?.map(entry => entry.hash), [edit])
-    assert.deepEqual(late.getDoc().attribution.signed[original.operationId].recordIds, original.recordIds)
+    const shown = entryOf(late, original.operationId)
+    assert.equal(shown.changes[0].state, 'signed')
+    assert.deepEqual(shown.event.recordIds, original.recordIds, 'shown as its change wrote it')
     await eventually(() => reviewEntry(late, edit)?.state === 'unattributed', 'the unsigned edit was never listed')
+    assert.deepEqual(late.getDoc().activity.find(entry => entry.id === edit).altered, [shown.changes[0].hash])
     await checked(server.store)
+    await eventually(() => reviewEntry(server.store, edit)?.state === 'unattributed', 'the hub never resolved the edit')
     // The same on the hub, apart from the replica naming the hub it learned the verdict through (`via`).
-    const stable = runtime => runtime.getDoc().attribution.operations[original.operationId]
-      .map(({ hash, state, machineId, altered }) => ({ hash, state, machineId, altered: altered?.map(({ hash: change, state: was, claimed }) => [change, was, claimed]) }))
-    assert.deepEqual(stable(late), stable(server.store))
+    const verdicts = changes => changes?.map(({ hash, state, machineId, claimed }) => [hash, state, machineId, claimed])
+    const stable = runtime => JSON.stringify(runtime.getDoc().activity.map(({ changes, alteredLater, ...entry }) => ({ ...entry, changes: verdicts(changes), alteredLater: verdicts(alteredLater) })))
+    assert.equal(stable(late), stable(server.store))
   })
 })
 
-it('replacing or deleting an Activity entry, or a signed change that leaves no Activity entry, is listed for review with its signer', { timeout: 90000 }, async () => {
+it('replacing or deleting an Activity entry, or a signed change that leaves no Activity entry, is its own entry listed for review with its signer, and the original stays shown', { timeout: 90000 }, async () => {
   await withHub(async ({ project, server, replica, bare }) => {
+    // Member 0 acts as its own person's Actor, so its entries carry no flag of their own.
+    const own = actorFor(personIdFor(project.keys[0].publicKey))
+    await server.store.execute({ operationId: randomUUID(), actorId: 'alice', type: 'actor.register', payload: { id: own, handle: 'member-zero', kind: 'human' } })
     const writer = await replica(0)
-    const first = await execute(writer, 'Replaced later'), second = await execute(writer, 'Deleted later')
+    const first = await execute(writer, 'Replaced later', own), second = await execute(writer, 'Deleted later', own)
     const [replaced, deleted] = await Promise.all([first, second].map(({ result }) => eventually(() => operationOf(server.store, result.taskId), 'never relayed')))
     const editor = await bare(2)
     await eventually(() => editor.board.doc().operations?.[deleted.operationId], 'the editor never synced')
@@ -437,17 +451,20 @@ it('replacing or deleting an Activity entry, or a signed change that leaves no A
     await checked(server.store)
     const review = hash => reviewEntry(server.store, hash)
     await eventually(() => [replacement, deletion, rename].every(hash => review(hash)?.state === 'signed'), 'not every change was listed with its signer')
-    assert.deepEqual(review(replacement).rewrote, [{ map: 'operations', key: replaced.operationId, kind: 'replaced' }])
     assert.equal(review(replacement).machineId, project.keys[2].machineId)
-    const [shown] = server.store.getDoc().attribution.operations[replaced.operationId]
-    assert.equal(shown.hash, replacement, 'a replaced entry is shown as signed by the change that wrote what is there now')
-    assert.equal(shown.replaces, true)
-    assert.deepEqual(review(deletion).rewrote, [{ map: 'operations', key: deleted.operationId, kind: 'deleted' }])
-    assert.equal(review(rename).noEntry, true)
-    assert.equal(review(rename).state, 'signed')
-    assert.equal(review(deletion).noEntry, true, 'a deletion leaves no entry of its own either')
-    // Ordinary work is never listed: operations and membership records each leave an entry.
-    assert.deepEqual(server.store.getDoc().attribution.review.filter(entry => entry.noEntry || entry.rewrote).map(entry => entry.change).sort(), [replacement, deletion, rename].sort())
+    const activity = server.store.getDoc().activity
+    // The replacement is its own entry; the entry it replaced is still shown, as its own change wrote it.
+    const replacing = activity.find(entry => entry.id === replacement)
+    assert.equal(replacing.event.timestamp, '2020-01-01T00:00:00.000Z')
+    const originals = activity.filter(entry => entry.kind === 'operation' && (entry.key === replaced.operationId || entry.key === deleted.operationId) && entry.id !== replacement)
+    assert.deepEqual(originals.map(entry => entry.event.payload.title).sort(), ['Deleted later', 'Replaced later'])
+    assert.ok(originals.every(entry => entry.changes.every(change => change.machineId === project.keys[0].machineId)))
+    assert.deepEqual(replacing.flags.sameKey, [originals.find(entry => entry.key === replaced.operationId).id])
+    assert.deepEqual([activity.find(entry => entry.id === deletion).kind, activity.find(entry => entry.id === rename).kind], ['unrecognised', 'unrecognised'])
+    // Ordinary work is never listed: only these three, and the entry whose key another change wrote again.
+    // (The hub's own registration of member 0's Actor, made here as Alice, is flagged too, and is not this test's.)
+    assert.deepEqual([...new Set(server.store.getDoc().attribution.review.filter(entry => entry.machineId !== project.owner.machineId).map(entry => entry.change))].sort(),
+      [replacement, deletion, rename, originals.find(entry => entry.key === replaced.operationId).id].sort())
   })
 })
 
@@ -642,7 +659,7 @@ it('an equivocation report shown before both signatures arrived becomes proven w
   })
 })
 
-it('a reopened replica reads only the changes it has not read before, and keeps what it found', { timeout: 90000 }, async () => {
+it('a reopened replica derives only the changes it has no stored entry for, and shows the same entries', { timeout: 90000 }, async () => {
   await withHub(async ({ root, project, server, replica, bare }) => {
     const directory = join(root, 'reopened-reader')
     let reader = await replica(1, { directory })
@@ -654,21 +671,25 @@ it('a reopened replica reads only the changes it has not read before, and keeps 
     const edit = A.getHeads(editor.board.doc())[0]
     await eventually(() => A.hasHeads(reader.docHandle.doc(), [edit]), 'the edit never reached the reader')
     await checked(reader)
+    await eventually(() => reviewEntry(reader, edit), 'the edit was never listed')
     const changes = reader.attribution.metas.size
+    const before = JSON.stringify(reader.getDoc().activity.map(({ id, kind, event, flags }) => ({ id, kind, event, flags })))
     await reader.close()
-    // Count what the reopened replica reads: nothing it read before.
-    const scan = ChangeAttribution.prototype.scanChange
-    let read = 0
-    ChangeAttribution.prototype.scanChange = function (change) { if (!this.scan.scanned.has(change.hash)) read++; return scan.call(this, change) }
+    // Count what the reopened replica derives: nothing it derived before.
+    const add = ChangeLog.prototype.add
+    let derived = 0
+    ChangeLog.prototype.add = function (entry) { derived++; return add.call(this, entry) }
     try {
       reader = await replica(1, { directory })
       await checked(reader)
-    } finally { ChangeAttribution.prototype.scanChange = scan }
-    assert.ok(read <= reader.attribution.metas.size - changes, `read ${read} changes again`)
-    const [signer] = reader.getDoc().attribution.operations[original.operationId]
-    assert.equal(signer.state, 'signed')
-    assert.deepEqual(signer.altered?.map(entry => entry.hash), [edit], 'the alteration found before the restart is still shown')
-    assert.equal(reader.getDoc().attribution.signed[original.operationId].payload.title, 'Altered, then the reader reopens')
+    } finally { ChangeLog.prototype.add = add }
+    assert.ok(derived <= reader.attribution.metas.size - changes, `derived ${derived} changes again`)
+    const shown = entryOf(reader, original.operationId)
+    assert.equal(shown.changes[0].state, 'signed')
+    assert.equal(shown.event.payload.title, 'Altered, then the reader reopens', 'shown as signed, as before the restart')
+    assert.equal(reader.getDoc().activity.find(entry => entry.id === edit)?.kind, 'unrecognised')
     assert.ok(reviewEntry(reader, edit), 'and still listed for review')
+    const after = JSON.stringify(reader.getDoc().activity.filter(entry => before.includes(entry.id)).map(({ id, kind, event, flags }) => ({ id, kind, event, flags })))
+    assert.equal(after, before)
   })
 })

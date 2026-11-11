@@ -14,7 +14,7 @@ const storedId = request => `op-${hash([request.operationId, hash({ type: reques
 
 /** Intents are recorded before execution; successful receipts never define expected effects. */
 export class ExpectedOperations {
-  constructor() { this.intents = new Map(); this.receipts = new Map(); this.sources = new Map(); this.baseline = new Set() }
+  constructor() { this.intents = new Map(); this.receipts = new Map(); this.sources = new Map(); this.baseline = new Set(); this.records = [] }
   /** Operations already in the document before the measured workload (such as enrollment registrations). */
   ignore(operationIds) { for (const id of operationIds) this.baseline.add(id) }
   intend(request, replicaId) {
@@ -86,84 +86,120 @@ export class ExpectedOperations {
     }
     assert.equal(canonical(snapshot.readReceipts), canonical(Object.fromEntries(readReceipts)), 'Read receipts must equal the union of observed revisions for their Actors')
     assert.equal(Object.keys(snapshot.operations).filter(id => !this.baseline.has(id)).length, this.receipts.size, 'Unexpected or unacknowledged operation exists')
-    // Each replica's attribution is its own view (it names that replica's machine as "this computer"); the shared
-    // document is what must be identical. attributed() checks the views themselves.
-    const { attribution, ...shared } = snapshot
+    // Each replica's Activity and attribution are its own view (they name that replica's machine as "this computer");
+    // the shared document is what must be identical. attributed() and verifyAttribution() check the views themselves.
+    const { attribution, activity, ...shared } = snapshot
     return { operationCount: this.receipts.size, snapshotHash: hash(shared) }
   }
 
   /**
-   * Who signed what, in the form every replica must agree on. For each operation in the board, baseline included:
-   * for each change that wrote it, the change hash, its state, the signing machine, that machine's person, the
-   * entry's Actor, and any flag (an Actor the machine may not act as, a later change that altered the entry, a
-   * replaced entry). For each membership record: its kind, subject, signer, the signer's person and Actor, and when
-   * it reached the board. And the changes listed for review. Left out, because they name this replica or what it
-   * happened to observe: which machine is "this computer", the position in which this replica indexed a change,
-   * who relayed a verdict to it, and what a pending change is waiting for.
+   * Membership records the harness expects, as it performs each enrollment, pairing, profile or agent action:
+   * `{ kind, subject, signer, ...fields }`, where `subject` and `signer` may name a side, a person or an Actor of the
+   * harness symbolically (resolved by verifyAttribution once the replicas' machines are known).
+   */
+  expectRecords(action, records) {
+    for (const record of records) this.records.push({ action, ...record })
+  }
+
+  /**
+   * What every replica must agree on, keyed by board change hash: for each change, the Activity entry it is shown in
+   * (its kind and key, the group of changes the entry lists, and its flags), the content that change wrote (the
+   * event with that change's own replica and time, the record, or what an unrecognised change wrote), and that
+   * change's verdict (its state, the signing machine, that machine's person, and whether it signed an Actor it may
+   * not act as). Also the changes listed for review. Left out, because they name this replica or what it happened to
+   * observe: which machine is "this computer", machine names, who relayed a verdict to it, what a pending change is
+   * waiting for, and the reason recorded for an unsigned one.
    */
   stableAttribution(snapshot) {
-    const { attribution, operations } = snapshot
+    const { attribution } = snapshot
     const personOf = machineId => (machineId && attribution?.machines?.[machineId]?.personId) || null
-    const signersOf = id => (Array.isArray(attribution?.operations?.[id]) ? attribution.operations[id] : [])
-    return {
-      operations: Object.fromEntries(Object.keys(operations).sort().map(id => [id, signersOf(id).map(signer => ({
-        change: signer.hash ?? null, state: signer.state, machineId: signer.machineId ?? null, personId: personOf(signer.machineId),
-        actorId: operations[id].actorId ?? null, actorMismatch: signer.actorMismatch === true, replaces: signer.replaces === true,
-        altered: (Array.isArray(signer.altered) ? signer.altered : []).map(change => change.hash) }))])),
-      records: (attribution?.records ?? []).map(({ position, ...record }) => ({ ...record, signerPersonId: personOf(record.signer) }))
-        .sort((a, b) => a.recordId.localeCompare(b.recordId)),
-      review: (attribution?.review ?? []).map(entry => entry.change).sort(),
+    const changes = {}
+    for (const entry of Array.isArray(snapshot.activity) ? snapshot.activity : []) {
+      for (const change of entry.changes ?? []) {
+        const content = entry.kind === 'operation' ? { ...entry.event, replicaId: change.replicaId, timestamp: change.timestamp }
+          : entry.kind === 'record' ? entry.record
+            : { wrote: entry.wrote ?? null, ops: entry.ops ?? null, oversized: entry.oversized === true, altered: entry.altered ?? [], alteredContent: entry.alteredContent ?? [] }
+        ;(changes[change.hash] ??= []).push({ kind: entry.kind, key: entry.key ?? null, content, group: entry.changes.map(other => other.hash).sort(),
+          flags: Object.keys(entry.flags ?? {}).sort(), state: change.state, machineId: change.machineId ?? null, personId: personOf(change.machineId),
+          actorMismatch: change.actorMismatch === true })
+      }
     }
+    for (const list of Object.values(changes)) list.sort((a, b) => canonical(a).localeCompare(canonical(b)))
+    return { changes: Object.fromEntries(Object.keys(changes).sort().map(key => [key, changes[key]])),
+      review: [...new Set((attribution?.review ?? []).map(entry => entry.change))].sort() }
   }
 
   /**
-   * Whether this replica shows every operation in the board, baseline included, as signed by a named machine with no
-   * flag, and nothing for review: every change was signed by the machine that made it, and every peer checked it.
+   * Whether this replica has derived and checked every board change, and shows every one, baseline included, in an
+   * entry signed by a named machine with a person, with no flag and nothing for review.
    */
   attributed(snapshot) {
-    if (!snapshot.attribution) return false
-    const { operations, review } = this.stableAttribution(snapshot)
-    return review.length === 0 && Object.values(operations).every(signers => signers.length > 0
-      && signers.every(signer => signer.state === 'signed' && MACHINE_ID.test(signer.machineId ?? '') && signer.personId && !signer.actorMismatch
-        && !signer.replaces && !signer.altered.length))
+    const summary = snapshot.attribution?.summary
+    if (!summary || summary.notDerived || summary.checking) return false
+    const { changes, review } = this.stableAttribution(snapshot)
+    return review.length === 0 && Object.keys(changes).length === summary.changes && Object.values(changes).flat()
+      .every(change => change.state === 'signed' && MACHINE_ID.test(change.machineId ?? '') && change.personId && !change.actorMismatch && !change.flags.length)
   }
 
   /**
-   * The acceptance check on attribution. Every replica reports the same stable attribution (stableAttribution), and
-   * it matches what the harness knows: each acknowledged operation was signed by the machine whose replica
-   * acknowledged it, for the intended Actor, whose person is that machine's person; each baseline operation by the
-   * machine and Actor that enrolled the others; and each membership record by a machine `recordSigner` allows.
+   * The acceptance check on attribution. Every replica reports the same stable attribution, keyed by change hash
+   * (stableAttribution), and it matches what the harness knows:
+   * - each acknowledged operation is exactly one entry of exactly one change, which wrote the event the harness
+   *   intended (its operation ID, request ID, type, Actor and payload) on the replica that acknowledged it, and was
+   *   signed by that replica's machine, whose person is the Actor's person;
+   * - each baseline operation likewise, by the machine and Actor that enrolled the others;
+   * - there is no other operation entry;
+   * - the membership records shown are exactly those expectRecords() named, each signed by the expected machine.
    */
-  verifyAttribution(snapshots, { machineOfReplica, personOfActor, baseline, recordSigner }) {
+  verifyAttribution(snapshots, { machineOfReplica, personOfActor, baseline, resolve }) {
     const views = snapshots.map(snapshot => this.stableAttribution(snapshot))
     for (const [index, view] of views.entries()) {
       assert.equal(canonical(view), canonical(views[0]), `Replica ${index}'s attribution differs between replicas`)
     }
-    const [{ operations, records }] = views
-    const expectSigner = (id, machineId, actorId) => {
-      const signers = operations[id]
-      assert.ok(signers?.length, `Operation ${id} has no signer`)
-      for (const signer of signers) {
-        assert.equal(signer.state, 'signed', `Operation ${id} is ${signer.state}`)
-        assert.ok(signer.machineId === machineId, `Operation ${id} was signed by ${signer.machineId} but performed on ${machineId}`)
-        assert.equal(signer.actorId, actorId, `Operation ${id} names the wrong Actor`)
-        assert.equal(signer.personId, personOfActor[actorId], `Operation ${id} was signed for a person other than its Actor's`)
-      }
+    const activity = snapshots[0].activity
+    const operationEntries = activity.filter(entry => entry.kind === 'operation')
+    const expectEntry = (id, machineId, actorId, check = () => {}) => {
+      const entries = operationEntries.filter(entry => entry.key === id)
+      assert.equal(entries.length, 1, `Operation ${id} is shown in ${entries.length} entries, not one`)
+      const [entry] = entries
+      assert.equal(entry.changes.length, 1, `Operation ${id} was written by ${entry.changes.length} changes`)
+      const [change] = entry.changes
+      assert.equal(change.state, 'signed', `Operation ${id} is ${change.state}`)
+      assert.ok(change.machineId === machineId, `Operation ${id} was signed by ${change.machineId} but performed on ${machineId}`)
+      assert.equal(entry.event.operationId, id, `Operation ${id} carries another operation ID`)
+      assert.equal(entry.event.actorId, actorId, `Operation ${id} names the wrong Actor`)
+      assert.equal(snapshots[0].attribution.machines[machineId]?.personId, personOfActor[actorId], `Operation ${id} was signed for a person other than its Actor's`)
+      check(entry)
     }
     for (const [id, { receipt }] of this.receipts) {
       const intent = this.intents.get(id)
       const machineId = machineOfReplica[receipt.replicaId]
       assert.ok(machineId, `No machine is known for replica ${receipt.replicaId}`)
-      expectSigner(storedId(intent), machineId, intent.actorId)
+      expectEntry(storedId(intent), machineId, intent.actorId, entry => {
+        assert.equal(entry.event.requestId, id)
+        assert.equal(entry.event.type, intent.type)
+        assert.equal(canonical(entry.event.payload), canonical(intent.payload), `Operation ${id}'s signed payload is not what was intended`)
+        assert.equal(entry.event.replicaId, receipt.replicaId, `Operation ${id} was written on another replica`)
+      })
     }
-    for (const id of this.baseline) expectSigner(id, baseline.machineId, baseline.actorId)
-    assert.ok(records.length > 0, 'No membership records were attributed')
-    for (const record of records) {
-      const allowed = recordSigner(record)
-      assert.ok(allowed?.includes(record.signer), `Record ${record.recordId} (${record.kind} of ${record.subject}) was signed by ${record.signer}, not ${allowed?.join(' or ') || 'any machine the harness expects'}`)
+    for (const id of this.baseline) expectEntry(id, baseline.machineId, baseline.actorId)
+    const known = new Set([...[...this.receipts.keys()].map(id => storedId(this.intents.get(id))), ...this.baseline])
+    const unexpected = operationEntries.filter(entry => !known.has(entry.key))
+    assert.deepEqual(unexpected.map(entry => entry.key), [], 'Activity shows operations the harness never performed')
+    // Membership records: exactly the expected ones, each by its expected signer.
+    const records = activity.filter(entry => entry.kind === 'record')
+    const expected = this.records.map(record => resolve(record))
+    const unmatched = [...records]
+    for (const want of expected) {
+      const index = unmatched.findIndex(entry => Object.entries(want.fields).every(([field, value]) => canonical(entry.record[field]) === canonical(value)))
+      assert.ok(index >= 0, `Expected record missing (${want.action}): ${canonical(want.fields)}`)
+      const [entry] = unmatched.splice(index, 1)
+      assert.ok(!entry.flags.invalidRecord && !entry.flags.keyMismatch, `Record ${entry.record.recordId} is not a valid record at its own key`)
+      assert.ok(entry.changes.every(change => change.state === 'signed'), `Record ${entry.record.recordId} was written by a change that is not signed`)
     }
-    return { operations: Object.keys(operations).length, records: records.length, attributionHash: hash(views[0]) }
+    assert.deepEqual(unmatched.map(entry => `${entry.record.kind} of ${entry.record.subject} by ${entry.record.signer}`), [], 'Membership records the harness never expected')
+    return { changes: Object.keys(views[0].changes).length, operations: operationEntries.length, records: records.length, attributionHash: hash(views[0]) }
   }
 
-  report() { return { intents: [...this.intents.values()], expectedReplicas: Object.fromEntries(this.sources), receipts: Object.fromEntries(this.receipts) } }
+  report() { return { intents: [...this.intents.values()], expectedReplicas: Object.fromEntries(this.sources), receipts: Object.fromEntries(this.receipts), expectedRecords: this.records } }
 }

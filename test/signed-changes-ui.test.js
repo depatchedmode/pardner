@@ -3,12 +3,12 @@ import assert from 'node:assert/strict'
 import { chromium, webkit } from 'playwright'
 import { withClientReplicas } from '../support/client-workspace.js'
 import * as A from '@automerge/automerge'
-import { alterEntry, unsignedWrite } from '../support/unsigned-peer.js'
+import { alterEntry, signedWrite, unsignedWrite } from '../support/unsigned-peer.js'
 
 // Who made each change, on real clients in Chromium and WebKit (#197): Activity names the signing person and
 // machine, membership records appear with their signer, and a change without a valid signature is announced on
-// the board with a way to review it. An entry another change altered is shown as it was signed, and the altering
-// change is listed under its own signer. Nothing is hidden.
+// the board with a way to review it. Every entry is derived from the change that wrote it: an entry another change
+// altered is shown as it was signed, and the altering change is listed under its own signer. Nothing is hidden.
 
 const row = (page, text) => page.locator('article.event').filter({ hasText: text })
 
@@ -49,7 +49,7 @@ for (const engine of [chromium, webkit]) it(`names who made each change, lists m
         assert.equal(await flagged.locator('.event-signer').getAttribute('data-tone'), 'flag')
         assert.equal(await row(page, 'Written on Bob’s machine').count(), 0, 'only changes that need review are listed')
         // Applied, not hidden: the task is on Alice's board and, through her hub, on Bob's.
-        await eventually(async () => (await bob.doc()).attribution.operations[unsigned.operationId]?.[0]?.state === 'unattributed', 'Bob never learned it is unattributed')
+        await eventually(async () => (await bob.doc()).activity.find(entry => entry.key === unsigned.operationId)?.changes[0]?.state === 'unattributed', 'Bob never learned it is unattributed')
         await page.getByRole('button', { name: 'Tasks', exact: true }).click()
         await page.locator('.task-card').filter({ hasText: 'Never signed' }).waitFor()
       } finally { await unsigned.repo.shutdown() }
@@ -73,5 +73,54 @@ for (const engine of [chromium, webkit]) it(`names who made each change, lists m
         const edit = row(page, 'altered an Activity entry another change signed')
         await edit.locator('.event-signer').getByText('Signed by Bob · Bob’s laptop').waitFor({ timeout: 30000 })
       } finally { await altered.repo.shutdown() }
+    })
+  })
+
+for (const engine of [chromium, webkit]) it(`later changes by another member never change what an entry shows: its signed time and words stay, names are marked as current, and a later deletion says by whom, in ${engine.name()}`,
+  { timeout: 180000 }, async () => {
+    await withClientReplicas(engine, { humans: ['Alice', 'Bob'] }, async ({ people, newPage, eventually, project }) => {
+      const [alice, bob] = people
+      const { result: task } = await alice.operate('task.create', { title: 'The title Alice saw' })
+      const { result: kept } = await alice.operate('comment.add', { taskId: task.taskId, text: 'Alice’s kept words' })
+      const { result: doomed } = await alice.operate('comment.add', { taskId: task.taskId, text: 'Alice’s deleted words' })
+      const signedAt = Object.values((await alice.doc()).operations).find(event => event.result?.commentId === doomed.commentId).timestamp
+      // Bob renames the task through his own client, then his modified client rewrites one comment's text and marks
+      // the other deleted, in one change it signs.
+      const revisions = (await bob.call(`/projects/${project.id}/api/automerge/task/${encodeURIComponent(task.taskId)}/context`)).revisions
+      await eventually(async () => (await bob.doc()).comments[doomed.commentId], 'Bob never received the comments')
+      await bob.operate('task.update', { taskId: task.taskId, updates: { title: 'Renamed by Bob' }, expectedRevisions: { title: revisions.title } })
+      const nativeUrl = `${alice.client.url.replace(/^http/, 'ws')}/pardner/client/v1/replica/${project.id}/native`
+      const { url: boardUrl } = await alice.call(`/projects/${project.id}/api/automerge/url`)
+      const changed = await signedWrite({ key: bob.client.registry.machineKey, projectId: project.id, nativeUrl, boardUrl, write: doc => {
+        doc.commentBodies[kept.commentId].value = new A.ImmutableString('Words put in Alice’s mouth')
+        doc.deletedComments[doomed.commentId] = true
+      } })
+      try {
+        await eventually(async () => (await alice.doc()).attribution.deletions?.[doomed.commentId], 'the deletion never reached Alice')
+        const page = await newPage()
+        await alice.open(page)
+        await page.getByRole('button', { name: 'Activity', exact: true }).click()
+        // The deleted comment's entry keeps Alice's words and her signed time, and says it was deleted later.
+        const deleted = row(page, 'Alice’s deleted words')
+        await deleted.getByText('This comment was later deleted by a change listed for review.').waitFor({ timeout: 30000 })
+        assert.equal(await deleted.locator('time').getAttribute('datetime'), new Date(signedAt).toISOString(), 'the time shown is the signed one')
+        assert.match(await deleted.locator('.event-signer').textContent(), /^Signed by Alice · this computer/)
+        // The task's title is looked up now, and marked so.
+        const title = deleted.locator('.event-line .current-label', { hasText: 'Renamed by Bob' })
+        await title.waitFor()
+        assert.equal(await title.getAttribute('title'), 'As named now: not part of what was signed')
+        await page.locator('.current-legend').first().waitFor()
+        // What Bob's client put in Alice's mouth is never shown in her entry; the change is listed under his signer.
+        assert.equal(await row(page, 'Words put in Alice’s mouth').count(), 0)
+        await page.getByRole('combobox', { name: 'Show' }).selectOption('review')
+        await row(page, 'changed content another change wrote').locator('.event-signer').getByText('Signed by Bob · Bob’s laptop').waitFor({ timeout: 30000 })
+        // The task panel shows the comment as it is now, and says someone other than its author changed it.
+        await page.getByRole('combobox', { name: 'Show' }).selectOption('changes')
+        await deleted.locator('button[data-task-id]').click()
+        const panel = page.getByRole('complementary', { name: 'Task details' })
+        const comment = panel.locator('article.comment', { hasText: 'Words put in Alice’s mouth' })
+        await comment.getByText('Changed by someone other than its author.', { exact: false }).waitFor({ timeout: 30000 })
+        assert.equal(await panel.locator('.comment-changed').count(), 1, 'only the changed comment says so')
+      } finally { await changed.repo.shutdown() }
     })
   })

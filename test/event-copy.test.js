@@ -159,14 +159,32 @@ describe('comments and reads', () => {
     assert.equal(d.excerpt, null)
     assert.equal(d.detail, null)
   })
-  it('a deleted comment loses its excerpt and gets a note', () => {
+  it('a comment deleted later keeps what its signer wrote, and says it was deleted and by whom', () => {
+    // The words are the entry's own; that the comment was deleted is the board now, named by the change that did it.
     const d = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), lookups)
-    assert.equal(d.excerpt, null)
+    assert.equal(d.excerpt, '“Looks good to me”')
     assert.equal(d.detail, 'This comment was later deleted.')
-    const handoff = describe1(ev('task.handoff', { payload: { to: 'builder', message: 'secret' }, changes: [ch('assignee', null, 'builder'), ch('status', 'a', 'a')], result: { commentId: 'gone' } }))
-    assert.equal(handoff.excerpt, null)
+    const deletions = { gone: [{ change: 'a'.repeat(64), type: 'comment.delete', actorId: 'builder', state: 'signed' }] }
+    const named = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, deletions })
+    assert.equal(named.excerpt, '“Looks good to me”')
+    assert.equal(named.detail, 'This comment was later deleted by Builder.')
+    const unrecognised = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, deletions: { gone: [{ change: 'b'.repeat(64), type: null, actorId: null }] } })
+    assert.equal(unrecognised.detail, 'This comment was later deleted by a change listed for review.')
+    const handoff = describe1(ev('task.handoff', { payload: { to: 'builder', message: 'signed words' }, changes: [ch('assignee', null, 'builder'), ch('status', 'a', 'a')], result: { commentId: 'gone' } }))
+    assert.equal(handoff.excerpt, '“signed words”')
     assert.equal(handoff.detail, 'This comment was later deleted.')
-    assert.doesNotMatch(eventText(handoff), /secret/)
+  })
+  it('names and titles looked up now are marked current; the time, words and values are the entry’s own', () => {
+    const d = describe1(ev('task.handoff', { payload: { to: 'builder', message: 'Over to you' }, changes: [ch('assignee', null, 'builder'), ch('status', 'backlog', 'review')], result: { commentId: 'c1' } }))
+    assert.equal(d.actorCurrent, true)
+    assert.deepEqual(d.parts.filter(part => typeof part !== 'string').map(part => [part.label, Boolean(part.current)]), [['Fix login', true], ['Builder', true], ['Review', false]])
+    const edited = describe1(ev('task.update', { changes: [ch('assignee', 'alice', 'builder'), ch('priority', 'p2', 'p1')] }))
+    assert.equal(edited.detail, 'Assignee: Alice Moreno → Builder · Priority: P2 → P1')
+    assert.deepEqual(edited.detailParts.filter(part => typeof part !== 'string'), [{ label: 'Alice Moreno', current: true }, { label: 'Builder', current: true }])
+    // An ID nothing names is shown as written, not as a current label.
+    const unknown = describeEvent(ev('task.update', { actorId: 'ghost', taskId: 'nowhere', changes: [ch('status', 'a', 'review')] }), lookups)
+    assert.equal(unknown.actorCurrent, false)
+    assert.equal(unknown.parts.find(part => part.subject).current, undefined)
   })
   it('truncates long excerpts at 140 characters with curly quotes', () => {
     const d = describe1(ev('comment.add', { ...base, payload: { text: 'a'.repeat(200) } }))
@@ -223,7 +241,7 @@ describe('actors, fallbacks and lookups', () => {
     const other = ev('actor.register', { actorId: 'alice', taskId: undefined, payload: { id: 'builder', handle: 'builder', kind: 'agent' }, result: { actorId: 'builder' } })
     const d = describe1(other)
     assert.equal(sentence(d), 'Alice Moreno registered Builder as an agent')
-    assert.ok(d.parts.every(part => typeof part === 'string'))
+    assert.deepEqual(d.parts.filter(part => typeof part !== 'string'), [{ label: 'Builder', current: true }], 'the registered Actor is named as it is now, and says so')
     assert.equal(say(ev('actor.register', { taskId: undefined, payload: { id: 'zed', handle: 'zed', displayName: 'Zed', kind: 'human' }, result: { actorId: 'zed' } })), 'Alice Moreno registered Zed as a human')
   })
   it('actor name falls back to the handle, then the id', () => {
@@ -245,7 +263,7 @@ describe('actors, fallbacks and lookups', () => {
   })
   it('subjects carry id and label; status parts carry key and label', () => {
     const d = describe1(ev('task.update', { changes: [ch('status', 'backlog', 'in-progress')] }))
-    assert.deepEqual(d.parts.filter(p => typeof p !== 'string'), [{ subject: 'task', id: 't1', label: 'Fix login' }, { status: 'in-progress', label: 'In progress' }])
+    assert.deepEqual(d.parts.filter(p => typeof p !== 'string'), [{ subject: 'task', id: 't1', label: 'Fix login', current: true }, { status: 'in-progress', label: 'In progress' }])
     assert.equal(STATUS_LABELS['dead-end'], 'Dead end')
   })
   it('unknown status values render raw', () => {
