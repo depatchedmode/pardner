@@ -338,8 +338,9 @@ refuses its next handshake (within a few seconds while the hub is reachable) and
 then refuses further writes, also after a restart; a write saved before that stays
 on that computer and reaches nobody.
 
-**What the removed computer shows (#154).** The hub's `REVOKED` answer carries who
-removed the machine and whether its person left. The project then stays listed in
+**What the removed computer shows (#154).** The hub's `REVOKED` refusal tells the
+removed machine who removed it and whether its person left, once the machine has
+proved its key in the handshake; anyone else gets only the code. The project then stays listed in
 `removedProjects` (`client list`, and the browser's project switcher), and the
 browser shows **You were removed from “…”**, **This computer was removed from
 “…”** or **You left “…”**, with who removed it, what that means, how to come back
