@@ -691,14 +691,19 @@ test('a member asking a hub without --public-url is told the hub must be restart
   alice.client.registry.update(state => { state.publicUrl = null })
   await alice.client.stop()
   const hub = await startClient({ directory: alice.directory })
-  t.after(() => hub.stop())
-  assert.equal(hub.gatewayUrl, hub.url)
-  const { result, response } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'device', operationId: 'device' }, { failure: true })
-  assert.equal(response.status, 409); assert.equal(result.code, 'PUBLIC_URL_REQUIRED')
-  assert.match(result.error, /^A My device invitation is used on another computer, but this project's hub \(the computer that started the project, where its invitations are issued\) has no public address/)
-  assert.ok(result.error.includes(`would point to ${hub.url}, which only the hub's computer can reach. Restart the hub's client with \`pardner client serve --public-url <https origin>\``), result.error)
-  const { result: agent } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'agent' })
-  assert.equal(invitationData(agent.invitation).endpoint, `${hub.url}/pardner/client/v1/enroll`)
+  // Stopped before the fixture removes this directory: after hooks run in the order they were added, so a hook here
+  // would run after the removal, which then races the running client and can leave it running.
+  try {
+    assert.equal(hub.gatewayUrl, hub.url)
+    const { result, response } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'device', operationId: 'device' }, { failure: true })
+    assert.equal(response.status, 409); assert.equal(result.code, 'PUBLIC_URL_REQUIRED')
+    assert.match(result.error, /^A My device invitation is used on another computer, but this project's hub \(the computer that started the project, where its invitations are issued\) has no public address/)
+    assert.ok(result.error.includes(`would point to ${hub.url}, which only the hub's computer can reach. Restart the hub's client with \`pardner client serve --public-url <https origin>\``), result.error)
+    const { result: agent } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'agent' })
+    assert.equal(invitationData(agent.invitation).endpoint, `${hub.url}/pardner/client/v1/enroll`)
+  } finally {
+    await hub.stop()
+  }
 })
 
 test('joining names an unreachable loopback invitation address, while a reachable hub that is down still advises retry', { timeout: 45000 }, async t => {
