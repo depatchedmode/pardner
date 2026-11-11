@@ -452,7 +452,7 @@ reproduced as a model counterexample, with the working tree unchanged. See
 ## Signed changes mapping review (2026-11-11)
 
 The mapping was first recorded at source revision `f514d0b902d3bce17017d599b0511df5005ed045`
-and finally at `84baf47a6c06bc9d1cd20bed7786ce521a1aa0bf`.
+and finally at `63cb8fc74c7939c1ad3407db1db92d0e47291ebe`.
 Every change is now signed by the machine that makes it (`lib/attribution.js`,
 not mapped), and the hub's persistence acknowledgement covers the board and its
 signature document (#197).
@@ -496,8 +496,8 @@ re-reviewed and accepted again. A later commit passes each record's position to
 once more. The last one changes `lib/durable-repo.js`: Repo 2.5.1 throttles
 sync-state saves per peer, not per document, so with a board and a signature
 document per peer only one document's state in each window was saved. DurableRepo
-now also saves each document's latest sync state, throttled per document and
-peer, through the same `background()` path, which drops it once closing. These
+now also saves each document's latest sync state, at most once a second per
+document and peer, through the same `background()` path, which drops it once closing. These
 are background jobs of a kind the model already has (`SyncUp`, `PersistRun`); no
 request waits on them, and no guard or effect changed. The mapping was accepted
 again.
