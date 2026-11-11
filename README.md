@@ -385,7 +385,7 @@ its properties within that model only.
 
 ## Storage and dependencies
 
-A schema 8 directory contains workspace metadata, Automerge storage, the
+A schema 9 directory contains workspace metadata, Automerge storage, the
 grow-only membership record store, an exclusive service lock, and local connection
 settings. The hub additionally holds the SQLite delivery ledger and its own
 waiting state after a restore (`hub-state.json`). A client
