@@ -13,6 +13,7 @@ const worker = args[0] === '--open'
 const build = args[0] === '--build'
 const uptime = () => execFileSync('uptime', { encoding: 'utf8' }).trim()
 const script = fileURLToPath(import.meta.url)
+const bytes = async path => { let total = 0; for (const entry of await readdir(path, { withFileTypes: true })) { const p = join(path, entry.name); total += entry.isDirectory() ? await bytes(p) : (await stat(p)).size }; return total }
 
 if (worker || build) {
   const { WorkspaceRuntime } = await import('../lib/workspace-runtime.js')
@@ -24,10 +25,11 @@ if (worker || build) {
   const phases = { imports: performance.now() - started, storageRead: 0, decode: 0, find: 0, flush: 0 }
   const loadBefore = loadavg(), uptimeBefore = uptime()
   const originalFind = DurableRepo.prototype.find
-  DurableRepo.prototype.find = async function (...args) {
+  DurableRepo.prototype.find = async function (...findArgs) {
     const start = performance.now()
+    if (args.includes('--upstream')) this.storageSubsystem.loadDoc = Object.getPrototypeOf(this.storageSubsystem).loadDoc.bind(this.storageSubsystem)
     this.on('doc-metrics', m => { if (m.type === 'doc-loaded') phases.decode += m.durationMillis })
-    try { return await originalFind.apply(this, args) } finally { phases.find += performance.now() - start }
+    try { return await originalFind.apply(this, findArgs) } finally { phases.find += performance.now() - start }
   }
   const originalLoad = NodeFSStorageAdapter.prototype.loadRange
   NodeFSStorageAdapter.prototype.loadRange = async function (...args) {
@@ -71,10 +73,18 @@ if (worker || build) {
     } else {
       const snapshot = runtime.getDoc()
       const usableMs = performance.now() - started
-      console.log(JSON.stringify({ openMs, usableMs, phases, snapshotMs: usableMs - openMs,
+      const heads = getHeads(runtime.docHandle.doc())
+      const openPhases = { ...phases }
+      const peakRssMiB = process.resourceUsage().maxRSS / 1024
+      const loadAfter = loadavg(), uptimeAfter = uptime()
+      const editStart = performance.now()
+      await runtime.execute({ operationId: 'after-open', actorId: 'actor-0', type: 'task.create', payload: { title: 'First edit after reopen' } })
+      const firstEditMs = performance.now() - editStart
+      const firstEditSavedBytes = await bytes(join(directory, 'repo'))
+      console.log(JSON.stringify({ openMs, usableMs, phases: openPhases, snapshotMs: usableMs - openMs, firstEditMs, firstEditSavedBytes,
         tasks: Object.keys(snapshot.tasks).length, operations: Object.keys(snapshot.operations).length,
-        heads: getHeads(runtime.docHandle.doc()), peakRssMiB: process.resourceUsage().maxRSS / 1024,
-        loadBefore, loadAfter: loadavg(), uptimeBefore, uptimeAfter: uptime() }))
+        heads, peakRssMiB,
+        loadBefore, loadAfter, uptimeBefore, uptimeAfter }))
     }
   } finally { await runtime.close() }
 } else {
@@ -86,7 +96,6 @@ if (worker || build) {
     let output = ''; p.stdout.on('data', data => { output += data })
     p.on('error', reject); p.on('exit', code => code === 0 ? resolve(output) : reject(new Error(`worker exited ${code}`)))
   })
-  const bytes = async path => { let total = 0; for (const entry of await readdir(path, { withFileTypes: true })) { const p = join(path, entry.name); total += entry.isDirectory() ? await bytes(p) : (await stat(p)).size }; return total }
   const summary = values => { const sorted = [...values].sort((a, b) => a - b); const mid = Math.floor(sorted.length / 2); return { median: sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2, min: sorted[0], max: sorted.at(-1) } }
   try {
     for (const size of sizes) {
@@ -97,12 +106,12 @@ if (worker || build) {
       for (let i = 0; i < runs; i++) {
         const directory = join(root, `open-${size}-${i}`)
         await cp(fixture, directory, { recursive: true })
-        const sample = JSON.parse(await child(['--open', directory]))
+        const sample = JSON.parse(await child(['--open', directory, ...(args.includes('--upstream') ? ['--upstream'] : [])]))
         samples.push(sample); console.log(JSON.stringify({ size, run: i + 1, savedBytes, ...sample }))
         await rm(directory, { recursive: true, force: true })
       }
       const lowLoad = [...samples].sort((a, b) => Math.max(a.loadBefore[0], a.loadAfter[0]) - Math.max(b.loadBefore[0], b.loadAfter[0])).slice(0, Math.min(3, runs))
-      console.log(JSON.stringify({ size, savedBytes, summary: Object.fromEntries(['openMs', 'usableMs', 'snapshotMs', 'peakRssMiB'].map(k => [k, summary(samples.map(s => s[k]))])), phases: Object.fromEntries(Object.keys(samples[0].phases).map(k => [k, summary(samples.map(s => s.phases[k]))])), lowestLoadUsableMs: summary(lowLoad.map(s => s.usableMs)) }))
+      console.log(JSON.stringify({ size, savedBytes, summary: Object.fromEntries(['openMs', 'usableMs', 'snapshotMs', 'peakRssMiB', 'firstEditMs'].map(k => [k, summary(samples.map(s => s[k]))])), phases: Object.fromEntries(Object.keys(samples[0].phases).map(k => [k, summary(samples.map(s => s.phases[k]))])), lowestLoadUsableMs: summary(lowLoad.map(s => s.usableMs)) }))
     }
   } finally { await rm(root, { recursive: true, force: true }) }
 }

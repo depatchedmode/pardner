@@ -1,0 +1,436 @@
+{
+  "issue": 209,
+  "node": "24.11.1",
+  "automerge": "3.2.3",
+  "repo": "2.5.1",
+  "baseline": "28e796723b74a86b64738118d51a04bd3a743176",
+  "seed": 209,
+  "machine": "Apple M1 Max, 10 cores, 32 GB; macOS",
+  "method": "scripts/bench-open.js; fresh process and copied product storage per sample; five samples per size/arm. Synthetic workload, no browser rendering.",
+  "arms": {
+    "before": [
+      {
+        "size": 1000,
+        "savedBytes": 745186,
+        "summary": {
+          "openMs": {
+            "median": 792.0962089999999,
+            "min": 784.7883750000001,
+            "max": 804.483833
+          },
+          "usableMs": {
+            "median": 926.0130839999999,
+            "min": 921.1645000000001,
+            "max": 942.727958
+          },
+          "snapshotMs": {
+            "median": 136.376125,
+            "min": 131.23229200000003,
+            "max": 139.303
+          },
+          "peakRssMiB": {
+            "median": 324.671875,
+            "min": 303.640625,
+            "max": 325.90625
+          }
+        },
+        "phases": {
+          "imports": {
+            "median": 68.601,
+            "min": 68.188042,
+            "max": 69.350333
+          },
+          "storageRead": {
+            "median": 7.818792000000002,
+            "min": 5.353542999999988,
+            "max": 8.331998999999996
+          },
+          "decode": {
+            "median": 535.755458,
+            "min": 532.67675,
+            "max": 548.969583
+          },
+          "find": {
+            "median": 686.5800419999999,
+            "min": 683.280208,
+            "max": 701.4102919999999
+          },
+          "flush": {
+            "median": 0.34474999999997635,
+            "min": 0.34000000000003183,
+            "max": 0.37229200000001583
+          }
+        },
+        "lowestLoadUsableMs": {
+          "median": 926.0130839999999,
+          "min": 924.300417,
+          "max": 942.727958
+        },
+        "loadOneMinuteRange": [
+          1.75390625,
+          1.7734375
+        ],
+        "samples": 5
+      },
+      {
+        "size": 10000,
+        "savedBytes": 7437216,
+        "summary": {
+          "openMs": {
+            "median": 6391.039917,
+            "min": 6355.100542,
+            "max": 6462.822834
+          },
+          "usableMs": {
+            "median": 7492.1311670000005,
+            "min": 7461.231125,
+            "max": 7567.286249999999
+          },
+          "snapshotMs": {
+            "median": 1104.4634159999996,
+            "min": 1088.503291,
+            "max": 1111.9331670000001
+          },
+          "peakRssMiB": {
+            "median": 1429.484375,
+            "min": 1427.453125,
+            "max": 1431.375
+          }
+        },
+        "phases": {
+          "imports": {
+            "median": 68.924125,
+            "min": 66.97625000000001,
+            "max": 69.146542
+          },
+          "storageRead": {
+            "median": 33.5595,
+            "min": 27.307290999999992,
+            "max": 34.15145899999999
+          },
+          "decode": {
+            "median": 4927.314292,
+            "min": 4901.423583,
+            "max": 4970.390208
+          },
+          "find": {
+            "median": 6282.502208,
+            "min": 6251.251832999999,
+            "max": 6361.833917
+          },
+          "flush": {
+            "median": 0.3256250000004002,
+            "min": 0.3155000000006112,
+            "max": 0.3772499999995489
+          }
+        },
+        "lowestLoadUsableMs": {
+          "median": 7492.1311670000005,
+          "min": 7479.543208,
+          "max": 7523.275167
+        },
+        "loadOneMinuteRange": [
+          2.95654296875,
+          3.1171875
+        ],
+        "samples": 5
+      }
+    ],
+    "after": [
+      {
+        "size": 1000,
+        "savedBytes": 745196,
+        "summary": {
+          "openMs": {
+            "median": 656.2715410000001,
+            "min": 645.690334,
+            "max": 664.398583
+          },
+          "usableMs": {
+            "median": 789.9482909999999,
+            "min": 775.0215,
+            "max": 803.779
+          },
+          "snapshotMs": {
+            "median": 128.280209,
+            "min": 126.60979199999997,
+            "max": 158.088666
+          },
+          "peakRssMiB": {
+            "median": 254,
+            "min": 247.65625,
+            "max": 255.53125
+          },
+          "firstEditMs": {
+            "median": 149.86529199999995,
+            "min": 140.53708300000005,
+            "max": 151.767291
+          }
+        },
+        "phases": {
+          "imports": {
+            "median": 68.60708299999999,
+            "min": 66.979625,
+            "max": 69.24983300000001
+          },
+          "storageRead": {
+            "median": 5.457125999999988,
+            "min": 5.221958000000001,
+            "max": 8.779875000000004
+          },
+          "decode": {
+            "median": 333.239,
+            "min": 331.841792,
+            "max": 335.867291
+          },
+          "find": {
+            "median": 546.806708,
+            "min": 545.429583,
+            "max": 554.169875
+          },
+          "flush": {
+            "median": 0.1781660000000329,
+            "min": 0.16716700000006313,
+            "max": 0.211791000000062
+          }
+        },
+        "lowestLoadUsableMs": {
+          "median": 791.1677080000001,
+          "min": 789.9482909999999,
+          "max": 803.779
+        },
+        "loadOneMinuteRange": [
+          3.0810546875,
+          3.234375
+        ],
+        "samples": 5
+      },
+      {
+        "size": 10000,
+        "savedBytes": 7437228,
+        "summary": {
+          "openMs": {
+            "median": 4955.423542,
+            "min": 4934.892709000001,
+            "max": 5743.205458
+          },
+          "usableMs": {
+            "median": 6095.720375,
+            "min": 6037.740375,
+            "max": 6896.399833
+          },
+          "snapshotMs": {
+            "median": 1121.4474169999994,
+            "min": 1098.87925,
+            "max": 1153.194375
+          },
+          "peakRssMiB": {
+            "median": 1173.421875,
+            "min": 1170.140625,
+            "max": 1177.328125
+          },
+          "firstEditMs": {
+            "median": 1188.3440840000003,
+            "min": 1136.3799170000002,
+            "max": 1363.9325
+          }
+        },
+        "phases": {
+          "imports": {
+            "median": 69.013834,
+            "min": 68.039625,
+            "max": 112.244083
+          },
+          "storageRead": {
+            "median": 34.836042000000006,
+            "min": 33.47295799999998,
+            "max": 174.02908300000007
+          },
+          "decode": {
+            "median": 2849.299709,
+            "min": 2833.8455830000003,
+            "max": 3346.305459
+          },
+          "find": {
+            "median": 4837.344542,
+            "min": 4831.108458,
+            "max": 5501.9880840000005
+          },
+          "flush": {
+            "median": 0.15766600000006292,
+            "min": 0.15091600000050676,
+            "max": 0.19091600000047038
+          }
+        },
+        "lowestLoadUsableMs": {
+          "median": 6052.899084000001,
+          "min": 6037.740375,
+          "max": 6095.720375
+        },
+        "loadOneMinuteRange": [
+          4.66748046875,
+          8.40869140625
+        ],
+        "samples": 5
+      }
+    ]
+  },
+  "sameFixtureComparison": [
+    {
+      "size": 1000,
+      "loader": "upstream",
+      "samples": 3,
+      "loadOneMinuteRange": [
+        7.1796875,
+        7.45654296875
+      ],
+      "openMs": {
+        "median": 781.440042,
+        "min": 777.873208,
+        "max": 798.798667
+      },
+      "usableMs": {
+        "median": 920.176417,
+        "min": 917.420833,
+        "max": 924.972167
+      },
+      "peakRssMiB": {
+        "median": 324.640625,
+        "min": 313.03125,
+        "max": 325.109375
+      },
+      "firstEditMs": {
+        "median": 43.182000000000016,
+        "min": 38.34941700000002,
+        "max": 45.932042000000024
+      },
+      "beforeBytes": {
+        "median": 745196,
+        "min": 745196,
+        "max": 745196
+      },
+      "afterFirstEditBytes": {
+        "median": 748615,
+        "min": 748615,
+        "max": 748615
+      }
+    },
+    {
+      "size": 1000,
+      "loader": "direct",
+      "samples": 3,
+      "loadOneMinuteRange": [
+        7.1796875,
+        7.45654296875
+      ],
+      "openMs": {
+        "median": 649.5649579999999,
+        "min": 640.215917,
+        "max": 661.576916
+      },
+      "usableMs": {
+        "median": 776.230083,
+        "min": 766.741125,
+        "max": 790.6229999999999
+      },
+      "peakRssMiB": {
+        "median": 256.28125,
+        "min": 254.265625,
+        "max": 256.296875
+      },
+      "firstEditMs": {
+        "median": 147.224334,
+        "min": 142.39274999999998,
+        "max": 148.43262500000003
+      },
+      "beforeBytes": {
+        "median": 745196,
+        "min": 745196,
+        "max": 745196
+      },
+      "afterFirstEditBytes": {
+        "median": 4908989,
+        "min": 4908989,
+        "max": 4908989
+      }
+    },
+    {
+      "size": 10000,
+      "loader": "upstream",
+      "samples": 3,
+      "loadOneMinuteRange": [
+        5.216796875,
+        7.1796875
+      ],
+      "openMs": {
+        "median": 6368.0160000000005,
+        "min": 6335.57725,
+        "max": 6397.677125
+      },
+      "usableMs": {
+        "median": 7464.560584000001,
+        "min": 7419.828375,
+        "max": 7497.789083000001
+      },
+      "peakRssMiB": {
+        "median": 1426.8125,
+        "min": 1425.953125,
+        "max": 1428.8125
+      },
+      "firstEditMs": {
+        "median": 110.63945899999999,
+        "min": 107.56145800000013,
+        "max": 158.0042080000003
+      },
+      "beforeBytes": {
+        "median": 7437228,
+        "min": 7437228,
+        "max": 7437228
+      },
+      "afterFirstEditBytes": {
+        "median": 7440647,
+        "min": 7440647,
+        "max": 7440647
+      }
+    },
+    {
+      "size": 10000,
+      "loader": "direct",
+      "samples": 3,
+      "loadOneMinuteRange": [
+        5.08349609375,
+        6.7646484375
+      ],
+      "openMs": {
+        "median": 4917.858208000001,
+        "min": 4911.9274159999995,
+        "max": 4953.075709000001
+      },
+      "usableMs": {
+        "median": 6023.927167,
+        "min": 6015.900583,
+        "max": 6050.369292
+      },
+      "peakRssMiB": {
+        "median": 1173.671875,
+        "min": 1173.09375,
+        "max": 1176.4375
+      },
+      "firstEditMs": {
+        "median": 1122.000583,
+        "min": 1108.7765,
+        "max": 1174.2131669999999
+      },
+      "beforeBytes": {
+        "median": 7437228,
+        "min": 7437228,
+        "max": 7437228
+      },
+      "afterFirstEditBytes": {
+        "median": 49137284,
+        "min": 49137284,
+        "max": 49137284
+      }
+    }
+  ]
+}
