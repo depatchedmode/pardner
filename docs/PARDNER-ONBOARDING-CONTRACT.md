@@ -91,14 +91,14 @@ responses or normal status output.
 
 | Route | Request / response |
 | --- | --- |
-| `GET /session` | `{ identity: null or {id,name,email}, device: {id,name}, suggestedIdentity: {name,email}, setupAgent: {harnessId,name,model,managedBy}, projects: Project[], removedProjects: RemovedProject[] }` |
+| `GET /session` | `{ identity: null or {id,name,email}, device: {id,name}, suggestedIdentity: {name,email}, setupAgent: {harnessId,name,model,managedBy}, projects: Project[], removedProjects: RemovedProject[] }`; once an identity exists, an unnamed setup agent's `name` is its default, such as “Maya’s Codex” |
 | `POST /identity` | `{name,email,operationId}` → session shape; initialize once, preserve stable identity |
 | `POST /projects` | `{name,operationId}` → `{project: Project}`; register human and configured setup agent before ready |
 | `GET /projects/:id` | `{project: Project, actors: Actor[], presence: PresenceSnapshot, membership}`; `membership` is computed from this client's record store, read-only |
 | `GET /projects/:id/invites` | `?limit=1..50&offset=N` → `{invites: InviteSummary[], total, offset, nextOffset}` newest first (10 by default), without credential text |
 | `POST /projects/:id/invites` | `{purpose: "human"|"agent"|"device", operationId, role?: "admin"|"member", personId?}` → `{invite: InviteSummary, invitation: string, setupPrompt}`; the offer is signed by this machine; invitation is private opaque setup data for explicit Copy/Reveal |
 | `POST /projects/:id/invites/:inviteId/revoke` | revokes the invitation and rejects its waiting requests; refused once an approval is being recorded; returns updated summary |
-| `POST /join` | `{invitation: string, operationId, agent?:{harnessId,name,model,managedBy}}` → `{join: JoinState}` while the request waits for approval, then `{project: Project}`. A retry with the same operation ID resumes the same request and never takes another place on the invitation. An Agent invitation on a machine already in the project returns `{project}` at once |
+| `POST /join` | `{invitation: string, operationId, agent?:{harnessId,name,model,managedBy}}` → `{join: JoinState}` while the request waits for approval, then `{project: Project}`. A retry with the same operation ID resumes the same request and never takes another place on the invitation. An Agent invitation on a machine already in the project returns `{project}` at once. A `name` that differs from the person's agent already enrolled for that harness is refused with `AGENT_NAME_CONFLICT` before the request takes a place on the invitation |
 | `GET /projects/:id/join-requests` | `{requests: JoinRequest[]}` that this machine may approve |
 | `POST /projects/:id/join-requests/:requestId/code` | adds this approver's nonce if none is fixed; `{request: JoinRequest}` with its `code` |
 | `POST /projects/:id/join-requests/:requestId/approve` | `{code}`; refused with `CODE_MISMATCH` unless it matches; this machine signs the admission and the hub records it → `{request: {id, state, recordId}}` |

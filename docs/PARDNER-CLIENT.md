@@ -54,6 +54,15 @@ are profile defaults, not proof of identity; Pardner generates the identity and
 does not edit Git settings. Start a project or join one. The setup agent becomes
 an Actor with the first project. Registration alone does not show it as active.
 
+An agent is named after its owner and harness, such as “Maya’s Codex”, “Maya’s
+Claude” or “Maya’s Cursor”, unless `--name` gives it another name. The name is
+fixed when the agent first joins a project. Identities can't be renamed, so an
+agent name never has to follow its owner's; if renaming is added, agent names
+will keep the name they joined with. Each person has one agent per harness in a
+project. A join or `client agent-grant` that gives that agent a different name
+is refused with `AGENT_NAME_CONFLICT` (409), and the invitation stays usable.
+Join with the agent's name, or without one, to add another computer to it.
+
 One client can switch between projects. Each project retains its own runtime,
 storage, participant identity and save/sync status. The browser has no separate
 Automerge database and needs its local client service to stay available.
@@ -340,7 +349,8 @@ profile.
 
 The authenticated session determines the author. Assignment and board filters
 do not change who is acting. An agent can obtain a project-bound API credential
-through the local operator's `client agent-grant --project ID --output-file FILE`.
+through the local operator's `client agent-grant --project ID --output-file FILE`
+(`--name NAME` checks that the agent has that name).
 Keep that file private; it is distinct from the operator credential and native
 replica admission. Coordination commands use it with `pardner --token-file FILE
 task create …` (or `mentions pending`, `show`, …): the token stays out of

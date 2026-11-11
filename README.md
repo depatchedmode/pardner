@@ -195,6 +195,7 @@ background if it is not already running, using `~/.pardner/client` unless you pa
 
 Confirm your Git-derived profile, then start or join a project. Use the actual
 setup agent's harness and name; the example registers Alpha as a Codex Actor.
+Without `--name`, an agent is named after you and its harness, such as “Maya’s Codex”.
 See the [client guide](docs/PARDNER-CLIENT.md) for invitations, private agent
 credentials, connectivity and recovery boundaries.
 The [recovery guide](docs/PARDNER-CLIENT-RECOVERY.md) covers private content export,

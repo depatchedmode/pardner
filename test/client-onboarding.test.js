@@ -6,14 +6,14 @@ import { join } from 'node:path'
 import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
 import { startClient } from '../lib/client-service.js'
-import { CLIENT_API, setupAgent } from '../lib/client-identity.js'
+import { CLIENT_API, agentName, setupAgent } from '../lib/client-identity.js'
 import { joinApproved, unwrap } from '../support/enrollment.js'
 import { createHello } from '../lib/machine-handshake.js'
 import { generateMachineKey } from '../lib/machine-key.js'
 
-async function fixture(t, name) {
+async function fixture(t, name, agent = { harnessId: 'openai-codex', name: `${name} agent` }) {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-client-'))
-  const client = await startClient({ directory, port: 0, deviceName: `${name} laptop`, setupAgent: { harnessId: 'openai-codex', name: `${name} agent` } })
+  const client = await startClient({ directory, port: 0, deviceName: `${name} laptop`, setupAgent: agent })
   t.after(async () => { await client.stop(); await rm(directory, { recursive: true, force: true }) })
   const api = async (path, body, options = {}) => {
     const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST',
@@ -23,7 +23,7 @@ async function fixture(t, name) {
     if (!options.failure) assert.equal(response.status, 200, JSON.stringify(result))
     return { result, response }
   }
-  await api('/identity', { name, email: `${name.toLowerCase()}@example.test`, operationId: 'identity' })
+  await api('/identity', { name, email: `${name.toLowerCase().replace(/\W+/g, '.')}@example.test`, operationId: 'identity' })
   return { client, api, directory, call: unwrap(api) }
 }
 // `joiner` joins `invitation` and `approver` approves it after comparing the confirmation code.
@@ -304,6 +304,39 @@ test('agent-only enrollment has its own author and cannot obtain a human browser
   assert.notEqual(grant.result.actorId, project.actorId)
   assert.equal(grant.result.model, undefined)
   assert.equal(grant.result.managedBy, undefined)
+})
+
+test('agents are named after their owner and harness; a different name for an enrolled agent is refused, not ignored', { timeout: 45000 }, async t => {
+  const priya = await fixture(t, 'Priya Raman', {}), marcus = await fixture(t, 'Marcus Lee', { harnessId: 'anthropic-claude-code' })
+  assert.equal((await priya.api('/session')).result.setupAgent.name, 'Priya Raman’s Codex')
+  const { result: { project } } = await priya.api('/projects', { name: 'Names', operationId: 'create' })
+  const { result: human } = await priya.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'human' })
+  await marcus.api('/join', { invitation: human.invitation, operationId: 'join' })
+  const agentNames = actors => Object.values(actors).filter(actor => actor.kind === 'agent').map(actor => actor.displayName).sort()
+  assert.deepEqual(agentNames((await priya.api(`/projects/${project.id}`)).result.actors), ['Marcus Lee’s Claude', 'Priya Raman’s Codex'])
+  // The board reads Actors from the document view, which carries the same names on every member's client.
+  await eventually(async () => agentNames((await marcus.api(`/projects/${project.id}/api/automerge/doc`)).result.doc.actors),
+    names => names.join() === 'Marcus Lee’s Claude,Priya Raman’s Codex')
+
+  const { result: invitation } = await priya.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'agent' })
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-agent-'))
+  const box = await startClient({ directory, port: 0, setupAgent: { harnessId: 'openai-codex', name: 'Overnight Codex' } })
+  t.after(async () => { await box.stop(); await rm(directory, { recursive: true, force: true }) })
+  const joinBox = async (operationId, agent) => {
+    const response = await fetch(`${box.url}${CLIENT_API}/join`, { method: 'POST', headers: { Authorization: `Bearer ${box.registry.read().operatorToken}`,
+      'Content-Type': 'application/json' }, body: JSON.stringify({ invitation: invitation.invitation, operationId, ...(agent ? { agent } : {}) }) })
+    return { status: response.status, result: await response.json() }
+  }
+  const refused = await joinBox('overnight')
+  assert.equal(refused.status, 409)
+  assert.equal(refused.result.code, 'AGENT_NAME_CONFLICT')
+  assert.equal(refused.result.error, 'Priya Raman already has a Codex agent in this project named “Priya Raman’s Codex”. ' +
+    'Each person has one agent per harness, and agents keep the name they joined with. Use that name, or none, to add this computer to it.')
+  assert.deepEqual(agentNames(priya.client.project(project.id).people), ['Marcus Lee’s Claude', 'Priya Raman’s Codex'])
+  // The refusal left the invitation usable: the same computer joins as a new, explicitly named agent instead.
+  const joined = await joinBox('overnight-claude', { harnessId: 'anthropic-claude-code', name: 'Overnight Claude' })
+  assert.equal(joined.status, 200, JSON.stringify(joined.result))
+  assert.deepEqual(agentNames(priya.client.project(project.id).people), ['Marcus Lee’s Claude', 'Overnight Claude', 'Priya Raman’s Codex'])
 })
 
 test('reopening with a new browser principal replays setup instead of allocating projects or recipient proofs', { timeout: 30000 }, async t => {
@@ -591,6 +624,8 @@ test('identity, harness and revocation refusals name the actual problem', { time
   assert.deepEqual(exists.details, { identity: { name: 'Alice', email: 'alice@example.test' } })
   const harness = 'Unsupported execution harness; use openai-codex, anthropic-claude-code or cursor'
   assert.throws(() => setupAgent({ harnessId: 'claude' }), { code: 'INVALID_ARGUMENT', message: harness })
+  assert.equal(agentName({ name: 'Maya' }, { harnessId: 'not-a-harness', name: null }), 'Maya’s agent')
+  assert.equal(agentName({ name: 'Maya' }, setupAgent({ harnessId: 'cursor' })), 'Maya’s Cursor')
   const { result: { project } } = await alice.api('/projects', { name: 'Refusals', operationId: 'create' })
   await refusal(alice.api, `/projects/${project.id}/agent-grant`, { harnessId: 'claude' }, 400, 'INVALID_ARGUMENT', harness)
   const aliceId = alice.client.registry.read().identity.id

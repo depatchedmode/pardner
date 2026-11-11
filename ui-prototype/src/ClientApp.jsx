@@ -335,7 +335,7 @@ function Welcome({ api, session, current, onBack, onReady }) {
       <label>Project name<input required autoFocus maxLength={120} value={name} onChange={event => setName(event.target.value)} /></label>
       {pendingCreate && <p className="muted small">An earlier attempt to start “{pendingCreate.name}” didn’t confirm. Starting it again resumes that attempt.</p>}
       <p className="muted small">
-        You join as {session.identity.name}.{agent?.name ? ` ${agent.name}${harnessLabel(agent.harnessId) ? ` (${harnessLabel(agent.harnessId)})` : ''} is registered as your agent. It shows as offline until it connects, and as active only while it reports work.` : ''}
+        You join as {session.identity.name}.{agent?.name ? ` Your ${harnessLabel(agent.harnessId) ? `${harnessLabel(agent.harnessId)} ` : ''}agent is registered as ${agent.name}. It shows as offline until it connects, and as active only while it reports work.` : ''}
       </p>
       <Failure error={failure} />
       <button className="primary" disabled={busy}>{busy ? 'Starting…' : 'Start project'}</button>

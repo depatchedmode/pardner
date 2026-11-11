@@ -512,6 +512,8 @@ it('explains sign-in, the Git prefill, invitation follow-up and People focus in 
   await page.getByText('Name filled in from your Git configuration; enter your email.').waitFor()
   await page.getByLabel('Email').fill('nadia@example.test')
   await page.getByRole('button', { name: 'Continue as Nadia' }).click()
+  // With no name given, the setup agent is named after its owner and harness.
+  await page.getByText('Your Codex agent is registered as Nadia’s Codex.', { exact: false }).waitFor()
   await page.getByLabel('Project name').fill('Chrome board')
   await page.getByRole('button', { name: 'Start project' }).click()
   await page.getByRole('button', { name: 'Project: Chrome board. Switch project' }).waitFor()
@@ -596,5 +598,30 @@ it('shows letter initials and keeps an owner’s Git details off agent profiles 
   await humanProfile.locator('dt', { hasText: /^Email$/ }).waitFor()
   await humanProfile.getByText('omar@example.test').waitFor()
   assert.equal(await humanProfile.locator('dt', { hasText: /^Git (name|email)$/ }).count(), 0)
+  assert.deepEqual(errors, [])
+})
+
+it('tells two people’s default agents apart in the header and Actor pickers in chromium', { timeout: 120000 }, async t => {
+  const { startClient } = await import(serviceModule)
+  const priya = await person(t, startClient, 'Priya', {})
+  await priya.call('/identity', { name: 'Priya', email: 'priya@example.test', operationId: 'identity' })
+  const { project } = await priya.call('/projects', { name: 'Two agents', operationId: 'create' })
+  await addFixturePeople(priya.client, project.id, [{ name: 'Marcus', agent: { harnessId: 'openai-codex', name: null } }])
+  const browser = await chromium.launch({ headless: true })
+  t.after(() => browser.close())
+  const errors = []
+  const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
+  page.on('pageerror', error => errors.push(error.message))
+  await page.goto(await priya.open())
+  const stack = page.getByRole('group', { name: 'People in this project' })
+  const initials = []
+  for (const name of ['Priya’s Codex', 'Marcus’s Codex']) {
+    const avatar = stack.getByRole('button', { name: new RegExp(`^${name}, agent, `) })
+    await avatar.waitFor({ timeout: 30000 })
+    initials.push(await avatar.locator('.avatar-initials').textContent())
+  }
+  assert.deepEqual(initials, ['PC', 'MC'])
+  const options = await page.getByLabel('Assigned to').locator('option').allTextContents()
+  assert.deepEqual(options.filter(option => option.endsWith(' · agent')).sort(), ['Marcus’s Codex · agent', 'Priya’s Codex · agent'])
   assert.deepEqual(errors, [])
 })
