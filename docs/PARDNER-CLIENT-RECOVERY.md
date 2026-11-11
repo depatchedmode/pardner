@@ -54,9 +54,10 @@ project does not reproduce operation identity or history. Use a cold backup belo
    `signatures.sqlite`, signatures since deleted from the signature document are
    lost here, and so are this machine's own signatures that the signature document
    had not saved yet: those changes stay on the board but show as unattributed.
-   The cache also holds equivocation reports and which changes were already read
-   for the content check. Without it the board is read again, and an equivocation
-   report comes back only when a peer carrying the conflicting change sends it again.
+   The cache also holds equivocation reports with the signatures that prove them,
+   and the Activity entry derived from each change. Without it every change is
+   derived again, and an equivocation report comes back only when a peer carrying
+   the conflicting change sends it again.
    **A backup is a credential.** It holds the machine key, so anyone with a copy
    can sign as this machine. Keep backups as private as the original, with the
    key at mode 0600.

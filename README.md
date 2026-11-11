@@ -44,8 +44,8 @@ ordinary JavaScript strings. Different-field merging, authored same-field
 alternatives and explicit resolution retain their existing behavior; Pardner
 replaces whole values and does not splice collaborative text. Schema 11, whose
 changes are signed by the machine that made them and whose signature cache keeps
-equivocation reports with the signatures that prove them, refuses earlier storage
-directories, and version 4 client
+equivocation reports with the signatures that prove them and the Activity entry
+derived from each change, refuses earlier storage directories, and version 4 client
 directories refuse earlier ones, without migrating or deleting them.
 
 Each client directory has its own Ed25519 machine key, created on first start and
@@ -150,35 +150,75 @@ already checked. No change is refused, dropped or hidden. A received change that
 carries this machine's own actor but that it did not sign is unattributed, and the
 machine reports that another machine used its actor.
 
+**A signer line means: this machine signed exactly this content.** Activity is a
+log of the board's changes, as a git log is a log of commits. Each entry is derived
+from one change, from that change's own operations: the operation event it made (the
+key it wrote and the value as it built it), or the membership records it wrote. Its
+signer line is the verdict for that same change. No entry's content is taken from the
+board's current state or chosen through an ID written inside it. Every peer derives
+the same entry from the same change, whenever the change reached it, and keeps it in
+its signature cache under the change's hash, so a restart derives only new changes.
+The derivation runs in slices of at most 2,000 Automerge operations or 10 ms, after
+the board opens; a change not yet derived is counted as being checked and not shown.
+
 Activity names each entry's signer, the person and the machine; says "signature
 pending" while a signature may still be on its way; says "unattributed" and names
 the machine that relayed it once the machine that delivered the change has had a
 second on a live connection to send one; and says "made by a removed machine" for a
 signed change that does not come before that machine's removal in the board's
-history. Work from before a removal stays attributed. **A signer line is bound to
-the content its change wrote.** Pardner writes every object below the board's
-top-level maps once, in the change that creates it, never replaces or deletes an
-Activity entry, and leaves an Activity entry or a membership record with every
-change; each peer reads every change's operations once, keeps what it found in its
-signature cache so a restart reads only new changes, and finds any change that
-breaks this. An entry a later change altered is shown as its signed change wrote
-it, read from the board's history, and marked "altered after signing" with the
-altering change's own signer; the altering change, a change that replaced or
-deleted an entry, and a change that left no Activity entry are listed for review.
-Membership records appear in Activity with their signer, from the verified record
-store. The board announces changes that need review, with a filter for them, and
-`pardner client review` lists them. Two different changes signed by one machine
-with the same actor and sequence number are reported as equivocation, naming the
-machine, and the report is kept across restarts: Automerge refuses the second, so
-board changes from the peer that carries it stop applying until that machine is
-removed and its copy rebuilt. The hub's persistence acknowledgement covers the heads
-of both the board and the signature document, and a replica asks for it only once
-every signature it made is in the signature document it asks about.
+history. Work from before a removal stays attributed. An entry is flagged and listed
+for review when the key it was written at is not the operation ID inside it, its
+operation ID is not the one its request ID and content give, another change wrote
+the same key (each such change is its own entry), its signer is not certified for
+the Actor it names, its change also deleted content, wrote at the board's top
+level, or wrote into what another change made, or a second change claims to create
+the board. A change that wrote neither one
+well-formed operation event nor a membership record, or that is too large to read
+(more than 20,000 operations or 8 MB), is listed for review as unrecognised, under
+its own signer, saying what it altered. Changes share one entry only when their
+content is proven equal: an Actor's own operation retried on two of its replicas
+(equal apart from each change's replica and time, each listed with its own signer),
+or one membership record written back. An entry replaced or deleted later stays
+shown as its change wrote it. Inside an entry, the time, words, field values and IDs
+are the signed ones, and sorting, grouping and filtering use them; Actor names and
+task, goal and vein titles are looked up now and marked as current. A comment deleted
+later keeps its signed words and says who marked it deleted. A membership record's
+signer line is the record's own signature, which covers exactly the record shown.
 
-Everything read from the signature document is checked for shape and bounded:
-only map shards, change-hash keys and 64-byte values, and a few concurrent values.
-A malformed shard is made again as a map and its entries written back. A failure in
-a background attribution task is contained, logged and shown in status
+Views of the board as it is now (the board itself, a task's fields, a comment's
+current text) carry no signer line. A comment there names its recorded author, and
+says it was changed by someone other than its author when the change that wrote it
+or its current text is not that Actor's own signed, unflagged operation on it; that
+change then has its own Activity entry under its own signer. The task context's
+`history` (`pardner show`, and what agents read) lists the board's current operation
+events and is not attributed. Browser Activity and task History, `pardner activity`,
+`timeline`, `trace task` and `diff`, and `pardner client review` all read the same
+entries; the standalone service checks no signatures, and its entries say so. The
+board announces changes that need review, with a filter for them.
+
+What a signer line does not cover: whether a change's other writes (task fields,
+comments, links) match what its event describes, which is checked only for shape;
+the names and titles shown beside it, which are current; and whether the act was
+allowed.
+
+Two different changes signed by one machine with the same actor and sequence number
+are reported as equivocation, naming the machine; the report is kept across restarts
+with the verified signatures that prove it, and is shown as proven as soon as the
+second signature arrives. Automerge refuses the second change, so board changes from
+the peer that carries it stop applying until that machine is removed and its copy
+rebuilt. The hub's persistence acknowledgement covers the heads of both the board and
+the signature document. A replica asks for it only once every signature it made is
+in the signature document, about the board and signature heads it captured together
+at that moment; and a write is acknowledged locally only once its own signature is
+saved in the signature cache.
+
+Everything read from the signature document is checked for shape: only map shards,
+change-hash keys and 64-byte values. Every concurrent shard map and value is read,
+so no member can hide a valid signature behind others; the values at a shard key are
+read once per change to that key, not on every lookup, and the hub makes a shard
+that holds more than one value into one map holding every entry. A malformed shard
+is made again as a map with its entries kept. A failed write-back is retried. A
+failure in a background attribution task is contained, logged and shown in status
 (`attribution.failures`), and never stops the service. A member asks the hub about
 every change still waiting for a verdict in turn, 500 at a time.
 
@@ -413,8 +453,8 @@ its properties within that model only.
 A schema 11 directory contains workspace metadata, Automerge storage (the board
 and its signature document), the grow-only membership record store, the grow-only
 signature cache (`signatures.sqlite`: verified change signatures, equivocation
-reports with the signatures that prove them, and which board changes this replica
-has read for the content check), an
+reports with the signatures that prove them, and the Activity entry derived from
+each board change), an
 exclusive service lock, and local connection settings. The hub additionally holds the SQLite delivery ledger and its own
 waiting state after a restore (`hub-state.json`). A client
 directory also holds its machine key. Client directories and storage directories

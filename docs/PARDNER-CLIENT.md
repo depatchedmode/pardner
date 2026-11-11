@@ -158,27 +158,40 @@ person's Actor, is flagged too; peers take a machine's word only for which of it
 own Actors acted.
 
 **What a signer line covers.** A signer line means that machine signed exactly
-the content shown. Pardner writes every object below the board's top-level maps
-once, in the change that creates it, never replaces or deletes an Activity
-entry, and leaves an Activity entry or a membership record with every change.
-Each peer reads every change's operations once and finds any change that breaks
-this, from the documents alone, so every peer shows the same; it keeps what it
-found in `signatures.sqlite`, so a restart reads only the changes that are new. An entry a later
-change altered is shown as the change that signed it wrote it, with "altered
-after signing by" the altering change's signer. The altering change, a change
-that replaced or deleted an entry, and a change that left no Activity entry are
-listed for review under their own signers. Until every change has been read, for
-a while after a new replica first syncs (about 2 s at 10,000 operations), signed
-entries show as still being checked. Membership records are shown from the verified record store, under the
-machine that signed each record.
+the content shown. Activity is a log of the board's changes: each entry is derived
+from one change, from that change's own operations (the operation event it made,
+with the key it wrote, or the membership records it wrote), and its signer line is
+the verdict for that same change. Nothing shown under a signer is read from the
+board's current state. Every peer derives the same entry from the same change, and
+keeps it in `signatures.sqlite` under the change's hash, so a restart derives only
+the changes that are new. A change that wrote neither one well-formed operation
+event nor a membership record is listed for review as unrecognised, under its own
+signer, saying what it altered; a change that wrote another change's key, or wrote
+an event naming an Actor its machine is not certified for, is its own entry,
+flagged. An entry a later change altered or replaced stays shown as its own change
+wrote it. Until every change has been derived, for a while after a new replica first
+syncs, Activity says how many changes it is still reading. Inside an entry, Actor
+names and task, goal and vein titles are as they are now, marked with a dotted
+underline; times, words, values and IDs are as signed. A membership record's signer
+line is the record's own signature.
+
+**What has no signer line.** The board, a task's fields and a comment's current
+text are the board as it is now. A comment names its recorded author, and says it
+was changed by someone other than its author when the change that wrote it, or its
+current text, is not that author's own signed, unflagged operation on it. A comment
+deleted later keeps its signed words in Activity, with who marked it deleted.
 
 **Malformed data.** What a peer reads from the signature document is checked for
-shape and bounded, and a shard that is not a map is made again as one with its
-entries written back. A failure in a background attribution task is contained,
+shape; every concurrent shard map and value is read, so no member can hide a valid
+signature behind others, and the hub makes a shard that holds more than one value
+into one map holding every entry. A shard that is not a map is made again as one
+with its entries kept. A failure in a background attribution task is contained,
 logged and shown in the project's status as `attribution.failures`; it never stops
 the project runtime.
 
-**Where it shows.** Every Activity entry and task history entry has a signer line.
+**Where it shows.** Every Activity entry and task history entry has a signer line,
+and so do `pardner activity`, `timeline`, `trace task` and `diff`, which print the
+same entries.
 Membership records appear in Activity under **People and machines**: admissions,
 pairings, removals, role changes, agent names and profiles, each with the machine
 that signed it and the time it reached the board. When changes need review, the
@@ -191,7 +204,8 @@ both be in a document: Automerge refuses the second, and automerge-repo then
 applies nothing from any message that carries it. Pardner reports such a refusal
 with both change hashes and the machine the actor names. When both changes carry
 valid signatures, that machine signed both, and the board and `client review` say
-so. The report is kept in the signature cache, so it survives a restart. Board
+so. The report is kept in the signature cache with the signatures that prove it,
+so it survives a restart and the entries' deletion from the signature document. Board
 changes from the peer that carries the conflicting change stop applying here until
 that machine is removed and its copy rebuilt; every other peer keeps syncing.
 
