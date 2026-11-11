@@ -85,3 +85,10 @@ valid genesis supplies the project ID; ambiguous roots fail closed.
 
 No product storage, transport, recovery, board conflict or delivery guarantee is
 changed. These API tests are the relevant feature exercise for this library.
+
+`test/membership-limits.test.js` checks record byte, nesting and text bounds before
+cryptography, and bounds reducer work for 3,001 records (1,000 repeated
+certifications and a 1,100-machine chain), including duplicate/shuffled input.
+`test/machine-handshake.test.js` checks that revocation removes proven sessions
+while pending member, removed and unknown keys get identical invalid-confirmation
+and expiry responses.

@@ -230,3 +230,19 @@ test('a hub checkpoint is signed, bound to its project and hub, and shows when a
   assert.equal(aheadOf(checkpoint, { ...current, records: 3 }), true)
   assert.equal(computeMembership(project.all, { projectId: project.projectId }).machines.length, 2)
 })
+
+test('membership changes leave unproven sessions indistinguishable until uniform expiry', async () => {
+  const project = testProject({ members: 2 })
+  let now = 0
+  const { server, client, remove, route } = sessions(project, { now: () => now })
+  await client.request('/people')
+  const keys = [project.keys[0], project.keys[1], project.stranger]
+  const open = key => server.open(createHello(key, { projectId: project.projectId, route, role: 'replica' })).session
+  const pending = keys.map(open), expiring = keys.map(open)
+  remove(project.keys[0].machineId)
+  server.revokeNonMembers()
+  assert.equal(server.active.size, 0, 'proven removed sessions end immediately')
+  for (const id of pending) await assert.rejects(server.confirm(id, { type: 'confirm', signature: 'invalid' }), { code: 'HANDSHAKE_INVALID' })
+  now = 30001
+  for (const id of expiring) await assert.rejects(server.confirm(id, { type: 'confirm', signature: 'invalid' }), { code: 'SESSION_UNKNOWN' })
+})
