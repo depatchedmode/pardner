@@ -6,13 +6,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startClient } from '../lib/client-service.js'
 import { joinApproved } from '../support/enrollment.js'
+import { sameComputerRoute } from '../support/client-workspace.js'
 
 // Before a write, a client checks its own machine's membership in its record store (item 5 of #199): no `/policy`
 // call and no cache, so a write never waits on the hub and an enrolled member keeps saving through an outage.
 
 async function participant(root, name) {
   const directory = join(root, name.toLowerCase())
-  const client = await startClient({ directory, port: 0, deviceName: `${name} laptop`, gitDirectory: root })
+  // An explicit loopback route: the Human invitations here are used by another client on this computer (#162).
+  const client = await startClient({ directory, ...await sameComputerRoute(), deviceName: `${name} laptop`, gitDirectory: root })
   const token = client.registry.read().operatorToken
   const request = async (path, body) => {
     const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',

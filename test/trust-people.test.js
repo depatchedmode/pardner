@@ -9,13 +9,15 @@ import { startClient } from '../lib/client-service.js'
 import { CLIENT_API } from '../lib/client-identity.js'
 import { peopleListing } from '../lib/client-people.js'
 import { joinApproved } from '../support/enrollment.js'
+import { sameComputerRoute } from '../support/client-workspace.js'
 
 // The People view, leaving, profiles and the removed state (#198, #152, #154, #175, #183), on real client services.
 // The first client in each test hosts the project (the hub).
 
 async function participant(t, name, { identity = true } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-people-'))
-  const client = await startClient({ directory, port: 0, deviceName: `${name} laptop`, gitDirectory: directory })
+  // An explicit loopback route: the Human and My device invitations here are used by another client on this computer (#162).
+  const client = await startClient({ directory, ...await sameComputerRoute(), deviceName: `${name} laptop`, gitDirectory: directory })
   t.after(async () => { await client.stop(); await rm(directory, { recursive: true, force: true }) })
   const request = async (path, body) => {
     const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST', signal: AbortSignal.timeout(30000),

@@ -7,10 +7,12 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { startClient } from '../lib/client-service.js'
 import { cli } from '../support/cli-resources.js'
 import { joinApproved } from '../support/enrollment.js'
+import { sameComputerRoute } from '../support/client-workspace.js'
 
 async function participant(root, name) {
   const directory = join(root, name.toLowerCase())
-  const client = await startClient({ directory, port: 0, deviceName: `${name} laptop`, gitDirectory: root })
+  // An explicit loopback route: the Human invitations here are used by another client on this computer (#162).
+  const client = await startClient({ directory, ...await sameComputerRoute(), deviceName: `${name} laptop`, gitDirectory: root })
   const token = client.registry.read().operatorToken
   const call = async (path, body) => {
     const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',

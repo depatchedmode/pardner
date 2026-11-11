@@ -12,6 +12,7 @@ import { agentNameRecord, buildJoinRequest, confirmationCode, OFFER_TTL_MS } fro
 import { generateMachineKey } from '../lib/machine-key.js'
 import { buildRecord } from '../lib/membership.js'
 import { joinApproved } from '../support/enrollment.js'
+import { sameComputerRoute } from '../support/client-workspace.js'
 import { handshakeSocket, signedRequest } from '../support/machines.js'
 import { createHello } from '../lib/machine-handshake.js'
 
@@ -21,7 +22,9 @@ import { createHello } from '../lib/machine-handshake.js'
 
 async function participant(t, name, { identity = true, ...options } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-trust-'))
-  const client = await startClient({ directory, port: 0, deviceName: `${name} laptop`, gitDirectory: directory, ...options })
+  // An explicit loopback route: the Human and My device invitations here are used by another client on this computer (#162).
+  const route = options.port === undefined ? await sameComputerRoute() : {}
+  const client = await startClient({ directory, ...route, deviceName: `${name} laptop`, gitDirectory: directory, ...options })
   t.after(async () => { await client.stop(); await rm(directory, { recursive: true, force: true }) })
   const request = async (path, body) => {
     const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST', signal: AbortSignal.timeout(30000),
