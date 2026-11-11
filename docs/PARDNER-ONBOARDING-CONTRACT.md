@@ -89,9 +89,9 @@ responses or normal status output.
 | `POST /projects` | `{name,operationId}` → `{project: Project}`; register human and configured setup agent before ready |
 | `GET /projects/:id` | `{project: Project, actors: Actor[], presence: PresenceSnapshot}` |
 | `GET /projects/:id/invites` | `{invites: InviteSummary[]}` without credential text |
-| `POST /projects/:id/invites` | `{purpose: "human"|"agent"|"device", operationId}` → `{invite: InviteSummary, invitation: string}`; invitation is private opaque setup data for explicit Copy/Reveal |
+| `POST /projects/:id/invites` | `{purpose: "human"|"agent"|"device", operationId}` → `{invite: InviteSummary, invitation: string}`; invitation is private opaque setup data for explicit Copy/Reveal. `human` and `device` fail with 409 `PUBLIC_URL_REQUIRED` (`details: {purpose, endpoint}`) when the issuing client has no `--public-url`, before anything is recorded |
 | `POST /projects/:id/invites/:inviteId/revoke` | revokes grant; returns updated summary |
-| `POST /join` | `{invitation: string, operationId, agent?:{harnessId,name,model,managedBy}}` → `{project: Project}`; durable recipient-bound attempt and resume; optional metadata identifies another actual harness joining the existing client. The authority binds an invitation to its recipient only after validating the attempt, in the same transaction that reserves the admission, and re-checks revocation before activating |
+| `POST /join` | `{invitation: string, operationId, agent?:{harnessId,name,model,managedBy}}` → `{project: Project}`; durable recipient-bound attempt and resume; optional metadata identifies another actual harness joining the existing client. The authority binds an invitation to its recipient only after validating the attempt, in the same transaction that reserves the admission, and re-checks revocation before activating. A loopback invitation endpoint that refuses or never accepts a connection fails with 409 `INVITATION_UNREACHABLE` (`details: {endpoint}`) |
 | `GET /projects/:id/presence` | PresenceSnapshot |
 | `POST /projects/:id/sessions` | `{kind:"browser"|"agent", model?, managedBy?}` → `{sessionId, ttlMs}`; server supplies project/Actor/device binding |
 | `POST /projects/:id/sessions/:sessionId/report` | `{seq, active:boolean, focusTaskIds:string[], model?}` → session receipt |
