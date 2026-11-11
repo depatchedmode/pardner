@@ -206,7 +206,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
       { file: WORKSPACE, anchor: "throw new OperationError('STORAGE_FAILED', 'Local persistence was not confirmed. Retry with the same operation ID.'" },
       { file: RUNTIME, anchor: "addRecords(records) {\n    requireValue(this.initialized && !this.stopController.signal.aborted", note: 'the record gate refuses once closeResources aborted' },
       { file: RUNTIME, anchor: 'const result = this.workspace.queue.then(() => this.gateRecords(records))', note: 'the gate joins the operation queue that closeResources drains' },
-      { file: RUNTIME, anchor: 'for (const entry of missing) doc.membership[entry.recordId] = entry', note: 'the gate’s change, then its flush; a refused record changes nothing' },
+      { file: RUNTIME, anchor: 'for (const entry of missing) doc.membership[entry.recordId] = storageValue(entry)', note: 'the gate’s change, then its flush; a refused record changes nothing' },
       { file: RUNTIME, anchor: "throw new OperationError('STORAGE_FAILED', 'Local persistence of the membership records was not confirmed. Retry the same request.'" },
     ],
     apply: state => {

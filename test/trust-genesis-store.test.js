@@ -221,3 +221,33 @@ test('an enrolled replica stores the genesis it synced and reopens offline with 
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test('records entering through the hub gate are stored as plain values, for every record kind', { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-gate-plain-'))
+  const owner = generateMachineKey(), genesis = testGenesis(owner)
+  const runtime = new WorkspaceRuntime({ directory, role: 'hub', actors, genesis })
+  try {
+    await runtime.init()
+    const projectId = genesis.projectId, bob = generateMachineKey(), spare = generateMachineKey(), carol = generateMachineKey()
+    const admitted = memberAdd(owner, projectId, 'bob', bob)
+    const records = [
+      admitted,
+      memberAdd(owner, projectId, 'carol', carol),
+      buildRecord(owner, { projectId, kind: 'member.role', subject: 'bob', role: 'admin', replaces: null }),
+      buildRecord(owner, { projectId, kind: 'machine.add', subject: spare.machineId, personId: 'bob', publicKey: spare.publicKey, approval: {} }),
+      buildRecord(bob, { projectId, kind: 'agent.name', subject: 'actor-bob-openai-codex', machineId: bob.machineId, displayName: 'Bob’s Codex', harness: 'openai-codex' }),
+      buildRecord(bob, { projectId, kind: 'profile', subject: 'bob', displayName: 'Bob Example', email: 'bob@example.test' }),
+      buildRecord(owner, { projectId, kind: 'machine.remove', subject: spare.machineId }),
+      buildRecord(owner, { projectId, kind: 'member.remove', subject: 'carol' }),
+    ]
+    // One record per gate call, as the hub's routes send them.
+    for (const record of records) await runtime.addRecords([record])
+    const doc = runtime.docHandle.doc()
+    for (const record of records) assert.deepEqual(plain(doc.membership[record.recordId]), record)
+    assert.deepEqual(new Set(records.map(record => record.kind)), new Set(['member.add', 'member.role', 'machine.add', 'agent.name', 'profile', 'machine.remove', 'member.remove']))
+    assertNoText(doc)
+  } finally {
+    await runtime.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
