@@ -121,3 +121,47 @@ test('the signature cache only grows, belongs to one project, is private, and su
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+test('the signature cache keeps equivocation reports across reopening, and they only grow', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-signature-reports-'))
+  const path = join(directory, SIGNATURE_CACHE_FILE)
+  try {
+    const report = { document: 'board', actor: 'ab'.repeat(24), seq: 3, hashes: ['cd'.repeat(32), 'ef'.repeat(32)], machineId: null }
+    let cache = new SignatureCache(path, projectId)
+    cache.addEquivocation('board:a:3', report)
+    cache.addEquivocation('board:a:3', { ...report, seq: 4 })
+    cache.close()
+    cache = new SignatureCache(path, projectId)
+    assert.deepEqual(cache.equivocations(100), [['board:a:3', report]], 'the first report under a key is kept as it was')
+    cache.close()
+    const database = new DatabaseSync(path)
+    assert.throws(() => database.exec('DELETE FROM equivocations'), /only grow/)
+    assert.throws(() => database.exec("UPDATE equivocations SET report = '{}'"), /only grow/)
+    database.close()
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('the signature cache keeps which board changes were read, and what they wrote, and that only grows', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-signature-scanned-'))
+  const path = join(directory, SIGNATURE_CACHE_FILE)
+  try {
+    const plainChange = 'ab'.repeat(32), rewrite = 'cd'.repeat(32)
+    const findings = { targets: ['7@' + 'ef'.repeat(16)], replaced: [{ map: 'operations', key: 'op-x', kind: 'deleted' }], noEntry: true }
+    let cache = new SignatureCache(path, projectId)
+    cache.addScanned([[plainChange, null], [rewrite, findings]])
+    cache.addScanned([[rewrite, null]])
+    assert.throws(() => cache.addScanned([['not-a-hash', null]]))
+    cache.close()
+    cache = new SignatureCache(path, projectId)
+    assert.deepEqual([...cache.scannedChanges()].sort(), [[plainChange, null], [rewrite, findings]], 'the first record of a change is kept as it was')
+    cache.close()
+    const database = new DatabaseSync(path)
+    assert.throws(() => database.exec('DELETE FROM scanned'), /only grow/)
+    assert.throws(() => database.exec('UPDATE scanned SET findings = NULL'), /only grow/)
+    database.close()
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})

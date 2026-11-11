@@ -137,11 +137,31 @@ document after enrollment (the hub's Actor registrations) are recorded as the
 baseline and excluded from the acknowledged-operation count. At the end, each replica is
 checked independently for operation ID, Actor, type, full payload, originating
 replica, created task count, final task fields, comment contents/cardinality, and
-handoff comment/mention effects. Every acknowledged operation must also be shown
-as signed by a machine, with no flag for its Actor, on every replica within ten
-seconds of convergence (`attribution` in the timings). Only then are snapshot
-hashes compared; they leave out each replica's own attribution view, which names
-that replica's machine as this computer.
+handoff comment/mention effects.
+
+Within ten seconds of convergence (`attribution` in the timings), every replica
+must show every operation in the board, baseline included, as signed by a named
+machine, with no flag for its Actor, no alteration after signing and no replaced
+entry, with nothing listed for review; and all three replicas must report the same
+stable attribution:
+- for each operation, each change that wrote it: the change hash, its state, the
+  signing machine, that machine's person, the entry's Actor and those flags;
+- for each membership record: its kind, subject, signer, the signer's person and
+  Actor, and when it reached the board;
+- the changes listed for review.
+
+Replica-specific labels are left out of that comparison: which machine is this
+computer, the position in which a replica indexed a change, who relayed a verdict
+to it, and what a pending change waits for. The runner then checks the shared
+attribution against what it knows performed each act: each acknowledged operation
+was signed by the machine of the replica that acknowledged it, for the intended
+Actor, whose person is that machine's person; each baseline operation by Alice's
+desktop as Alice (the hub registers every Actor it enrolls); the genesis, admission
+and pairing records by Alice's desktop; Builder's and Reviewer's agent labels by
+the laptop each runs on, and every other agent label by a machine of that agent's
+person. Only then are snapshot hashes compared; they leave out each replica's own
+attribution view, so the board convergence check is exactly what it was. The
+report records the comparison's counts and the hash of the shared attribution.
 
 Each agent has a durable SQLite inbox and effect ledger outside the workspace.
 The runner kills workers before acknowledgement and after effects have been saved,

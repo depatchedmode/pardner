@@ -31,9 +31,9 @@ const groups = [
     name: 'signed-changes', scripts: ['test:runtime', 'test:cli', 'test:ui'],
     qualification: 'Signed changes, the signature document and cache, attribution, and the two-document hub acknowledgement',
     files: names(`lib/attribution.js lib/change-signatures.js lib/signature-cache.js lib/client-review.js support/signing-process.js support/unsigned-peer.js
-      scripts/signing-benchmark.js test/signed-changes-ui.test.js`),
-    focused: [{ command: 'node --test test/change-signatures.test.js test/signed-changes.test.js test/signed-changes-ui.test.js',
-      note: 'Machine actors, signing and checking, pending then unattributed under cut, slow and silent links, removed machines, equivocation, kill between saves, and the board' }],
+      support/signed-hub.js scripts/signing-benchmark.js test/signed-changes-ui.test.js test/attribution-rules.test.js`),
+    focused: [{ command: 'node --test test/change-signatures.test.js test/signed-changes.test.js test/attribution-rules.test.js test/signed-changes-ui.test.js',
+      note: 'Machine actors, signing only own writes and checking, content-bound signer lines, malformed signature documents, repairs and fair polling, pending then unattributed under cut, slow and silent links, removed machines, equivocation, kill between saves, and the board' }],
   },
   {
     name: 'persistence', scripts: ['test:qualification', 'test:runtime'], qualification: 'Disk persistence and directory ownership',

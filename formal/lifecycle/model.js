@@ -134,7 +134,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
       { file: WORKSPACE, anchor: 'this.queue = result.catch(() => {})', note: 'replica-local execute; its own local-save barrier is the same apply() path modeled by Handle(op)' },
       { file: RUNTIME, anchor: "syncPending: !savedLocally || (this.role === 'replica' && (canonical(heads) !== canonical(this.acknowledgedHeads) || signaturesUnacknowledged))", note: 'heads stand for the board and its signature document together; a replica edit is pending until the hub acknowledges both' },
       { file: RUNTIME, anchor: 'for (const record of missing) doc.membership[record.recordId] = storageValue(record)', note: 'a membership write-back is a local change without a request, on a replica or the hub; it only advances heads, and every acknowledgement still flushes first' },
-      { file: RUNTIME, anchor: 'if (signatures) this.startAttribution(handle, signatures)', note: 'every local change is signed as it is made (lib/attribution.js) and its signature written to the signature document by a deferred local change; that only advances the signature heads, off the acknowledgement path' },
+      { file: RUNTIME, anchor: 'if (signatures) this.startAttribution(handle, signatures)', note: 'every local change goes through boardChange, which signs exactly that change as it is made (lib/attribution.js); its signature is written to the signature document by a deferred local change that only advances the signature heads, off the acknowledgement path' },
     ],
     apply: state => (state.done || state.replica.r >= bounds.replicaEdits ? [] : [{ next: { ...state, replica: { ...state.replica, r: state.replica.r + 1 } } }]),
   })
@@ -161,6 +161,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
   action('ReplicaSendAck', {
     fair: false,
     maps: [
+      { file: RUNTIME, anchor: "requireValue(!this.attribution.unwritten, 'This machine’s newest signatures are not yet in the signature document', 'SIGNATURES_UNWRITTEN')", note: 'pending signatures are first written into the signature document (a local change that only advances its heads); while one is unwritten no request is sent, which this unfair action already allows' },
       { file: RUNTIME, anchor: 'const requestedHeads = getHeads(this.workspace.handle.doc())' },
       { file: RUNTIME, anchor: "const receipt = await this.requestHub('/automerge/sync-ack', {" },
     ],
@@ -204,7 +205,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: true,
     maps: [
       { file: RUNTIME, anchor: "async execute(request) {\n    requireValue(this.initialized && !this.stopController.signal.aborted", note: 'execute() refuses once closeResources aborted' },
-      { file: WORKSPACE, anchor: 'if (!prepared.replayed) this.handle.change(prepared.change)' },
+      { file: WORKSPACE, anchor: 'if (!prepared.replayed) this.change(prepared.change)', note: 'the change goes through the runtime’s signing write path (boardChange), synchronously, before the flush; signing caches the signature and never waits on the disk barrier' },
       { file: WORKSPACE, anchor: "throw new OperationError('STORAGE_FAILED', 'Local persistence was not confirmed. Retry with the same operation ID.'" },
       { file: RUNTIME, anchor: "addRecords(records) {\n    requireValue(this.initialized && !this.stopController.signal.aborted", note: 'the record gate refuses once closeResources aborted' },
       { file: RUNTIME, anchor: 'const result = this.workspace.queue.then(() => this.gateRecords(records))', note: 'the gate joins the operation queue that closeResources drains' },

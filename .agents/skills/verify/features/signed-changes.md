@@ -1,7 +1,7 @@
 # Signed changes and attribution
 
-Run `node --test test/change-signatures.test.js test/signed-changes.test.js` (both
-in `test:runtime`), `node --test test/signed-changes-ui.test.js` (in `test:ui`,
+Run `node --test test/change-signatures.test.js test/signed-changes.test.js test/attribution-rules.test.js`
+(all in `test:runtime`), `node --test test/signed-changes-ui.test.js` (in `test:ui`,
 Chromium and WebKit) and the `client review` test in `test/client-cli.test.js`
 (in `test:cli`). `scripts/signing-benchmark.js` measures the costs; it is not a
 gate.
@@ -57,6 +57,44 @@ gate.
   People and machines lists "Alice let Bob in as a member" signed by this
   computer, and an unsigned change from a modified client brings up the review
   notice, whose button opens Needs review with "Unattributed: no signature arrived
-  · relayed by Bob · Bob’s laptop". The task stays on the board.
+  · relayed by Bob · Bob’s laptop". The task stays on the board. Then Bob's
+  modified client rewrites Alice's comment inside her signed entry and signs its
+  edit: Activity shows Alice's words, "Signed by Alice · this computer" and
+  "altered after signing by Bob · Bob’s laptop", never Bob's words; Needs review
+  lists Bob's change under his own signer.
 - **CLI.** `client review` says no change needs review, then lists the unsigned
   change in words, with the change hash only as a detail; `--json` gives the data.
+- **Signing only own writes** (`attribution-rules`). A member continues another
+  machine's current actor and sequence number and syncs the change to it (a member
+  replica, then the hub): that machine never signs it, every peer shows it
+  unattributed, and the machine reports another machine's use of its actor. Its own
+  next change, the board's creation change, the record gate's change and a record
+  write-back are each signed by the machine that made them.
+- **Content-bound signer lines.** A signed edit inside another machine's Activity
+  entry, arriving by sync: on the writer, a reader and the hub the entry keeps its
+  signer, is marked altered by the editing change (named with its own signer), is
+  shown as signed (title, timestamp and a deleted list as they were), and the edit
+  is listed for review; all peers show the same. A replica that joins after an
+  unsigned edit of a nested list shows the same. A replacement, a deletion and a
+  change that leaves no Activity entry are each listed with their signers; ordinary
+  work never is.
+- **Malformed signature document.** Shards replaced by a list, text, a number,
+  bytes, a counter or nested lists, junk keys, wrong-shape and oversized values and
+  an unexpected top-level key: the services keep running with no contained
+  failure, the shard comes back as a map holding the entry everywhere, and a later
+  replica can check the change. Reads return at most eight concurrent values, only
+  64-byte values under change-hash keys in map shards, and read concurrent shard
+  maps. A failing cache write is contained, logged, shown in status, and checking
+  resumes.
+- **Repairs and polling.** Four deletions and overwrites applied before the repair
+  runs are all put back. With 1,200 changes held pending by the hub, a member asks
+  about every one within four polls of at most 500, and never again about settled
+  ones.
+- **Acknowledgement, restart, prefixes.** A replica holding back its own signature
+  stays `syncPending` until it is written. An equivocation report survives a hub
+  restart with its proof. A prefix two keys share attributes to neither.
+- **Acceptance gate.** `test/acceptance-components.test.js`: the gate's stable
+  attribution comparison ignores replica-specific labels, fails replicas that
+  disagree on a signer, fails a signer other than the machine that performed the
+  operation, checks baseline operations and records, and refuses a missing machine
+  ID, an altered entry or anything listed for review.

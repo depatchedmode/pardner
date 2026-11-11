@@ -62,7 +62,7 @@ async function build(directory, project, operations) {
     const request = next(runtime.workspace.handle.doc())
     const prepared = prepareOperation(runtime.workspace.handle.doc(), { ...request, operationId: `build-${index}` },
       { replicaId: runtime.manifest.replicaId, timestamp: new Date(Date.UTC(2026, 0, 1) + index * 1000).toISOString() })
-    runtime.workspace.handle.change(prepared.change)
+    runtime.boardChange(prepared.change)
     request.onDone?.(prepared.event.result)
     if (index % 50 === 49) await new Promise(resolve => setImmediate(resolve))
   }
@@ -122,9 +122,11 @@ async function receiving(base, project, rate, seconds = 10) {
   await cp(base, directory, { recursive: true })
   const server = await copiedHub(directory, project)
   const attribution = server.store.attribution
-  let checking = 0
-  const work = attribution.work.bind(attribution)
-  attribution.work = () => { const started = performance.now(); work(); checking += performance.now() - started }
+  // Checking slices, and the content check (scanSlice) a change gets in the step that applies it, outside a slice.
+  let checking = 0, scanning = 0, inWork = false
+  const work = attribution.work.bind(attribution), scan = attribution.scanSlice.bind(attribution)
+  attribution.work = () => { const started = performance.now(); inWork = true; try { work() } finally { inWork = false }; checking += performance.now() - started }
+  attribution.scanSlice = limit => { const started = performance.now(); scan(limit); if (!inWork) scanning += performance.now() - started }
   const repo = new Repo({ network: [memberAdapter(project, 0, `ws://127.0.0.1:${server.wsPort}/automerge`, { retryMs: 100 })], sharePolicy: async () => true })
   try {
     const board = await repo.find(server.store.manifest.url, { signal: AbortSignal.timeout(120000) })
@@ -134,6 +136,7 @@ async function receiving(base, project, rate, seconds = 10) {
     const next = workload(77)
     const written = new Map()
     checking = 0
+    scanning = 0
     // Arrival and attribution at the hub, sampled every 2 ms while writing and after.
     const sample = () => {
       for (const entry of written.values()) {
@@ -164,8 +167,9 @@ async function receiving(base, project, rate, seconds = 10) {
     const entries = [...written.values()]
     const unsigned = entries.filter(entry => !entry.signed).length
     const window = entries.filter(entry => entry.arrived && entry.signed).map(entry => Math.max(0, entry.signed - entry.arrived))
-    return { rate, achieved, changes: entries.length, unsigned, checkMsPerChange: checking / Math.max(1, entries.length),
-      budgetShare: (checking / Math.max(1, entries.length)) / (1000 / rate), unattributedWindow: { median: median(window), max: Math.max(...window) },
+    const perChange = (checking + scanning) / Math.max(1, entries.length)
+    return { rate, achieved, changes: entries.length, unsigned, checkMsPerChange: perChange, scanMsPerChange: scanning / Math.max(1, entries.length),
+      budgetShare: perChange / (1000 / rate), unattributedWindow: { median: median(window), max: Math.max(...window) },
       seenAfter: median(entries.filter(entry => entry.arrived).map(entry => entry.arrived - entry.sent)) }
   } finally {
     await repo.shutdown()
@@ -301,7 +305,7 @@ function table(report) {
     const { authoring: a, firstCheck: f, open } = entry
     lines.push(`| ${size} | Authoring, execute to receipt (median / p90) | ${ms(a.signed.median)} / ${ms(a.signed.p90)} | ${ms(a.plain.median)} / ${ms(a.plain.p90)} | ${(a.overhead * 100).toFixed(1)}% on the median, ${a.samples} samples per arm, load ${entry.load.afterAuthoring[0]} |`)
     for (const r of entry.receiving) {
-      lines.push(`| ${size} | Receive and check at ${r.rate}/s | ${r.changes - r.unsigned} of ${r.changes} attributed; check ${ms(r.checkMsPerChange)} per change (${(r.budgetShare * 100).toFixed(2)}% of the budget) | — | writer achieved ${r.achieved.toFixed(1)}/s; hub sees a change ${ms(r.seenAfter)} after it is written; pending ${ms(r.unattributedWindow.median)} median, ${ms(r.unattributedWindow.max)} worst |`)
+      lines.push(`| ${size} | Receive and check at ${r.rate}/s | ${r.changes - r.unsigned} of ${r.changes} attributed; check ${ms(r.checkMsPerChange)} per change (${(r.budgetShare * 100).toFixed(2)}% of the budget${r.scanMsPerChange === undefined ? '' : `; content check ${ms(r.scanMsPerChange)} of it`}) | — | writer achieved ${r.achieved.toFixed(1)}/s; hub sees a change ${ms(r.seenAfter)} after it is written; pending ${ms(r.unattributedWindow.median)} median, ${ms(r.unattributedWindow.max)} worst |`)
     }
     lines.push(`| ${size} | New replica: open, then first full check | open ${ms(f.opened)}; all ${f.signed} of ${f.changes} checked in ${ms(f.checkWall)} after it (${ms(f.checkCpu)} CPU) | — | ${f.slices} slices, longest ${ms(f.longestSlice)}; changes still unchecked, sampled: ${f.progress.join(', ')} |`)
     const openMs = arm => median(open[arm].map(sample => sample.opened))

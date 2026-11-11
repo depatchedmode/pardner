@@ -11,6 +11,7 @@ import { ExpectedOperations, hash } from '../support/acceptance/expected-operati
 import { candidateFingerprint } from '../support/acceptance/candidate.js'
 import { AgentProcess } from '../support/acceptance/agent-process.js'
 import { joinApproved } from '../support/enrollment.js'
+import { HARNESS_IDS, actorId as actorFor } from '../lib/client-identity.js'
 
 const args = process.argv.slice(2)
 const option = (key, fallback) => { const index = args.indexOf(`--${key}`); return index < 0 ? fallback : args[index + 1] }
@@ -77,18 +78,42 @@ async function runSeed(seed) {
   const show = (side, id) => services[side].call(api(`/task/${encodeURIComponent(id)}/context`), undefined, { timeout: 5000 })
   const snapshot = async side => (await services[side].call(api('/doc'), undefined, { timeout: 5000 })).doc
   const status = side => services[side].call(api('/status'), undefined, { timeout: 5000 })
-  // Every acknowledged operation shown as signed, with no Actor flag, on every replica, within ten seconds.
+  // Every operation and record shown as signed by a machine, with no flag and nothing to review, and the same
+  // stable attribution on every replica, within ten seconds of convergence (verifyAttribution checks who signed).
   const attributed = async () => {
     const started = performance.now()
     for (;;) {
       const docs = await Promise.all([0, 1, 2].map(snapshot))
-      if (docs.every(doc => expected.attributed(doc))) {
+      const views = docs.map(doc => JSON.stringify(expected.stableAttribution(doc)))
+      if (docs.every(doc => expected.attributed(doc)) && views.every(view => view === views[0])) {
         timings.push({ kind: 'attribution', elapsed: performance.now() - started })
         return docs
       }
-      assert.ok(performance.now() - started <= 10000, 'Acknowledged operations were not all shown as signed on every replica within ten seconds')
+      assert.ok(performance.now() - started <= 10000, 'Operations and records were not all shown as signed, alike, on every replica within ten seconds')
       await delay(40)
     }
+  }
+  /**
+   * What the harness knows about who did what: side 0 is Alice's desktop (the hub, which enrolled everyone), side 1
+   * Alice's laptop with Builder, side 2 Bob's laptop with Reviewer. Each replica names its own machine.
+   */
+  const knownSigners = docs => {
+    const machine = docs.map(doc => doc.attribution.machineId)
+    const personOf = id => docs[0].attribution.machines[id]?.personId
+    const personOfActor = { [actors.alice]: personOf(machine[0]), [actors.builder]: personOf(machine[1]), [actors.bob]: personOf(machine[2]), [actors.reviewer]: personOf(machine[2]) }
+    assert.equal(personOf(machine[1]), personOf(machine[0]), 'Alice’s laptop is Alice’s machine')
+    const agentMachine = { [actors.builder]: machine[1], [actors.reviewer]: machine[2] }
+    const machinesOf = personId => [...new Set(machine.filter(id => personOf(id) === personId))]
+    // Every other agent label (a machine labels its person's agents when it pairs) is signed by a machine of that agent's person.
+    const agentPerson = subject => [...new Set(machine.map(personOf))].find(personId => HARNESS_IDS.some(harness => actorFor(personId, harness) === subject))
+    const recordSigner = record => {
+      if (['project.genesis', 'member.add', 'machine.add'].includes(record.kind)) return [machine[0]]
+      if (record.kind === 'agent.name') return agentMachine[record.subject] ? [agentMachine[record.subject]] : machinesOf(agentPerson(record.subject))
+      if (record.kind === 'profile') return machinesOf(record.subject)
+      return []
+    }
+    return { machineOfReplica: Object.fromEntries(replicaIds.map((replicaId, side) => [replicaId, machine[side]])), personOfActor,
+      baseline: { machineId: machine[0], actorId: actors.alice }, recordSigner }
   }
   const converge = async () => {
     const started = performance.now()
@@ -341,9 +366,10 @@ async function runSeed(seed) {
     const docs = await attributed()
     const verified = docs.map(doc => expected.verify(doc))
     assert.ok(verified.every(result => result.snapshotHash === verified[0].snapshotHash))
+    const attribution = expected.verifyAttribution(docs, knownSigners(docs))
     const maxima = {}
     for (const { kind, elapsed } of timings) maxima[kind] = Math.max(maxima[kind] ?? 0, elapsed)
-    const report = { seed, candidateSha256: candidate.sha256, scenarioPassed: true, topology: 'client', maxima, timings, gates: gates.map(gate => gate.events), verified, agentEvidence,
+    const report = { seed, candidateSha256: candidate.sha256, scenarioPassed: true, topology: 'client', maxima, timings, gates: gates.map(gate => gate.events), verified, attribution, agentEvidence,
       manifest: expected.report(), heads: docs.map(doc => doc.heads), fixture: { tasks: 100, comments: 400, scriptedOperations: 200 },
       limits: { localAckMs: 2500, clientProxyAckMs: 2500, agentEffectAckMs: 2500, localVisibleMs: 2000, offlineStartMs: 6000, convergenceMs: 10000 } }
     await writeFile(join(reportDirectory, 'report.json'), JSON.stringify(report, null, 2))
