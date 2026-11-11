@@ -527,3 +527,24 @@ Fresh default check: 174614 states, 679456 transitions, all four invariants and
 were caught, reported as drift and reproduced by the model; the working tree was
 unchanged. See `trustReviewThree` in the evidence JSON. Full verification and
 qualification were deliberately deferred to keep the shared machine quiet.
+
+## Signed changes and trust review follow-up, integrated (2026-11-11)
+
+The two reviews above were made on sibling branches. Their integration
+(`integration/trust-stage1`) records the mapping at source revision
+`0254a245f23b572d83e68923e3cf19a1efdd236e`. Drift against the signed-changes
+mapping was exactly the follow-up's change to `automerge-sync-server.js` and
+`lib/workspace-runtime.js`, now beside the signed-changes code. Every action
+named by drift was re-reviewed. The missing-state growth check still runs after
+both signatures verify and before any welcome (`UpgradeArrive`). Hub-state
+writes still drain in `closeResources` after pending signatures are written and
+before `repo.shutdown()` and the lease (`StoreCloseBegin`). Record limits
+precede the gate's single document change, and the two-document acknowledgement
+is untouched (`Handle`, `Respond`, `ReplicaEdit`, `ReplicaReceive`,
+`ReplicaAckCommit`). No action guard, effect, atomicity assumption, anchor,
+invariant, witness or mutation text changed.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses are reachable. All eight mutations
+were caught, reported as drift and reproduced by the model; the working tree was
+unchanged. See `trustStageOneSignedIntegrationReview` in the evidence JSON.
