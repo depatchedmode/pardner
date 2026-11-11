@@ -12,6 +12,7 @@ import { sameComputerRoute } from '../support/client-workspace.js'
 import { joinApproved, unwrap } from '../support/enrollment.js'
 import { createHello } from '../lib/machine-handshake.js'
 import { generateMachineKey } from '../lib/machine-key.js'
+import { buildOffer, encodeInvitation } from '../lib/enrollment.js'
 
 // Every fixture has an explicit loopback route unless `route: false` stands for a client started without --public-url.
 async function fixture(t, name, { route = true, agent = { harnessId: 'openai-codex', name: `${name} agent` } } = {}) {
@@ -315,9 +316,12 @@ test('agents are named after their owner and harness; a different name for an en
   assert.equal((await priya.api('/session')).result.setupAgent.name, 'Priya Raman’s Codex')
   const { result: { project } } = await priya.api('/projects', { name: 'Names', operationId: 'create' })
   const { result: human } = await priya.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'human' })
-  await marcus.api('/join', { invitation: human.invitation, operationId: 'join' })
+  await enroll(marcus, priya, human.invitation)
   const agentNames = actors => Object.values(actors).filter(actor => actor.kind === 'agent').map(actor => actor.displayName).sort()
-  assert.deepEqual(agentNames((await priya.api(`/projects/${project.id}`)).result.actors), ['Marcus Lee’s Claude', 'Priya Raman’s Codex'])
+  const { actors, membership } = (await priya.api(`/projects/${project.id}`)).result
+  assert.deepEqual(agentNames(actors), ['Marcus Lee’s Claude', 'Priya Raman’s Codex'])
+  // Each agent's signed label (an agent.name record) carries the same name as its Actor.
+  assert.deepEqual(membership.agentNames.map(label => label.displayName).sort(), ['Marcus Lee’s Claude', 'Priya Raman’s Codex'])
   // The board reads Actors from the document view, which carries the same names on every member's client.
   await eventually(async () => agentNames((await marcus.api(`/projects/${project.id}/api/automerge/doc`)).result.doc.actors),
     names => names.join() === 'Marcus Lee’s Claude,Priya Raman’s Codex')
@@ -325,6 +329,13 @@ test('agents are named after their owner and harness; a different name for an en
   const { result: invitation } = await priya.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'agent' })
   const directory = await mkdtemp(join(tmpdir(), 'pardner-agent-'))
   const box = await startClient({ directory, port: 0, setupAgent: { harnessId: 'openai-codex', name: 'Overnight Codex' } })
+  const boxCall = async (path, body) => {
+    const response = await fetch(`${box.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { Authorization: `Bearer ${box.registry.read().operatorToken}`,
+      'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+    const result = await response.json()
+    if (!response.ok) throw Object.assign(new Error(JSON.stringify(result)), { code: result.code })
+    return result
+  }
   t.after(async () => { await box.stop(); await rm(directory, { recursive: true, force: true }) })
   const joinBox = async (operationId, agent) => {
     const response = await fetch(`${box.url}${CLIENT_API}/join`, { method: 'POST', headers: { Authorization: `Bearer ${box.registry.read().operatorToken}`,
@@ -337,10 +348,15 @@ test('agents are named after their owner and harness; a different name for an en
   assert.equal(refused.result.error, 'Priya Raman already has a Codex agent in this project named “Priya Raman’s Codex”. ' +
     'Each person has one agent per harness, and agents keep the name they joined with. Use that name, or none, to add this computer to it.')
   assert.deepEqual(agentNames(priya.client.project(project.id).people), ['Marcus Lee’s Claude', 'Priya Raman’s Codex'])
+  assert.deepEqual(Object.values(priya.client.registry.read().invites[invitationData(invitation.invitation).id].requests ?? {}), [],
+    'the refusal took no place on the invitation')
   // The refusal left the invitation usable: the same computer joins as a new, explicitly named agent instead.
-  const joined = await joinBox('overnight-claude', { harnessId: 'anthropic-claude-code', name: 'Overnight Claude' })
-  assert.equal(joined.status, 200, JSON.stringify(joined.result))
+  const joined = await joinApproved({ join: body => boxCall('/join', body), approver: priya.call, invitation: invitation.invitation,
+    operationId: 'overnight-claude', agent: { harnessId: 'anthropic-claude-code', name: 'Overnight Claude' } })
+  assert.equal(joined.project.id, project.id)
   assert.deepEqual(agentNames(priya.client.project(project.id).people), ['Marcus Lee’s Claude', 'Overnight Claude', 'Priya Raman’s Codex'])
+  const labels = (await priya.api(`/projects/${project.id}`)).result.membership.agentNames.map(label => label.displayName).sort()
+  assert.deepEqual(labels, ['Marcus Lee’s Claude', 'Overnight Claude', 'Priya Raman’s Codex'])
 })
 
 test('reopening with a new browser principal replays setup instead of allocating projects or recipient proofs', { timeout: 30000 }, async t => {
@@ -635,7 +651,7 @@ test('a member asking a hub without --public-url is told the hub must be restart
   const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
   const { result: { project } } = await alice.api('/projects', { name: 'Hub route', operationId: 'create' })
   const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
-  await bob.api('/join', { invitation: invitation.invitation, operationId: 'join' })
+  await enroll(bob, alice, invitation.invitation)
   // The hub restarts on the same port but without its public route.
   alice.client.registry.update(state => { state.publicUrl = null })
   await alice.client.stop()
@@ -652,18 +668,21 @@ test('a member asking a hub without --public-url is told the hub must be restart
 
 test('joining names an unreachable loopback invitation address, while a reachable hub that is down still advises retry', { timeout: 45000 }, async t => {
   const bob = await fixture(t, 'Bob')
-  const envelope = endpoint => `pardner-invite-v1.${Buffer.from(JSON.stringify({ id: 'invite-1', projectId: 'project-1', purpose: 'human',
-    endpoint, secret: 'invitation-secret' })).toString('base64url')}`
+  // A signed offer whose only route is `endpoint`, from a machine this test never runs.
+  const issuer = generateMachineKey()
+  const envelope = endpoint => encodeInvitation({ projectName: 'Elsewhere', secret: 'i'.repeat(43), offer: buildOffer(issuer, {
+    projectId: 'a'.repeat(64), offerId: 'offer-unreachable-1', purpose: 'human', role: 'member', routes: [endpoint], expiresAt: Date.now() + 3600000 }) })
   // An invitation issued before this refusal existed: its address is the creator's own loopback listener.
   const { port } = await sameComputerRoute()
   const unreachable = `http://127.0.0.1:${port}`
-  const { result, response } = await bob.api('/join', { invitation: envelope(`${unreachable}/pardner/client/v1/enroll`), operationId: 'join-loopback' }, { failure: true })
+  const loopback = envelope(`${unreachable}/pardner/client/v1/enroll`)
+  const { result, response } = await bob.api('/join', { invitation: loopback, operationId: 'join-loopback' }, { failure: true })
   assert.equal(response.status, 409); assert.equal(result.code, 'INVITATION_UNREACHABLE')
   assert.deepEqual(result.details, { endpoint: unreachable })
   assert.ok(result.error.startsWith(`This invitation points to ${unreachable}, which this computer can't reach`), result.error)
   assert.match(result.error, /--public-url <https origin>/)
   assert.doesNotMatch(result.error, /retry/i)
-  const again = await bob.api('/join', { invitation: envelope(`${unreachable}/pardner/client/v1/enroll`), operationId: 'join-loopback' }, { failure: true })
+  const again = await bob.api('/join', { invitation: loopback, operationId: 'join-loopback' }, { failure: true })
   assert.equal(again.result.code, 'INVITATION_UNREACHABLE', 'retrying the same attempt reports the same cause')
   // A gateway that answers for a hub that is down is a temporary outage.
   let reply = { status: 502, type: 'text/html', body: '<html><body><h1>502 Bad Gateway</h1></body></html>' }
