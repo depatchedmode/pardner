@@ -255,6 +255,7 @@ it('the signer line is bound to the content it signed: a later change that edits
     for (const runtime of [reader, server.store, writer]) {
       await eventually(() => A.hasHeads(runtime.docHandle.doc(), [edit]), `the edit never reached ${runtime.role}`)
       await checked(runtime)
+      await eventually(() => runtime.attribution.stateOf(edit).state === 'signed', `${runtime.role} never verified the edit’s own signature`)
       const [signer] = runtime.getDoc().attribution.operations[original.operationId]
       assert.equal(signer.hash, signedBy.hash, 'still the change that wrote the entry')
       assert.equal(signer.machineId, project.keys[0].machineId)
