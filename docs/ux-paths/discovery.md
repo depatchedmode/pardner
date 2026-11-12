@@ -304,8 +304,9 @@ The SPA is desktop-first with responsive breakpoints at 1100, 839 and 760 px (ui
   - `T3_REJECTED`/`T3_BUSY`/`T3_UNKNOWN` (502/503/504) (client-service.js:406-409).
 
 ### 12. Agent CLI, agent grants and the bridge — lib/cli.js:119-288, lib/client-cli.js:170-180, lib/agent-bridge.js:20-77, 361-419
-- `pardner client agent-grant --project ID --output-file FILE [--harness ID]`:
+- `pardner client agent-grant --project ID --output-file FILE [--harness ID] [--name NAME]`:
   - Operator only. Writes `{token, actorId, projectId, harnessId, model?, managedBy?, apiBase}`.
+  - `--name` must match the enrolled agent's name, or the grant fails with `AGENT_NAME_CONFLICT` (409).
   - Fails with `FORBIDDEN` "Harness is not enrolled on this device; join an Agent invitation first", "Unsupported execution harness", or `ACTOR_MISMATCH` (client-service.js:349-365).
 - `pardner --token-file FILE <coordination command>`:
   - Takes the token and `apiBase` from the file and resolves the Actor through `/session` (cli.js:120-147).

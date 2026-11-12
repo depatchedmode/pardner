@@ -84,14 +84,14 @@ responses or normal status output.
 
 | Route | Request / response |
 | --- | --- |
-| `GET /session` | `{ identity: null or {id,name,email}, device: {id,name}, suggestedIdentity: {name,email}, setupAgent: {harnessId,name,model,managedBy}, projects: Project[] }` |
+| `GET /session` | `{ identity: null or {id,name,email}, device: {id,name}, suggestedIdentity: {name,email}, setupAgent: {harnessId,name,model,managedBy}, projects: Project[] }`; once an identity exists, an unnamed setup agent's `name` is its default, such as “Maya’s Codex” |
 | `POST /identity` | `{name,email,operationId}` → session shape; initialize once, preserve stable identity |
 | `POST /projects` | `{name,operationId}` → `{project: Project}`; register human and configured setup agent before ready |
 | `GET /projects/:id` | `{project: Project, actors: Actor[], presence: PresenceSnapshot}` |
 | `GET /projects/:id/invites` | `{invites: InviteSummary[]}` without credential text |
 | `POST /projects/:id/invites` | `{purpose: "human"|"agent"|"device", operationId}` → `{invite: InviteSummary, invitation: string}`; invitation is private opaque setup data for explicit Copy/Reveal |
 | `POST /projects/:id/invites/:inviteId/revoke` | revokes grant; returns updated summary |
-| `POST /join` | `{invitation: string, operationId, agent?:{harnessId,name,model,managedBy}}` → `{project: Project}`; durable recipient-bound attempt and resume; optional metadata identifies another actual harness joining the existing client. The authority binds an invitation to its recipient only after validating the attempt, in the same transaction that reserves the admission, and re-checks revocation before activating |
+| `POST /join` | `{invitation: string, operationId, agent?:{harnessId,name,model,managedBy}}` → `{project: Project}`; durable recipient-bound attempt and resume; optional metadata identifies another actual harness joining the existing client. A `name` that differs from the person's agent already enrolled for that harness is refused with `AGENT_NAME_CONFLICT` before the invitation is bound. The authority binds an invitation to its recipient only after validating the attempt, in the same transaction that reserves the admission, and re-checks revocation before activating |
 | `GET /projects/:id/presence` | PresenceSnapshot |
 | `POST /projects/:id/sessions` | `{kind:"browser"|"agent", model?, managedBy?}` → `{sessionId, ttlMs}`; server supplies project/Actor/device binding |
 | `POST /projects/:id/sessions/:sessionId/report` | `{seq, active:boolean, focusTaskIds:string[], model?}` → session receipt |
