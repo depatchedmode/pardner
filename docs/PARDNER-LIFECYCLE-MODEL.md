@@ -683,7 +683,8 @@ board as of its change's dependencies, changed `lib/workspace.js` and
 `lib/workspace-runtime.js`. Each drift was reviewed against its diff before the
 mapping was recorded:
 - `lib/workspace.js` (`ReplicaEdit`, `Handle`, `Respond`): the new read-only
-  `readable()` gives every read the board's top-level maps that hold one map (an
+  `readable()` gives every read the board's top-level maps whose value is a map
+  (Automerge's pick where several were written concurrently, which is listed; an
   empty one in place of any other value) and lists the rest; `snapshot()` and
   `context()` read through it, and `context()` refuses a record it cannot read as
   `UNREADABLE` (a missing record only when a map it would be in cannot be read). The constructor takes the project ID from the replica's metadata and
