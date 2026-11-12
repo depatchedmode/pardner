@@ -207,3 +207,20 @@ export const changedBySomeoneElse = (attribution, commentId) => Boolean(own(attr
  */
 export const alternativeChangedBySomeoneElse = (attribution, map, key, operationId) =>
   Boolean(own(own(attribution?.registers, `${map}:${key}`), operationId)?.changedBy?.length)
+
+/**
+ * For the edit form's "X saved a newer …": who to credit for each field that changed since the form opened, grouped
+ * as `{ by, unconfirmed, fields }`. Each field is credited to the Actor recorded in the newest History entry that
+ * changed it, from that entry's signed content; when that entry needs review, the name is marked unconfirmed.
+ */
+export function newerAuthors({ fields, historyRows }) {
+  const groups = []
+  for (const field of fields) {
+    const last = historyRows.find(row => (row.changes ?? []).some(change => change?.field === field))
+    const by = last?.actorId ?? null, unconfirmed = Boolean(last?.entry.review)
+    const group = groups.find(candidate => candidate.by === by && candidate.unconfirmed === unconfirmed)
+    if (group) group.fields.push(field)
+    else groups.push({ by, unconfirmed, fields: [field] })
+  }
+  return groups
+}

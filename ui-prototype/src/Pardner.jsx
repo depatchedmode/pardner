@@ -15,7 +15,7 @@ import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js
 import { quickStatusEditable } from './task-status.js'
 import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
-import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, needsReview, reviewNotice, signerLine, taskRows } from './attribution.js'
+import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, needsReview, newerAuthors, reviewNotice, signerLine, taskRows } from './attribution.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const StatusOptions = ({ values = STATUSES }) => values.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
@@ -1304,16 +1304,7 @@ function TaskDetail({
   const newerFields = draft
     ? Object.keys(draft.fields).filter(field => JSON.stringify(revisions[field]) !== JSON.stringify(draft.revisions[field]))
     : []
-  // Credit each newer field to the Actor recorded in the newest History entry that changed it, from that entry's
-  // signed content; when that entry needs review, the name is marked unconfirmed.
-  const newerGroups = []
-  for (const field of newerFields) {
-    const last = historyRows.find(row => (row.changes ?? []).some(change => change?.field === field))
-    const by = last?.actorId ?? null, unconfirmed = Boolean(last?.entry.review)
-    const group = newerGroups.find(candidate => candidate.by === by && candidate.unconfirmed === unconfirmed)
-    if (group) group.fields.push(field)
-    else newerGroups.push({ by, unconfirmed, fields: [field] })
-  }
+  const newerGroups = newerAuthors({ fields: newerFields, taskId, revisions, historyRows, attribution: lookups.attribution, activity: lookups.activity })
   const listFields = fields => fields.length < 2 ? fields.join('') : `${fields.slice(0, -1).join(', ')} and ${fields.at(-1)}`
   const newerNotice = newerGroups.map(({ by, unconfirmed, fields }) =>
     `${by ? `${labelActor(actors[by])}${unconfirmed ? ' (unconfirmed, see Activity)' : ''}` : 'Someone'} saved ${fields.length === 1 && fields[0] === 'tags' ? '' : 'a '}newer ${listFields(fields)}`).join('; ')
