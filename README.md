@@ -165,27 +165,38 @@ Its signer line is the verdict for that same change. No entry's content is taken
 the board's current state or chosen through an ID written inside it. Every peer
 derives the same entry from the same change, whenever the change reached it, and
 keeps it in its signature cache under the change's hash and derivation version (now
-2), so a restart derives only new changes. The derivation runs in slices of at most
-2,000 Automerge operations or 10 ms, checked after every change, after the board
-opens; a change not yet derived is counted as being checked and not shown, and a
-change that cannot be decoded or read is its own entry for review.
+5), so a restart derives only new changes. The derivation runs in slices after the
+board opens: a slice stops before a change that would take it past 2,000 Automerge
+operations (one larger change is derived alone) and starts no change once 10 ms have
+passed; one change is always derived whole, so its own time is not bounded
+(`lib/change-log.js` states each bound). A change not yet derived is counted as being
+checked and not shown, and a change that cannot be decoded or read is its own entry
+for review.
 
 **An operation's entry must match what its change did.** For each operation type,
 `lib/operation-writes.js` states the exact writes its event implies (which maps and
 keys, and the values or register contents), and the change's writes are compared
 with them. A missing write, an extra write or a different value flags the entry as
 not matching what its change did, in review, with each difference said in words:
-what the entry says and what the change wrote. Exempt, because the value depends on
-the board's state then and the event does not carry it: the `old` value of each
-field change (not written, not checked); `branchBaseIds` carried on a field register
-(shape only); the alternatives `task.link-vein` and a merged branch's status retire
-(shape only); which Actors a comment's @handles named (the mention records must
-match the Actors listed); which Actor a handle in a task field or handoff named; the
-fields `task.branch` copies (checked against the base it records, whose key is its
-digest) and `task.merge` copies (checked against what the entry lists); the goals a
-vein may leave; and a mention an edit does not write again. The board's creation may
-write only what a new board holds and the Actors it starts with, which its genesis
-entry lists.
+what the entry says and what the change wrote. What an event says about the board
+when its operation ran is checked against the board as of its change's dependencies
+(the state its write path read), read with the same faithful history reads: each
+field's previous value, the bookkeeping a field register carries over, the revisions
+an operation retires (each `expectedRevisions` list), the alternatives a link and a
+merged branch's status retire, which Actors a comment's @handles named and which
+Actor a handle named, the fields `task.branch` and `task.merge` copy, the goals a
+vein may leave, and whether a record it names was there. Where the board then held
+several values the write path could have read (one operation written twice by a
+retried request, or one Actor's concurrent records), a value any of them gives is
+accepted, so honest work on several replicas is never flagged. Still exempt
+(`EXEMPT` in `lib/operation-writes.js`): the event's own time and replica; a linked
+commit's hash and message; and whether `task.unlink-issue` retires every link of its
+issue (each revision it names must be one). Each entry carries its one reading
+(`shows`), which every renderer reads: one value per field as its change wrote it,
+the previous value only where the board then held it, `unchanged` only where every
+value the field then held is the one written, and the comment text its change wrote.
+An event naming one field twice is flagged. The board's creation may write only what
+a new board holds and the Actors it starts with, which its genesis entry lists.
 
 Activity names each entry's signer, the person and the machine; says "signature
 pending" while a signature may still be on its way; says "unattributed" and names
@@ -204,8 +215,11 @@ event nor a membership record, or that is too large to read (more than 20,000
 operations or 8 MB), is listed for review as unrecognised, under its own signer,
 saying what it altered. Changes share one entry only when their content is proven
 equal: an Actor's own operation retried on two of its replicas (equal apart from
-each change's replica and time, each listed with its own signer), or one membership
-record written back. An entry replaced or deleted later stays shown as its change
+each change's replica and time, each listed with its own signer; or one request
+whose events differ only in what each replica's write path read from its own time
+and board, each change matching its own event, where the entry shows the first
+change's reading and each other change whose reading differs carries its own), or one
+membership record written back. An entry replaced or deleted later stays shown as its change
 wrote it. Inside an entry, the time, words, field values and IDs are the signed
 ones, and sorting, grouping and filtering use them; Actor names and task, goal and
 vein titles are looked up now and marked as current. A comment deleted later keeps
@@ -229,7 +243,13 @@ signer. The edit form's "saved a newer …" notice credits the operation that th
 field's current value names, confirmed only when that operation's own entry is
 signed and unflagged, no other change wrote the value or into it, and nothing is
 still being read; otherwise it says unconfirmed. A board record whose stored data
-cannot be read is listed, and the board says how many. The task context's
+cannot be read is listed, and the board says how many. A top-level part of the board
+that a change rewrote with a value of the wrong kind (null, a number, text or a list
+where a map belongs, or a map where the schema version, project ID, name or time
+belongs) is listed with the changes that wrote it and their signers, the board names
+it, and everything else still reads; a record or write that needs it is refused as
+unreadable. The board is called by the project its metadata names, and reopens with
+the schema version and project ID its creation wrote. The task context's
 `history` (`pardner show`, and what agents read) lists the board's current operation
 events and is not attributed. Browser Activity and task History, `pardner activity`,
 `timeline`, `trace task` and `diff`, and `pardner client review` all read the same
@@ -260,9 +280,12 @@ document, de-duplicated by content in one pass, and the hub makes a shard that h
 more than one value into one map holding every entry. While a change's signer cannot
 be established (its change has not arrived, or its actor names no known machine),
 every distinct candidate for it is kept, as a list at its key, up to 16; once the
-signer is known the hub keeps the one that verifies. Past 16 candidates for one
-change, a genuine signature can be dropped from the shared document, and its writer
-puts it back when it sees its entry missing. A malformed shard is made again as a map
+signer is known the hub keeps the one that verifies. Past 16, what may be genuine is
+kept first: the cached value, then one value per known machine that may be the
+change's signer, then values no known key verifies (a machine not known yet may have
+made them), then the rest. A genuine signature is dropped from the shared document
+only when 16 values rank before it, and its writer puts it back when it sees its
+entry missing. A malformed shard is made again as a map
 with its entries kept. A failed write-back is retried. A
 failure in a background attribution task is contained, logged and shown in status
 (`attribution.failures`), and never stops the service. A member asks the hub about
