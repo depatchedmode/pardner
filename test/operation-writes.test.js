@@ -82,17 +82,9 @@ test('each operation type’s writes altered one at a time, left out one at a ti
       ...writes.map((write, index) => ({ label: `${write.map} ${write.key} left out`, writes: writes.filter((_, at) => at !== index), expect: { issue: 'missing', map: write.map, key: write.key } })),
       { label: 'an extra comment text', writes: [...writes, { map: 'commentBodies', key: 'comment-extra', value: { value: 'Extra words' } }], expect: { issue: 'extra', map: 'commentBodies', key: 'comment-extra' } },
     ]
-    // Retiring the link's or the merged branch status's alternatives depends on the board then (exempt): any number of
-    // such keys may be written, each true, so leaving one out is not detected, and a false one is an extra write.
-    const retirement = key => (event.type === 'task.merge' && key.startsWith(`${event.payload.branchId}:status:`))
-      || (event.type === 'task.link-vein' && key.startsWith(`${event.payload.taskId}:${event.payload.veinId}:`))
     for (const { label, writes: variant, expect } of cases) {
-      // A mention the board already holds may be left out by an edit; branch bases likewise (exempt).
+      // A mention or branch base the board then held need not be written again: leaving it out is no difference.
       if (expect.issue === 'missing' && ['mentions', 'branchBases'].includes(expect.map) && Object.hasOwn(before[expect.map] ?? {}, expect.key)) continue
-      if (expect.map === 'supersededRevisions' && retirement(expect.key)) {
-        if (expect.issue === 'missing') continue
-        expect.issue = 'extra'
-      }
       const { doc, hash } = written(before, event, variant)
       const entry = entryOf(doc, hash)
       assert.equal(entry.flags.mismatch, true, `${request.type}: ${label} is not reported`)
