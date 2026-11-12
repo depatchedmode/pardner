@@ -1,7 +1,9 @@
 // Who made each change, as this computer's Pardner checked it (lib/activity.js on the service). Every Activity entry
 // is derived from one change, and its signer line is that change's own verdict: it means "this machine signed
-// exactly this content". A change without a valid signature is shown, never hidden. Plain words first: people and
-// machine names, never a raw hash as the main label. Names of people and machines are as they are now.
+// exactly this content", and it is the only part of an entry that is verified. What the entry says the change did
+// is its author's description, compared with what the change wrote on a best-effort basis: a flag says only that the
+// two differ. A change without a valid signature is shown, never hidden. Plain words first: people and machine
+// names, never a raw hash as the main label. Names of people and machines are as they are now.
 
 const own = (map, key) => (map && typeof key === 'string' && Object.hasOwn(map, key) ? map[key] : null)
 
@@ -21,7 +23,7 @@ const FLAGS = {
   alsoWrote: 'the change also altered content outside this entry',
   invalidRecord: 'its record signature doesn’t check out',
   alsoCreated: 'another change also claims to create this board',
-  mismatch: 'it doesn’t match what its change did',
+  mismatch: 'this description does not match what the change wrote',
   badTime: 'its change’s time can’t be shown',
 }
 

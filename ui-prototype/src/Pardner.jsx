@@ -203,8 +203,8 @@ function EventRow({ event: row, lookups, within, onTask, onVein, onGoal, formatT
   )
 }
 
-/** The note Activity and History carry: which parts of an entry are looked up now. */
-const CurrentLegend = () => <p className="muted current-legend">Names and titles marked <Current>like this</Current> are as they are now; times, words and values are as each entry’s signer wrote them.</p>
+/** The note Activity and History carry: what is verified, what is the author's description, and what is looked up now. */
+const CurrentLegend = () => <p className="muted current-legend">Only the signer line is verified. What an entry says is its author’s description, checked against what the change wrote where Pardner can. Names and titles marked <Current>like this</Current> are as they are now.</p>
 
 export default function Pardner() {
   const [config, setConfig] = useState(null)
