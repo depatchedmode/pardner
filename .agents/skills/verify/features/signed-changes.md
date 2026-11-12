@@ -1,7 +1,9 @@
 # Signed changes and attribution
 
-Run `node --test test/change-signatures.test.js test/signed-changes.test.js test/attribution-rules.test.js`
-(all in `test:runtime`), `node --test test/signed-changes-ui.test.js` (in `test:ui`,
+Run `node --test test/change-signatures.test.js test/signed-changes.test.js test/attribution-rules.test.js
+test/change-log.test.js test/activity-property.test.js test/signed-entries.test.js test/automerge-history-reads.test.js
+test/change-content.test.js test/entry-failures.test.js test/operation-writes.test.js` (all in `test:runtime`),
+`node --test test/event-copy.test.js`, `node --test test/signed-changes-ui.test.js` (in `test:ui`,
 Chromium and WebKit) and the `client review` test in `test/client-cli.test.js`
 (in `test:cli`). `scripts/signing-benchmark.js` measures the costs; it is not a
 gate.
@@ -63,14 +65,18 @@ gate.
   "altered after signing by Bob · Bob’s laptop", never Bob's words; Needs review
   lists Bob's change under his own signer. When Bob renames the task and his
   modified client rewrites one of Alice's comments and marks another deleted, the
-  deleted comment's entry keeps Alice's words and signed time, says "This comment
-  was later deleted by a change listed for review", and shows the task's current
+  deleted comment's entry keeps Alice's words and signed time, says "A change that
+  needs review, signed by Bob · Bob’s laptop, later marked this comment deleted",
+  never that Alice deleted it, and shows the task's current
   title with a dotted underline; the task panel says the rewritten comment was
   "Changed by someone other than its author".
 - **CLI.** `client review` says no change needs review, then lists the unsigned
   change in words, with the change hash only as a detail; `--json` gives the data.
   `pardner activity`, `timeline`, `trace task` and `diff` print each entry with its
-  change's signer line; a forged copy appears under its own signer (`cli-activity`).
+  change's signer line, and every item carries its flags, review state and signers
+  as data; a forged copy appears under its own signer with its warnings, also in
+  `diff` (`cli-activity`). A record's time says it is when a machine wrote it to the
+  board.
 - **Signing only own writes** (`attribution-rules`). A member continues another
   machine's current actor and sequence number and syncs the change to it (a member
   replica, then the hub): that machine never signs it, every peer shows it
@@ -85,15 +91,40 @@ gate.
   peers and a replica that joins later; the original stays as signed. A
   replacement, a deletion and a change that leaves no Activity entry are each their
   own entry listed with their signers; every ordinary operation type and record
-  flow is never listed. A property test over random unusual writes by a second
-  member checks every shown entry against Automerge's own reading of each change.
+  flow is never listed. A property test over random unusual changes by a second
+  member, made through Automerge's API and by encoding operations directly (list and
+  map rewrites inside a change, deletions naming only some predecessors, nested and
+  concurrent values, `__proto__` keys), checks every ordinary entry against what the
+  generator meant and against a document rebuilt from the change's ancestors, and
+  that every entry reads the same after storage.
+- **Content read through Automerge** (`automerge-history-reads`, `change-content`,
+  `entry-failures`). getAll, keys and length with heads are faithful at a past head;
+  getConflicts on a view reports the current document; materialize applies a
+  `__proto__` key as a prototype; Automerge refuses an operation on an object no
+  change made. An element inserted, replaced and deleted naming only its insertion is
+  shown as Automerge reads it. Identifying fields under a `__proto__` map, Infinity,
+  bytes, a date, a counter or a large integer make a change unrecognised. A change
+  Automerge cannot decode, a change time no date can show, an entry the browser
+  cannot describe and an unreadable board record each fail on their own.
+- **Writes match the entry** (`operation-writes`, `signed-entries`). Every operation
+  type written as the real path writes it matches; each of its writes altered, left
+  out, or joined by an extra write is reported with both sides in words. A comment
+  entry saying "Ready for review" whose change wrote "Approved for deployment" is
+  listed under Bob's signer as not matching what it did, on two peers.
+- **Current-state authorship** (`signed-entries`, `event-copy`). An edit inside a
+  list of Alice's field value counts against that value, also when it lost to a
+  concurrent value; a value with no alternatives is listed too. A deletion claiming
+  Alice's name carries its own review state and signer. The edit form credits the
+  change that wrote the current value, unconfirmed while pending.
 - **Malformed signature document.** Shards replaced by a list, text, a number,
   bytes, a counter or nested lists, junk keys, wrong-shape and oversized values and
   an unexpected top-level key: the services keep running with no contained
   failure, the shard comes back as a map holding the entry everywhere, and a later
-  replica can check the change. Reads return at most eight concurrent values, only
-  64-byte values under change-hash keys in map shards, and read concurrent shard
-  maps. A failing cache write is contained, logged, shown in status, and checking
+  replica can check the change. Reads return only 64-byte values under change-hash
+  keys in map shards, read concurrent shard maps, and read a change's candidates
+  once per state of the document. A valid signature among concurrent shard values
+  that arrive before its change is kept, as one of at most 16 candidates, until its
+  signer is known, and the change is then signed on every peer. A failing cache write is contained, logged, shown in status, and checking
   resumes.
 - **Repairs and polling.** Four deletions and overwrites applied before the repair
   runs are all put back. With 1,200 changes held pending by the hub, a member asks
@@ -101,9 +132,13 @@ gate.
   ones.
 - **Acknowledgement, restart, prefixes.** A replica holding back its own signature
   stays `syncPending` until it is written. An equivocation report survives a hub
-  restart with its proof. A prefix two keys share attributes to neither.
+  restart with its proof, also when the first save of the report and of each proof
+  failed. A prefix two keys share attributes to neither.
 - **Acceptance gate.** `test/acceptance-components.test.js`: the gate's stable
   attribution comparison ignores replica-specific labels, fails replicas that
   disagree on a signer, fails a signer other than the machine that performed the
-  operation, checks baseline operations and records, and refuses a missing machine
-  ID, an altered entry or anything listed for review.
+  operation, checks baseline operations' payloads against what enrollment intends
+  and records, compares flag values, later alterations, unusual writes,
+  replacements and write differences, refuses an entry whose writes differ even when
+  every replica agrees, and refuses a missing machine ID, an altered entry or
+  anything listed for review.

@@ -103,12 +103,14 @@ export class ExpectedOperations {
 
   /**
    * What every replica must agree on, keyed by board change hash: for each change, the Activity entry it is shown in
-   * (its kind and key, the group of changes the entry lists, and its flags), the content that change wrote (the
-   * event with that change's own replica and time, the record, or what an unrecognised change wrote), and that
-   * change's verdict (its state, the signing machine, that machine's person, and whether it signed an Actor it may
-   * not act as). Also the changes listed for review. Left out, because they name this replica or what it happened to
-   * observe: which machine is "this computer", machine names, who relayed a verdict to it, what a pending change is
-   * waiting for, and the reason recorded for an unsigned one.
+   * (its kind and key, the group of changes the entry lists, its flags with their values, and the changes that later
+   * altered its stored copy), the content that change wrote (the event with that change's own replica and time, the
+   * record, or what an unrecognised change wrote), what else it wrote (its unusual writes, the entries it replaced, how
+   * its writes differ from what its event implies, and the Actors a creation registered), and that change's verdict
+   * (its state, the signing machine, that machine's person, whether it signed an Actor it may not act as, and whether
+   * its time can be shown). Also the changes listed for review. Left out, because they name this replica or what it
+   * happened to observe: which machine is "this computer", machine names, who relayed a verdict to it, what a pending
+   * change is waiting for, and the reason recorded for an unsigned one.
    */
   stableAttribution(snapshot) {
     const { attribution } = snapshot
@@ -120,8 +122,10 @@ export class ExpectedOperations {
           : entry.kind === 'record' ? entry.record
             : { wrote: entry.wrote ?? null, ops: entry.ops ?? null, oversized: entry.oversized === true, altered: entry.altered ?? [], alteredContent: entry.alteredContent ?? [] }
         ;(changes[change.hash] ??= []).push({ kind: entry.kind, key: entry.key ?? null, content, group: entry.changes.map(other => other.hash).sort(),
-          flags: Object.keys(entry.flags ?? {}).sort(), state: change.state, machineId: change.machineId ?? null, personId: personOf(change.machineId),
-          actorMismatch: change.actorMismatch === true })
+          flags: entry.flags ?? {}, alteredLater: (entry.alteredLater ?? []).map(other => other.hash).sort(),
+          wroteElse: { unusual: change.unusual ?? null, replaced: change.replaced ?? null, mismatch: change.mismatch ?? null, registered: change.registered ?? null },
+          state: change.state, machineId: change.machineId ?? null, personId: personOf(change.machineId), actorMismatch: change.actorMismatch === true,
+          badTime: change.badTime === true })
       }
     }
     for (const list of Object.values(changes)) list.sort((a, b) => canonical(a).localeCompare(canonical(b)))
@@ -138,7 +142,8 @@ export class ExpectedOperations {
     if (!summary || summary.notDerived || summary.checking) return false
     const { changes, review } = this.stableAttribution(snapshot)
     return review.length === 0 && Object.keys(changes).length === summary.changes && Object.values(changes).flat()
-      .every(change => change.state === 'signed' && MACHINE_ID.test(change.machineId ?? '') && change.personId && !change.actorMismatch && !change.flags.length)
+      .every(change => change.state === 'signed' && MACHINE_ID.test(change.machineId ?? '') && change.personId && !change.actorMismatch && !Object.keys(change.flags).length
+        && !change.wroteElse.mismatch && !change.wroteElse.unusual && !change.badTime)
   }
 
   /**
@@ -147,17 +152,27 @@ export class ExpectedOperations {
    * - each acknowledged operation is exactly one entry of exactly one change, which wrote the event the harness
    *   intended (its operation ID, request ID, type, Actor and payload) on the replica that acknowledged it, and was
    *   signed by that replica's machine, whose person is the Actor's person;
-   * - each baseline operation likewise, by the machine and Actor that enrolled the others;
+   * - each baseline operation likewise, by the machine and Actor that enrolled the others, with the payload that
+   *   enrollment intends for the Actor it registers (`registration`);
+   * - on every replica, each of those entries matches its change's writes exactly (lib/operation-writes.js), and its
+   *   change wrote nothing unusual;
    * - there is no other operation entry;
    * - the membership records shown are exactly those expectRecords() named, each signed by the expected machine.
    */
-  verifyAttribution(snapshots, { machineOfReplica, personOfActor, baseline, resolve }) {
+  verifyAttribution(snapshots, { machineOfReplica, personOfActor, baseline, registration, resolve }) {
     const views = snapshots.map(snapshot => this.stableAttribution(snapshot))
     for (const [index, view] of views.entries()) {
       assert.equal(canonical(view), canonical(views[0]), `Replica ${index}'s attribution differs between replicas`)
     }
     const activity = snapshots[0].activity
     const operationEntries = activity.filter(entry => entry.kind === 'operation')
+    // Rule 3, on every replica: each operation's entry is exactly what its change did.
+    for (const [index, snapshot] of snapshots.entries()) {
+      for (const entry of snapshot.activity.filter(item => item.kind === 'operation')) {
+        assert.ok(!entry.flags.mismatch && entry.changes.every(change => !change.mismatch && !change.unusual),
+          `Replica ${index} shows operation ${entry.key} with writes that differ from its entry: ${JSON.stringify(entry.changes.map(change => change.mismatch ?? change.unusual)).slice(0, 400)}`)
+      }
+    }
     const expectEntry = (id, machineId, actorId, check = () => {}) => {
       const entries = operationEntries.filter(entry => entry.key === id)
       assert.equal(entries.length, 1, `Operation ${id} is shown in ${entries.length} entries, not one`)
@@ -182,7 +197,20 @@ export class ExpectedOperations {
         assert.equal(entry.event.replicaId, receipt.replicaId, `Operation ${id} was written on another replica`)
       })
     }
-    for (const id of this.baseline) expectEntry(id, baseline.machineId, baseline.actorId)
+    const registered = new Set()
+    for (const id of this.baseline) {
+      expectEntry(id, baseline.machineId, baseline.actorId, entry => {
+        // Enrollment registers each Actor it admits, with the payload it builds for that Actor (lib/client-service.js
+        // registerActor): baseline operations get the same intended-content check as the workload's.
+        assert.equal(entry.event.type, 'actor.register', `Baseline operation ${id} is not an Actor registration`)
+        const intended = registration(entry.event.payload?.id)
+        assert.ok(intended, `Baseline operation ${id} registers an Actor the harness never enrolled: ${entry.event.payload?.id}`)
+        assert.equal(entry.event.requestId, `enroll-${intended.id}`)
+        assert.equal(canonical(entry.event.payload), canonical(intended), `Baseline operation ${id}'s signed payload is not what enrollment intends`)
+        assert.ok(!registered.has(intended.id), `Actor ${intended.id} is registered twice`)
+        registered.add(intended.id)
+      })
+    }
     const known = new Set([...[...this.receipts.keys()].map(id => storedId(this.intents.get(id))), ...this.baseline])
     const unexpected = operationEntries.filter(entry => !known.has(entry.key))
     assert.deepEqual(unexpected.map(entry => entry.key), [], 'Activity shows operations the harness never performed')

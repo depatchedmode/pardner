@@ -7,7 +7,8 @@ import { canonical, plain } from '../lib/workspace-schema.js'
 import { storageValue } from '../lib/workspace-values.js'
 import { eventually, execute, withHub } from '../support/signed-hub.js'
 import { everyOperationVia } from '../support/activity-fixture.js'
-import { OPERATION_TYPES } from '../lib/workspace-commands.js'
+import { ChangeEncoder } from '../support/change-encoder.js'
+import { OPERATION_TYPES, prepareOperation } from '../lib/workspace-commands.js'
 import { personIdFor } from '../lib/machine-key.js'
 import { actorId as actorFor } from '../lib/client-identity.js'
 
@@ -212,6 +213,159 @@ it('a field alternative another member’s change wrote in someone else’s name
       assert.deepEqual(Object.keys(listed), ['op-forged'], 'only the value Alice did not write is listed')
       assert.equal(listed['op-forged'].changedBy[0].change, forged)
       assert.ok(doc.tasks[taskId].conflicts.title.some(choice => choice.operationId === edited.operationId))
+    }
+  }, { hubOptions: { actors: [] } })
+})
+
+it('a comment entry whose change writes other words into the comment than the entry says is listed as not matching what it did, with both, under its own signer', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey)), bobActor = actorFor(personIdFor(project.keys[1].publicKey))
+    const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
+    await register({ id: owner, handle: 'owner', kind: 'human' })
+    await register({ id: member, handle: 'member-zero', kind: 'human' })
+    await register({ id: bobActor, handle: 'bob', kind: 'human' })
+    const alice = await replica(0)
+    const { result } = await alice.execute({ operationId: randomUUID(), actorId: member, type: 'task.create', payload: { title: 'Ship it' } })
+    const bob = await bare(1)
+    await eventually(() => bob.board.doc().tasks?.[result.taskId] && bob.board.doc().actors?.[bobActor], 'Bob never synced')
+    // Bob's client prepares his own comment exactly as the write path does, then writes other words into its text.
+    const prepared = prepareOperation(bob.board.doc(), { operationId: randomUUID(), actorId: bobActor, type: 'comment.add', payload: { taskId: result.taskId, text: 'Ready for review' } },
+      { replicaId: 'replica-bob', timestamp: new Date().toISOString() })
+    const commentId = prepared.event.result.commentId
+    bob.board.change(doc => {
+      prepared.change(doc)
+      doc.commentBodies[commentId] = storageValue({ ...plain(doc.commentBodies[commentId]), value: 'Approved for deployment' })
+    })
+    const [hash] = A.getHeads(bob.board.doc())
+    sign(bob, project.projectId, hash)
+    await settled([server.store, alice], [hash])
+    for (const runtime of [server.store, alice]) {
+      const { activity, attribution, comments } = runtime.getDoc()
+      const entry = activity.find(item => item.changes.some(change => change.hash === hash))
+      assert.equal(entry.kind, 'operation')
+      assert.equal(entry.event.payload.text, 'Ready for review', 'the entry shows what the event says')
+      assert.deepEqual(entry.changes.map(change => [change.state, change.machineId]), [['signed', project.keys[1].machineId]], 'under Bob’s own signer')
+      assert.deepEqual(Object.keys(entry.flags), ['mismatch'], 'it is Bob’s own operation; only its writes differ')
+      assert.equal(entry.review, true)
+      const [difference] = entry.changes[0].mismatch
+      assert.deepEqual([difference.issue, difference.map, difference.key, difference.claimed.value, difference.wrote.value], ['differs', 'commentBodies', commentId, 'Ready for review', 'Approved for deployment'])
+      assert.match(difference.text, /“Ready for review”.*“Approved for deployment”/)
+      assert.ok(attribution.review.some(item => item.change === hash && item.flags.mismatch), `${runtime.role} lists it for review`)
+      assert.equal(comments[commentId].content, 'Approved for deployment', 'the board shows what was written')
+      assert.ok(attribution.comments[commentId]?.changedBy?.some(writer => writer.change === hash), 'and says it was changed by someone other than its author')
+    }
+  }, { hubOptions: { actors: [] } })
+})
+
+it('a change whose time no date can show reaches every peer without stopping Activity or review: its time is unknown and it is flagged', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const alice = await replica(0)
+    const original = await comment(alice, 'An ordinary comment')
+    const bob = await bare(1)
+    await eventually(() => bob.board.doc().operations?.[original.operationId], 'Bob never synced')
+    const enc = new ChangeEncoder(bob.board.doc(), machineActor(bob.key), { time: 8640000000001 })
+    enc.value({ obj: enc.root('operations'), key: 'op-0-timed' }, original)
+    const { bytes, hash } = enc.encode()
+    bob.board.update(doc => A.applyChanges(doc, [bytes])[0])
+    sign(bob, project.projectId, hash)
+    await settled([server.store, alice], [hash])
+    for (const runtime of [server.store, alice]) {
+      const doc = runtime.getDoc()
+      const entry = doc.activity.find(item => item.changes.some(change => change.hash === hash))
+      assert.equal(entry.flags.badTime, true)
+      const listed = doc.attribution.review.find(item => item.change === hash)
+      assert.ok(listed, `${runtime.role} lists it for review`)
+      assert.equal(listed.at, null, 'with no time')
+      assert.ok(doc.activity.some(item => item.key === original.operationId && item.changes.every(change => change.hash !== hash)), 'and every other entry is shown')
+    }
+  })
+})
+
+it('a deletion of a comment that claims its author’s name is listed with its own signer and review state, so no note credits the author', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey))
+    const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
+    await register({ id: owner, handle: 'owner', kind: 'human' })
+    await register({ id: member, handle: 'member-zero', kind: 'human' })
+    const alice = await replica(0)
+    const { result } = await alice.execute({ operationId: randomUUID(), actorId: member, type: 'task.create', payload: { title: 'Discussed' } })
+    const added = await alice.execute({ operationId: randomUUID(), actorId: member, type: 'comment.add', payload: { taskId: result.taskId, text: 'Mine to delete' } })
+    const commentId = added.result.commentId
+    const bob = await bare(1)
+    await eventually(() => bob.board.doc().commentBodies?.[commentId], 'Bob never synced')
+    // Bob's client deletes Alice's comment with a comment.delete in her name, prepared as the write path would.
+    const prepared = prepareOperation(bob.board.doc(), { operationId: randomUUID(), actorId: member, type: 'comment.delete', payload: { commentId, expectedRevisions: [added.operationId] } },
+      { replicaId: 'replica-bob', timestamp: new Date().toISOString() })
+    bob.board.change(prepared.change)
+    const [hash] = A.getHeads(bob.board.doc())
+    sign(bob, project.projectId, hash)
+    await settled([server.store, alice], [hash])
+    for (const runtime of [server.store, alice]) {
+      const [deletion] = await eventually(() => runtime.getDoc().attribution.deletions?.[commentId], `${runtime.role} never listed the deletion`)
+      assert.deepEqual([deletion.change, deletion.type, deletion.actorId, deletion.state, deletion.machineId], [hash, 'comment.delete', member, 'signed', project.keys[1].machineId])
+      assert.equal(deletion.review, true, 'its entry needs review')
+      assert.equal(deletion.actorMismatch, true, 'its signer may not act as the Actor it names')
+    }
+  }, { hubOptions: { actors: [] } })
+})
+
+it('an edit inside a list of another Actor’s field value is counted against that value, so it says it was changed by someone else', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey))
+    const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
+    await register({ id: owner, handle: 'owner', kind: 'human' })
+    await register({ id: member, handle: 'member-zero', kind: 'human' })
+    const alice = await replica(0)
+    const created = await alice.execute({ operationId: randomUUID(), actorId: member, type: 'task.create', payload: { title: 'Tagged', tags: ['one'] } })
+    const taskId = created.result.taskId, key = `${taskId}:tags`
+    const bob = await bare(1)
+    await eventually(() => bob.board.doc().taskFields?.[key], 'Bob never synced')
+    // A concurrent tags value Bob prepares, so the field has two alternatives; then Alice edits the tags herself.
+    const fork = A.change(A.clone(bob.board.doc(), { actor: machineActor(bob.key) }), doc => {
+      doc.taskFields[key] = storageValue({ value: ['forged'], operationId: 'op-forged', actorId: member, replicaId: 'r', timestamp: new Date().toISOString() })
+    })
+    const revisions = alice.workspace.taskContext(taskId).revisions
+    const edited = await alice.execute({ operationId: randomUUID(), actorId: member, type: 'task.update', payload: { taskId, updates: { tags: ['one', 'two'] }, expectedRevisions: { tags: revisions.tags } } })
+    bob.board.update(doc => A.merge(doc, fork))
+    sign(bob, project.projectId, A.getHeads(fork)[0])
+    await eventually(() => Object.keys(A.getConflicts(bob.board.doc().taskFields, key) ?? {}).length === 2, 'Bob never saw both values')
+    // Bob's client then adds a tag inside Alice's own value.
+    bob.board.change(doc => {
+      const mine = Object.values(A.getConflicts(doc.taskFields, key)).find(value => String(value.operationId) === edited.operationId)
+      mine.value.push(new A.ImmutableString('injected'))
+    })
+    const [inside] = A.getHeads(bob.board.doc())
+    sign(bob, project.projectId, inside)
+    // Checked on the hub, which receives Bob's change directly. (Not on another replica: the hub has been seen to
+    // relay a bare peer's newest change to a replica only with its next change, on PR #223's code as well; see the PR.)
+    await settled([server.store], [inside])
+    for (const runtime of [server.store]) {
+      const listed = await eventually(() => runtime.getDoc().attribution.registers?.[`taskFields:${key}`]?.[edited.operationId], `${runtime.role} never counted the edit against Alice’s value`)
+      assert.ok(listed.changedBy.some(writer => writer.change === inside), 'the change that edited inside it is named')
+      assert.ok(runtime.getDoc().attribution.registers[`taskFields:${key}`]['op-forged'], 'and the value Alice did not write is listed too')
+    }
+  }, { hubOptions: { actors: [] } })
+})
+
+it('a field value without alternatives that another change wrote or wrote into is listed, so the edit form does not credit its recorded Actor', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey))
+    const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
+    await register({ id: owner, handle: 'owner', kind: 'human' })
+    await register({ id: member, handle: 'member-zero', kind: 'human' })
+    const alice = await replica(0)
+    const created = await alice.execute({ operationId: randomUUID(), actorId: member, type: 'task.create', payload: { title: 'Untouched', tags: ['one'] } })
+    const taskId = created.result.taskId, key = `${taskId}:tags`
+    const bob = await bare(1)
+    await eventually(() => bob.board.doc().taskFields?.[key], 'Bob never synced')
+    bob.board.change(doc => { doc.taskFields[key].value.push(new A.ImmutableString('injected')) })
+    const [inside] = A.getHeads(bob.board.doc())
+    sign(bob, project.projectId, inside)
+    await settled([server.store, alice], [inside])
+    for (const runtime of [server.store, alice]) {
+      const listed = await eventually(() => runtime.getDoc().attribution.registers?.[`taskFields:${key}`]?.[created.operationId], `${runtime.role} never listed the value`)
+      assert.ok(listed.changedBy.some(writer => writer.change === inside))
+      assert.equal(runtime.getDoc().attribution.registers[`taskFields:${taskId}:title`], undefined, 'a value only its own operation wrote is not listed')
     }
   }, { hubOptions: { actors: [] } })
 })

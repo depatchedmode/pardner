@@ -645,3 +645,33 @@ invariants and `ShutdownCompletes` hold; all ten witnesses are reachable. All
 eight mutations were caught, reported as drift and reproduced by the model; the
 working tree was unchanged. See `attributionReviewTwoActivity` in the evidence
 JSON.
+
+## Attribution review three mapping review (2026-11-11)
+
+Reading each change's content through Automerge and binding its writes to its entry
+changed `lib/workspace.js` and `lib/workspace-runtime.js`. Each drift was reviewed
+against its diff before the mapping was recorded:
+- `lib/workspace.js` (`ReplicaEdit`, `Handle`, `Respond`): only `snapshot()`
+  changed. It reads each task, goal, vein, comment and index on its own and lists
+  any it cannot read in `unreadable`, instead of failing the whole view. It is
+  read-only, called by `getDoc`; `execute`, `apply`, the queue and the local-save
+  barrier are unchanged, and no mapped anchor moved.
+- `lib/workspace-runtime.js` (`ReplicaEdit`, `SyncDown`, `ReplicaSendAck`,
+  `Handle`, `StoreCloseBegin`, `StoreCloseComplete`, `ReplicaReceive`,
+  `ReplicaAckCommit`): only the read-only current-state views changed
+  (`currentWriters` and the new `holderOf`, and the `REGISTER_MAPS` constant):
+  each deletion's writer carries its review state, a write into an object counts
+  against the value holding it, and the listed values come from the changes in
+  review or not yet signed. Nothing there writes, waits or runs in a listener;
+  `boardChange`, the acknowledgement path, the attribution start, the receive path
+  and `closeResources` are unchanged.
+- `lib/attribution.js`, which is not mapped, gained a background queue that saves
+  equivocation reports and proofs until a save succeeds (drained in `work()` and on
+  `close()`); `confirmOwn()`, the signature barrier `Handle` relies on, is
+  unchanged.
+
+No anchor, guard, effect, atomicity assumption, invariant, witness or mutation
+text changed. Fresh default check: 174614 states, 679456 transitions, all four
+invariants and `ShutdownCompletes` hold; all ten witnesses are reachable. All
+eight mutations were caught, reported as drift and reproduced by the model; the
+working tree was unchanged. See `attributionReviewThree` in the evidence JSON.

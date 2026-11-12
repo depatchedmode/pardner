@@ -148,15 +148,21 @@ and Reviewer's labels, each by the laptop it runs on.
 
 Within ten seconds of convergence (`attribution` in the timings), every replica
 must have derived and checked every board change, show every one in an Activity
-entry, and show every entry signed by a named machine with a person, with no flag
+entry, and show every entry signed by a named machine with a person, with no flag,
+no unusual write, no write that differs from its entry, a time a date can show,
 and nothing listed for review; and all three replicas must report the same stable
 attribution, keyed by board change hash. For each change it holds:
 - the Activity entry it is shown in: its kind, its key, the group of changes the
-  entry lists, and its flags;
+  entry lists, its flags with their values (for example which other changes wrote
+  the same key), and the changes that later altered its stored copy;
 - the content that change wrote: its operation event with that change's own
   replica and time, or the membership record, or what an unrecognised change wrote;
-- that change's verdict: its state, the signing machine, that machine's person, and
-  whether the event names an Actor that machine may not act as.
+- what else that change wrote: its unusual writes in detail, the entries it
+  replaced, each difference between its writes and the writes its event implies
+  (`lib/operation-writes.js`), and the Actors a board's creation registered;
+- that change's verdict: its state, the signing machine, that machine's person,
+  whether the event names an Actor that machine may not act as, and whether its time
+  can be shown.
 It also holds the changes listed for review.
 
 Left out of that comparison, because they name a replica or what it happened to
@@ -168,7 +174,12 @@ The runner then checks the shared view against what it knows performed each act:
   replica that acknowledged it, and was signed by that replica's machine, whose
   person is the Actor's person;
 - each baseline operation likewise, by Alice's desktop as Alice (the hub registers
-  every Actor it enrolls);
+  every Actor it enrolls), and with the payload enrollment intends for the Actor it
+  registers: `actor.register` with request ID `enroll-<Actor>`, and the Actor's ID,
+  handle, kind and display name as `lib/client-service.js` builds them from the
+  person and, for an agent, its harness; no Actor is registered twice;
+- on every replica, every operation entry matches its change's writes exactly,
+  and its change wrote nothing unusual;
 - no other operation entry exists;
 - the membership records shown are exactly the ones recorded above, each written by
   a signed change, valid, and signed by the expected machine.
@@ -177,9 +188,10 @@ Only then are snapshot hashes compared; they leave out each replica's own Activi
 and attribution views, so the board convergence check is exactly what it was. The
 report records the comparison's counts (changes, operations, records) and the hash
 of the shared attribution. What this does not establish: that the replicas' current
-board state is the one each signer intended beyond the effects the manifest checks,
-or anything about a member's client that writes unusual data, which the runtime and
-property tests cover instead.
+board state is the one each signer intended beyond the effects the manifest checks
+and the writes each operation's entry implies (with the exemptions
+`lib/operation-writes.js` lists), or anything about a member's client that writes
+unusual data, which the runtime and property tests cover instead.
 
 Each agent has a durable SQLite inbox and effect ledger outside the workspace.
 The runner kills workers before acknowledgement and after effects have been saved,

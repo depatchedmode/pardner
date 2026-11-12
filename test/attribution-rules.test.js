@@ -693,3 +693,83 @@ it('a reopened replica derives only the changes it has no stored entry for, and 
     assert.equal(after, before)
   })
 })
+
+it('a valid signature among concurrent values for its shard that arrive before its change is kept until its signer is known, and the change is signed when it arrives', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const late = await replica(0)
+    const bob = await bare(1)
+    await eventually(() => bob.board.doc().operations && bob.signatures.doc().v, 'Bob never synced')
+    // Bob's next change, made but not yet sent; its signature is sent first, as one of two concurrent shard maps.
+    const fork = A.change(A.clone(bob.board.doc(), { actor: machineActor(bob.key) }), doc => { doc.actors['early-actor'] = storageValue({ id: 'early-actor', handle: 'early', kind: 'agent', displayName: 'Early' }) })
+    const [hash] = A.getHeads(fork), shard = shardOf(hash)
+    const valid = signChange(bob.key, project.projectId, hash)
+    const base = bob.signatures.doc()
+    // An all-zero value sorts before the valid one: picking the lowest would keep it and drop the valid signature.
+    const junk = A.change(A.clone(base), doc => { doc[shard] = { [hash]: new Uint8Array(64) } })
+    const genuine = A.change(A.clone(base), doc => { doc[shard] = { [hash]: valid } })
+    bob.signatures.update(doc => A.merge(A.merge(doc, junk), genuine))
+    const signatures = server.store.workspace.signatures
+    await eventually(() => A.hasHeads(signatures.doc(), A.getHeads(bob.signatures.doc())), 'the signatures never arrived')
+    // The hub makes the shard one map again before the change arrives, keeping both candidates.
+    await eventually(() => !server.store.attribution.reader.conflicted(shard), 'the hub never resolved the shard')
+    assert.equal(storedSignatures(signatures.doc(), hash).length, 2, 'both candidates are kept while the signer cannot be established')
+    bob.board.update(doc => A.merge(doc, fork))
+    for (const runtime of [server.store, late]) await eventually(() => runtime.attribution.stateOf(hash).state === 'signed', `${runtime.role} never found the valid signature`)
+    // Once its signer is known the hub keeps the valid one only.
+    await eventually(() => storedSignatures(signatures.doc(), hash).length === 1, 'the hub never settled the candidates')
+    assert.ok(Buffer.from(storedSignatures(signatures.doc(), hash)[0]).equals(valid))
+  })
+})
+
+it('a change with many candidate signatures has them read once for each state of the signature document, however many times it is looked up, and at most 16 are kept while its signer is unknown', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, bare }) => {
+    const bob = await bare(1)
+    await eventually(() => bob.signatures.doc().v, 'Bob never synced')
+    const hash = 'ab'.repeat(32), shard = shardOf(hash)
+    const base = bob.signatures.doc()
+    let merged = A.clone(base)
+    for (let index = 0; index < 40; index++) merged = A.merge(merged, A.change(A.clone(base), doc => { doc[shard][hash] = new Uint8Array(randomBytes(64)) }))
+    bob.signatures.update(doc => A.merge(doc, merged))
+    const signatures = server.store.workspace.signatures
+    await eventually(() => A.hasHeads(signatures.doc(), A.getHeads(bob.signatures.doc())), 'the candidates never arrived')
+    const reader = server.store.attribution.reader
+    assert.equal(reader.values(hash).length, 40)
+    const backend = A.getBackend(signatures.doc())
+    const getAll = backend.getAll
+    let reads = 0
+    backend.getAll = function (obj, prop, ...rest) { if (prop === hash) reads++; return getAll.call(this, obj, prop, ...rest) }
+    try { for (let index = 0; index < 100; index++) reader.values(hash) } finally { backend.getAll = getAll }
+    assert.equal(reads, 0, `the candidates were read ${reads} more times for 100 lookups of one state`)
+    // Made one map again while no change of this hash is known: the candidates are kept, at most 16 of them.
+    server.store.attribution.writeEntries([], new Set([shard]))
+    assert.equal(storedSignatures(signatures.doc(), hash).length, 16)
+  })
+})
+
+it('an equivocation report and the signatures that prove it are kept once saving them succeeds, also when the first save failed', { timeout: 90000 }, async () => {
+  await withHub(async context => {
+    const { project, server } = context
+    // The first save of the report and of each proof fails; later ones succeed.
+    const cache = server.store.signatureCache
+    const failOnce = name => { const save = cache[name].bind(cache); let failed = false; cache[name] = (...args) => { if (!failed) { failed = true; throw new Error(`disk full (${name})`) } return save(...args) } }
+    failOnce('addEquivocation')
+    failOnce('addEquivocationProof')
+    const { first, second, hashes } = await equivocate(context)
+    await eventually(() => server.store.getDoc().attribution.summary.equivocations[0]?.proven, 'the equivocation was never proven')
+    // Kept: retried after the failed saves, without another refused message or signature arriving.
+    await eventually(() => cache.equivocations(10).length === 1 && hashes.every(hash => cache.equivocationProofs(cache.equivocations(10)[0][0]).has(hash)), 'the report or a proof was never saved after its first save failed')
+    second.signatures.change(d => { for (const hash of hashes) delete d[shardOf(hash)][hash] })
+    const signatures = server.store.workspace.signatures
+    await eventually(() => A.hasHeads(signatures.doc(), A.getHeads(second.signatures.doc())), 'the deletion never arrived')
+    await first.repo.shutdown(); await second.repo.shutdown()
+    const directory = server.store.directory
+    await server.store.close()
+    const reopened = hubRuntime(directory, { actors, project })
+    await reopened.init()
+    try {
+      const [kept] = reopened.getDoc().attribution.summary.equivocations
+      assert.ok(kept, 'the report was lost after its first save failed')
+      assert.equal(kept.proven, true, 'its proof was lost after its first save failed')
+    } finally { await reopened.close() }
+  })
+})

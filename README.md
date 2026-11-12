@@ -152,14 +152,40 @@ machine reports that another machine used its actor.
 
 **A signer line means: this machine signed exactly this content.** Activity is a
 log of the board's changes, as a git log is a log of commits. Each entry is derived
-from one change, from that change's own operations: the operation event it made (the
-key it wrote and the value as it built it), or the membership records it wrote. Its
-signer line is the verdict for that same change. No entry's content is taken from the
-board's current state or chosen through an ID written inside it. Every peer derives
-the same entry from the same change, whenever the change reached it, and keeps it in
-its signature cache under the change's hash, so a restart derives only new changes.
-The derivation runs in slices of at most 2,000 Automerge operations or 10 ms, after
-the board opens; a change not yet derived is counted as being checked and not shown.
+from one change. The change's decoded operations say only which keys of which of the
+board's top-level maps it wrote; every value shown is what Automerge itself reads at
+that key as of that change (with `getAll`, `keys` and `length` at the change's own
+head, which `test/automerge-history-reads.test.js` pins as faithful in Automerge
+3.2.3), so an entry holds exactly what that change put there and nothing later. A
+value is accepted only as plain JSON, and a key such as `__proto__` is ordinary
+data: a change holding several values at one key in its own state, text, a counter,
+bytes, a date, a number JSON cannot hold exactly, or nesting deeper than 32 is
+unrecognised, so an entry reads the same before and after storage and on every peer.
+Its signer line is the verdict for that same change. No entry's content is taken from
+the board's current state or chosen through an ID written inside it. Every peer
+derives the same entry from the same change, whenever the change reached it, and
+keeps it in its signature cache under the change's hash and derivation version (now
+2), so a restart derives only new changes. The derivation runs in slices of at most
+2,000 Automerge operations or 10 ms, checked after every change, after the board
+opens; a change not yet derived is counted as being checked and not shown, and a
+change that cannot be decoded or read is its own entry for review.
+
+**An operation's entry must match what its change did.** For each operation type,
+`lib/operation-writes.js` states the exact writes its event implies (which maps and
+keys, and the values or register contents), and the change's writes are compared
+with them. A missing write, an extra write or a different value flags the entry as
+not matching what its change did, in review, with each difference said in words:
+what the entry says and what the change wrote. Exempt, because the value depends on
+the board's state then and the event does not carry it: the `old` value of each
+field change (not written, not checked); `branchBaseIds` carried on a field register
+(shape only); the alternatives `task.link-vein` and a merged branch's status retire
+(shape only); which Actors a comment's @handles named (the mention records must
+match the Actors listed); which Actor a handle in a task field or handoff named; the
+fields `task.branch` copies (checked against the base it records, whose key is its
+digest) and `task.merge` copies (checked against what the entry lists); the goals a
+vein may leave; and a mention an edit does not write again. The board's creation may
+write only what a new board holds and the Actors it starts with, which its genesis
+entry lists.
 
 Activity names each entry's signer, the person and the machine; says "signature
 pending" while a signature may still be on its way; says "unattributed" and names
@@ -171,43 +197,54 @@ for review when the key it was written at is not the operation ID inside it, its
 operation ID is not the one its request ID and content give, another change wrote
 the same key (each such change is its own entry), its signer is not certified for
 the Actor it names, its change also deleted content, wrote at the board's top
-level, or wrote into what another change made, or a second change claims to create
-the board. A change that wrote neither one
-well-formed operation event nor a membership record, or that is too large to read
-(more than 20,000 operations or 8 MB), is listed for review as unrecognised, under
-its own signer, saying what it altered. Changes share one entry only when their
-content is proven equal: an Actor's own operation retried on two of its replicas
-(equal apart from each change's replica and time, each listed with its own signer),
-or one membership record written back. An entry replaced or deleted later stays
-shown as its change wrote it. Inside an entry, the time, words, field values and IDs
-are the signed ones, and sorting, grouping and filtering use them; Actor names and
-task, goal and vein titles are looked up now and marked as current. A comment deleted
-later keeps its signed words and says who marked it deleted. A membership record's
-signer line is the record's own signature, which covers exactly the record shown.
+level, or wrote into what another change made, its writes do not match its entry, its
+change's time is no time a date can show (shown as unknown), or a second change
+claims to create the board. A change that wrote neither one well-formed operation
+event nor a membership record, or that is too large to read (more than 20,000
+operations or 8 MB), is listed for review as unrecognised, under its own signer,
+saying what it altered. Changes share one entry only when their content is proven
+equal: an Actor's own operation retried on two of its replicas (equal apart from
+each change's replica and time, each listed with its own signer), or one membership
+record written back. An entry replaced or deleted later stays shown as its change
+wrote it. Inside an entry, the time, words, field values and IDs are the signed
+ones, and sorting, grouping and filtering use them; Actor names and task, goal and
+vein titles are looked up now and marked as current. A comment deleted later keeps
+its signed words; its note names the Actor who deleted it, with the signing machine,
+only when the deleting change is that Actor's own signed, unflagged
+`comment.delete`, and otherwise says a change that needs review (naming its signer),
+an unsigned change (naming who relayed it) or a change still being checked marked it
+deleted. A membership record's signer line is the record's own signature, which
+covers exactly the record shown; the time beside it is when a machine wrote the
+record to the board, which the record's signer did not sign, and says so. One
+change's data never stops a view: an entry, a row, a CLI item or a record on the
+board that cannot be read or described fails on its own and says so.
 
 Views of the board as it is now (the board itself, a task's fields, a comment's
 current text, the alternatives of a conflicted field or comment) carry no signer
 line. Where one names an author, it is the Actor the board records, and it says the
 value was changed by someone other than that Actor when the change that wrote it, or
-wrote into it, is not that Actor's own signed, unflagged operation; that change then
-has its own Activity entry under its own signer. The edit form's "saved a newer …"
-notice names the Actor of the newest History entry for the field, marked unconfirmed
-when that entry needs review. The task context's
+wrote into it (inside a list of the value included), is not that Actor's own signed,
+unflagged operation; that change then has its own Activity entry under its own
+signer. The edit form's "saved a newer …" notice credits the operation that the
+field's current value names, confirmed only when that operation's own entry is
+signed and unflagged, no other change wrote the value or into it, and nothing is
+still being read; otherwise it says unconfirmed. A board record whose stored data
+cannot be read is listed, and the board says how many. The task context's
 `history` (`pardner show`, and what agents read) lists the board's current operation
 events and is not attributed. Browser Activity and task History, `pardner activity`,
 `timeline`, `trace task` and `diff`, and `pardner client review` all read the same
-entries; the standalone service checks no signatures, and its entries say so. The
-board announces changes that need review, with a filter for them.
+entries, and every CLI item carries its entry's flags, its review state and each
+signer as data; the standalone service checks no signatures, and its entries say so.
+The board announces changes that need review, with a filter for them.
 
-What a signer line does not cover: whether a change's other writes (task fields,
-comments, links) match what its event describes, which is checked only for shape;
-the names and titles shown beside it, which are current; and whether the act was
-allowed.
+What a signer line does not cover: the exempt values above; side effects of a
+membership record change beyond its records (flagged, not described); the names and
+titles shown beside it, which are current; and whether the act was allowed.
 
 Two different changes signed by one machine with the same actor and sequence number
 are reported as equivocation, naming the machine; the report is kept across restarts
-with the verified signatures that prove it, and is shown as proven as soon as the
-second signature arrives. Automerge refuses the second change, so board changes from
+with the verified signatures that prove it (each saved again until a save succeeds),
+and is shown as proven as soon as the second signature arrives. Automerge refuses the second change, so board changes from
 the peer that carries it stop applying until that machine is removed and its copy
 rebuilt. The hub's persistence acknowledgement covers the heads of both the board and
 the signature document. A replica asks for it only once every signature it made is
@@ -217,10 +254,16 @@ saved in the signature cache.
 
 Everything read from the signature document is checked for shape: only map shards,
 change-hash keys and 64-byte values. Every concurrent shard map and value is read,
-so no member can hide a valid signature behind others; the values at a shard key are
-read once per change to that key, not on every lookup, and the hub makes a shard
-that holds more than one value into one map holding every entry. A malformed shard
-is made again as a map with its entries kept. A failed write-back is retried. A
+so no member can hide a valid signature behind others; a shard key's maps are read
+once per change to that key, a change's candidate values once for each state of the
+document, de-duplicated by content in one pass, and the hub makes a shard that holds
+more than one value into one map holding every entry. While a change's signer cannot
+be established (its change has not arrived, or its actor names no known machine),
+every distinct candidate for it is kept, as a list at its key, up to 16; once the
+signer is known the hub keeps the one that verifies. Past 16 candidates for one
+change, a genuine signature can be dropped from the shared document, and its writer
+puts it back when it sees its entry missing. A malformed shard is made again as a map
+with its entries kept. A failed write-back is retried. A
 failure in a background attribution task is contained, logged and shown in status
 (`attribution.failures`), and never stops the service. A member asks the hub about
 every change still waiting for a verdict in turn, 500 at a time.

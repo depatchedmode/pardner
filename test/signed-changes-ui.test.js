@@ -30,6 +30,9 @@ for (const engine of [chromium, webkit]) it(`names who made each change, lists m
       const admission = row(page, 'Alice let Bob in as a member')
       await admission.waitFor({ timeout: 30000 })
       await admission.locator('.event-signer').getByText('Signed by Alice · this computer').waitFor()
+      // The record's signature covers the record, not the time shown: that is when a machine wrote it to the board.
+      await admission.locator('time').getByText(/^Written to the board /).waitFor()
+      assert.match(await admission.locator('time').getAttribute('title'), /when a machine wrote this record to the board\. The record’s signer didn’t sign this time\./)
       await row(page, 'Alice started the project').waitFor()
       await page.getByRole('combobox', { name: 'Show' }).selectOption('changes')
       assert.equal(await page.locator('.review-notice').count(), 0, 'nothing to review yet')
@@ -100,9 +103,10 @@ for (const engine of [chromium, webkit]) it(`later changes by another member nev
         const page = await newPage()
         await alice.open(page)
         await page.getByRole('button', { name: 'Activity', exact: true }).click()
-        // The deleted comment's entry keeps Alice's words and her signed time, and says it was deleted later.
+        // The deleted comment's entry keeps Alice's words and her signed time, and says it was deleted later, by a
+        // change that needs review, naming that change's signer, never as Alice's own deletion.
         const deleted = row(page, 'Alice’s deleted words')
-        await deleted.getByText('This comment was later deleted by a change listed for review.').waitFor({ timeout: 30000 })
+        await deleted.getByText('A change that needs review, signed by Bob · Bob’s laptop, later marked this comment deleted. See Activity.').waitFor({ timeout: 30000 })
         assert.equal(await deleted.locator('time').getAttribute('datetime'), new Date(signedAt).toISOString(), 'the time shown is the signed one')
         assert.match(await deleted.locator('.event-signer').textContent(), /^Signed by Alice · this computer/)
         // The task's title is looked up now, and marked so.

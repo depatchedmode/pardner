@@ -159,10 +159,15 @@ own Actors acted.
 
 **What a signer line covers.** A signer line means that machine signed exactly
 the content shown. Activity is a log of the board's changes: each entry is derived
-from one change, from that change's own operations (the operation event it made,
-with the key it wrote, or the membership records it wrote), and its signer line is
-the verdict for that same change. Nothing shown under a signer is read from the
-board's current state. Every peer derives the same entry from the same change, and
+from one change (the operation event it made, with the key it wrote, or the
+membership records it wrote), its content is what Automerge itself reads at that
+key as of that change, accepted only as plain JSON, and its signer line is the
+verdict for that same change. Nothing shown under a signer is read from the board's
+current state. An operation's entry must also match what its change did: the
+change's writes are compared with the exact writes its event implies, and any
+difference is flagged, listed for review and said in words, with what the entry
+says and what the change wrote (the few values that depend on the board's state
+then, such as a field's old value, are exempt; README lists them). Every peer derives the same entry from the same change, and
 keeps it in `signatures.sqlite` under the change's hash, so a restart derives only
 the changes that are new. A change that wrote neither one well-formed operation
 event nor a membership record is listed for review as unrecognised, under its own
@@ -178,14 +183,21 @@ line is the record's own signature.
 **What has no signer line.** The board, a task's fields, a comment's current text
 and the alternatives of a conflicted field or comment are the board as it is now.
 Each names the Actor the board records, and says it was changed by someone other
-than that Actor when the change that wrote it, or wrote into it, is not that Actor's
-own signed, unflagged operation. A comment
-deleted later keeps its signed words in Activity, with who marked it deleted.
+than that Actor when the change that wrote it, or wrote into it (inside a list of
+the value included), is not that Actor's own signed, unflagged operation. The edit
+form's "saved a newer …" credits the operation the field's current value names, and
+says unconfirmed unless that operation's own entry is signed and unflagged. A comment
+deleted later keeps its signed words in Activity; its note names who deleted it only
+when the deleting change is that Actor's own signed, unflagged `comment.delete`, and
+otherwise names the change's signer and points to Activity.
 
 **Malformed data.** What a peer reads from the signature document is checked for
 shape; every concurrent shard map and value is read, so no member can hide a valid
 signature behind others, and the hub makes a shard that holds more than one value
-into one map holding every entry. A shard that is not a map is made again as one
+into one map holding every entry. Candidates for a change whose signer cannot be
+established yet are all kept, up to 16, until it can. One change's data never stops
+a view: an entry, row, CLI item or board record that cannot be read fails on its own
+and says so, and a change time no date can show is shown as unknown and flagged. A shard that is not a map is made again as one
 with its entries kept. A failure in a background attribution task is contained,
 logged and shown in the project's status as `attribution.failures`; it never stops
 the project runtime.
@@ -195,7 +207,9 @@ and so do `pardner activity`, `timeline`, `trace task` and `diff`, which print t
 same entries.
 Membership records appear in Activity under **People and machines**: admissions,
 pairings, removals, role changes, agent names and profiles, each with the machine
-that signed it and the time it reached the board. When changes need review, the
+that signed it and the time a machine wrote it to the board (labelled so: the
+record's signer did not sign that time). Every CLI item carries its entry's flags,
+its review state and each signer as data. When changes need review, the
 board shows a notice with **Review changes**, which opens Activity's **Needs
 review** filter. `pardner client review --project ID` lists the same changes as
 text, or as data with `--json`.
@@ -205,8 +219,8 @@ both be in a document: Automerge refuses the second, and automerge-repo then
 applies nothing from any message that carries it. Pardner reports such a refusal
 with both change hashes and the machine the actor names. When both changes carry
 valid signatures, that machine signed both, and the board and `client review` say
-so. The report is kept in the signature cache with the signatures that prove it,
-so it survives a restart and the entries' deletion from the signature document. Board
+so. The report is kept in the signature cache with the signatures that prove it
+(a failed save is retried until it succeeds), so it survives a restart and the entries' deletion from the signature document. Board
 changes from the peer that carries the conflicting change stop applying here until
 that machine is removed and its copy rebuilt; every other peer keeps syncing.
 

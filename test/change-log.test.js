@@ -32,6 +32,7 @@ test('every ordinary operation type and every record flow is one entry per chang
     assert.equal(entry.key, event.operationId)
     assert.equal(canonical(entry.event), canonical(event), `${event.type} is shown as written`)
     assert.equal(entry.unusual, undefined, `${event.type} wrote nothing unusual`)
+    assert.equal(entry.mismatch, undefined, `${event.type} wrote exactly what its event implies: ${JSON.stringify(entry.mismatch)}`)
   }
   const [creation] = A.getChangesMetaSince(doc, [])
   assert.equal(entries.get(creation.hash).kind, 'creation')
@@ -64,7 +65,8 @@ test('a copy of another person’s event under an earlier key, with different te
   assert.equal(alices.review, false)
   const bobs = shown.find(entry => entry.changes.some(change => change.hash === forged))
   assert.deepEqual(bobs.changes.map(change => [change.hash, change.machineId]), [[forged, MACHINES[BOB]]])
-  assert.deepEqual(Object.keys(bobs.flags).sort(), ['actorMismatch', 'idMismatch', 'keyMismatch'])
+  // It wrote the event and none of the writes the event implies: its entry does not match what it did.
+  assert.deepEqual(Object.keys(bobs.flags).sort(), ['actorMismatch', 'idMismatch', 'keyMismatch', 'mismatch'])
   assert.equal(bobs.review, true)
 })
 
@@ -170,24 +172,25 @@ test('a change too large to read is listed for review without being decoded', ()
   assert.equal(activityView({ entries: log.entries.values(), stateOf: signedByActor(big) }).find(item => item.id === hash).review, true)
 })
 
-test('an event is rebuilt from its change exactly as Automerge reads the object as of that change', () => {
+test('an event is read from its change exactly as Automerge reads the object as of that change; text inside it is not plain data', () => {
   const { doc: start } = board()
   const created = run(start, { type: 'task.create', payload: { title: 'Lists and text', tags: ['a', 'b', 'c'] } })
-  // A change that builds an event with nested lists, text, edits and deletions inside its own objects.
+  // A change that builds an event with nested lists, edits and deletions inside its own objects.
   const shaped = A.change(A.clone(created.doc, { actor: bob(6) }), draft => {
-    draft.operations['op-shaped'] = { ...created.event, payload: { title: 'Shaped', notes: 'some text', list: [1, 2, 3, { deep: [true, null] }] } }
+    draft.operations['op-shaped'] = storageValue({ ...created.event, payload: { title: 'Shaped', list: [1, 2, 3, { deep: [true, null] }] } })
     const payload = draft.operations['op-shaped'].payload
     payload.list.splice(1, 1)
-    payload.list.insertAt(0, 'zero')
-    payload.list[3].deep.push('more')
-    A.splice(draft, ['operations', 'op-shaped', 'payload', 'notes'], 0, 4, 'SOME')
+    payload.list.insertAt(0, new A.ImmutableString('zero'))
+    payload.list[3].deep.push(new A.ImmutableString('more'))
     delete payload.title
-    payload.title = 'Shaped again'
+    payload.title = new A.ImmutableString('Shaped again')
   })
   const [hash] = A.getHeads(shaped)
   const entry = deriveAll(shaped).get(hash)
   const objId = A.getObjectId(shaped.operations['op-shaped'])
   assert.equal(canonical(entry.event), canonical(plain(A.getBackend(shaped).materialize(objId, [hash]))))
+  const texted = A.change(A.clone(shaped, { actor: bob(6) }), draft => { draft.operations['op-text'] = { ...plain(draft.operations['op-shaped']), payload: { title: 'collaborative text' } } })
+  assert.equal(deriveAll(texted).get(A.getHeads(texted)[0]).kind, 'unrecognised', 'text is an Automerge type, not a plain string')
 })
 
 test('derivation is resumable: entries are stored by change hash, and a log loaded from them derives only new changes', () => {

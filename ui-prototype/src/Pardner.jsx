@@ -15,7 +15,7 @@ import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js
 import { quickStatusEditable } from './task-status.js'
 import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
-import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, needsReview, reviewNotice, signerLine, taskRows } from './attribution.js'
+import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, needsReview, newerAuthors, reviewNotice, signerLine, taskRows } from './attribution.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const StatusOptions = ({ values = STATUSES }) => values.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
@@ -182,7 +182,8 @@ function EventRow({ event: row, lookups, within, onTask, onVein, onGoal, formatT
     : describeEvent(entry.event, lookups, { within })
   const signer = signerLine(attribution, entry)
   const when = new Date(row.timestamp || 0)
-  const timed = Boolean(row.timestamp)
+  // A time a date cannot show is unknown, never a failure of the row.
+  const timed = Boolean(row.timestamp) && Number.isFinite(when.getTime())
   const handlers = { task: onTask, vein: onVein, goal: onGoal }
   return (
     <article className="event" {...articleProps}>
@@ -193,7 +194,9 @@ function EventRow({ event: row, lookups, within, onTask, onVein, onGoal, formatT
       {description.detail && <p className="event-detail">{renderParts(description.detailParts ?? [description.detail])}</p>}
       {description.excerpt && <p className="event-detail">{description.excerpt}</p>}
       {signer && <p className="event-signer" data-tone={signer.tone}>{signer.text}</p>}
-      {timed ? <time dateTime={when.toISOString()} title={when.toLocaleString()}>{formatTime(when)}</time> : <time className="muted">Time unknown</time>}
+      {/* A record's own signature covers the record, not this time: it is when a machine wrote it to the board. */}
+      {timed ? <time dateTime={when.toISOString()} title={entry.kind === 'record' ? `${when.toLocaleString()}: when a machine wrote this record to the board. The record’s signer didn’t sign this time.` : when.toLocaleString()}>
+        {entry.kind === 'record' ? `Written to the board ${formatTime(when)}` : formatTime(when)}</time> : <time className="muted">Time unknown</time>}
     </article>
   )
 }
@@ -546,6 +549,8 @@ export function Workspace({ config, reloadConfiguration, session }) {
     activity: doc.activity ?? [] }
   // Changes whose signer couldn't be confirmed, or that came from a removed machine, are announced on every view.
   const review = reviewNotice(doc.attribution)
+  // Records the board could not read: each is listed instead of stopping the whole board (lib/workspace.js snapshot).
+  const unreadableCount = Array.isArray(doc.unreadable) ? doc.unreadable.length : 0
   const openVein = (_element, veinId) => {
     focusAfterView.current = () => viewNav.current?.querySelector('[aria-pressed="true"]')?.focus()
     showVein(veinId)
@@ -602,6 +607,9 @@ export function Workspace({ config, reloadConfiguration, session }) {
       )}
       {connectionError && <div className="notice" role="status"><p>{connectionError.message}</p>
         <button onClick={retryConnection}>Retry connection</button>
+      </div>}
+      {unreadableCount > 0 && <div className="notice warning" role="status">
+        <p>{unreadableCount === 1 ? 'One record' : `${unreadableCount} records`} on this board can’t be read and {unreadableCount === 1 ? 'isn’t' : 'aren’t'} shown. Activity lists the changes that wrote {unreadableCount === 1 ? 'it' : 'them'}.</p>
       </div>}
       {review && <div className="notice warning review-notice" role="status">
         {review.map(line => <p key={line}>{line}</p>)}
@@ -1296,16 +1304,7 @@ function TaskDetail({
   const newerFields = draft
     ? Object.keys(draft.fields).filter(field => JSON.stringify(revisions[field]) !== JSON.stringify(draft.revisions[field]))
     : []
-  // Credit each newer field to the Actor recorded in the newest History entry that changed it, from that entry's
-  // signed content; when that entry needs review, the name is marked unconfirmed.
-  const newerGroups = []
-  for (const field of newerFields) {
-    const last = historyRows.find(row => (row.changes ?? []).some(change => change?.field === field))
-    const by = last?.actorId ?? null, unconfirmed = Boolean(last?.entry.review)
-    const group = newerGroups.find(candidate => candidate.by === by && candidate.unconfirmed === unconfirmed)
-    if (group) group.fields.push(field)
-    else newerGroups.push({ by, unconfirmed, fields: [field] })
-  }
+  const newerGroups = newerAuthors({ fields: newerFields, taskId, revisions, historyRows, attribution: lookups.attribution, activity: lookups.activity })
   const listFields = fields => fields.length < 2 ? fields.join('') : `${fields.slice(0, -1).join(', ')} and ${fields.at(-1)}`
   const newerNotice = newerGroups.map(({ by, unconfirmed, fields }) =>
     `${by ? `${labelActor(actors[by])}${unconfirmed ? ' (unconfirmed, see Activity)' : ''}` : 'Someone'} saved ${fields.length === 1 && fields[0] === 'tags' ? '' : 'a '}newer ${listFields(fields)}`).join('; ')
