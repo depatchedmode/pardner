@@ -185,5 +185,6 @@ it('a top-level map written concurrently with another is read as the one Automer
   const snapshot = new Workspace({ handle: { doc: () => doc }, replicaId: 'replica-test', workspaceId: plain(doc.workspaceId) }).snapshot()
   assert.deepEqual(Object.keys(snapshot.tasks).sort(), Object.keys(doc.tasks).sort())
   assert.ok(Object.hasOwn(snapshot.tasks, taskId), 'the tasks were read as empty')
-  assert.ok(snapshot.unreadable.some(item => item.kind === 'root' && item.id === 'tasks' && /2 values written concurrently/.test(item.reason)), 'the concurrent values are not listed')
+  assert.ok(snapshot.unreadable.some(item => item.kind === 'root' && item.id === 'tasks' && item.concurrent === true && /2 values written concurrently/.test(item.reason)),
+    'the concurrent values are not listed as such')
 })

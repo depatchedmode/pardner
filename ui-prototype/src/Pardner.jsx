@@ -555,7 +555,10 @@ export function Workspace({ config, reloadConfiguration, session }) {
   // Records the board could not read: each is listed instead of stopping the whole board (lib/workspace.js snapshot).
   const unreadableItems = Array.isArray(doc.unreadable) ? doc.unreadable : []
   // A top-level part of the board a change rewrote (its tasks, say) is named, and so is each other record and field.
-  const unreadableParts = [...new Set(unreadableItems.filter(item => item?.kind === 'root' && typeof item.id === 'string').map(item => item.id))]
+  const rootIds = concurrent => [...new Set(unreadableItems.filter(item => item?.kind === 'root' && typeof item.id === 'string' && Boolean(item.concurrent) === concurrent).map(item => item.id))]
+  const unreadableParts = rootIds(false)
+  // A part holding values written concurrently is shown as the one Automerge picks.
+  const concurrentParts = rootIds(true).filter(id => !unreadableParts.includes(id))
   const unreadableRecords = unreadableLines(unreadableItems, { tasks: doc.tasks, goals, veins })
   const openVein = (_element, veinId) => {
     focusAfterView.current = () => viewNav.current?.querySelector('[aria-pressed="true"]')?.focus()
@@ -614,8 +617,9 @@ export function Workspace({ config, reloadConfiguration, session }) {
       {connectionError && <div className="notice" role="status"><p>{connectionError.message}</p>
         <button onClick={retryConnection}>Retry connection</button>
       </div>}
-      {(unreadableRecords.length > 0 || unreadableParts.length > 0) && <div className="notice warning unreadable-notice" role="status">
+      {(unreadableRecords.length > 0 || unreadableParts.length > 0 || concurrentParts.length > 0) && <div className="notice warning unreadable-notice" role="status">
         {unreadableParts.length > 0 && <p>Part of this board can’t be read, so what it holds isn’t shown: {unreadableParts.join(', ')}. Activity lists the changes that wrote it.</p>}
+        {concurrentParts.length > 0 && <p>Part of this board was written twice at once, and only one version of it is shown: {concurrentParts.join(', ')}. Activity lists the changes that wrote it.</p>}
         {unreadableRecords.length > 0 && <p>Some records on this board can’t be read. {unreadableRecords.join(' ')} Activity lists every change and who signed it.</p>}
       </div>}
       {review && <div className="notice warning review-notice" role="status">
