@@ -806,3 +806,60 @@ it('a signature whose first write into the signature document failed is written 
     assert.equal(attribution.unwritten, 0)
   })
 })
+
+it('past 16 candidates for a change whose signer cannot be established, a signature that could be genuine is kept before any that cannot', async () => {
+  const { keptCandidates, MAX_CANDIDATES } = await import('../lib/change-signatures.js')
+  const projectId = 'cd'.repeat(32), hash = 'ef'.repeat(32)
+  const [bob, carol, mallory] = [generateMachineKey(), generateMachineKey(), generateMachineKey()]
+  const genuine = new Uint8Array(signChange(bob, projectId, hash))
+  // Values that sort before the genuine one: a lowest-first bound would keep these and drop it.
+  const junk = Array.from({ length: 40 }, (_, index) => { const value = new Uint8Array(64); value[0] = 0; value[1] = index; return value })
+  const sorted = list => [...list].sort(Buffer.compare)
+  const verify = (publicKey, value) => verifyChange(publicKey, projectId, hash, value)
+  // The change has not arrived: any known machine may be its signer.
+  const kept = keptCandidates({ values: sorted([...junk, genuine]), held: null, possible: [bob.publicKey, carol.publicKey], others: [], verify })
+  assert.equal(kept.length, MAX_CANDIDATES)
+  assert.ok(Buffer.from(kept[0]).equals(genuine), 'the value that verifies under a possible signer is kept first')
+  // A possible signer flooding valid signatures of its own (a signer can make many with nonces of its choosing; Node's
+  // Ed25519 makes one, so here a value starting 0x01 stands for one) keeps one place: another's genuine one is kept.
+  const flood = Array.from({ length: 20 }, (_, index) => { const value = new Uint8Array(64); value[0] = 1; value[1] = index; return value })
+  const floodVerify = (publicKey, value) => (publicKey === mallory.publicKey ? value[0] === 1 : verify(publicKey, value))
+  const crowded = keptCandidates({ values: sorted([...flood, genuine]), held: null, possible: [mallory.publicKey, bob.publicKey], others: [], verify: floodVerify })
+  assert.equal(crowded.length, MAX_CANDIDATES)
+  assert.ok(crowded.some(value => Buffer.from(value).equals(genuine)), 'the genuine signature is dropped by one signer’s many')
+  // The change has arrived and names a machine not known yet: a value a known machine signed cannot be its signature,
+  // so it goes before any value no known key verifies, which may be the unknown machine's.
+  const unknown = junk.slice(0, 20)
+  const settled = keptCandidates({ values: sorted([...unknown, genuine]), held: null, possible: [], others: [bob.publicKey], verify })
+  assert.equal(settled.length, MAX_CANDIDATES)
+  assert.ok(!settled.some(value => Buffer.from(value).equals(genuine)), 'a signature by a machine that cannot be the signer is kept before one that may be')
+  // The value this peer cached is kept first whatever else is there.
+  assert.ok(Buffer.from(keptCandidates({ values: sorted([...junk, genuine]), held: junk[39], possible: [bob.publicKey], others: [], verify })[0]).equals(junk[39]))
+})
+
+it('past 16 candidate signatures arriving before their change, the valid one is kept when the hub settles the shard, and the change is signed when it arrives', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, bare }) => {
+    const bob = await bare(1)
+    await eventually(() => bob.board.doc().operations && bob.signatures.doc().v, 'Bob never synced')
+    const fork = A.change(A.clone(bob.board.doc(), { actor: machineActor(bob.key) }), doc => { doc.actors['late-actor'] = storageValue({ id: 'late-actor', handle: 'late', kind: 'agent', displayName: 'Late' }) })
+    const [hash] = A.getHeads(fork), shard = shardOf(hash)
+    const valid = signChange(bob.key, project.projectId, hash)
+    const base = bob.signatures.doc()
+    let merged = A.clone(base)
+    // Forty concurrent values that sort before the valid one, then the valid one.
+    for (let index = 0; index < 40; index++) {
+      const value = new Uint8Array(64); value[1] = index
+      merged = A.merge(merged, A.change(A.clone(base), doc => { doc[shard][hash] = value }))
+    }
+    merged = A.merge(merged, A.change(A.clone(base), doc => { doc[shard][hash] = valid }))
+    bob.signatures.update(doc => A.merge(doc, merged))
+    const signatures = server.store.workspace.signatures
+    await eventually(() => A.hasHeads(signatures.doc(), A.getHeads(bob.signatures.doc())), 'the candidates never arrived')
+    server.store.attribution.writeEntries([], new Set([shard]))
+    const kept = storedSignatures(signatures.doc(), hash)
+    assert.equal(kept.length, 16)
+    assert.ok(kept.some(value => Buffer.from(value).equals(valid)), 'the valid signature was dropped')
+    bob.board.update(doc => A.merge(doc, fork))
+    await eventually(() => server.store.attribution.stateOf(hash).state === 'signed', 'the hub never found the valid signature')
+  })
+})
