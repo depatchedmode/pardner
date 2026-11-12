@@ -68,11 +68,28 @@ The board's **Invite** menu offers:
   and devices of the same human/harness share one Actor.
 - **My device:** another of the inviting human's machines links to that identity.
 
+Human and My device invitations are used by a client on another computer, so they
+need a route other computers can reach. A client started without `--public-url`
+refuses to issue them with `PUBLIC_URL_REQUIRED`: the message names the loopback
+address the invitation would have carried and says to restart the client with
+`pardner client serve --public-url <https origin>`. On a joined computer the
+invitation is issued by the hub, so the message asks for the hub's client to be
+restarted. Agent invitations stay available without `--public-url`, for an agent
+on the same computer. An explicit `--public-url` is always honoured, including a
+loopback relay or test gate (see
+[Connectivity and recovery boundaries](#connectivity-and-recovery-boundaries)).
+
 The default dialog shows purpose, project, expiry and state. **Copy invite** copies
 a short setup prompt and private versioned enrollment data. The credential stays
 out of the page until deliberately revealed. The receiving agent uses a trusted
 onboarding-preview checkout; this flow does not assume a published npm release.
 The Join form accepts either the complete prompt or the raw invitation.
+
+During a hub outage the dialog's invitation list says it couldn't load and offers
+**Retry**; it raises no alert until the person acts. Creating an invitation then
+fails under the heading "The project's hub is unreachable", which explains that a
+joined project's invitations are issued by its hub, the computer of the person who
+started it.
 
 For an agent-managed join, save the invitation in a private file and use a stable
 operation ID:
@@ -96,6 +113,15 @@ invitation usable by its intended recipient. A revocation that lands while an
 enrollment is still registering its Actors wins; the recipient receives
 `REVOKED` and no admission activates.
 
+If no connection can be made to an invitation's loopback address, joining fails
+with `INVITATION_UNREACHABLE`. The error names the address and says it belongs to
+the computer that created the invitation, which is the only place it works; ask
+for a new invitation from a client started with `--public-url`. Retrying cannot
+help from another computer, so the error does not suggest it. A hub that answers
+as down (a gateway error page or a 5xx response), or an HTTPS address that does not
+answer, is a temporary outage: joining fails with `HUB_UNAVAILABLE`, and retrying
+the same operation ID later is safe.
+
 Revoking a member or device ends that admission permanently. The same identity
 cannot be re-admitted by a new Human invitation, and a revoked device is not
 re-linked by a later My device invitation into the same local project entry.
@@ -116,7 +142,8 @@ agent grant to read and edit the board.
 
 The CLI can also issue invitations through `client invite --project ID --purpose
 human|agent|device --output-file FILE --operation-id ID`. It writes the private
-artifact to the chosen file and prints only the summary and file path.
+artifact to the chosen file and prints only the summary and file path. The same
+`PUBLIC_URL_REQUIRED` refusal applies, and no file is written.
 
 ## Actors and presence
 
@@ -148,7 +175,8 @@ configured reachable HTTPS gateway, supplied with `client serve --public-url`.
 Plain HTTP is accepted there only for a loopback origin (`http://127.0.0.1:<port>`
 or `http://localhost:<port>`), such as a relay on the same machine or the
 acceptance network gate; any other origin must be HTTPS. An invitation
-containing a loopback address works only on the originating machine. The option does not provision a relay, publish the client or establish
+containing a loopback address works only on the originating machine, which is
+why Human and My device invitations need `--public-url`. The option does not provision a relay, publish the client or establish
 network reachability. Keep the browser/operator surface private and route only
 the intended enrollment and authenticated replica endpoints.
 

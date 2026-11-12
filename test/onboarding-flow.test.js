@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { performance } from 'node:perf_hooks'
 import { startClient } from '../lib/client-service.js'
+import { sameComputerRoute } from '../support/client-workspace.js'
 
 const base = '/pardner/client/v1'
 
@@ -48,7 +49,7 @@ it('keeps browser identity, project isolation and saved work through an offline 
   const aliceDirectory = join(root, 'alice'), bobDirectory = join(root, 'bob')
   let alice, bob
   try {
-    alice = await startClient({ directory: aliceDirectory, port: 0, deviceName: 'Alice laptop',
+    alice = await startClient({ directory: aliceDirectory, ...await sameComputerRoute(), deviceName: 'Alice laptop',
       setupAgent: { harnessId: 'openai-codex', name: 'Alpha', managedBy: 'T3' } })
     bob = await startClient({ directory: bobDirectory, port: 0, deviceName: 'Bob laptop',
       setupAgent: { harnessId: 'anthropic-claude-code', name: 'Gamma', managedBy: 'T3' } })

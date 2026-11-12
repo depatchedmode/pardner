@@ -7,11 +7,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { startClient } from '../lib/client-service.js'
+import { sameComputerRoute } from '../support/client-workspace.js'
 
 const exec = promisify(execFile)
 const base = '/pardner/client/v1'
 async function participant(directory, name, options = {}) {
-  const client = await startClient({ directory, port: 0, deviceName: name, ...options })
+  const client = await startClient({ directory, ...(options.port === undefined ? await sameComputerRoute() : {}), deviceName: name, ...options })
   const connection = JSON.parse(await readFile(join(directory, 'client-connection.json'), 'utf8'))
   const api = async (path, body, { token = connection.token, expected = 200 } = {}) => {
     const response = await fetch(client.url + base + path, { method: body === undefined ? 'GET' : 'POST',
