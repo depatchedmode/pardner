@@ -745,3 +745,31 @@ it('a change with many candidate signatures has them read once for each state of
     assert.equal(storedSignatures(signatures.doc(), hash).length, 16)
   })
 })
+
+it('an equivocation report and the signatures that prove it are kept once saving them succeeds, also when the first save failed', { timeout: 90000 }, async () => {
+  await withHub(async context => {
+    const { project, server } = context
+    // The first save of the report and of each proof fails; later ones succeed.
+    const cache = server.store.signatureCache
+    const failOnce = name => { const save = cache[name].bind(cache); let failed = false; cache[name] = (...args) => { if (!failed) { failed = true; throw new Error(`disk full (${name})`) } return save(...args) } }
+    failOnce('addEquivocation')
+    failOnce('addEquivocationProof')
+    const { first, second, hashes } = await equivocate(context)
+    await eventually(() => server.store.getDoc().attribution.summary.equivocations[0]?.proven, 'the equivocation was never proven')
+    // Kept: retried after the failed saves, without another refused message or signature arriving.
+    await eventually(() => cache.equivocations(10).length === 1 && hashes.every(hash => cache.equivocationProofs(cache.equivocations(10)[0][0]).has(hash)), 'the report or a proof was never saved after its first save failed')
+    second.signatures.change(d => { for (const hash of hashes) delete d[shardOf(hash)][hash] })
+    const signatures = server.store.workspace.signatures
+    await eventually(() => A.hasHeads(signatures.doc(), A.getHeads(second.signatures.doc())), 'the deletion never arrived')
+    await first.repo.shutdown(); await second.repo.shutdown()
+    const directory = server.store.directory
+    await server.store.close()
+    const reopened = hubRuntime(directory, { actors, project })
+    await reopened.init()
+    try {
+      const [kept] = reopened.getDoc().attribution.summary.equivocations
+      assert.ok(kept, 'the report was lost after its first save failed')
+      assert.equal(kept.proven, true, 'its proof was lost after its first save failed')
+    } finally { await reopened.close() }
+  })
+})
