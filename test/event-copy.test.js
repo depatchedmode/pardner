@@ -16,12 +16,16 @@ const goals = { g1: { id: 'g1', title: 'Ship v1' }, g2: { id: 'g2', title: 'Ship
 const comments = { c1: { id: 'c1', taskId: 't1' } }
 const lookups = { actors, tasks, veins, goals, comments }
 
+// Each entry is described from its one reading (lib/activity.js showsOf): fields as its change wrote them, with the
+// previous value only where the board then held it (`oldVerified`), and the comment text its change wrote.
 let counter = 0
 const ev = (type, fields = {}) => ({
   operationId: `op-${++counter}`, type, actorId: 'alice', timestamp: '2026-01-01T10:00:00.000Z',
-  taskId: 't1', payload: {}, changes: [], result: {}, recordIds: [], ...fields,
+  taskId: 't1', payload: {}, changes: [], result: {}, recordIds: [], comment: null, ...fields,
 })
-const ch = (field, old, value) => ({ field, old, new: value })
+const ch = (field, old, value) => ({ field, old, new: value, oldVerified: true })
+/** A field whose stated previous value the board did not hold then: only its new value is a fact. */
+const unchecked = (field, stated, value) => ({ field, oldStated: stated, new: value, oldVerified: false })
 const sentence = description => eventText({ ...description, detail: null, excerpt: null })
 const describe1 = (event, options) => describeEvent(event, lookups, options)
 const say = (event, options) => sentence(describe1(event, options))
@@ -79,6 +83,22 @@ describe('task copy', () => {
     assert.equal(say(ev('task.update', { changes: [ch('tags', ['a'], ['a'])] })), 'Alice Moreno saved Fix login with no changes')
     assert.equal(say(ev('task.update', { changes: [] })), 'Alice Moreno saved Fix login with no changes')
   })
+  it('a previous value the board did not hold then decides nothing and is not shown: only the value its change wrote', () => {
+    assert.equal(say(ev('task.update', { changes: [unchecked('status', 'completed', 'completed')] })), 'Alice Moreno moved Fix login to Completed')
+    const several = describe1(ev('task.update', { changes: [unchecked('status', 'completed', 'completed'), ch('priority', 'p2', 'p1')] }))
+    assert.equal(several.detail, 'Status: Completed · Priority: P2 → P1')
+    const renamed = describe1(ev('task.update', { changes: [unchecked('title', 'Same', 'Same')] }))
+    assert.equal(sentence(renamed), 'Alice Moreno renamed Fix login')
+    assert.equal(renamed.detail, 'Now “Same”')
+    assert.equal(describe1(ev('task.update', { changes: [unchecked('type', 'bug', 'bug'), ch('status', 'a', 'b')] })).detail, 'Status: a → b · Type: bug')
+    assert.equal(eventGroup(ev('task.update', { changes: [unchecked('status', 'completed', 'completed')] })), 'status')
+  })
+  it('the words of a comment are the ones its change wrote, never another payload field', () => {
+    const d = describe1(ev('task.handoff', { payload: { to: 'builder', text: 'Approved', message: 'Approved' }, comment: { commentId: 'c1', text: 'Rejected' },
+      changes: [ch('assignee', null, 'builder'), ch('status', 'a', 'a')], result: { commentId: 'c1' } }))
+    assert.equal(d.excerpt, '“Rejected”')
+    assert.equal(describe1(ev('comment.add', { payload: { text: 'Approved' }, result: { commentId: 'c1' } })).excerpt, null)
+  })
   it('task.resolve', () => {
     const d = describe1(ev('task.resolve', { payload: { field: 'status' }, changes: [ch('status', 'backlog', 'review')] }))
     assert.equal(sentence(d), 'Alice Moreno resolved conflicting status on Fix login')
@@ -88,7 +108,7 @@ describe('task copy', () => {
   })
   it('task.handoff maps the assignee id to a name and mentions the status change', () => {
     const e = ev('task.handoff', {
-      payload: { to: 'builder', status: 'completed', message: 'Ready   for\n review' },
+      payload: { to: 'builder', status: 'completed' }, comment: { commentId: 'c1', text: 'Ready   for\n review' },
       changes: [ch('assignee', null, 'builder'), ch('status', 'review', 'completed')],
       result: { taskId: 't1', commentId: 'c1' },
     })
@@ -99,7 +119,7 @@ describe('task copy', () => {
   })
   it('task.handoff with unchanged status omits "and set it to"; falls back to payload.to', () => {
     const e = ev('task.handoff', {
-      payload: { to: 'ghost', status: 'review', message: 'hi' },
+      payload: { to: 'ghost', status: 'review' }, comment: { commentId: 'c1', text: 'hi' },
       changes: [ch('assignee', null, 'ghost-id'), ch('status', 'review', 'review')], result: { commentId: 'c1' },
     })
     assert.equal(say(e), 'Alice Moreno handed Fix login to ghost')
@@ -142,7 +162,7 @@ describe('task copy', () => {
 })
 
 describe('comments and reads', () => {
-  const base = { payload: { text: 'Looks good to me' }, result: { taskId: 't1', commentId: 'c1' } }
+  const base = { comment: { commentId: 'c1', text: 'Looks good to me' }, result: { taskId: 't1', commentId: 'c1' } }
   it('comment.add / edit / resolve carry an excerpt', () => {
     const add = describe1(ev('comment.add', base))
     assert.equal(sentence(add), 'Alice Moreno commented on Fix login')
@@ -161,7 +181,8 @@ describe('comments and reads', () => {
   })
   it('a comment deleted later keeps what its signer wrote, and says it was deleted and by whom', () => {
     // The words are the entry's own; that the comment was deleted is the board now, named by the change that did it.
-    const d = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), lookups)
+    const gone = { ...base, comment: { commentId: 'gone', text: 'Looks good to me' }, result: { commentId: 'gone' } }
+    const d = describeEvent(ev('comment.add', gone), lookups)
     assert.equal(d.excerpt, '“Looks good to me”')
     assert.equal(d.detail, 'This comment was later deleted.')
     const machines = { 'machine-laptopaaaaaaaaaaaaaaaaaaaaaa': { personId: 'person-alice', personName: 'Alice', name: 'laptop' },
@@ -169,29 +190,30 @@ describe('comments and reads', () => {
     const attribution = { machines }
     // Deleted by the Actor's own signed, unflagged comment.delete: named, with the machine that signed it.
     const deletions = { gone: [{ change: 'a'.repeat(64), type: 'comment.delete', actorId: 'builder', state: 'signed', machineId: 'machine-laptopaaaaaaaaaaaaaaaaaaaaaa', review: false }] }
-    const named = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, attribution, deletions })
+    const named = describeEvent(ev('comment.add', gone), { ...lookups, attribution, deletions })
     assert.equal(named.excerpt, '“Looks good to me”')
     assert.equal(named.detail, 'This comment was later deleted by Builder, signed by Alice · laptop.')
     assert.deepEqual(named.detailParts.filter(part => typeof part !== 'string').map(part => [part.label, part.current]), [['Builder', true], ['Alice · laptop', true]], 'names are as they are now')
-    const unrecognised = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, attribution, deletions: { gone: [{ change: 'b'.repeat(64), type: null, actorId: null, state: 'signed', machineId: 'machine-bobbbbbbbbbbbbbbbbbbbbbbbb', review: true }] } })
+    const unrecognised = describeEvent(ev('comment.add', gone), { ...lookups, attribution, deletions: { gone: [{ change: 'b'.repeat(64), type: null, actorId: null, state: 'signed', machineId: 'machine-bobbbbbbbbbbbbbbbbbbbbbbbb', review: true }] } })
     assert.equal(unrecognised.detail, 'A change that needs review, signed by Bob · desk, later marked this comment deleted. See Activity.')
-    const handoff = describe1(ev('task.handoff', { payload: { to: 'builder', message: 'signed words' }, changes: [ch('assignee', null, 'builder'), ch('status', 'a', 'a')], result: { commentId: 'gone' } }))
+    const handoff = describe1(ev('task.handoff', { payload: { to: 'builder' }, comment: { commentId: 'gone', text: 'signed words' }, changes: [ch('assignee', null, 'builder'), ch('status', 'a', 'a')], result: { commentId: 'gone' } }))
     assert.equal(handoff.excerpt, '“signed words”')
     assert.equal(handoff.detail, 'This comment was later deleted.')
   })
   it('a deletion claiming another Actor is never said to be that Actor’s: it names the signer and needs review', () => {
     const attribution = { machines: { 'machine-bobbbbbbbbbbbbbbbbbbbbbbbb': { personId: 'person-bob', personName: 'Bob', name: 'desk' } } }
     const claimed = [{ change: 'c'.repeat(64), type: 'comment.delete', actorId: 'alice', state: 'signed', machineId: 'machine-bobbbbbbbbbbbbbbbbbbbbbbbb', review: true, actorMismatch: true }]
-    const d = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, attribution, deletions: { gone: claimed } })
+    const gone = { ...base, comment: { commentId: 'gone', text: 'Looks good to me' }, result: { commentId: 'gone' } }
+    const d = describeEvent(ev('comment.add', gone), { ...lookups, attribution, deletions: { gone: claimed } })
     assert.doesNotMatch(d.detail, /Alice Moreno/)
     assert.equal(d.detail, 'A change that needs review, signed by Bob · desk, later marked this comment deleted. See Activity.')
-    const pending = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, attribution, deletions: { gone: [{ ...claimed[0], state: 'pending', review: null, actorMismatch: false }] } })
+    const pending = describeEvent(ev('comment.add', gone), { ...lookups, attribution, deletions: { gone: [{ ...claimed[0], state: 'pending', review: null, actorMismatch: false }] } })
     assert.equal(pending.detail, 'A change still being checked later marked this comment deleted. See Activity.')
-    const unsigned = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, attribution, deletions: { gone: [{ ...claimed[0], state: 'unattributed', relayedBy: 'machine-bobbbbbbbbbbbbbbbbbbbbbbbb' }] } })
+    const unsigned = describeEvent(ev('comment.add', gone), { ...lookups, attribution, deletions: { gone: [{ ...claimed[0], state: 'unattributed', relayedBy: 'machine-bobbbbbbbbbbbbbbbbbbbbbbbb' }] } })
     assert.equal(unsigned.detail, 'An unsigned change relayed by Bob · desk later marked this comment deleted. See Activity.')
   })
   it('names and titles looked up now are marked current; the time, words and values are the entry’s own', () => {
-    const d = describe1(ev('task.handoff', { payload: { to: 'builder', message: 'Over to you' }, changes: [ch('assignee', null, 'builder'), ch('status', 'backlog', 'review')], result: { commentId: 'c1' } }))
+    const d = describe1(ev('task.handoff', { payload: { to: 'builder' }, comment: { commentId: 'c1', text: 'Over to you' }, changes: [ch('assignee', null, 'builder'), ch('status', 'backlog', 'review')], result: { commentId: 'c1' } }))
     assert.equal(d.actorCurrent, true)
     assert.deepEqual(d.parts.filter(part => typeof part !== 'string').map(part => [part.label, Boolean(part.current)]), [['Fix login', true], ['Builder', true], ['Review', false]])
     const edited = describe1(ev('task.update', { changes: [ch('assignee', 'alice', 'builder'), ch('priority', 'p2', 'p1')] }))
@@ -203,9 +225,9 @@ describe('comments and reads', () => {
     assert.equal(unknown.parts.find(part => part.subject).current, undefined)
   })
   it('truncates long excerpts at 140 characters with curly quotes', () => {
-    const d = describe1(ev('comment.add', { ...base, payload: { text: 'a'.repeat(200) } }))
+    const d = describe1(ev('comment.add', { ...base, comment: { commentId: 'c1', text: 'a'.repeat(200) } }))
     assert.equal(d.excerpt, `“${'a'.repeat(140)}…”`)
-    const exact = describe1(ev('comment.add', { ...base, payload: { text: 'b'.repeat(140) } }))
+    const exact = describe1(ev('comment.add', { ...base, comment: { commentId: 'c1', text: 'b'.repeat(140) } }))
     assert.equal(exact.excerpt, `“${'b'.repeat(140)}”`)
   })
   it('read.mark', () => {
@@ -292,7 +314,7 @@ describe('actors, fallbacks and lookups', () => {
     assert.equal(say(ev('task.update', { changes: [ch('status', 'backlog', 'review')] }), { within: 'other' }), 'Alice Moreno moved Fix login to Review')
   })
   it('eventText flattens detail and excerpt', () => {
-    const d = describe1(ev('comment.add', { payload: { text: 'hello' }, result: { commentId: 'c1' } }))
+    const d = describe1(ev('comment.add', { comment: { commentId: 'c1', text: 'hello' }, result: { commentId: 'c1' } }))
     assert.equal(eventText(d), 'Alice Moreno commented on Fix login — “hello”')
   })
 })
@@ -346,12 +368,12 @@ describe('the edit form’s newer-field notice', async () => {
   const { newerAuthors } = await import('../ui-prototype/src/attribution.js')
   const signed = { state: 'signed', machineId: 'machine-aliceaaaaaaaaaaaaaaaaaaaaaa' }
   const entry = (key, actorId, timestamp, fields, extra = {}) => ({ id: `${key}-change`, kind: 'operation', key, timestamp, review: false, flags: {},
-    event: { operationId: key, type: 'task.update', actorId, timestamp, taskId: 't1', changes: fields.map(field => ({ field, old: 'a', new: 'b' })), recordIds: ['t1'] },
+    shows: { operationId: key, type: 'task.update', actorId, timestamp, taskId: 't1', changes: fields.map(field => ({ field, old: 'a', new: 'b', oldVerified: true })), recordIds: ['t1'] },
     changes: [{ hash: `${key}-change`, ...signed }], ...extra })
   const alice = entry('op-alice', 'alice', '2026-01-01T10:00:00.000Z', ['title'])
   // A later entry that mentions the field, but did not write its current value (another member's copy).
   const copy = entry('op-copy', 'bob', '2026-01-01T11:00:00.000Z', ['title'], { review: true, flags: { mismatch: true } })
-  const rows = [copy, alice].map(item => ({ entry: item, actorId: item.event.actorId, changes: item.event.changes }))
+  const rows = [copy, alice].map(item => ({ entry: item, actorId: item.shows.actorId, changes: item.shows.changes }))
   const attribution = { registers: {}, summary: { notDerived: 0, checking: 0, pending: 0 } }
   const notice = overrides => newerAuthors({ fields: ['title'], taskId: 't1', revisions: { title: ['op-alice'] }, historyRows: rows, activity: [copy, alice], attribution, ...overrides })
   it('credits the Actor of the change that wrote the current value, not the newest entry that mentions the field', () => {

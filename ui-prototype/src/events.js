@@ -50,9 +50,15 @@ const partText = parts => parts.map(part => (typeof part === 'string' ? part : p
 const FIELD_NAMES = table({ goalId: 'goal' })
 const fieldName = field => String(own(FIELD_NAMES, field) ?? field).toLowerCase()
 
+// An entry's fields as its derivation read them (lib/activity.js showsOf): one per field, the value its change wrote,
+// and the previous value only when the board then held it (`oldVerified`). No decision here depends on an unchecked
+// value: a field is left out as unchanged only when its checked previous value equals its new one.
+const verifiedOld = change => change?.oldVerified === true
+const unchanged = change => verifiedOld(change) && same(change.old, change.new)
+
 // Unchanged fields are noise; order is only worth mentioning when nothing else moved.
 function meaningfulChanges(event) {
-  const changes = (Array.isArray(event.changes) ? event.changes : []).filter(change => change && !same(change.old, change.new))
+  const changes = (Array.isArray(event.changes) ? event.changes : []).filter(change => change && !unchanged(change))
   const rest = changes.filter(change => change.field !== 'order')
   return rest.length ? rest : changes
 }
@@ -67,11 +73,15 @@ function detailParts(changes, lookups) {
     if (!change) continue
     if (field === 'description') lines.push(['Description edited'])
     else if (field === 'tags') lines.push([`Tags: ${formatValue('tags', change.new, lookups)}`])
-    else if (field === 'type') lines.push([`Type: ${change.old ?? ''} → ${change.new ?? ''}`])
+    else if (field === 'type') lines.push(verifiedOld(change) ? [`Type: ${change.old ?? ''} → ${change.new ?? ''}`] : [`Type: ${change.new ?? ''}`])
     else {
       const label = field === 'goalId' ? 'Goal' : field[0].toUpperCase() + field.slice(1)
-      const before = field === 'goalId' && !change.old ? 'none' : formatPart(field, change.old, lookups)
-      lines.push([`${label}: `, before, ' → ', formatPart(field, change.new, lookups)])
+      // A previous value the board did not hold then is not shown: only the value its change wrote.
+      if (!verifiedOld(change)) lines.push([`${label}: `, formatPart(field, change.new, lookups)])
+      else {
+        const before = field === 'goalId' && !change.old ? 'none' : formatPart(field, change.old, lookups)
+        lines.push([`${label}: `, before, ' → ', formatPart(field, change.new, lookups)])
+      }
     }
   }
   return lines.length ? lines.flatMap((line, index) => (index ? [' · ', ...line] : line)) : null
@@ -85,8 +95,9 @@ const collapse = value => String(value ?? '').replace(/\s+/g, ' ').trim()
  * is a comment.delete entry; otherwise that the change is listed for review).
  */
 function excerptOf(event, lookups) {
-  const body = event.payload?.text ?? event.payload?.message
-  const commentId = event.result?.commentId
+  // The words its change wrote into the comment (lib/operation-writes.js), never a payload field.
+  const body = event.comment?.text
+  const commentId = event.comment?.commentId ?? event.result?.commentId
   if (typeof body !== 'string' || !commentId) return { excerpt: null, deleted: null }
   const text = collapse(body)
   const excerpt = quote(text.length > EXCERPT_LIMIT ? `${text.slice(0, EXCERPT_LIMIT)}…` : text)
@@ -120,8 +131,9 @@ function deletedNote(deletions, lookups) {
 const UNDESCRIBED = { actor: 'Someone', actorCurrent: false, parts: [' made a change whose content can’t be put into words'], detail: null, detailParts: null, excerpt: null }
 
 /**
- * One Activity entry's event as a sentence. Whatever the event holds, this never throws: an entry whose content
- * cannot be put into words says so, and every other entry is still described.
+ * One Activity entry as a sentence, from its one reading (`entry.shows`, lib/activity.js showsOf): its fields as its
+ * change wrote them and the comment text its change wrote. Whatever it holds, this never throws: an entry whose
+ * content cannot be put into words says so, and every other entry is still described.
  */
 export function describeEvent(event, lookups = {}, options = {}) {
   try { return describeEventParts(event, lookups, options) } catch { return UNDESCRIBED }
@@ -180,7 +192,7 @@ function describeEventParts(event, lookups = {}, { within = null } = {}) {
         if (first.new) say(' assigned ', task(event.taskId), ' to ', actorPart(lookups.actors, first.new))
         else say(' unassigned ', task(event.taskId))
       } else if (first.field === 'priority') say(' changed the priority of ', task(event.taskId), ` to ${formatValue('priority', first.new)}`)
-      else if (first.field === 'title') { say(' renamed ', task(event.taskId)); detail = [`Was ${quote(first.old ?? '')}`] }
+      else if (first.field === 'title') { say(' renamed ', task(event.taskId)); detail = verifiedOld(first) ? [`Was ${quote(first.old ?? '')}`] : [`Now ${quote(first.new ?? '')}`] }
       else if (first.field === 'description') say(' edited the description of ', task(event.taskId))
       else if (first.field === 'tags') { say(' changed the tags on ', task(event.taskId)); detail = [`Tags: ${formatValue('tags', first.new)}`] }
       else if (first.field === 'order') say(' reordered ', task(event.taskId))
@@ -258,7 +270,7 @@ function describeEventParts(event, lookups = {}, { within = null } = {}) {
     case 'goal.update': {
       const [first] = changes
       if (changes.length === 1 && first.field === 'status') say(' marked goal ', goal(result.goalId), ' ', status(first.new))
-      else if (changes.length === 1 && first.field === 'title') { say(' renamed goal ', goal(result.goalId)); detail = [`Was ${quote(first.old ?? '')}`] }
+      else if (changes.length === 1 && first.field === 'title') { say(' renamed goal ', goal(result.goalId)); detail = verifiedOld(first) ? [`Was ${quote(first.old ?? '')}`] : [`Now ${quote(first.new ?? '')}`] }
       else if (changes.length === 1 && first.field === 'description') say(' edited the description of goal ', goal(result.goalId))
       else { say(' edited goal ', goal(result.goalId)); detail = detailLine(changes, lookups) }
       break
@@ -303,7 +315,7 @@ export function eventText(description) {
   return [sentence, description.detail, description.excerpt].filter(Boolean).join(' — ')
 }
 
-const hasStatusChange = event => (Array.isArray(event.changes) ? event.changes : []).some(change => change.field === 'status' && !same(change.old, change.new))
+const hasStatusChange = event => (Array.isArray(event.changes) ? event.changes : []).some(change => change?.field === 'status' && !unchanged(change))
 
 export function eventGroup(event) {
   const type = String(event?.type ?? '')

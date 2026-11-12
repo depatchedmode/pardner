@@ -180,7 +180,7 @@ function EventRow({ event: row, lookups, within, onTask, onVein, onGoal, formatT
   const { attribution } = lookups
   const { entry } = row
   const description = entry.kind === 'record' ? describeRecord(row, attribution) : entry.kind === 'unrecognised' ? describeChange(row, attribution)
-    : describeEvent(entry.event, lookups, { within })
+    : describeEvent(entry.shows ?? {}, lookups, { within })
   const signer = signerLine(attribution, entry)
   const when = new Date(row.timestamp || 0)
   // A time a date cannot show is unknown, never a failure of the row.
