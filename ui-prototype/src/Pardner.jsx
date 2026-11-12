@@ -16,6 +16,7 @@ import { quickStatusEditable } from './task-status.js'
 import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
 import { boardData, dictionary } from './board-data.js'
+import { emptyFields, unreadableLines } from './unreadable.js'
 import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, needsReview, newerAuthors, reviewNotice, signerLine, taskRows } from './attribution.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
@@ -553,9 +554,9 @@ export function Workspace({ config, reloadConfiguration, session }) {
   const review = reviewNotice(doc.attribution)
   // Records the board could not read: each is listed instead of stopping the whole board (lib/workspace.js snapshot).
   const unreadableItems = Array.isArray(doc.unreadable) ? doc.unreadable : []
-  // A top-level part of the board a change rewrote (its tasks, say) is named; each other record is counted.
+  // A top-level part of the board a change rewrote (its tasks, say) is named, and so is each other record and field.
   const unreadableParts = [...new Set(unreadableItems.filter(item => item?.kind === 'root' && typeof item.id === 'string').map(item => item.id))]
-  const unreadableCount = unreadableItems.length - unreadableItems.filter(item => item?.kind === 'root').length
+  const unreadableRecords = unreadableLines(unreadableItems, { tasks: doc.tasks, goals, veins })
   const openVein = (_element, veinId) => {
     focusAfterView.current = () => viewNav.current?.querySelector('[aria-pressed="true"]')?.focus()
     showVein(veinId)
@@ -613,9 +614,9 @@ export function Workspace({ config, reloadConfiguration, session }) {
       {connectionError && <div className="notice" role="status"><p>{connectionError.message}</p>
         <button onClick={retryConnection}>Retry connection</button>
       </div>}
-      {(unreadableCount > 0 || unreadableParts.length > 0) && <div className="notice warning" role="status">
+      {(unreadableRecords.length > 0 || unreadableParts.length > 0) && <div className="notice warning unreadable-notice" role="status">
         {unreadableParts.length > 0 && <p>Part of this board can’t be read, so what it holds isn’t shown: {unreadableParts.join(', ')}. Activity lists the changes that wrote it.</p>}
-        {unreadableCount > 0 && <p>{unreadableCount === 1 ? 'One record' : `${unreadableCount} records`} on this board can’t be read and {unreadableCount === 1 ? 'isn’t' : 'aren’t'} shown. Activity lists the changes that wrote {unreadableCount === 1 ? 'it' : 'them'}.</p>}
+        {unreadableRecords.length > 0 && <p>Some records on this board can’t be read. {unreadableRecords.join(' ')} Activity lists every change and who signed it.</p>}
       </div>}
       {review && <div className="notice warning review-notice" role="status">
         {review.map(line => <p key={line}>{line}</p>)}
@@ -1328,6 +1329,8 @@ function TaskDetail({
         <button onClick={onClose}>Close</button>
       </div>
       <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />
+      {emptyFields(context.unreadable, 'task', taskId).length > 0 && <p className="notice warning" role="status">
+        Shown empty, because what this task holds there can’t be read: {emptyFields(context.unreadable, 'task', taskId).join(', ')}.</p>}
       {here.length > 0 && <div className="here-now">
         <span className="muted">Here now</span>
         <AvatarStack actors={here} index={session.index} max={6} size="sm" label="Here now" labelSuffix=", on this task"
