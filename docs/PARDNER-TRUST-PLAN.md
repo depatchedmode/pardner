@@ -30,7 +30,7 @@ Status: **plan**. Nothing here is implemented. The design is in [PARDNER-TRUST-D
 The gate lands first, and change attribution follows separately.
 
 - **Gate:** `integration/trust-gate` joins the keys, signed membership, invitations and pairing, the People panel, the machine-key handshake, plain string values, the three stage 0 fixes and the review fixes (#217, #219). It is qualified as one branch. README states that changes are not yet signed.
-- **Attribution:** signed changes (#220) and the Activity work (#222, #223) stay a separate stack until an independent review passes. Signing itself is sound; what Activity shows under a signature is not yet.
+- **Attribution:** signed changes (#220) and the Activity work (#222, #223, #225, #227) are a separate stack. Signing itself is sound. After five review rounds the owner decided to ship it like git: the signer is guaranteed, and the description is the author's statement, checked on a best-effort basis (#228). A close-out PR makes every view load whatever the board holds and words the UI to match.
 - **After both:** the machine-keyed channel (#215) with the direct peer lane (#200), the next-change-slot check (#221), per-project identity (#218) and open time (#209).
 
 ## Ordering
