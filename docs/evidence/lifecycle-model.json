@@ -1554,5 +1554,80 @@
       ]
     },
     "review": "Activity derived from each change (attribution review two). Drift: lib/workspace-runtime.js. getDoc now adds Activity, every entry derived from the change that wrote it (lib/change-log.js, lib/activity.js), and attributionView is rebuilt on it, with read-only views of current comment authorship, deletions and the authorship of each alternative of a conflicted field or comment (re-reviewed again when that last view was added); nothing there writes or waits. The standalone service, which signs nothing, derives its Activity in memory: a heads-changed listener notes new changes and derives a small batch in that same synchronous step, and larger ones in setImmediate slices; nothing waits on the disk, and closeResources clears the slice timer and the listener before it drains the operation queue. ReplicaEdit, Handle: a local change is still made through boardChange before the flush; deriving its entry is synchronous work in the change step, like signing. ReplicaSendAck, ReplicaReceive, ReplicaAckCommit, SyncDown, StoreCloseBegin, StoreCloseComplete: the mapped code is unchanged. No anchor, guard, effect, atomicity assumption, invariant, witness or mutation text changed."
+  },
+  "attributionReviewThree": {
+    "recorded": "2026-11-11",
+    "mapping": {
+      "revision": "a2fb102167882e5ea9969944b0094f09e44503e7",
+      "files": {
+        "automerge-sync-server.js": "4ea7545bbea2ec334a0b09a139ff51e12833ffeb0b44b95991675ae2cf46d69e",
+        "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
+        "lib/workspace-runtime.js": "7469d6cf2dc9229545e37821a514bba2c5f8b3121e40b53f4df25c2638fd4acf",
+        "lib/workspace.js": "92b977421a9505037f7b73fe916cfbb5ba62202e7590fe562ba4795e059bb29f"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-12T01:55:39.845Z",
+      "finished": "2026-11-12T01:56:02.639Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "Content read through Automerge and writes bound to their entry (attribution review three). Drift: lib/workspace.js (ReplicaEdit, Handle, Respond): only snapshot() changed, reading each task, goal, vein, comment and index on its own and listing any it cannot read in unreadable; it is read-only, and execute, apply, the queue and the local-save barrier are unchanged. lib/workspace-runtime.js (ReplicaEdit, SyncDown, ReplicaSendAck, Handle, StoreCloseBegin, StoreCloseComplete, ReplicaReceive, ReplicaAckCommit): only the read-only current-state views changed (currentWriters, the new holderOf, the REGISTER_MAPS constant); nothing there writes, waits or runs in a listener, and boardChange, the acknowledgement path, the attribution start, the receive path and closeResources are unchanged. lib/attribution.js, not mapped, gained a queue that saves equivocation reports and proofs until a save succeeds; confirmOwn() is unchanged. No anchor, guard, effect, atomicity assumption, invariant, witness or mutation text changed."
   }
 }
