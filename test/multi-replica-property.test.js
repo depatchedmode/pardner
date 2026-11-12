@@ -26,7 +26,7 @@ const REPLICAS = [
   { name: 'bob-laptop', actor: `${BOB}${'21'.repeat(8)}`, actorIds: ['bob'] },
   { name: 'bob-desktop', actor: `${BOB}${'22'.repeat(8)}`, actorIds: ['bob'] },
 ]
-const HANDLES = ['alice', 'bob', 'builder', 'scout']
+const HANDLES = ['alice', 'bob', 'builder', 'scout', 'scouter']
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed']
 const WORDS = ['plan', 'draft', 'check', 'ship', 'review', 'fix', 'note', 'idea']
 
@@ -48,8 +48,9 @@ function requests(rand) {
     const comments = ids(doc.comments).filter(id => !doc.deletedComments[id])
     const own = comments.filter(id => plain(doc.comments[id]).actorId === actorId)
     const choices = []
-    // An agent registered on one replica, sometimes also on another while they are apart: one ID twice, or one handle under two IDs.
-    if (rand() < 0.05) choices.push(() => ({ type: 'actor.register', payload: { id: `agent-scout-${Math.floor(rand() * 2)}`, handle: 'scout', kind: 'agent', displayName: 'Scout' } }))
+    // An agent registered on one replica, sometimes also on another while they are apart: one ID twice (with one handle
+    // or two), or one handle under two IDs.
+    if (rand() < 0.05) choices.push(() => ({ type: 'actor.register', payload: { id: `agent-scout-${Math.floor(rand() * 2)}`, handle: pick(['scout', 'scouter']), kind: 'agent', displayName: 'Scout' } }))
     choices.push(() => ({ type: 'task.create', payload: { title: `Task ${words()}`, ...(veins.length && rand() < 0.3 ? { veinIds: [pick(veins)] } : {}) } }))
     choices.push(() => ({ type: 'goal.create', payload: { title: `Goal ${words()}` } }))
     if (goals.length) choices.push(() => ({ type: 'vein.create', payload: { title: `Vein ${words()}`, goalId: pick(goals) } }))

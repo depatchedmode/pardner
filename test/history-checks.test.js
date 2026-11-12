@@ -197,3 +197,24 @@ test('work on a task whose creation and whose branch were each retried on two re
   const done = run(edited.doc, { type: 'task.merge', payload: { branchId, expectedRevisions: { description: revisions(edited.doc, taskId, 'description') } } }, replica(3))
   assert.deepEqual(flagged(done.doc), [])
 })
+
+test('an Actor registered on two replicas apart under one ID with two handles, then mentioned and handed work by either handle, is unflagged', () => {
+  const { doc: start } = board()
+  // Each replica registers the same agent ID with a handle of its own; the board then holds both records of it.
+  const one = run(start, { type: 'actor.register', payload: { id: 'helper', handle: 'helperone', kind: 'agent', displayName: 'Helper' } }, replica(3))
+  const two = run(start, { type: 'actor.register', payload: { id: 'helper', handle: 'helpertwo', kind: 'agent', displayName: 'Helper' } }, replica(4))
+  const merged = A.merge(A.clone(one.doc), two.doc)
+  const task = run(merged, { type: 'task.create', payload: { title: 'For the helper' } }, replica(3))
+  const taskId = task.event.result.taskId
+  let doc = task.doc
+  for (const handle of ['helperone', 'helpertwo']) {
+    // The write path reads the record Automerge picks: one handle names the helper, the other names no Actor.
+    const mention = (() => { try { return run(doc, { type: 'comment.add', payload: { taskId, text: `Over to @${handle}` } }, replica(3)) } catch { return null } })()
+    if (mention) doc = mention.doc
+    const state = taskState(doc, taskId)
+    const handoff = (() => { try { return run(doc, { type: 'task.handoff', payload: { taskId, to: handle, status: 'review', message: 'Yours', expectedRevisions: { assignee: state.revisions.assignee, status: state.revisions.status } } }, replica(3)) } catch { return null } })()
+    if (handoff) doc = handoff.doc
+  }
+  assert.ok(view(doc).filter(entry => ['comment.add', 'task.handoff'].includes(entry.event?.type)).length >= 2, 'the work was refused')
+  assert.deepEqual(flagged(doc), [])
+})
