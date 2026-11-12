@@ -30,6 +30,9 @@ for (const engine of [chromium, webkit]) it(`names who made each change, lists m
       const admission = row(page, 'Alice let Bob in as a member')
       await admission.waitFor({ timeout: 30000 })
       await admission.locator('.event-signer').getByText('Signed by Alice · this computer').waitFor()
+      // The record's signature covers the record, not the time shown: that is when a machine wrote it to the board.
+      await admission.locator('time').getByText(/^Written to the board /).waitFor()
+      assert.match(await admission.locator('time').getAttribute('title'), /when a machine wrote this record to the board\. The record’s signer didn’t sign this time\./)
       await row(page, 'Alice started the project').waitFor()
       await page.getByRole('combobox', { name: 'Show' }).selectOption('changes')
       assert.equal(await page.locator('.review-notice').count(), 0, 'nothing to review yet')

@@ -194,7 +194,9 @@ function EventRow({ event: row, lookups, within, onTask, onVein, onGoal, formatT
       {description.detail && <p className="event-detail">{renderParts(description.detailParts ?? [description.detail])}</p>}
       {description.excerpt && <p className="event-detail">{description.excerpt}</p>}
       {signer && <p className="event-signer" data-tone={signer.tone}>{signer.text}</p>}
-      {timed ? <time dateTime={when.toISOString()} title={when.toLocaleString()}>{formatTime(when)}</time> : <time className="muted">Time unknown</time>}
+      {/* A record's own signature covers the record, not this time: it is when a machine wrote it to the board. */}
+      {timed ? <time dateTime={when.toISOString()} title={entry.kind === 'record' ? `${when.toLocaleString()}: when a machine wrote this record to the board. The record’s signer didn’t sign this time.` : when.toLocaleString()}>
+        {entry.kind === 'record' ? `Written to the board ${formatTime(when)}` : formatTime(when)}</time> : <time className="muted">Time unknown</time>}
     </article>
   )
 }

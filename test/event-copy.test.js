@@ -164,15 +164,31 @@ describe('comments and reads', () => {
     const d = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), lookups)
     assert.equal(d.excerpt, '“Looks good to me”')
     assert.equal(d.detail, 'This comment was later deleted.')
-    const deletions = { gone: [{ change: 'a'.repeat(64), type: 'comment.delete', actorId: 'builder', state: 'signed' }] }
-    const named = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, deletions })
+    const machines = { 'machine-laptopaaaaaaaaaaaaaaaaaaaaaa': { personId: 'person-alice', personName: 'Alice', name: 'laptop' },
+      'machine-bobbbbbbbbbbbbbbbbbbbbbbbb': { personId: 'person-bob', personName: 'Bob', name: 'desk' } }
+    const attribution = { machines }
+    // Deleted by the Actor's own signed, unflagged comment.delete: named, with the machine that signed it.
+    const deletions = { gone: [{ change: 'a'.repeat(64), type: 'comment.delete', actorId: 'builder', state: 'signed', machineId: 'machine-laptopaaaaaaaaaaaaaaaaaaaaaa', review: false }] }
+    const named = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, attribution, deletions })
     assert.equal(named.excerpt, '“Looks good to me”')
-    assert.equal(named.detail, 'This comment was later deleted by Builder.')
-    const unrecognised = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, deletions: { gone: [{ change: 'b'.repeat(64), type: null, actorId: null }] } })
-    assert.equal(unrecognised.detail, 'This comment was later deleted by a change listed for review.')
+    assert.equal(named.detail, 'This comment was later deleted by Builder, signed by Alice · laptop.')
+    assert.deepEqual(named.detailParts.filter(part => typeof part !== 'string').map(part => [part.label, part.current]), [['Builder', true], ['Alice · laptop', true]], 'names are as they are now')
+    const unrecognised = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, attribution, deletions: { gone: [{ change: 'b'.repeat(64), type: null, actorId: null, state: 'signed', machineId: 'machine-bobbbbbbbbbbbbbbbbbbbbbbbb', review: true }] } })
+    assert.equal(unrecognised.detail, 'A change that needs review, signed by Bob · desk, later marked this comment deleted. See Activity.')
     const handoff = describe1(ev('task.handoff', { payload: { to: 'builder', message: 'signed words' }, changes: [ch('assignee', null, 'builder'), ch('status', 'a', 'a')], result: { commentId: 'gone' } }))
     assert.equal(handoff.excerpt, '“signed words”')
     assert.equal(handoff.detail, 'This comment was later deleted.')
+  })
+  it('a deletion claiming another Actor is never said to be that Actor’s: it names the signer and needs review', () => {
+    const attribution = { machines: { 'machine-bobbbbbbbbbbbbbbbbbbbbbbbb': { personId: 'person-bob', personName: 'Bob', name: 'desk' } } }
+    const claimed = [{ change: 'c'.repeat(64), type: 'comment.delete', actorId: 'alice', state: 'signed', machineId: 'machine-bobbbbbbbbbbbbbbbbbbbbbbbb', review: true, actorMismatch: true }]
+    const d = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, attribution, deletions: { gone: claimed } })
+    assert.doesNotMatch(d.detail, /Alice Moreno/)
+    assert.equal(d.detail, 'A change that needs review, signed by Bob · desk, later marked this comment deleted. See Activity.')
+    const pending = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, attribution, deletions: { gone: [{ ...claimed[0], state: 'pending', review: null, actorMismatch: false }] } })
+    assert.equal(pending.detail, 'A change still being checked later marked this comment deleted. See Activity.')
+    const unsigned = describeEvent(ev('comment.add', { ...base, result: { commentId: 'gone' } }), { ...lookups, attribution, deletions: { gone: [{ ...claimed[0], state: 'unattributed', relayedBy: 'machine-bobbbbbbbbbbbbbbbbbbbbbbbb' }] } })
+    assert.equal(unsigned.detail, 'An unsigned change relayed by Bob · desk later marked this comment deleted. See Activity.')
   })
   it('names and titles looked up now are marked current; the time, words and values are the entry’s own', () => {
     const d = describe1(ev('task.handoff', { payload: { to: 'builder', message: 'Over to you' }, changes: [ch('assignee', null, 'builder'), ch('status', 'backlog', 'review')], result: { commentId: 'c1' } }))

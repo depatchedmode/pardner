@@ -1,3 +1,5 @@
+import { machineLabel } from './attribution.js'
+
 export const STATUS_LABELS = {
   backlog: 'Backlog', 'up-next': 'Up next', 'in-progress': 'In progress', review: 'Review', completed: 'Completed',
   'dead-end': 'Dead end', abandoned: 'Abandoned', open: 'Open', proven: 'Proven', achieved: 'Achieved',
@@ -91,9 +93,24 @@ function excerptOf(event, lookups) {
   return { excerpt, deleted: null }
 }
 
+/**
+ * The note on a comment's entry when the board now marks it deleted, as parts. Each change that marked it carries its
+ * own verdict and review state (lib/workspace-runtime.js currentWriters): only the Actor's own signed, unflagged
+ * comment.delete is said to be that Actor's, with the machine that signed it; any other is described neutrally by
+ * its signer, and points to Activity. Names are as they are now.
+ */
 function deletedNote(deletions, lookups) {
-  const by = [...new Set(deletions.map(deletion => (deletion.type === 'comment.delete' && deletion.actorId ? actorName(lookups.actors, deletion.actorId) : 'a change listed for review')))]
-  return by.length ? `${DELETED_NOTE} by ${by.join(' and ')}.` : `${DELETED_NOTE}.`
+  if (!deletions.length) return [`${DELETED_NOTE}.`]
+  const machine = id => current(machineLabel(lookups.attribution, id))
+  const notes = deletions.slice(0, 3).map(deletion => {
+    const confirmed = deletion.type === 'comment.delete' && typeof deletion.actorId === 'string' && deletion.state === 'signed' && deletion.review === false
+    if (deletion.review !== true && deletion.review !== false) return ['A change still being checked later marked this comment deleted. See Activity.']
+    if (confirmed) return [`${DELETED_NOTE} by `, actorPart(lookups.actors, deletion.actorId), ', signed by ', machine(deletion.machineId), '.']
+    if (deletion.state === 'signed' || deletion.state === 'removed') return ['A change that needs review, signed by ', machine(deletion.machineId), ', later marked this comment deleted. See Activity.']
+    if (deletion.state === 'unattributed') return ['An unsigned change relayed by ', machine(deletion.relayedBy), ' later marked this comment deleted. See Activity.']
+    return ['A change still being checked later marked this comment deleted. See Activity.']
+  })
+  return notes.flatMap((note, index) => (index ? [' ', ...note] : note))
 }
 
 /** An entry that cannot be put into words, as one entry: its signer line and details are still shown. */
@@ -271,7 +288,7 @@ function describeEventParts(event, lookups = {}, { within = null } = {}) {
   if (['comment.add', 'comment.edit', 'comment.resolve', 'task.handoff'].includes(event.type)) {
     const found = excerptOf(event, lookups)
     excerpt = found.excerpt
-    if (found.deleted) detail = [deletedNote(found.deleted, lookups)]
+    if (found.deleted) detail = deletedNote(found.deleted, lookups)
   }
   // `detail` stays plain text; `detailParts` marks the names and titles in it that are looked up now.
   const parted = Array.isArray(detail) ? detail : detail === null ? null : [detail]

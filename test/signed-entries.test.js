@@ -280,3 +280,31 @@ it('a change whose time no date can show reaches every peer without stopping Act
     }
   })
 })
+
+it('a deletion of a comment that claims its author’s name is listed with its own signer and review state, so no note credits the author', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey))
+    const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
+    await register({ id: owner, handle: 'owner', kind: 'human' })
+    await register({ id: member, handle: 'member-zero', kind: 'human' })
+    const alice = await replica(0)
+    const { result } = await alice.execute({ operationId: randomUUID(), actorId: member, type: 'task.create', payload: { title: 'Discussed' } })
+    const added = await alice.execute({ operationId: randomUUID(), actorId: member, type: 'comment.add', payload: { taskId: result.taskId, text: 'Mine to delete' } })
+    const commentId = added.result.commentId
+    const bob = await bare(1)
+    await eventually(() => bob.board.doc().commentBodies?.[commentId], 'Bob never synced')
+    // Bob's client deletes Alice's comment with a comment.delete in her name, prepared as the write path would.
+    const prepared = prepareOperation(bob.board.doc(), { operationId: randomUUID(), actorId: member, type: 'comment.delete', payload: { commentId, expectedRevisions: [added.operationId] } },
+      { replicaId: 'replica-bob', timestamp: new Date().toISOString() })
+    bob.board.change(prepared.change)
+    const [hash] = A.getHeads(bob.board.doc())
+    sign(bob, project.projectId, hash)
+    await settled([server.store, alice], [hash])
+    for (const runtime of [server.store, alice]) {
+      const [deletion] = await eventually(() => runtime.getDoc().attribution.deletions?.[commentId], `${runtime.role} never listed the deletion`)
+      assert.deepEqual([deletion.change, deletion.type, deletion.actorId, deletion.state, deletion.machineId], [hash, 'comment.delete', member, 'signed', project.keys[1].machineId])
+      assert.equal(deletion.review, true, 'its entry needs review')
+      assert.equal(deletion.actorMismatch, true, 'its signer may not act as the Actor it names')
+    }
+  }, { hubOptions: { actors: [] } })
+})
