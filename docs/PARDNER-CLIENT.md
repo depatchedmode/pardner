@@ -158,16 +158,22 @@ person's Actor, is flagged too; peers take a machine's word only for which of it
 own Actors acted.
 
 **What a signer line covers.** A signer line means that machine signed exactly
-the content shown. Activity is a log of the board's changes: each entry is derived
+the content shown. That is the guarantee, as a signed commit is in git: who signed
+each change. What an entry says the change did is its author's description, like a
+commit message; Pardner checks it against what the change wrote on a best-effort
+basis and flags a difference, but an unflagged entry is not proven to describe its
+change ([#228](https://github.com/depatchedmode/pardner/issues/228) lists the known
+gaps). Activity is a log of the board's changes: each entry is derived
 from one change (the operation event it made, with the key it wrote, or the
 membership records it wrote), its content is what Automerge itself reads at that
 key as of that change, accepted only as plain JSON, and its signer line is the
 verdict for that same change. Nothing shown under a signer is read from the board's
-current state. An operation's entry must also match what its change did: the
-change's writes are compared with the exact writes its event implies, and any
-difference is flagged, listed for review and said in words, with what the entry
-says and what the change wrote (the few values that depend on the board's state
-then, such as a field's old value, are exempt; README lists them). Every peer derives the same entry from the same change, and
+current state. An operation's description is also checked, on a best-effort
+basis: the change's writes are compared with the exact writes its event implies,
+and what it says about the board then (a field's old value, say) with the board as
+of its change's dependencies; any difference is flagged ("this description does not
+match what the change wrote"), listed for review and said in words, with what the
+entry says and what the change wrote. README lists the few values still exempt. Every peer derives the same entry from the same change, and
 keeps it in `signatures.sqlite` under the change's hash, so a restart derives only
 the changes that are new. A change that wrote neither one well-formed operation
 event nor a membership record is listed for review as unrecognised, under its own
@@ -194,10 +200,16 @@ otherwise names the change's signer and points to Activity.
 **Malformed data.** What a peer reads from the signature document is checked for
 shape; every concurrent shard map and value is read, so no member can hide a valid
 signature behind others, and the hub makes a shard that holds more than one value
-into one map holding every entry. Candidates for a change whose signer cannot be
-established yet are all kept, up to 16, until it can. One change's data never stops
-a view: an entry, row, CLI item or board record that cannot be read fails on its own
-and says so, and a change time no date can show is shown as unknown and flagged. A shard that is not a map is made again as one
+into one map holding every entry. Every value stored for a change is read, and
+candidates are verified in passes of at most 32 for one change, each resumed where
+the last stopped, so no number of copies hides a genuine signature or holds up the
+board. Candidates for a change whose signer cannot be established yet are all kept,
+up to 16 (what may be genuine first), until it can. One change's data never stops a
+view: an entry, row or CLI item that cannot be read fails on its own and says so; a
+board record that is not a map is left out and named ("Not shown: …"), and a field
+holding a value of the wrong kind is shown empty and named ("Shown empty: …"),
+without changing the board; and a change time no date can show is shown as unknown
+and flagged. A shard that is not a map is made again as one
 with its entries kept. A failure in a background attribution task is contained,
 logged and shown in the project's status as `attribution.failures`; it never stops
 the project runtime.
