@@ -846,6 +846,13 @@ it('past 16 candidates for a change whose signer cannot be established, a signat
   const settled = keptCandidates({ values: sorted([...unknown, genuine]), held: null, possible: [], others: [bob.publicKey], verify })
   assert.equal(settled.length, MAX_CANDIDATES)
   assert.ok(!settled.some(value => Buffer.from(value).equals(genuine)), 'a signature by a machine that cannot be the signer is kept before one that may be')
+  // Sixteen other known machines each with a valid signature of their own, ahead of the genuine signer in key order:
+  // one value per possible signer is always kept, so the genuine one is not cut at the seventeenth place.
+  const crowd = Array.from({ length: MAX_CANDIDATES }, () => generateMachineKey())
+  const theirs = crowd.map(key => new Uint8Array(signChange(key, projectId, hash)))
+  const many = keptCandidates({ values: sorted([...theirs, genuine]), held: null, possible: [...crowd.map(key => key.publicKey), bob.publicKey], others: [], verify })
+  assert.ok(many.some(value => Buffer.from(value).equals(genuine)), 'sixteen other machines’ signatures pushed the genuine one out')
+  assert.equal(many.length, MAX_CANDIDATES + 1)
   // The value this peer cached is kept first whatever else is there.
   assert.ok(Buffer.from(keptCandidates({ values: sorted([...junk, genuine]), held: junk[39], possible: [bob.publicKey], others: [], verify })[0]).equals(junk[39]))
 })
@@ -870,6 +877,8 @@ it('past 16 candidate signatures arriving before their change, the valid one is 
     await eventually(() => A.hasHeads(signatures.doc(), A.getHeads(bob.signatures.doc())), 'the candidates never arrived')
     // The hub settles the shard in passes, each verifying at most CANDIDATES_PER_PASS candidates of the change.
     assert.ok(settleShard(server.store.attribution, shard) > 1, 'the candidates were all examined in one pass')
+    // The change is not in the board, so nothing else will finish examining it: its results are released for eviction.
+    assert.ok(!server.store.attribution.examining.has(hash), 'a change examined only for a shard merge stays pinned')
     const kept = storedSignatures(signatures.doc(), hash)
     assert.equal(kept.length, 16)
     assert.ok(kept.some(value => Buffer.from(value).equals(valid)), 'the valid signature was dropped')

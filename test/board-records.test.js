@@ -305,6 +305,8 @@ it('a board holding records of the wrong kind leaves the hub, Activity, its Acto
           doc.goalFields[`${goalId}:status`].value = storageValue({ x: 1 })
           doc.veinFields[`${veinId}:goalId`].value = 7
           doc.commentBodies[commentId].mentionedActorIds = storageValue([7])
+          // An author that is a list whose element cannot be turned into text: nothing may call its toString.
+          doc.comments[commentId].actorId = storageValue([{ toString: 7, valueOf: 7 }])
           doc.operations[operationKey('task.link-commit')].payload.commit = 7
           doc.operations[operationKey('comment.add')].recordIds = storageValue(['x', 7])
           doc.operations[operationKey('goal.create')].changes = storageValue([{ field: 7 }])

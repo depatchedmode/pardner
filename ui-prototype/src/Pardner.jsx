@@ -880,9 +880,10 @@ function RecordStatusSelect({ kind, record, statuses, submit, disabled }) {
 function Goals({ goals, veins, showVein, actor, actors, attribution = null, submit, busy, pending, errorNotice, errorOrigin }) {
   const list = Object.values(goals).sort((a, b) =>
     GOAL_STATUSES.indexOf(a.status) - GOAL_STATUSES.indexOf(b.status) || a.created_at.localeCompare(b.created_at))
-  const veinsByGoal = {}
+  // Keyed by board data: a Map, so a goal ID such as __proto__ is only a key.
+  const veinsByGoal = new Map()
   for (const vein of Object.values(veins).sort((a, b) => a.created_at.localeCompare(b.created_at))) {
-    for (const goalId of vein.goalIds) (veinsByGoal[goalId] ??= []).push(vein)
+    for (const goalId of vein.goalIds) veinsByGoal.set(goalId, [...(veinsByGoal.get(goalId) ?? []), vein])
   }
   const disabled = busy || Boolean(pending)
   // A disputed status names every alternative instead of the merge's pick, and offers no select.
@@ -925,7 +926,7 @@ function Goals({ goals, veins, showVein, actor, actors, attribution = null, subm
   const recordId = errorNotice ? errorOrigin?.recordId : null
   const noticeGoal = goals[recordId]
     ? recordId
-    : list.find(goal => (veinsByGoal[goal.id] ?? []).some(vein => vein.id === recordId))?.id
+    : list.find(goal => (veinsByGoal.get(goal.id) ?? []).some(vein => vein.id === recordId))?.id
   const noticeFallback = errorNotice && !noticeGoal
   return (
     <section className="goals" aria-label="Goals">
@@ -935,7 +936,7 @@ function Goals({ goals, veins, showVein, actor, actors, attribution = null, subm
         No goals yet. Start a vein with <code>pardner vein create --title … --goal …</code>.
       </p>}
       {list.map(goal => {
-        const goalVeins = veinsByGoal[goal.id] ?? []
+        const goalVeins = veinsByGoal.get(goal.id) ?? []
         return (
           <article className="goal" key={goal.id} aria-label={goal.title} data-goal-id={goal.id} tabIndex={-1}>
             <div className="goal-heading">

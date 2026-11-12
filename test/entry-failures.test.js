@@ -56,6 +56,15 @@ test('one entry whose payload cannot be turned into words is shown as such, and 
   assert.doesNotThrow(() => activityRows({ activity: [recordEntry], attribution: { machines: {} } }))
   assert.doesNotThrow(() => describeRecord({ entry: recordEntry }, { machines: {} }))
   assert.doesNotThrow(() => signerLine({ machines: {} }, recordEntry))
+  // A record whose own signature fails is never called signed by the machine it names; the change that wrote it is named.
+  const forged = { id: 'f', kind: 'record', key: 'f', record: { kind: 'profile', subject: 'person-a', signer: 'machine-alice' }, flags: { invalidRecord: true },
+    changes: [{ hash: 'h', state: 'signed', machineId: 'machine-mallory' }] }
+  const machines = { 'machine-alice': { name: 'Alice laptop', person: 'Alice' }, 'machine-mallory': { name: 'Mallory laptop', person: 'Mallory' } }
+  const line = signerLine({ machines }, forged)
+  assert.ok(!/^Signed by/.test(line.text), line.text)
+  assert.match(line.text, /^Not signed by the machine it names/)
+  assert.match(line.text, /written to the board by a change: Signed by .*machine-mallory|written to the board by a change: Signed by .*Mallory/)
+  assert.equal(line.tone, 'flag')
 })
 
 test('the board view shows every record it can read when one change left another unreadable, and lists the ones it cannot', async () => {

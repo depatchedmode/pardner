@@ -109,8 +109,12 @@ function signerLineOf(attribution, entry) {
   const changes = Array.isArray(entry.changes) ? entry.changes : []
   let lines
   if (entry.kind === 'record') {
-    lines = [{ text: `Signed by ${machineLabel(attribution, entry.record.signer)}`, tone: entry.flags?.invalidRecord ? 'flag' : 'signed' }]
-    for (const change of changes) if (['unattributed', 'removed'].includes(change.state)) lines.push({ ...changeLine(attribution, change), text: `written to the board by ${changeLine(attribution, change).text.toLowerCase()}` })
+    // A record whose own signature fails names a signer it cannot prove: say so, and name who wrote it to the board.
+    const invalid = Boolean(entry.flags?.invalidRecord)
+    lines = [invalid
+      ? { text: `Not signed by the machine it names (${machineLabel(attribution, entry.record.signer)})`, tone: 'flag' }
+      : { text: `Signed by ${machineLabel(attribution, entry.record.signer)}`, tone: 'signed' }]
+    for (const change of changes) if (invalid || ['unattributed', 'removed'].includes(change.state)) lines.push({ ...changeLine(attribution, change), text: `written to the board by a change: ${changeLine(attribution, change).text}` })
   } else {
     lines = changes.length ? changes.map(change => changeLine(attribution, change)) : [{ text: 'Signature pending', tone: 'pending' }]
     if (changes.length > 1) lines = lines.map((line, index) => ({ ...line, text: `${line.text} (${changes[index].replicaId ? 'on another replica, ' : ''}${new Date(changes[index].timestamp).toLocaleString()})` }))
