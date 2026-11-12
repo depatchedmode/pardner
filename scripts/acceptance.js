@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -109,8 +110,19 @@ async function runSeed(seed) {
     const value = ref => (ref?.side !== undefined ? machine[ref.side] : ref?.person ? person[ref.person] : ref?.actor ? actors[ref.actor]
       : ref?.agent ? actorFor(person[ref.agent[0]], ref.agent[1]) : ref)
     const resolve = ({ action, ...fields }) => ({ action, fields: Object.fromEntries(Object.entries(fields).map(([field, ref]) => [field, value(ref)])) })
+    // What enrollment registers for each Actor the harness enrolled: its person, and its harness for an agent.
+    const names = { [person.alice]: 'Alice', [person.bob]: 'Bob' }
+    const registration = id => {
+      for (const personId of [person.alice, person.bob]) {
+        if (id === actorFor(personId)) return { id, handle: `human-${personId}`, kind: 'human', displayName: names[personId] }
+        for (const harness of [AGENT_HARNESS, SETUP_HARNESS]) {
+          if (id === actorFor(personId, harness)) return { id, handle: `agent-${createHash('sha256').update(personId).digest('hex').slice(0, 20)}-${harness}`, kind: 'agent', displayName: harness }
+        }
+      }
+      return null
+    }
     return { machineOfReplica: Object.fromEntries(replicaIds.map((replicaId, side) => [replicaId, machine[side]])), personOfActor,
-      baseline: { machineId: machine[0], actorId: actors.alice }, resolve }
+      baseline: { machineId: machine[0], actorId: actors.alice }, registration, resolve }
   }
   const converge = async () => {
     const started = performance.now()
