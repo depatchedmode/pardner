@@ -729,8 +729,8 @@ its diff before the mapping was recorded:
   `storedRecords` and lists a record it cannot read once; a new read-only
   `actors()` returns the board's readable Actors. Two comments now say that a
   top-level key holding concurrent values is read as Automerge's pick when that is
-  a map. `apply()`, its flush, `confirm()` and the `STORAGE_FAILED` path are
-  unchanged.
+  a map, and the item listing such a key carries `concurrent: true`. `apply()`,
+  its flush, `confirm()` and the `STORAGE_FAILED` path are unchanged.
 - `lib/workspace-runtime.js` (`ReplicaEdit`, `SyncDown`, `ReplicaSendAck`,
   `Handle`, `StoreCloseBegin`, `StoreCloseComplete`, `ReplicaReceive`,
   `ReplicaAckCommit`): `getAgents` returns `Workspace.actors()`, and
