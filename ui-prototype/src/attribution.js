@@ -210,17 +210,35 @@ export const alternativeChangedBySomeoneElse = (attribution, map, key, operation
 
 /**
  * For the edit form's "X saved a newer …": who to credit for each field that changed since the form opened, grouped
- * as `{ by, unconfirmed, fields }`. Each field is credited to the Actor recorded in the newest History entry that
- * changed it, from that entry's signed content; when that entry needs review, the name is marked unconfirmed.
+ * as `{ by, unconfirmed, fields }`, from the change that wrote the field's current value, not from the newest entry
+ * that mentions it. Each current value names the operation that wrote it (`revisions`); it is credited to that
+ * operation's Actor, confirmed only when that operation's own entry is signed and unflagged and no other change
+ * wrote it or into it (`registers`, from the service), and nothing is still being read. Otherwise it is unconfirmed,
+ * credited to the Actor of the change that did write it where that change names one, else to no one.
  */
-export function newerAuthors({ fields, historyRows }) {
+export function newerAuthors({ fields, taskId, revisions = {}, activity = [], attribution = null }) {
+  const reading = Boolean(attribution) && ((attribution.summary?.notDerived ?? 0) > 0 || (attribution.summary?.checking ?? 0) > 0)
   const groups = []
-  for (const field of fields) {
-    const last = historyRows.find(row => (row.changes ?? []).some(change => change?.field === field))
-    const by = last?.actorId ?? null, unconfirmed = Boolean(last?.entry.review)
+  const credit = (by, unconfirmed, field) => {
     const group = groups.find(candidate => candidate.by === by && candidate.unconfirmed === unconfirmed)
-    if (group) group.fields.push(field)
-    else groups.push({ by, unconfirmed, fields: [field] })
+    if (!group) groups.push({ by, unconfirmed, fields: [field] })
+    else if (!group.fields.includes(field)) group.fields.push(field)
+  }
+  for (const field of fields) {
+    const ids = Array.isArray(own(revisions, field)) ? revisions[field] : []
+    if (!ids.length) credit(null, true, field)
+    for (const id of ids) {
+      const changedBy = own(own(attribution?.registers, `taskFields:${taskId}:${field}`), id)?.changedBy
+      if (Array.isArray(changedBy) && changedBy.length) {
+        for (const writer of changedBy) credit(typeof writer?.actorId === 'string' ? writer.actorId : null, true, field)
+        continue
+      }
+      const written = (Array.isArray(activity) ? activity : []).filter(entry => entry?.kind === 'operation' && entry.key === id)
+      const [entry] = written
+      // The standalone service checks no signatures: its entries are confirmed by what they record.
+      const signed = !attribution || entry?.changes?.every(change => change.state === 'signed')
+      credit(written.length === 1 ? entry.event.actorId : null, !(written.length === 1 && !entry.review && signed && !reading), field)
+    }
   }
   return groups
 }

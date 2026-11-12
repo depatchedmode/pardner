@@ -341,3 +341,27 @@ describe('sortEvents', () => {
     assert.deepEqual(input.map(e => e.operationId), ['op-d', 'op-a', 'op-d', 'op-b', 'op-c'])
   })
 })
+
+describe('the edit form’s newer-field notice', async () => {
+  const { newerAuthors } = await import('../ui-prototype/src/attribution.js')
+  const signed = { state: 'signed', machineId: 'machine-aliceaaaaaaaaaaaaaaaaaaaaaa' }
+  const entry = (key, actorId, timestamp, fields, extra = {}) => ({ id: `${key}-change`, kind: 'operation', key, timestamp, review: false, flags: {},
+    event: { operationId: key, type: 'task.update', actorId, timestamp, taskId: 't1', changes: fields.map(field => ({ field, old: 'a', new: 'b' })), recordIds: ['t1'] },
+    changes: [{ hash: `${key}-change`, ...signed }], ...extra })
+  const alice = entry('op-alice', 'alice', '2026-01-01T10:00:00.000Z', ['title'])
+  // A later entry that mentions the field, but did not write its current value (another member's copy).
+  const copy = entry('op-copy', 'bob', '2026-01-01T11:00:00.000Z', ['title'], { review: true, flags: { mismatch: true } })
+  const rows = [copy, alice].map(item => ({ entry: item, actorId: item.event.actorId, changes: item.event.changes }))
+  const attribution = { registers: {}, summary: { notDerived: 0, checking: 0, pending: 0 } }
+  const notice = overrides => newerAuthors({ fields: ['title'], taskId: 't1', revisions: { title: ['op-alice'] }, historyRows: rows, activity: [copy, alice], attribution, ...overrides })
+  it('credits the Actor of the change that wrote the current value, not the newest entry that mentions the field', () => {
+    assert.deepEqual(notice(), [{ by: 'alice', unconfirmed: false, fields: ['title'] }])
+  })
+  it('says unconfirmed while that change’s signature is pending, or another change wrote into the value, or changes are still being read', () => {
+    const pending = { ...alice, changes: [{ hash: 'op-alice-change', state: 'pending' }] }
+    assert.deepEqual(notice({ activity: [copy, pending] }), [{ by: 'alice', unconfirmed: true, fields: ['title'] }])
+    const altered = { ...attribution, registers: { 'taskFields:t1:title': { 'op-alice': { changedBy: [{ change: 'x', actorId: null, state: 'signed', review: true }] } } } }
+    assert.deepEqual(notice({ attribution: altered }), [{ by: null, unconfirmed: true, fields: ['title'] }])
+    assert.deepEqual(notice({ attribution: { ...attribution, summary: { notDerived: 3 } } }), [{ by: 'alice', unconfirmed: true, fields: ['title'] }])
+  })
+})
