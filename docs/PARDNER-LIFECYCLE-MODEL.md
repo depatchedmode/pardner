@@ -675,3 +675,43 @@ text changed. Fresh default check: 174614 states, 679456 transitions, all four
 invariants and `ShutdownCompletes` hold; all ten witnesses are reachable. All
 eight mutations were caught, reported as drift and reproduced by the model; the
 working tree was unchanged. See `attributionReviewThree` in the evidence JSON.
+
+## Attribution review four mapping review (2026-11-12)
+
+Containing every top-level read of the board, and checking each entry against the
+board as of its change's dependencies, changed `lib/workspace.js` and
+`lib/workspace-runtime.js`. Each drift was reviewed against its diff before the
+mapping was recorded:
+- `lib/workspace.js` (`ReplicaEdit`, `Handle`, `Respond`): the new read-only
+  `readable()` gives every read the board's top-level maps that hold one map (an
+  empty one in place of any other value) and lists the rest; `snapshot()` and
+  `context()` read through it, and `context()` refuses a record it cannot read as
+  `UNREADABLE`. The constructor takes the project ID from the replica's metadata and
+  accepts the schema version the board's creation wrote. In `apply()`, the write
+  path's preparation and its change are each wrapped so that an error from a
+  top-level map holding a value of the wrong kind is refused as `UNREADABLE`; the
+  change still goes through `boardChange` synchronously before the flush, a change
+  that throws is still refused before any flush, `confirm()` and the
+  `STORAGE_FAILED` path are unchanged. The `Handle` anchor for the change now names
+  the wrapped line; its note says so. No guard or effect changed.
+- `lib/workspace-runtime.js` (`ReplicaEdit`, `SyncDown`, `ReplicaSendAck`,
+  `Handle`, `StoreCloseBegin`, `StoreCloseComplete`, `ReplicaReceive`,
+  `ReplicaAckCommit`): opening accepts the project ID the board's creation wrote
+  and passes the metadata's project ID to the workspace; `isMap` requires an
+  Automerge map; `getDoc` adds, for each unreadable top-level key, the changes
+  that wrote it (`rootWriters`, `describeWriter`, `entriesByChange`, all
+  read-only); `getAgents` and `prepareDelivery` read the readable board
+  (`prepareDelivery` still flushes before it reconciles); the record gate's
+  comparison reads own properties only. The record gate's change, its flush and
+  barrier, the acknowledgement path, the attribution start, the receive path and
+  `closeResources` are unchanged.
+- `lib/attribution.js` and `lib/change-log.js`, which are not mapped, changed the
+  ranking of kept signature candidates and made a derivation slice's operation
+  budget a real bound; `confirmOwn()` is unchanged.
+
+Only the `Handle` anchor text and its note changed; no guard, effect, atomicity
+assumption, invariant, witness or mutation text changed. Fresh default check:
+174614 states, 679456 transitions, all four invariants and `ShutdownCompletes`
+hold; all ten witnesses are reachable. All eight mutations were caught, reported
+as drift and reproduced by the model; the working tree was unchanged. See
+`attributionReviewFour` in the evidence JSON.
