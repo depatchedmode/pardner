@@ -139,3 +139,16 @@ it('the browser holds the board’s dictionaries and its label tables without a 
   assert.equal(doc.actors.alice.id, 'alice')
   assert.equal(JSON.stringify(doc.tasks), '{"t1":{"title":"One"}}')
 })
+
+it('the control pane finds only the board’s own Actors and tasks, so an ID named like an inherited property is unknown', async () => {
+  const { ControlPane } = await import('../lib/control-pane.js')
+  // The board as getDoc() gives it: plain objects keyed by board data.
+  const pane = { doc: () => JSON.parse(JSON.stringify({ actors: { scout: { id: 'scout', kind: 'agent' }, alice: { id: 'alice', kind: 'human' } }, tasks: { t1: { id: 't1' } } })) }
+  const authorize = body => ControlPane.prototype.authorization.call(pane, { actorId: 'scout', allowedTaskIds: ['t1'], allowedFromActorIds: ['alice'], ...body })
+  assert.deepEqual(authorize({}), { taskIds: ['t1'], senders: ['alice'] })
+  for (const name of NAMES) {
+    assert.throws(() => authorize({ allowedTaskIds: [name] }), error => error.code === 'NOT_FOUND', `task ${name}`)
+    assert.throws(() => authorize({ allowedFromActorIds: [name] }), error => error.code === 'UNKNOWN_ACTOR', `sender ${name}`)
+    assert.throws(() => authorize({ actorId: name }), error => error.code === 'UNKNOWN_ACTOR', `agent ${name}`)
+  }
+})
