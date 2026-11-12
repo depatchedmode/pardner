@@ -686,7 +686,7 @@ mapping was recorded:
   `readable()` gives every read the board's top-level maps that hold one map (an
   empty one in place of any other value) and lists the rest; `snapshot()` and
   `context()` read through it, and `context()` refuses a record it cannot read as
-  `UNREADABLE`. The constructor takes the project ID from the replica's metadata and
+  `UNREADABLE` (a missing record only when a map it would be in cannot be read). The constructor takes the project ID from the replica's metadata and
   accepts the schema version the board's creation wrote. In `apply()`, the write
   path's preparation and its change are each wrapped so that an error from a
   top-level map holding a value of the wrong kind is refused as `UNREADABLE`; the
@@ -700,7 +700,7 @@ mapping was recorded:
   and passes the metadata's project ID to the workspace; `isMap` requires an
   Automerge map; `getDoc` adds, for each unreadable top-level key, the changes
   that wrote it (`rootWriters`, `describeWriter`, `entriesByChange`, all
-  read-only); `getAgents` and `prepareDelivery` read the readable board
+  read-only, the index of entries built once per call); `getAgents` and `prepareDelivery` read the readable board
   (`prepareDelivery` still flushes before it reconciles); the record gate's
   comparison reads own properties only. The record gate's change, its flush and
   barrier, the acknowledgement path, the attribution start, the receive path and
