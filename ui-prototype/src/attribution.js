@@ -5,14 +5,14 @@
 
 const own = (map, key) => (map && typeof key === 'string' && Object.hasOwn(map, key) ? map[key] : null)
 
-const REASONS = {
+const REASONS = Object.assign(Object.create(null), {
   missing: 'no signature arrived',
   invalid: 'its signature doesn’t check out',
   'unknown-signer': 'its signer isn’t a machine of this project',
   'not-machine': 'it wasn’t made by a Pardner machine',
   'ambiguous-signer': 'its actor names more than one machine',
   checking: 'still being checked',
-}
+})
 
 const FLAGS = {
   keyMismatch: 'written under a key other than its own operation ID',
@@ -122,7 +122,7 @@ function signerLineOf(attribution, entry) {
 /** Whether an Activity entry needs a person's review (lib/activity.js decides; this reads it). */
 export const needsReview = row => Boolean(row?.entry?.review)
 
-const ROLE = { admin: 'an admin', member: 'a member' }
+const ROLE = Object.freeze(Object.assign(Object.create(null), { admin: 'an admin', member: 'a member' }))
 
 /** One membership record entry as a plain sentence, in the shape describeEvent returns. Names are as they are now. */
 export const describeRecord = safely(describeRecordOf, UNDESCRIBED)
@@ -135,8 +135,8 @@ function describeRecordOf(row, attribution) {
   let parts, detail = null
   switch (record.kind) {
     case 'project.genesis': parts = [' started the project']; break
-    case 'member.add': parts = [` let ${record.displayName ?? 'someone'} in as ${ROLE[record.role] ?? 'a member'}`]; break
-    case 'member.role': parts = [' made ', { label: person(record.subject), current: true }, ` ${ROLE[record.role] ?? 'a member'}`]; break
+    case 'member.add': parts = [` let ${record.displayName ?? 'someone'} in as ${own(ROLE, record.role) ?? 'a member'}`]; break
+    case 'member.role': parts = [' made ', { label: person(record.subject), current: true }, ` ${own(ROLE, record.role) ?? 'a member'}`]; break
     case 'member.remove':
       parts = record.subject === signerPerson ? [' left the project'] : [' removed ', { label: person(record.subject), current: true }, ' from the project']
       break

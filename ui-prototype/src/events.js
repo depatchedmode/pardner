@@ -1,9 +1,12 @@
 import { machineLabel } from './attribution.js'
 
-export const STATUS_LABELS = {
+/** A lookup table read with keys from the board: no prototype, so a status such as `__proto__` names nothing. */
+export const table = entries => Object.freeze(Object.assign(Object.create(null), entries))
+
+export const STATUS_LABELS = table({
   backlog: 'Backlog', 'up-next': 'Up next', 'in-progress': 'In progress', review: 'Review', completed: 'Completed',
   'dead-end': 'Dead end', abandoned: 'Abandoned', open: 'Open', proven: 'Proven', achieved: 'Achieved',
-}
+})
 
 const own = (map, key) => (map && typeof key === 'string' && Object.hasOwn(map, key) ? map[key] : null)
 const statusLabel = value => (typeof value === 'string' && Object.hasOwn(STATUS_LABELS, value) ? STATUS_LABELS[value] : String(value ?? ''))
@@ -44,8 +47,8 @@ function formatPart(field, value, lookups) {
 }
 const partText = parts => parts.map(part => (typeof part === 'string' ? part : part.label)).join('')
 
-const FIELD_NAMES = { goalId: 'goal' }
-const fieldName = field => String(FIELD_NAMES[field] ?? field).toLowerCase()
+const FIELD_NAMES = table({ goalId: 'goal' })
+const fieldName = field => String(own(FIELD_NAMES, field) ?? field).toLowerCase()
 
 // Unchanged fields are noise; order is only worth mentioning when nothing else moved.
 function meaningfulChanges(event) {

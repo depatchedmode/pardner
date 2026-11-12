@@ -15,6 +15,7 @@ import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js
 import { quickStatusEditable } from './task-status.js'
 import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
+import { boardData, dictionary } from './board-data.js'
 import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, needsReview, newerAuthors, reviewNotice, signerLine, taskRows } from './attribution.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
@@ -337,7 +338,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
       throw Object.assign(new Error('The service workspace changed. Reopening the current workspace.'), { code: 'WORKSPACE_MISMATCH' })
     }
     if (generation !== refreshGeneration.current) return
-    if (observedDoc === docUpdates.current) setDoc(next)
+    if (observedDoc === docUpdates.current) setDoc(boardData(next))
     if (observedStatus === statusUpdates.current) setStatus(state)
   }, [request, config.workspaceId, reloadConfiguration])
   useEffect(() => {
@@ -374,7 +375,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
               void reloadConfiguration().catch(failure => { if (!stopped) setConnectionError(failure) })
               return
             }
-            if (message.doc) { docUpdates.current++; setDoc(message.doc) }
+            if (message.doc) { docUpdates.current++; setDoc(boardData(message.doc)) }
             if (message.status) { statusUpdates.current++; setStatus(message.status) }
           } catch {
             setConnectionError(new Error('The service sent an unreadable update. Reconnecting…'))
@@ -526,9 +527,10 @@ export function Workspace({ config, reloadConfiguration, session }) {
     </div>}
   </main>
   // The client's Actors carry each person's current profile name (and removal); the document keeps enrollment names.
-  const actors = session.actorsById ? { ...doc.actors, ...session.actorsById } : doc.actors
-  const veins = doc.veins || {}
-  const goals = doc.goals || {}
+  // Each is held without a prototype (boardData), so a lookup by an ID from the board finds only what the board holds.
+  const actors = session.actorsById ? dictionary(doc.actors, session.actorsById) : doc.actors
+  const veins = doc.veins
+  const goals = doc.goals
   const activeVeinFilter = veins[veinFilter] ? veinFilter : ''
   const tasks = Object.values(doc.tasks).filter(
     (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter)
