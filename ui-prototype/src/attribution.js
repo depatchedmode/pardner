@@ -21,6 +21,8 @@ const FLAGS = {
   alsoWrote: 'the change also altered content outside this entry',
   invalidRecord: 'its record signature doesn’t check out',
   alsoCreated: 'another change also claims to create this board',
+  mismatch: 'it doesn’t match what its change did',
+  badTime: 'its change’s time can’t be shown',
 }
 
 /** A machine as people know it: its person and its name, with a short ID only when it has no name. */
@@ -101,6 +103,8 @@ export function signerLine(attribution, entry) {
     if (changes.length > 1) lines = lines.map((line, index) => ({ ...line, text: `${line.text} (${changes[index].replicaId ? 'on another replica, ' : ''}${new Date(changes[index].timestamp).toLocaleString()})` }))
   }
   const flags = Object.entries(FLAGS).filter(([flag]) => entry.flags?.[flag]).map(([, text]) => ({ text, tone: 'flag' }))
+  // What the entry says and what its change wrote, each difference in words (lib/activity.js mismatchText).
+  for (const change of changes) for (const item of Array.isArray(change.mismatch) ? change.mismatch : []) if (typeof item?.text === 'string') flags.push({ text: item.text, tone: 'flag' })
   const later = (entry.alteredLater ?? []).length
     ? [{ text: `shown as signed; its stored copy was altered after signing by ${entry.alteredLater.map(change => changeLabel(attribution, change)).join(' and ')}`, tone: 'flag' }] : []
   const all = [...lines, ...flags, ...later]

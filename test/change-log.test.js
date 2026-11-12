@@ -32,6 +32,7 @@ test('every ordinary operation type and every record flow is one entry per chang
     assert.equal(entry.key, event.operationId)
     assert.equal(canonical(entry.event), canonical(event), `${event.type} is shown as written`)
     assert.equal(entry.unusual, undefined, `${event.type} wrote nothing unusual`)
+    assert.equal(entry.mismatch, undefined, `${event.type} wrote exactly what its event implies: ${JSON.stringify(entry.mismatch)}`)
   }
   const [creation] = A.getChangesMetaSince(doc, [])
   assert.equal(entries.get(creation.hash).kind, 'creation')
@@ -64,7 +65,8 @@ test('a copy of another person’s event under an earlier key, with different te
   assert.equal(alices.review, false)
   const bobs = shown.find(entry => entry.changes.some(change => change.hash === forged))
   assert.deepEqual(bobs.changes.map(change => [change.hash, change.machineId]), [[forged, MACHINES[BOB]]])
-  assert.deepEqual(Object.keys(bobs.flags).sort(), ['actorMismatch', 'idMismatch', 'keyMismatch'])
+  // It wrote the event and none of the writes the event implies: its entry does not match what it did.
+  assert.deepEqual(Object.keys(bobs.flags).sort(), ['actorMismatch', 'idMismatch', 'keyMismatch', 'mismatch'])
   assert.equal(bobs.review, true)
 })
 

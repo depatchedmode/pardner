@@ -7,7 +7,7 @@ import { canonical, plain } from '../lib/workspace-schema.js'
 import { storageValue } from '../lib/workspace-values.js'
 import { eventually, execute, withHub } from '../support/signed-hub.js'
 import { everyOperationVia } from '../support/activity-fixture.js'
-import { OPERATION_TYPES } from '../lib/workspace-commands.js'
+import { OPERATION_TYPES, prepareOperation } from '../lib/workspace-commands.js'
 import { personIdFor } from '../lib/machine-key.js'
 import { actorId as actorFor } from '../lib/client-identity.js'
 
@@ -212,6 +212,46 @@ it('a field alternative another member’s change wrote in someone else’s name
       assert.deepEqual(Object.keys(listed), ['op-forged'], 'only the value Alice did not write is listed')
       assert.equal(listed['op-forged'].changedBy[0].change, forged)
       assert.ok(doc.tasks[taskId].conflicts.title.some(choice => choice.operationId === edited.operationId))
+    }
+  }, { hubOptions: { actors: [] } })
+})
+
+it('a comment entry whose change writes other words into the comment than the entry says is listed as not matching what it did, with both, under its own signer', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey)), bobActor = actorFor(personIdFor(project.keys[1].publicKey))
+    const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
+    await register({ id: owner, handle: 'owner', kind: 'human' })
+    await register({ id: member, handle: 'member-zero', kind: 'human' })
+    await register({ id: bobActor, handle: 'bob', kind: 'human' })
+    const alice = await replica(0)
+    const { result } = await alice.execute({ operationId: randomUUID(), actorId: member, type: 'task.create', payload: { title: 'Ship it' } })
+    const bob = await bare(1)
+    await eventually(() => bob.board.doc().tasks?.[result.taskId] && bob.board.doc().actors?.[bobActor], 'Bob never synced')
+    // Bob's client prepares his own comment exactly as the write path does, then writes other words into its text.
+    const prepared = prepareOperation(bob.board.doc(), { operationId: randomUUID(), actorId: bobActor, type: 'comment.add', payload: { taskId: result.taskId, text: 'Ready for review' } },
+      { replicaId: 'replica-bob', timestamp: new Date().toISOString() })
+    const commentId = prepared.event.result.commentId
+    bob.board.change(doc => {
+      prepared.change(doc)
+      doc.commentBodies[commentId] = storageValue({ ...plain(doc.commentBodies[commentId]), value: 'Approved for deployment' })
+    })
+    const [hash] = A.getHeads(bob.board.doc())
+    sign(bob, project.projectId, hash)
+    await settled([server.store, alice], [hash])
+    for (const runtime of [server.store, alice]) {
+      const { activity, attribution, comments } = runtime.getDoc()
+      const entry = activity.find(item => item.changes.some(change => change.hash === hash))
+      assert.equal(entry.kind, 'operation')
+      assert.equal(entry.event.payload.text, 'Ready for review', 'the entry shows what the event says')
+      assert.deepEqual(entry.changes.map(change => [change.state, change.machineId]), [['signed', project.keys[1].machineId]], 'under Bob’s own signer')
+      assert.deepEqual(Object.keys(entry.flags), ['mismatch'], 'it is Bob’s own operation; only its writes differ')
+      assert.equal(entry.review, true)
+      const [difference] = entry.changes[0].mismatch
+      assert.deepEqual([difference.issue, difference.map, difference.key, difference.claimed.value, difference.wrote.value], ['differs', 'commentBodies', commentId, 'Ready for review', 'Approved for deployment'])
+      assert.match(difference.text, /“Ready for review”.*“Approved for deployment”/)
+      assert.ok(attribution.review.some(item => item.change === hash && item.flags.mismatch), `${runtime.role} lists it for review`)
+      assert.equal(comments[commentId].content, 'Approved for deployment', 'the board shows what was written')
+      assert.ok(attribution.comments[commentId]?.changedBy?.some(writer => writer.change === hash), 'and says it was changed by someone other than its author')
     }
   }, { hubOptions: { actors: [] } })
 })
