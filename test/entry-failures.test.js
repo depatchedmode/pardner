@@ -75,7 +75,10 @@ test('the board view shows every record it can read when one change left another
   const snapshot = new Workspace({ handle: { doc: () => doc }, replicaId: 'replica-test' }).snapshot()
   assert.equal(snapshot.tasks[kept.event.result.taskId].title, 'Kept')
   assert.equal(snapshot.comments[comment.event.result.commentId].content, 'Kept words')
-  assert.deepEqual(snapshot.unreadable.map(item => [item.kind, item.id]).sort(), [['comment', 'comment-orphan'], ['task', broken.event.result.taskId]])
+  // Each record and field that can't be read is listed: the comment with no text, the title that is not a revision, and
+  // the Activity entry holding none of what an entry holds.
+  assert.deepEqual([...new Set(snapshot.unreadable.map(item => `${item.kind} ${item.id}`))].sort(), ['comment comment-orphan', 'operation op-odd-link', `task ${broken.event.result.taskId}`].sort())
+  assert.equal(snapshot.tasks[broken.event.result.taskId].title, '', 'a title that is not a revision reads as empty, and the task is still shown')
   assert.equal(snapshot.tasks[huge.event.result.taskId].order, (2n ** 60n).toString(), 'an integer JSON cannot hold is shown as its exact digits')
   assert.doesNotThrow(() => JSON.stringify(snapshot))
 })
