@@ -411,3 +411,27 @@ it('stops while a replica acknowledgement is still being answered', { timeout: 3
     await rm(root, { recursive: true, force: true })
   }
 })
+
+it('allows only the author to delete a comment over the API and replays their delete', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-comment-author-'))
+  const server = service(directory)
+  try {
+    await server.start()
+    const operate = (actorId, type, payload, operationId = randomUUID()) =>
+      api(server, '/automerge/operations', { actorId, type, payload, operationId })
+    const { result: { taskId } } = await operate('alice', 'task.create', { title: 'Author permissions' })
+    const added = await operate('alice', 'comment.add', { taskId, text: 'Keep my comment' })
+    const payload = { commentId: added.result.commentId, expectedRevisions: [added.operationId] }
+    await assert.rejects(operate('builder', 'comment.delete', payload),
+      { code: 'FORBIDDEN', message: 'Only the comment author may delete it' })
+    assert.equal(server.store.workspace.taskContext(taskId).comments.length, 1)
+    const deleted = await operate('alice', 'comment.delete', payload, 'delete-once')
+    assert.equal(deleted.savedLocally, true)
+    const replay = await operate('alice', 'comment.delete', payload, 'delete-once')
+    assert.equal(replay.replayed, true)
+    assert.equal(server.store.workspace.taskContext(taskId).comments.length, 0)
+  } finally {
+    await server.stop()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
