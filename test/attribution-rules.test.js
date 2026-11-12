@@ -579,6 +579,8 @@ it('an equivocation report is kept across a restart', { timeout: 90000 }, async 
     first.board.update(doc => A.merge(doc, one))
     second.board.update(doc => A.merge(doc, two))
     const report = await eventually(() => server.store.getDoc().attribution.summary.equivocations[0], 'the equivocation was never reported')
+    // Both signatures have reached the hub before anything stops, so the proof read again after the restart has them.
+    await eventually(() => report.hashes.every(hash => storedSignatures(server.store.workspace.signatures.doc(), hash).length), 'the signatures never reached the hub')
     // Both members stop, so nothing can report it again; the hub restarts from its own directory.
     await first.repo.shutdown(); await second.repo.shutdown()
     const directory = server.store.directory
@@ -771,5 +773,36 @@ it('an equivocation report and the signatures that prove it are kept once saving
       assert.ok(kept, 'the report was lost after its first save failed')
       assert.equal(kept.proven, true, 'its proof was lost after its first save failed')
     } finally { await reopened.close() }
+  })
+})
+
+it('an equivocation report whose first save failed is saved by the background retry also when no signature proves it', { timeout: 90000 }, async () => {
+  await withHub(async context => {
+    const { server } = context
+    const cache = server.store.signatureCache
+    let failures = 0
+    const save = cache.addEquivocation.bind(cache)
+    cache.addEquivocation = (...args) => { if (!failures++) throw new Error('disk full (addEquivocation)'); return save(...args) }
+    // Neither change is signed, so no proof is ever added: the retry must not depend on one.
+    const { hashes } = await equivocate(context, { sign: false })
+    await eventually(() => server.store.getDoc().attribution.summary.equivocations.length === 1, 'the conflict was never reported')
+    assert.equal(server.store.getDoc().attribution.summary.equivocations[0].proven, false)
+    await eventually(() => cache.equivocations(10).length === 1, 'the report was never saved after its first save failed', 10000)
+    assert.deepEqual(cache.equivocations(10)[0][1].hashes, hashes)
+    assert.ok(failures >= 2, 'the save was retried')
+  })
+})
+
+it('a signature whose first write into the signature document failed is written by the background retry, without another write by its machine', { timeout: 90000 }, async () => {
+  await withHub(async ({ server }) => {
+    const attribution = server.store.attribution
+    const write = attribution.writeEntries.bind(attribution)
+    let failures = 0
+    attribution.writeEntries = (entries, ...rest) => { if (entries.length && !failures++) throw new Error('signature document unavailable'); return write(entries, ...rest) }
+    await execute(server.store, 'Signed once, written later')
+    const [hash] = A.getHeads(server.store.docHandle.doc())
+    await eventually(() => failures > 0, 'the first write was never tried')
+    await eventually(() => storedSignatures(server.store.workspace.signatures.doc(), hash).length === 1, 'the signature was never written after its first write failed', 10000)
+    assert.equal(attribution.unwritten, 0)
   })
 })
