@@ -736,7 +736,8 @@ its diff before the mapping was recorded:
   `ReplicaAckCommit`): `getAgents` returns `Workspace.actors()`, and
   `prepareDelivery` reconciles with the mentions that can be read; it still flushes
   before it reconciles. Nothing on the acknowledgement, receive or shutdown paths
-  changed.
+  changed. A later one-line change in `currentWriters`, a read used only by
+  the attribution view, takes a comment's author only when it is text.
 - `lib/attribution.js` and `lib/change-signatures.js`, which are not mapped, now
   read every value stored for a change and verify candidates in bounded passes;
   `confirmOwn()` and the acknowledgement barrier are unchanged.

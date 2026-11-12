@@ -1708,11 +1708,11 @@
   "attributionCloseOut": {
     "recorded": "2026-11-12",
     "mapping": {
-      "revision": "fd1191e1920b20f57971f485fa28f16adbcdb87e",
+      "revision": "015431e680731aefb5b61e6922cea3d6bd8e2139",
       "files": {
         "automerge-sync-server.js": "4ea7545bbea2ec334a0b09a139ff51e12833ffeb0b44b95991675ae2cf46d69e",
         "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
-        "lib/workspace-runtime.js": "5fa9978d91df9e7ecbfdc7c7e574de4e25763ee8d737e2aa31fbf72d2e0bb110",
+        "lib/workspace-runtime.js": "f0f2dd0f8068fd57683c02b4a912deb0f4dfa44bae53b7f3d16ac226c420d1f5",
         "lib/workspace.js": "5d838e04eff7e591b77e787fb56301594667384f2f8684f5c9e1b69d127661ee"
       }
     },
@@ -1723,8 +1723,8 @@
     "result": "passed",
     "mutationDemonstration": {
       "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
-      "started": "2026-11-12T22:38:19.845Z",
-      "finished": "2026-11-12T22:38:44.681Z",
+      "started": "2026-11-12T23:54:43.819Z",
+      "finished": "2026-11-12T23:55:06.635Z",
       "workingTreeUnchanged": true,
       "ok": true,
       "mutations": [
