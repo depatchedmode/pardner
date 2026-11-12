@@ -38,6 +38,11 @@ Plans in agent-assisted work are hypotheses, not blueprints. Pardner's vocabular
 
 ## Current implementation
 
+The standalone `lib/machine-key.js` and `lib/membership.js` libraries provide
+Ed25519 keys and order-free signed membership records. No running product path
+calls them yet; enrollment and sync still use the credentials described below.
+The trust rollout remains a [plan](docs/PARDNER-TRUST-PLAN.md).
+
 The [local client onboarding preview](docs/PARDNER-CLIENT.md) adds a private
 identity and project registry, isolated project runtimes, Start/Join, purpose-specific
 invitations and authenticated Actor sessions. `pardner open` (or a bare `pardner`)

@@ -9,6 +9,11 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 const names = text => text.trim().split(/\s+/)
 const groups = [
   {
+    name: 'trust-library', scripts: ['test:runtime'],
+    files: names('lib/machine-key.js lib/membership.js test/machine-key.test.js test/membership.test.js'),
+    focused: [{ command: 'node --test test/machine-key.test.js test/membership.test.js', note: 'Standalone machine keys and order-free signed records; no product callers' }],
+  },
+  {
     name: 'persistence', scripts: ['test:qualification', 'test:runtime'], qualification: 'Disk persistence and directory ownership',
     files: names(`lib/atomic-file.js lib/durable-repo.js lib/nodefs-storage-adapter.js lib/storage-key.js lib/storage-lease.js lib/private-state.js
       support/persistence-process.js`),
