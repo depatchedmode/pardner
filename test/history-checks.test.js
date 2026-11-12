@@ -154,3 +154,46 @@ test('each value an operation takes from the board then is checked against the b
     assert.equal(entry.flags.mismatch, true, `${label}: the lie is not flagged`)
   }
 })
+
+/** `request` with one operation ID on each replica of `replicas`, each from `doc`, merged: one request retried on several replicas. */
+function retried(doc, request, replicas) {
+  const runs = replicas.map(n => run(doc, request, { ...replica(n), timestamp: new Date(Date.UTC(2026, 10, 2, 9, 0, n)).toISOString() }))
+  return { doc: runs.slice(1).reduce((merged, next) => A.merge(merged, next.doc), A.clone(runs[0].doc)), runs }
+}
+
+test('one task.create and one task.update, each retried on two replicas at different times, are one entry each listing both changes, unflagged', () => {
+  const { doc: start } = board()
+  // Its order comes from each replica's own time, so the two creations differ there and nowhere else.
+  const created = retried(start, { operationId: 'retried-create', type: 'task.create', payload: { title: 'Made twice' } }, [3, 4])
+  const taskId = created.runs[0].event.result.taskId
+  assert.notEqual(created.runs[0].event.changes.find(change => change.field === 'order').new, created.runs[1].event.changes.find(change => change.field === 'order').new)
+  const updated = retried(created.doc, { operationId: 'retried-update', type: 'task.update', payload: { taskId, updates: { status: 'in-progress' },
+    expectedRevisions: { status: taskState(created.doc, taskId).revisions.status } } }, [3, 4])
+  assert.deepEqual(flagged(updated.doc), [])
+  for (const operation of [created, updated]) {
+    const entries = view(updated.doc).filter(entry => entry.kind === 'operation' && entry.key === operation.runs[0].event.operationId)
+    assert.equal(entries.length, 1, 'one entry for one request')
+    assert.deepEqual(entries[0].changes.map(change => change.hash).sort(), operation.runs.map(item => item.hash).sort())
+  }
+})
+
+test('work on a task whose creation and whose branch were each retried on two replicas, from parents that differed, is unflagged', () => {
+  const { doc: start } = board()
+  const created = retried(start, { operationId: 'twice-made', type: 'task.create', payload: { title: 'Parent' } }, [3, 4])
+  const taskId = created.runs[0].event.result.taskId
+  const revisions = (doc, id, field) => taskState(doc, id).revisions[field]
+  // The previous value of a field one operation wrote twice: either of its values.
+  const reordered = run(created.doc, { type: 'task.update', payload: { taskId, updates: { order: 5 }, expectedRevisions: { order: revisions(created.doc, taskId, 'order') } } }, replica(5))
+  // A branch whose parent holds two values of one operation: its base is either.
+  const branched = run(created.doc, { type: 'task.branch', payload: { taskId, name: 'one' } }, replica(4))
+  // One branch request retried on two replicas whose parent then differed: two bases under one operation.
+  const renamed = run(branched.doc, { type: 'task.update', payload: { taskId, updates: { title: 'Parent, renamed' }, expectedRevisions: { title: revisions(branched.doc, taskId, 'title') } } }, replica(3))
+  const one = run(renamed.doc, { operationId: 'twice-branched', type: 'task.branch', payload: { taskId, name: 'two' } }, replica(3))
+  const two = run(branched.doc, { operationId: 'twice-branched', type: 'task.branch', payload: { taskId, name: 'two' } }, replica(4))
+  const merged = A.merge(A.merge(A.clone(one.doc), two.doc), reordered.doc)
+  const branchId = one.event.result.branchId
+  // Its fields carry the bookkeeping of whichever register the write path read; a merge reads either base.
+  const edited = run(merged, { type: 'task.update', payload: { taskId: branchId, updates: { description: 'Changed on the branch' }, expectedRevisions: { description: revisions(merged, branchId, 'description') } } }, replica(4))
+  const done = run(edited.doc, { type: 'task.merge', payload: { branchId, expectedRevisions: { description: revisions(edited.doc, taskId, 'description') } } }, replica(3))
+  assert.deepEqual(flagged(done.doc), [])
+})
