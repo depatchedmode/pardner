@@ -402,6 +402,8 @@ test('client review lists the changes whose signer could not be confirmed, in wo
     assert.equal(data.changes.length, 1)
     assert.equal(data.changes[0].state, 'unattributed')
     assert.deepEqual(data.changes[0].operations, [peer.operationId])
+    // As every CLI item: its entry's flags, its review state, and its signer as data.
+    assert.deepEqual([typeof data.changes[0].flags, data.changes[0].review, data.changes[0].signers.map(signer => [signer.hash, signer.state])], ['object', true, [[data.changes[0].change, 'unattributed']]])
     assert.equal(data.listing, undefined)
   } finally {
     await peer?.repo.shutdown()
