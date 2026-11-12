@@ -75,6 +75,9 @@ it('each top-level key holding a value of the wrong kind is listed as unreadable
           assert.ok(['UNREADABLE', 'NOT_FOUND'].includes(error.code), `${label}: ${read} failed: ${error.code} ${error.message}`)
         }
       }
+      // A record that is not on the board is not found, unless a map it would be in cannot be read.
+      const lost = wrongKind(key, kind) && !SCALARS.has(key)
+      assert.throws(() => workspace.taskContext('task-000000000000000000000000'), error => error.code === (lost && NEEDS.tasks.includes(key) ? 'UNREADABLE' : lost ? error.code : 'NOT_FOUND'), label)
     }
   }
 })
