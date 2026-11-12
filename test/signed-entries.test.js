@@ -7,6 +7,7 @@ import { canonical, plain } from '../lib/workspace-schema.js'
 import { storageValue } from '../lib/workspace-values.js'
 import { eventually, execute, withHub } from '../support/signed-hub.js'
 import { everyOperationVia } from '../support/activity-fixture.js'
+import { ChangeEncoder } from '../support/change-encoder.js'
 import { OPERATION_TYPES, prepareOperation } from '../lib/workspace-commands.js'
 import { personIdFor } from '../lib/machine-key.js'
 import { actorId as actorFor } from '../lib/client-identity.js'
@@ -254,4 +255,28 @@ it('a comment entry whose change writes other words into the comment than the en
       assert.ok(attribution.comments[commentId]?.changedBy?.some(writer => writer.change === hash), 'and says it was changed by someone other than its author')
     }
   }, { hubOptions: { actors: [] } })
+})
+
+it('a change whose time no date can show reaches every peer without stopping Activity or review: its time is unknown and it is flagged', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const alice = await replica(0)
+    const original = await comment(alice, 'An ordinary comment')
+    const bob = await bare(1)
+    await eventually(() => bob.board.doc().operations?.[original.operationId], 'Bob never synced')
+    const enc = new ChangeEncoder(bob.board.doc(), machineActor(bob.key), { time: 8640000000001 })
+    enc.value({ obj: enc.root('operations'), key: 'op-0-timed' }, original)
+    const { bytes, hash } = enc.encode()
+    bob.board.update(doc => A.applyChanges(doc, [bytes])[0])
+    sign(bob, project.projectId, hash)
+    await settled([server.store, alice], [hash])
+    for (const runtime of [server.store, alice]) {
+      const doc = runtime.getDoc()
+      const entry = doc.activity.find(item => item.changes.some(change => change.hash === hash))
+      assert.equal(entry.flags.badTime, true)
+      const listed = doc.attribution.review.find(item => item.change === hash)
+      assert.ok(listed, `${runtime.role} lists it for review`)
+      assert.equal(listed.at, null, 'with no time')
+      assert.ok(doc.activity.some(item => item.key === original.operationId && item.changes.every(change => change.hash !== hash)), 'and every other entry is shown')
+    }
+  })
 })

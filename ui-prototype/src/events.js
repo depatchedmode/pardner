@@ -96,7 +96,18 @@ function deletedNote(deletions, lookups) {
   return by.length ? `${DELETED_NOTE} by ${by.join(' and ')}.` : `${DELETED_NOTE}.`
 }
 
-export function describeEvent(event, lookups = {}, { within = null } = {}) {
+/** An entry that cannot be put into words, as one entry: its signer line and details are still shown. */
+const UNDESCRIBED = { actor: 'Someone', actorCurrent: false, parts: [' made a change whose content can’t be put into words'], detail: null, detailParts: null, excerpt: null }
+
+/**
+ * One Activity entry's event as a sentence. Whatever the event holds, this never throws: an entry whose content
+ * cannot be put into words says so, and every other entry is still described.
+ */
+export function describeEvent(event, lookups = {}, options = {}) {
+  try { return describeEventParts(event, lookups, options) } catch { return UNDESCRIBED }
+}
+
+function describeEventParts(event, lookups = {}, { within = null } = {}) {
   const actor = actorName(lookups.actors, event.actorId)
   const actorCurrent = Boolean(own(lookups.actors, event.actorId))
   const payload = event.payload ?? {}

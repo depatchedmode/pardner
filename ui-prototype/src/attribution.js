@@ -27,7 +27,7 @@ const FLAGS = {
 
 /** A machine as people know it: its person and its name, with a short ID only when it has no name. */
 export function machineLabel(attribution, machineId) {
-  if (!machineId) return 'an unknown machine'
+  if (typeof machineId !== 'string' || !machineId) return 'an unknown machine'
   const machine = own(attribution?.machines, machineId)
   const short = String(machineId).slice('machine-'.length, 'machine-'.length + 6)
   if (!machine) return `a machine outside this project (${short})`
@@ -51,13 +51,18 @@ const recordActor = (attribution, record) => own(attribution?.personActors, own(
  */
 export function activityRows(doc) {
   const attribution = doc?.attribution ?? null
+  const text = value => (typeof value === 'string' ? value : null)
   return (Array.isArray(doc?.activity) ? doc.activity : []).map(entry => ({
-    entry, operationId: entry.id, timestamp: entry.timestamp ?? '',
-    actorId: entry.kind === 'operation' ? entry.event.actorId : entry.kind === 'record' ? recordActor(attribution, entry.record) : null,
-    type: entry.kind === 'operation' ? entry.event.type : entry.kind === 'record' ? `record.${entry.record.kind}` : 'change.other',
-    ...(entry.kind === 'operation' ? { changes: entry.event.changes, taskId: entry.event.taskId, recordIds: entry.event.recordIds } : {}),
+    entry, operationId: entry.id, timestamp: text(entry.timestamp) ?? '',
+    actorId: entry.kind === 'operation' ? text(entry.event.actorId) : entry.kind === 'record' ? recordActor(attribution, entry.record) : null,
+    type: entry.kind === 'operation' ? entry.event.type : entry.kind === 'record' ? `record.${text(entry.record?.kind) ?? 'unknown'}` : 'change.other',
+    ...(entry.kind === 'operation' ? { changes: entry.event.changes, taskId: text(entry.event.taskId), recordIds: entry.event.recordIds } : {}),
   }))
 }
+
+/** A sentence for an entry that cannot be put into words: one entry fails, never the list. */
+const UNDESCRIBED = { actor: 'Someone', actorCurrent: false, parts: [' made a change whose content can’t be put into words'], detail: null, excerpt: null }
+const safely = (describe, fallback) => (...args) => { try { return describe(...args) } catch { return fallback } }
 
 /** The rows of one task's History: entries whose signed event names the task. */
 export function taskRows(doc, taskId) {
@@ -91,7 +96,9 @@ function changeLine(attribution, change) {
  * record the line is the record's own signature, which covers exactly the record shown, followed by any change that
  * wrote it into the board without a valid signature. Null when the service checks no signatures.
  */
-export function signerLine(attribution, entry) {
+export const signerLine = safely(signerLineOf, { text: 'Its signer can’t be shown', tone: 'flag' })
+
+function signerLineOf(attribution, entry) {
   if (!attribution || !entry) return null
   const changes = Array.isArray(entry.changes) ? entry.changes : []
   let lines
@@ -118,7 +125,9 @@ export const needsReview = row => Boolean(row?.entry?.review)
 const ROLE = { admin: 'an admin', member: 'a member' }
 
 /** One membership record entry as a plain sentence, in the shape describeEvent returns. Names are as they are now. */
-export function describeRecord(row, attribution) {
+export const describeRecord = safely(describeRecordOf, UNDESCRIBED)
+
+function describeRecordOf(row, attribution) {
   const { record } = row.entry
   const person = id => own(attribution?.people, id) ?? 'someone'
   const signerPerson = own(attribution?.machines, record.signer)?.personId
@@ -145,7 +154,9 @@ export function describeRecord(row, attribution) {
 }
 
 /** A change that wrote neither one Activity entry nor a record, as a sentence: what it altered or wrote. */
-export function describeChange(row, attribution) {
+export const describeChange = safely(describeChangeOf, UNDESCRIBED)
+
+function describeChangeOf(row, attribution) {
   const { entry } = row
   const [change] = entry.changes
   const claimed = change?.claimed ?? change?.machineId
@@ -155,6 +166,7 @@ export function describeChange(row, attribution) {
     const others = entry.altered.length - 1
     return { actor, actorCurrent: true, parts: [' altered an Activity entry another change signed'], detail: others > 0 ? `and ${others} more` : null, excerpt: null }
   }
+  if (entry.wrote?.unreadable?.length) return { actor, actorCurrent: true, parts: [' wrote content that can’t be read exactly as plain data'], detail: entry.wrote.unreadable.map(item => String(item?.reason ?? '')).filter(Boolean).slice(0, 3).join('; ') || null, excerpt: null }
   const events = entry.wrote?.events?.length ?? 0
   if (events) return { actor, actorCurrent: true, parts: [events === 1 ? ' wrote an Activity entry that isn’t well formed' : ` wrote ${events} Activity entries in one change`], detail: null, excerpt: null }
   if (entry.alteredContent?.length) return { actor, actorCurrent: true, parts: [' changed content another change wrote'], detail: null, excerpt: null }
