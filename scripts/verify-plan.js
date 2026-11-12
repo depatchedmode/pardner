@@ -30,11 +30,12 @@ const groups = [
   {
     name: 'signed-changes', scripts: ['test:runtime', 'test:cli', 'test:ui'],
     qualification: 'Signed changes, the signature document and cache, attribution, and the two-document hub acknowledgement',
-    files: names(`lib/attribution.js lib/change-signatures.js lib/signature-cache.js lib/client-review.js lib/change-log.js lib/activity.js support/signing-process.js
-      support/unsigned-peer.js support/signed-hub.js support/activity-fixture.js scripts/signing-benchmark.js test/signed-changes-ui.test.js test/attribution-rules.test.js
-      test/change-log.test.js test/activity-property.test.js test/signed-entries.test.js test/cli-activity.test.js`),
-    focused: [{ command: 'node --test test/change-signatures.test.js test/signed-changes.test.js test/attribution-rules.test.js test/change-log.test.js test/activity-property.test.js test/signed-entries.test.js test/signed-changes-ui.test.js',
-      note: 'Machine actors, signing only own writes and checking, each Activity entry derived from its own change, malformed signature documents and concurrent shards, repairs and fair polling, pending then unattributed under cut, slow and silent links, removed machines, equivocation proofs, kill between saves, and the board' }],
+    files: names(`lib/attribution.js lib/change-signatures.js lib/signature-cache.js lib/client-review.js lib/change-log.js lib/activity.js lib/operation-writes.js
+      support/signing-process.js support/unsigned-peer.js support/signed-hub.js support/activity-fixture.js support/change-encoder.js scripts/signing-benchmark.js
+      test/signed-changes-ui.test.js test/attribution-rules.test.js test/change-log.test.js test/activity-property.test.js test/signed-entries.test.js test/cli-activity.test.js
+      test/automerge-history-reads.test.js test/change-content.test.js test/entry-failures.test.js test/operation-writes.test.js`),
+    focused: [{ command: 'node --test test/change-signatures.test.js test/signed-changes.test.js test/attribution-rules.test.js test/change-log.test.js test/activity-property.test.js test/signed-entries.test.js test/automerge-history-reads.test.js test/change-content.test.js test/entry-failures.test.js test/operation-writes.test.js test/signed-changes-ui.test.js',
+      note: 'Machine actors, signing only own writes and checking, each Activity entry derived from its own change and read through Automerge as plain data, each operation entry matching its change\'s writes, one change failing on its own, malformed signature documents, concurrent shards and kept candidates, repairs and fair polling, pending then unattributed under cut, slow and silent links, removed machines, equivocation proofs saved until kept, kill between saves, and the board' }],
   },
   {
     name: 'persistence', scripts: ['test:qualification', 'test:runtime'], qualification: 'Disk persistence and directory ownership',
