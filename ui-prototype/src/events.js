@@ -52,9 +52,10 @@ const fieldName = field => String(own(FIELD_NAMES, field) ?? field).toLowerCase(
 
 // An entry's fields as its derivation read them (lib/activity.js showsOf): one per field, the value its change wrote,
 // and the previous value only when the board then held it (`oldVerified`). No decision here depends on an unchecked
-// value: a field is left out as unchanged only when its checked previous value equals its new one.
+// value: a field is left out as unchanged only when its derivation found every value it held then to be the one its
+// change wrote (`unchanged`), never by comparing two values the event states.
 const verifiedOld = change => change?.oldVerified === true
-const unchanged = change => verifiedOld(change) && same(change.old, change.new)
+const unchanged = change => change?.unchanged === true
 
 // Unchanged fields are noise; order is only worth mentioning when nothing else moved.
 function meaningfulChanges(event) {

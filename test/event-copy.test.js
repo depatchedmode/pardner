@@ -17,13 +17,15 @@ const comments = { c1: { id: 'c1', taskId: 't1' } }
 const lookups = { actors, tasks, veins, goals, comments }
 
 // Each entry is described from its one reading (lib/activity.js showsOf): fields as its change wrote them, with the
-// previous value only where the board then held it (`oldVerified`), and the comment text its change wrote.
+// previous value only where the board then held it (`oldVerified`), whether it is unchanged (`unchanged`: every value
+// it held then is the one written), and the comment text its change wrote.
 let counter = 0
 const ev = (type, fields = {}) => ({
   operationId: `op-${++counter}`, type, actorId: 'alice', timestamp: '2026-01-01T10:00:00.000Z',
   taskId: 't1', payload: {}, changes: [], result: {}, recordIds: [], comment: null, ...fields,
 })
-const ch = (field, old, value) => ({ field, old, new: value, oldVerified: true })
+/** A field that held only `old` then: unchanged, as its derivation records, when the value written is that one. */
+const ch = (field, old, value) => ({ field, old, new: value, oldVerified: true, ...(JSON.stringify(old) === JSON.stringify(value) ? { unchanged: true } : {}) })
 /** A field whose stated previous value the board did not hold then: only its new value is a fact. */
 const unchecked = (field, stated, value) => ({ field, oldStated: stated, new: value, oldVerified: false })
 const sentence = description => eventText({ ...description, detail: null, excerpt: null })

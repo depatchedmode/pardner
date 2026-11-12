@@ -244,3 +244,24 @@ test('an operation that retires revisions its field did not hold then, or delete
   const honest = run(doc, { type: 'task.update', payload: { taskId, updates: { priority: 'p1' }, expectedRevisions: { priority: taskState(doc, taskId).revisions.priority } } }, replica(9))
   assert.deepEqual(entryOf(honest.doc, honest.hash).flags, {})
 })
+
+test('a field is shown as unchanged only when every value it held then is the one its change wrote', async () => {
+  const { describeEvent, eventText } = await import('../ui-prototype/src/events.js')
+  const { doc: start } = board()
+  // A creation retried on two replicas leaves two orders under one operation.
+  const created = retried(start, { operationId: 'twice-ordered', type: 'task.create', payload: { title: 'Ordered twice' } }, [3, 4])
+  const taskId = created.runs[0].event.result.taskId
+  const [first] = created.runs.map(item => item.event.changes.find(change => change.field === 'order').new)
+  // An update to one of them states it as the previous value: one value the field held, but not the only one.
+  const update = run(created.doc, { type: 'task.update', payload: { taskId, updates: { order: first }, expectedRevisions: { order: taskState(created.doc, taskId).revisions.order } } }, replica(5))
+  const entry = entryOf(update.doc, update.hash)
+  assert.deepEqual(entry.flags, {})
+  const [change] = entry.shows.changes
+  assert.equal(change.oldVerified, true)
+  assert.notEqual(change.unchanged, true, 'shown as unchanged although the field also held another value')
+  assert.doesNotMatch(eventText(describeEvent(entry.shows, { actors: {}, tasks: {} })), /no changes/)
+  // An update writing the one value a field held is unchanged.
+  const same = run(created.doc, { type: 'task.update', payload: { taskId, updates: { title: 'Ordered twice' }, expectedRevisions: { title: taskState(created.doc, taskId).revisions.title } } }, replica(5))
+  assert.equal(entryOf(same.doc, same.hash).shows.changes[0].unchanged, true)
+  assert.match(eventText(describeEvent(entryOf(same.doc, same.hash).shows, { actors: {}, tasks: {} })), /no changes/)
+})
