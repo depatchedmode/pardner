@@ -218,3 +218,29 @@ test('an Actor registered on two replicas apart under one ID with two handles, t
   assert.ok(view(doc).filter(entry => ['comment.add', 'task.handoff'].includes(entry.event?.type)).length >= 2, 'the work was refused')
   assert.deepEqual(flagged(doc), [])
 })
+
+test('an operation that retires revisions its field did not hold then, or deletes a comment by revisions it did not hold, is flagged', () => {
+  const { doc: start } = board()
+  const task = run(start, { type: 'task.create', payload: { title: 'Revised' } })
+  const taskId = task.event.result.taskId
+  const comment = run(task.doc, { type: 'comment.add', payload: { taskId, text: 'Kept words' } })
+  const commentId = comment.event.result.commentId
+  const doc = comment.doc
+  /** `request` prepared on a board the change's dependencies do not hold, then made as a change on `doc`: what a client that read another board writes. */
+  const elsewhere = (board, request) => {
+    const prepared = prepareOperation(board, { actorId: 'alice', operationId: `elsewhere-${request.type.replace(".", "-")}`, ...request }, { replicaId: 'replica-alice', timestamp: '2026-11-05T10:00:00.000Z' })
+    const next = A.change(A.clone(doc, { actor: replica(7).actor }), prepared.change)
+    return entryOf(next, A.getHeads(next)[0])
+  }
+  // The same values under other revisions: everything its event says matches its writes but the revisions it retires.
+  const again = run(doc, { type: 'task.update', payload: { taskId, updates: { priority: 'p2' }, expectedRevisions: { priority: taskState(doc, taskId).revisions.priority } } }, replica(8))
+  const updated = elsewhere(again.doc, { type: 'task.update', payload: { taskId, updates: { priority: 'p1' }, expectedRevisions: { priority: taskState(again.doc, taskId).revisions.priority } } })
+  assert.equal(updated.flags.mismatch, true, 'retiring a revision the field did not hold is not flagged')
+  assert.match(updated.changes[0].mismatch.map(item => item.text).join(' '), /revisions it then held/)
+  const edited = run(doc, { type: 'comment.edit', payload: { commentId, text: 'Kept words', expectedRevisions: commentView(doc, commentId).revisionIds } }, replica(8))
+  const deleted = elsewhere(edited.doc, { type: 'comment.delete', payload: { commentId, expectedRevisions: commentView(edited.doc, commentId).revisionIds } })
+  assert.equal(deleted.flags.mismatch, true, 'deleting by revisions the comment did not hold is not flagged')
+  // The honest operations on the board itself are not.
+  const honest = run(doc, { type: 'task.update', payload: { taskId, updates: { priority: 'p1' }, expectedRevisions: { priority: taskState(doc, taskId).revisions.priority } } }, replica(9))
+  assert.deepEqual(entryOf(honest.doc, honest.hash).flags, {})
+})

@@ -114,12 +114,14 @@ it('a task status named like an inherited property is compared as the data it is
   const { doc: start } = board()
   const task = run(start, { type: 'task.create', payload: { title: 'Ordinary' } })
   for (const name of NAMES) {
-    const event = { ...task.event, type: 'task.update', operationId: `op-status-${name}`, payload: { taskId: task.event.result.taskId, updates: { status: name } },
+    const event = { ...task.event, type: 'task.update', operationId: `op-status-${name}`, payload: { taskId: task.event.result.taskId, updates: { status: name },
+      expectedRevisions: { status: [task.event.operationId] } },
       changes: [{ field: 'status', old: 'backlog', new: name }], recordIds: [task.event.result.taskId], result: { taskId: task.event.result.taskId } }
     const { doc, hash } = bobWrites(task.doc, draft => {
       draft.operations[event.operationId] = storageValue(event)
       draft.operationRequests[event.requestId] = storageValue(event.operationId)
       draft.taskFields[`${task.event.result.taskId}:status`] = storageValue({ value: name, operationId: event.operationId, actorId: event.actorId, replicaId: event.replicaId, timestamp: event.timestamp })
+      draft.supersededRevisions[`${task.event.result.taskId}:status:${task.event.operationId}`] = true
     })
     const entry = activityView({ entries: deriveAll(doc).values(), stateOf: signedByActor(doc), actorsOf }).find(item => item.changes.some(change => change.hash === hash))
     // Its change wrote exactly the status its event says: nothing differs, whatever the status is called.
