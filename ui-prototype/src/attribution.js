@@ -5,14 +5,14 @@
 
 const own = (map, key) => (map && typeof key === 'string' && Object.hasOwn(map, key) ? map[key] : null)
 
-const REASONS = {
+const REASONS = Object.assign(Object.create(null), {
   missing: 'no signature arrived',
   invalid: 'its signature doesn’t check out',
   'unknown-signer': 'its signer isn’t a machine of this project',
   'not-machine': 'it wasn’t made by a Pardner machine',
   'ambiguous-signer': 'its actor names more than one machine',
   checking: 'still being checked',
-}
+})
 
 const FLAGS = {
   keyMismatch: 'written under a key other than its own operation ID',
@@ -47,17 +47,21 @@ const recordActor = (attribution, record) => own(attribution?.personActors, own(
 
 /**
  * Activity entries (lib/activity.js) as rows for the list: each keeps its entry, and carries what sorting and
- * filtering use, all of it signed: the entry's time and Actor, and the type of its event.
+ * filtering use, all of it signed and read from the entry's one reading (`entry.shows`): its time and Actor, the type
+ * of its event, its fields as its change wrote them, and the records it names.
  */
 export function activityRows(doc) {
   const attribution = doc?.attribution ?? null
   const text = value => (typeof value === 'string' ? value : null)
-  return (Array.isArray(doc?.activity) ? doc.activity : []).map(entry => ({
-    entry, operationId: entry.id, timestamp: text(entry.timestamp) ?? '',
-    actorId: entry.kind === 'operation' ? text(entry.event.actorId) : entry.kind === 'record' ? recordActor(attribution, entry.record) : null,
-    type: entry.kind === 'operation' ? entry.event.type : entry.kind === 'record' ? `record.${text(entry.record?.kind) ?? 'unknown'}` : 'change.other',
-    ...(entry.kind === 'operation' ? { changes: entry.event.changes, taskId: text(entry.event.taskId), recordIds: entry.event.recordIds } : {}),
-  }))
+  return (Array.isArray(doc?.activity) ? doc.activity : []).map(entry => {
+    const shows = entry.kind === 'operation' ? entry.shows ?? {} : null
+    return {
+      entry, operationId: entry.id, timestamp: text(entry.timestamp) ?? '',
+      actorId: shows ? text(shows.actorId) : entry.kind === 'record' ? recordActor(attribution, entry.record) : null,
+      type: shows ? text(shows.type) : entry.kind === 'record' ? `record.${text(entry.record?.kind) ?? 'unknown'}` : 'change.other',
+      ...(shows ? { changes: Array.isArray(shows.changes) ? shows.changes : [], taskId: text(shows.taskId), recordIds: Array.isArray(shows.recordIds) ? shows.recordIds : [] } : {}),
+    }
+  })
 }
 
 /** A sentence for an entry that cannot be put into words: one entry fails, never the list. */
@@ -122,7 +126,7 @@ function signerLineOf(attribution, entry) {
 /** Whether an Activity entry needs a person's review (lib/activity.js decides; this reads it). */
 export const needsReview = row => Boolean(row?.entry?.review)
 
-const ROLE = { admin: 'an admin', member: 'a member' }
+const ROLE = Object.freeze(Object.assign(Object.create(null), { admin: 'an admin', member: 'a member' }))
 
 /** One membership record entry as a plain sentence, in the shape describeEvent returns. Names are as they are now. */
 export const describeRecord = safely(describeRecordOf, UNDESCRIBED)
@@ -135,8 +139,8 @@ function describeRecordOf(row, attribution) {
   let parts, detail = null
   switch (record.kind) {
     case 'project.genesis': parts = [' started the project']; break
-    case 'member.add': parts = [` let ${record.displayName ?? 'someone'} in as ${ROLE[record.role] ?? 'a member'}`]; break
-    case 'member.role': parts = [' made ', { label: person(record.subject), current: true }, ` ${ROLE[record.role] ?? 'a member'}`]; break
+    case 'member.add': parts = [` let ${record.displayName ?? 'someone'} in as ${own(ROLE, record.role) ?? 'a member'}`]; break
+    case 'member.role': parts = [' made ', { label: person(record.subject), current: true }, ` ${own(ROLE, record.role) ?? 'a member'}`]; break
     case 'member.remove':
       parts = record.subject === signerPerson ? [' left the project'] : [' removed ', { label: person(record.subject), current: true }, ' from the project']
       break
@@ -237,7 +241,7 @@ export function newerAuthors({ fields, taskId, revisions = {}, activity = [], at
       const [entry] = written
       // The standalone service checks no signatures: its entries are confirmed by what they record.
       const signed = !attribution || entry?.changes?.every(change => change.state === 'signed')
-      credit(written.length === 1 ? entry.event.actorId : null, !(written.length === 1 && !entry.review && signed && !reading), field)
+      credit(written.length === 1 ? entry.shows?.actorId ?? null : null, !(written.length === 1 && !entry.review && signed && !reading), field)
     }
   }
   return groups

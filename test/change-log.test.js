@@ -239,3 +239,34 @@ test('a records change that also writes anything else is flagged', () => {
   assert.equal(record.flags.alsoWrote, true)
   assert.equal(record.review, true)
 })
+
+test('a slice reads at most its operation budget, or one change alone when that change has more, and starts no change once its time is used', () => {
+  let { doc } = board()
+  // Changes of known sizes: each writes `size` keys of one map, one operation each.
+  const sizes = [3, 4, 5, 30, 2, 9, 1]
+  for (const [index, size] of sizes.entries()) {
+    doc = A.change(A.clone(doc, { actor: `${BOB}${String(index + 10).repeat(8)}` }), draft => { for (let key = 0; key < size; key++) draft.readReceipts[`r-${index}-${key}`] = true })
+  }
+  const metas = A.getChangesMetaSince(doc, [])
+  const opsOf = new Map(metas.map(meta => [meta.hash, meta.maxOp - meta.startOp + 1]))
+  const budget = 10
+  const log = new ChangeLog({ board: { doc: () => doc }, opsPerSlice: budget, msPerSlice: Infinity })
+  log.note(metas)
+  const slices = []
+  while (!log.complete) {
+    const before = new Set(log.entries.keys())
+    log.slice()
+    slices.push([...log.entries.keys()].filter(hash => !before.has(hash)).map(hash => opsOf.get(hash)))
+  }
+  for (const slice of slices) {
+    const used = slice.reduce((sum, ops) => sum + ops, 0)
+    assert.ok(used <= budget || slice.length === 1, `a slice read ${used} operations in ${slice.length} changes: ${JSON.stringify(slices)}`)
+  }
+  // Time: once the slice's time is used, no further change is started (the first always is).
+  let clock = 0
+  const timed = new ChangeLog({ board: { doc: () => doc }, opsPerSlice: Infinity, msPerSlice: 5, now: () => clock })
+  timed.note(metas)
+  const derive = timed.add.bind(timed)
+  timed.add = entry => { derive(entry); clock += 10 }
+  assert.equal(timed.slice(), 1, 'a change was started after the slice’s time was used')
+})

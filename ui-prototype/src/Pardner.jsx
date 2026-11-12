@@ -15,6 +15,7 @@ import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js
 import { quickStatusEditable } from './task-status.js'
 import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
+import { boardData, dictionary } from './board-data.js'
 import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, needsReview, newerAuthors, reviewNotice, signerLine, taskRows } from './attribution.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
@@ -179,7 +180,7 @@ function EventRow({ event: row, lookups, within, onTask, onVein, onGoal, formatT
   const { attribution } = lookups
   const { entry } = row
   const description = entry.kind === 'record' ? describeRecord(row, attribution) : entry.kind === 'unrecognised' ? describeChange(row, attribution)
-    : describeEvent(entry.event, lookups, { within })
+    : describeEvent(entry.shows ?? {}, lookups, { within })
   const signer = signerLine(attribution, entry)
   const when = new Date(row.timestamp || 0)
   // A time a date cannot show is unknown, never a failure of the row.
@@ -337,7 +338,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
       throw Object.assign(new Error('The service workspace changed. Reopening the current workspace.'), { code: 'WORKSPACE_MISMATCH' })
     }
     if (generation !== refreshGeneration.current) return
-    if (observedDoc === docUpdates.current) setDoc(next)
+    if (observedDoc === docUpdates.current) setDoc(boardData(next))
     if (observedStatus === statusUpdates.current) setStatus(state)
   }, [request, config.workspaceId, reloadConfiguration])
   useEffect(() => {
@@ -374,7 +375,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
               void reloadConfiguration().catch(failure => { if (!stopped) setConnectionError(failure) })
               return
             }
-            if (message.doc) { docUpdates.current++; setDoc(message.doc) }
+            if (message.doc) { docUpdates.current++; setDoc(boardData(message.doc)) }
             if (message.status) { statusUpdates.current++; setStatus(message.status) }
           } catch {
             setConnectionError(new Error('The service sent an unreadable update. Reconnecting…'))
@@ -526,9 +527,10 @@ export function Workspace({ config, reloadConfiguration, session }) {
     </div>}
   </main>
   // The client's Actors carry each person's current profile name (and removal); the document keeps enrollment names.
-  const actors = session.actorsById ? { ...doc.actors, ...session.actorsById } : doc.actors
-  const veins = doc.veins || {}
-  const goals = doc.goals || {}
+  // Each is held without a prototype (boardData), so a lookup by an ID from the board finds only what the board holds.
+  const actors = session.actorsById ? dictionary(doc.actors, session.actorsById) : doc.actors
+  const veins = doc.veins
+  const goals = doc.goals
   const activeVeinFilter = veins[veinFilter] ? veinFilter : ''
   const tasks = Object.values(doc.tasks).filter(
     (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter)
@@ -550,7 +552,10 @@ export function Workspace({ config, reloadConfiguration, session }) {
   // Changes whose signer couldn't be confirmed, or that came from a removed machine, are announced on every view.
   const review = reviewNotice(doc.attribution)
   // Records the board could not read: each is listed instead of stopping the whole board (lib/workspace.js snapshot).
-  const unreadableCount = Array.isArray(doc.unreadable) ? doc.unreadable.length : 0
+  const unreadableItems = Array.isArray(doc.unreadable) ? doc.unreadable : []
+  // A top-level part of the board a change rewrote (its tasks, say) is named; each other record is counted.
+  const unreadableParts = [...new Set(unreadableItems.filter(item => item?.kind === 'root' && typeof item.id === 'string').map(item => item.id))]
+  const unreadableCount = unreadableItems.length - unreadableItems.filter(item => item?.kind === 'root').length
   const openVein = (_element, veinId) => {
     focusAfterView.current = () => viewNav.current?.querySelector('[aria-pressed="true"]')?.focus()
     showVein(veinId)
@@ -608,8 +613,9 @@ export function Workspace({ config, reloadConfiguration, session }) {
       {connectionError && <div className="notice" role="status"><p>{connectionError.message}</p>
         <button onClick={retryConnection}>Retry connection</button>
       </div>}
-      {unreadableCount > 0 && <div className="notice warning" role="status">
-        <p>{unreadableCount === 1 ? 'One record' : `${unreadableCount} records`} on this board can’t be read and {unreadableCount === 1 ? 'isn’t' : 'aren’t'} shown. Activity lists the changes that wrote {unreadableCount === 1 ? 'it' : 'them'}.</p>
+      {(unreadableCount > 0 || unreadableParts.length > 0) && <div className="notice warning" role="status">
+        {unreadableParts.length > 0 && <p>Part of this board can’t be read, so what it holds isn’t shown: {unreadableParts.join(', ')}. Activity lists the changes that wrote it.</p>}
+        {unreadableCount > 0 && <p>{unreadableCount === 1 ? 'One record' : `${unreadableCount} records`} on this board can’t be read and {unreadableCount === 1 ? 'isn’t' : 'aren’t'} shown. Activity lists the changes that wrote {unreadableCount === 1 ? 'it' : 'them'}.</p>}
       </div>}
       {review && <div className="notice warning review-notice" role="status">
         {review.map(line => <p key={line}>{line}</p>)}

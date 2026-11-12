@@ -205,7 +205,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: true,
     maps: [
       { file: RUNTIME, anchor: "async execute(request) {\n    requireValue(this.initialized && !this.stopController.signal.aborted", note: 'execute() refuses once closeResources aborted' },
-      { file: WORKSPACE, anchor: 'if (!prepared.replayed) this.change(prepared.change)', note: 'the change goes through the runtime’s signing write path (boardChange), synchronously, before the flush; signing saves the signature in the signature cache without waiting on the disk barrier' },
+      { file: WORKSPACE, anchor: 'if (!prepared.replayed) { try { this.change(prepared.change) } catch (error) { throw refuse(error) } }', note: 'the change goes through the runtime’s signing write path (boardChange), synchronously, before the flush; signing saves the signature in the signature cache without waiting on the disk barrier. A change that throws (a top-level map holding a value of the wrong kind) is refused before any flush, as before; refuse() only names the error' },
       { file: WORKSPACE, anchor: 'this.confirm()', note: 'part of the persistence barrier: every signature this machine made is in its signature cache, or the write fails as a storage failure (a retry replays and asks again); modeled as the flush job' },
       { file: WORKSPACE, anchor: "throw new OperationError('STORAGE_FAILED', 'Local persistence was not confirmed. Retry with the same operation ID.'" },
       { file: RUNTIME, anchor: "addRecords(records) {\n    requireValue(this.initialized && !this.stopController.signal.aborted", note: 'the record gate refuses once closeResources aborted' },

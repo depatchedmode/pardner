@@ -128,3 +128,30 @@ for (const engine of [chromium, webkit]) it(`later changes by another member nev
       } finally { await changed.repo.shutdown() }
     })
   })
+
+for (const engine of [chromium, webkit]) it(`a board part a member's change rewrote is named as unreadable, and the rest of the board and Activity still show, in ${engine.name()}`,
+  { timeout: 180000 }, async () => {
+    await withClientReplicas(engine, { humans: ['Alice', 'Bob'] }, async ({ people, newPage, eventually, project }) => {
+      const [alice, bob] = people
+      const { result } = await alice.operate('task.create', { title: 'Still on the board' })
+      await alice.operate('goal.create', { title: 'A goal soon unreadable' })
+      await eventually(async () => (await bob.doc()).tasks[result.taskId], 'the task never reached Bob')
+      const page = await newPage()
+      await alice.open(page)
+      await page.locator('.task-card').filter({ hasText: 'Still on the board' }).waitFor({ timeout: 30000 })
+      // A modified client on Bob's machine replaces the board's goals with text, and signs its change.
+      const nativeUrl = `${alice.client.url.replace(/^http/, 'ws')}/pardner/client/v1/replica/${project.id}/native`
+      const { url: boardUrl } = await alice.call(`/projects/${project.id}/api/automerge/url`)
+      const rewrite = await signedWrite({ key: bob.client.registry.machineKey, projectId: project.id, nativeUrl, boardUrl, write: doc => { doc.goals = new A.ImmutableString('no goals here') } })
+      try {
+        await page.getByText('Part of this board can’t be read, so what it holds isn’t shown: goals.', { exact: false }).waitFor({ timeout: 30000 })
+        await page.locator('.task-card').filter({ hasText: 'Still on the board' }).waitFor()
+        // The change is listed for review under its own signer.
+        await page.getByRole('button', { name: 'Activity', exact: true }).click()
+        await page.getByRole('combobox', { name: 'Show' }).selectOption('review')
+        await page.locator('article.event .event-signer').getByText('Signed by Bob · Bob’s laptop').first().waitFor({ timeout: 30000 })
+        const doc = await alice.doc()
+        assert.ok(doc.unreadable.some(item => item.kind === 'root' && item.id === 'goals' && item.writers.some(writer => writer.change === rewrite.hash)))
+      } finally { await rewrite.repo.shutdown() }
+    })
+  })

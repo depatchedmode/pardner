@@ -105,7 +105,8 @@ export class ExpectedOperations {
    * What every replica must agree on, keyed by board change hash: for each change, the Activity entry it is shown in
    * (its kind and key, the group of changes the entry lists, its flags with their values, and the changes that later
    * altered its stored copy), the content that change wrote (the event with that change's own replica and time, the
-   * record, or what an unrecognised change wrote), what else it wrote (its unusual writes, the entries it replaced, how
+   * record, or what an unrecognised change wrote), the entry's one reading that every renderer shows (its fields as its
+   * change wrote them, which previous values the board then held, and its comment text), what else it wrote (its unusual writes, the entries it replaced, how
    * its writes differ from what its event implies, and the Actors a creation registered), and that change's verdict
    * (its state, the signing machine, that machine's person, whether it signed an Actor it may not act as, and whether
    * its time can be shown). Also the changes listed for review. Left out, because they name this replica or what it
@@ -121,7 +122,7 @@ export class ExpectedOperations {
         const content = entry.kind === 'operation' ? { ...entry.event, replicaId: change.replicaId, timestamp: change.timestamp }
           : entry.kind === 'record' ? entry.record
             : { wrote: entry.wrote ?? null, ops: entry.ops ?? null, oversized: entry.oversized === true, altered: entry.altered ?? [], alteredContent: entry.alteredContent ?? [] }
-        ;(changes[change.hash] ??= []).push({ kind: entry.kind, key: entry.key ?? null, content, group: entry.changes.map(other => other.hash).sort(),
+        ;(changes[change.hash] ??= []).push({ kind: entry.kind, key: entry.key ?? null, content, shows: entry.kind === 'operation' ? entry.shows ?? null : null, group: entry.changes.map(other => other.hash).sort(),
           flags: entry.flags ?? {}, alteredLater: (entry.alteredLater ?? []).map(other => other.hash).sort(),
           wroteElse: { unusual: change.unusual ?? null, replaced: change.replaced ?? null, mismatch: change.mismatch ?? null, registered: change.registered ?? null },
           state: change.state, machineId: change.machineId ?? null, personId: personOf(change.machineId), actorMismatch: change.actorMismatch === true,
