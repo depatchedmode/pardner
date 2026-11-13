@@ -13,7 +13,9 @@ const storedId = request => `op-${hash([request.operationId, hash({ type: reques
 
 /** Intents are recorded before execution; successful receipts never define expected effects. */
 export class ExpectedOperations {
-  constructor() { this.intents = new Map(); this.receipts = new Map(); this.sources = new Map() }
+  constructor() { this.intents = new Map(); this.receipts = new Map(); this.sources = new Map(); this.baseline = new Set() }
+  /** Operations already in the document before the measured workload (such as enrollment registrations). */
+  ignore(operationIds) { for (const id of operationIds) this.baseline.add(id) }
   intend(request, replicaId) {
     const prior = this.intents.get(request.operationId)
     if (prior) assert.equal(canonical(prior), canonical(request), 'Reused expected operation ID')
@@ -82,8 +84,23 @@ export class ExpectedOperations {
       }
     }
     assert.equal(canonical(snapshot.readReceipts), canonical(Object.fromEntries(readReceipts)), 'Read receipts must equal the union of observed revisions for their Actors')
-    assert.equal(Object.keys(snapshot.operations).length, this.receipts.size, 'Unexpected or unacknowledged operation exists')
-    return { operationCount: this.receipts.size, snapshotHash: hash(snapshot) }
+    assert.equal(Object.keys(snapshot.operations).filter(id => !this.baseline.has(id)).length, this.receipts.size, 'Unexpected or unacknowledged operation exists')
+    // Each replica's attribution is its own view (it names that replica's machine as "this computer"); the shared
+    // document is what must be identical. attributed() checks the views themselves.
+    const { attribution, ...shared } = snapshot
+    return { operationCount: this.receipts.size, snapshotHash: hash(shared) }
+  }
+
+  /**
+   * Whether every acknowledged operation is shown as signed by a machine, with no flag for its Actor, in this
+   * replica's view: every change was signed by the machine that made it, and every peer checked it.
+   */
+  attributed(snapshot) {
+    if (!snapshot.attribution) return false
+    return [...this.receipts.keys()].every(id => {
+      const signers = snapshot.attribution.operations[storedId(this.intents.get(id))]
+      return Array.isArray(signers) && signers.length > 0 && signers.every(signer => signer.state === 'signed' && !signer.actorMismatch)
+    })
   }
   report() { return { intents: [...this.intents.values()], expectedReplicas: Object.fromEntries(this.sources), receipts: Object.fromEntries(this.receipts) } }
 }

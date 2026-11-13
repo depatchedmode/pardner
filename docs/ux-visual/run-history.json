@@ -1,0 +1,25 @@
+{
+  "runs": [
+    {
+      "date": "2026-11-07",
+      "branch": "ux-skill-pack-run",
+      "audited": "6 inspections (P1 connection, P2 board+shell, P3 task details, P4 new task, P5/P6 goals+activity, P7 pairing dialog) x 4 viewports",
+      "findings": {"P0": 0, "P1": 27, "P2": 64, "P3": 30},
+      "second_opinions": "skipped (no OPENROUTER_API_KEY)",
+      "clusters": {
+        "V1": {"status": "fixed", "commits": ["6e863b61", "e16fb54d"]},
+        "V2": {"status": "fixed", "commits": ["e0544103"]},
+        "V3": {"status": "fixed", "commits": ["27137884"]},
+        "V4": {"status": "fixed", "commits": ["1194acb5", "0bd21c38"]},
+        "V5": {"status": "fixed", "commits": ["0488eda2"]},
+        "V6": {"status": "deferred", "issue": 135},
+        "V7": {"status": "deferred", "issue": 136},
+        "V8": {"status": "deferred", "issue": 137},
+        "V9": {"status": "deferred", "issue": "125/116 (existing)"},
+        "V10": {"status": "deferred", "issue": "111/115 (existing)"},
+        "V11": {"status": "deferred", "issue": 138},
+        "V12": {"status": "deferred", "issue": 139}
+      }
+    }
+  ]
+}

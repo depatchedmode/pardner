@@ -3,60 +3,86 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { cli, startCliService } from '../support/cli-resources.js'
+import { setTimeout as delay } from 'node:timers/promises'
+import { startClient } from '../lib/client-service.js'
+import { cli } from '../support/cli-resources.js'
+import { joinApproved } from '../support/enrollment.js'
+import { sameComputerRoute } from '../support/client-workspace.js'
 
-it('claims, releases, and acknowledges hub deliveries through a replica CLI', { timeout: 30000 }, async () => {
-  const root = await mkdtemp(join(tmpdir(), 'pardner-cli-delivery-'))
-  const hubData = join(root, 'hub')
-  const localData = join(root, 'local')
-  const hub = await startCliService(hubData)
-  let local
-  async function run(directory, args, actor = 'builder') {
-    const output = await cli(directory, [...args, '--actor', actor])
-    assert.equal(output.code, 0, output.stdout + output.stderr)
-    return output.result
+async function participant(root, name) {
+  const directory = join(root, name.toLowerCase())
+  // An explicit loopback route: the Human invitations here are used by another client on this computer (#162).
+  const client = await startClient({ directory, ...await sameComputerRoute(), deviceName: `${name} laptop`, gitDirectory: root })
+  const token = client.registry.read().operatorToken
+  const call = async (path, body) => {
+    const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+    const result = await response.json()
+    assert.equal(response.status, 200, `${name} ${path}: ${JSON.stringify(result)}`)
+    return result
   }
+  await call('/identity', { name, email: `${name.toLowerCase()}@example.test`, operationId: 'identity' })
+  return { client, call, directory }
+}
+
+it('claims, releases, and acknowledges hub deliveries through a joined machine’s agent CLI', { timeout: 60000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-cli-delivery-'))
+  let alice, bob
   try {
-    await run(hubData, ['actors', 'register', 'alice', '--handle', 'alice', '--kind', 'human'], 'alice')
-    await run(hubData, ['actors', 'register', 'builder', '--handle', 'builder', '--kind', 'agent'], 'alice')
-    const { token } = JSON.parse(await readFile(join(hubData, 'connection.json'), 'utf8'))
-    local = await startCliService(localData, ['--role', 'replica', '--hub', hub.httpUrl, '--hub-ws', `${hub.wsUrl}/automerge`, '--hub-token', token])
-    const created = await run(hubData, ['task', 'create', '--title', 'Durable agent inbox'], 'alice')
+    alice = await participant(root, 'Alice')
+    bob = await participant(root, 'Bob')
+    const { project } = await alice.call('/projects', { name: 'Agent inbox', operationId: 'create' })
+    const { invitation } = await alice.call(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite-bob' })
+    await joinApproved({ join: body => bob.call('/join', body), approver: alice.call, invitation, operationId: 'join' })
+    // Bob's agent runs on Bob's machine; its delivery calls reach the hub as requests signed by Bob's machine key.
+    const grantFile = join(bob.directory, 'agent.json')
+    const granted = await cli(bob.directory, ['client', 'agent-grant', '--project', project.id, '--output-file', grantFile])
+    assert.equal(granted.code, 0, granted.stdout + granted.stderr)
+    const grant = JSON.parse(await readFile(grantFile, 'utf8'))
+    const run = async args => {
+      const output = await cli(bob.directory, [...args, '--token-file', grantFile])
+      assert.equal(output.code, 0, output.stdout + output.stderr)
+      return output.result
+    }
+    const created = await alice.call(`/projects/${project.id}/api/automerge/operations`, { type: 'task.create', operationId: 'task', payload: { title: 'Durable agent inbox' } })
     const taskId = created.result.taskId
-    await run(hubData, ['comment', taskId, '@builder please work on this'], 'alice')
-    const pending = await run(localData, ['mentions', 'pending'])
+    let handle
+    while (!handle) {
+      handle = (await alice.call(`/projects/${project.id}`)).actors.find(actor => actor.id === grant.actorId)?.handle
+      if (!handle) await delay(50)
+    }
+    await alice.call(`/projects/${project.id}/api/automerge/operations`, { type: 'comment.add', operationId: 'mention', payload: { taskId, text: `@${handle} please work on this` } })
+    const deadline = Date.now() + 10000
+    let pending = await run(['mentions', 'pending'])
+    while (!pending.mentions.length && Date.now() < deadline) { await delay(50); pending = await run(['mentions', 'pending']) }
     assert.equal(pending.mentions.length, 1)
-    const claim = await run(localData, ['mentions', 'claim-next', '--request-id', 'first-claim'])
+    const claim = await run(['mentions', 'claim-next', '--request-id', 'first-claim'])
     assert.equal(claim.claimed, true)
-    assert.equal((await run(localData, ['mentions', 'pending'])).mentions.length, 0)
-    assert.equal((await run(localData, ['mentions', 'claim-next', '--request-id', 'first-claim'])).claimToken, claim.claimToken)
-    assert.equal((await run(localData, ['mentions', 'claim-next', '--request-id', 'competing-claim'])).claimed, false)
-    const released = await run(localData, ['mentions', 'release', claim.mention.id, '--claim-token', claim.claimToken])
+    assert.equal((await run(['mentions', 'pending'])).mentions.length, 0)
+    assert.equal((await run(['mentions', 'claim-next', '--request-id', 'first-claim'])).claimToken, claim.claimToken)
+    assert.equal((await run(['mentions', 'claim-next', '--request-id', 'competing-claim'])).claimed, false)
+    const released = await run(['mentions', 'release', claim.mention.id, '--claim-token', claim.claimToken])
     assert.equal(released.released, true)
-    assert.equal((await run(localData, ['mentions', 'pending'])).mentions.length, 1)
-    assert.equal((await run(localData, ['mentions', 'release', claim.mention.id, '--claim-token', claim.claimToken])).replayed, true)
-    const retry = await run(localData, ['mentions', 'claim-next', '--request-id', 'second-claim'])
+    assert.equal((await run(['mentions', 'pending'])).mentions.length, 1)
+    assert.equal((await run(['mentions', 'release', claim.mention.id, '--claim-token', claim.claimToken])).replayed, true)
+    const retry = await run(['mentions', 'claim-next', '--request-id', 'second-claim'])
     assert.notEqual(retry.claimToken, claim.claimToken)
-    const stale = await cli(localData, ['mentions', 'ack', claim.mention.id, '--claim-token', claim.claimToken, '--actor', 'builder'])
+    const stale = await cli(bob.directory, ['mentions', 'ack', claim.mention.id, '--claim-token', claim.claimToken, '--token-file', grantFile])
     assert.equal(stale.result.error.code, 'STALE_CLAIM')
-    assert.equal((await run(localData, ['mentions', 'ack', retry.mention.id, '--claim-token', retry.claimToken])).acknowledged, true)
-    assert.equal((await run(localData, ['mentions', 'pending'])).mentions.length, 0)
-    await hub.stop()
-    await local.stop('SIGKILL')
-    const reopenedAt = Date.now()
-    local = await startCliService(localData)
-    assert.ok(Date.now() - reopenedAt < 6000, 'Enrolled replica must reopen without its hub')
-    assert.equal(local.role, 'replica')
-    const unavailable = await cli(localData, ['mentions', 'claim-next', '--request-id', 'offline-claim', '--actor', 'builder'])
+    assert.equal((await run(['mentions', 'ack', retry.mention.id, '--claim-token', retry.claimToken])).acknowledged, true)
+    assert.equal((await run(['mentions', 'pending'])).mentions.length, 0)
+    // Without the hub, new leases are unavailable and say so; accepted work continues and saves locally.
+    await alice.client.stop(); alice = null
+    const unavailable = await cli(bob.directory, ['mentions', 'claim-next', '--request-id', 'offline-claim', '--token-file', grantFile])
     assert.equal(unavailable.result.error.code, 'HUB_UNAVAILABLE')
-    const progress = await run(localData, ['comment', taskId, 'Accepted work continues while offline'])
+    const progress = await run(['comment', taskId, 'Accepted work continues while offline'])
     assert.equal(progress.savedLocally, true)
     assert.equal(progress.syncPending, true)
-    const context = await run(localData, ['show', taskId])
+    const context = await run(['show', taskId])
     assert.ok(context.comments.some(comment => comment.content === 'Accepted work continues while offline'))
   } finally {
-    await local?.stop()
-    await hub.stop()
+    await bob?.client.stop()
+    await alice?.client.stop()
     await rm(root, { recursive: true, force: true })
   }
 })

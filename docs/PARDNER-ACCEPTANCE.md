@@ -28,9 +28,43 @@ separate human signoff exercise.
 
 ## Scenario and bounds
 
-Every seed uses one hub and two persisted replica subprocesses, two independent
-Chromium contexts, and two separate deterministic agent worker subprocesses.
-All task mutations use the public CLI or browser HTTP operation path. Workers
+Every seed runs three `pardner client serve` subprocesses, two independent
+Chromium contexts, and two separate deterministic agent worker subprocesses:
+
+- **Hub:** Alice's desktop client creates the project and is its authority. It has
+  no browser.
+- **Alice's laptop** joins with a `device` invitation, so it is the same Alice Actor
+  on a second persisted replica. **Bob's laptop** joins with a `human` invitation.
+  The hub approves each laptop's join request after the confirmation code on both
+  sides matches, which signs that laptop's admission record. Each laptop has its own Chromium context, opened with `client/v1/open` (a
+  one-time grant in the URL fragment exchanged for a session cookie).
+- **Agents:** Builder is Alice's agent, joined on her laptop with an `agent`
+  invitation; Reviewer is Bob's, joined on his. Each laptop names its agent with
+  an `agent.name` record and needs no approval. Each worker holds that client's
+  `agent-grant` credential and runs `pardner --token-file`, whose Actor is the
+  one the credential is bound to.
+- **Network:** each laptop reaches the hub only through its own network gate. The
+  hub advertises a gate as its loopback public URL (`--public-url
+  http://127.0.0.1:<port>`) while that laptop enrolls, so the enrolled hub HTTP
+  and native WebSocket URLs both cross that gate. The hub restarts once during
+  setup to advertise the second gate, and keeps accepting the handshake on the
+  first, since it advertised that route to Alice's laptop.
+- **Credentials between machines:** none but the machine keys. Each laptop's sync
+  socket opens with the machine handshake, bound to the route through its gate, and
+  every other request a laptop sends the hub (deliveries, presence, people, records,
+  invitations, join requests, acknowledgements) is signed by its machine key within
+  a short session. No bearer token passes between machines; a gate that relays
+  them sees only signed messages. The local operator token, browser sessions and
+  agent credentials authenticate to a laptop's own client only.
+- **Changes:** every Automerge change a client makes is signed by its machine key
+  in the project's signature document, and every client checks the changes it
+  receives. The hub's persistence acknowledgement a laptop waits for covers the
+  heads of both the board and the signature document.
+
+All task mutations go through a client's project API proxy
+(`…/projects/:id/api/automerge/operations`), using the local operator bearer for
+the person, an agent credential for an agent, or the browser session; each write
+checks the writing machine's own membership records and never waits on the hub. Workers
 read their assignee lists and complete task context through the CLI. No live LLM
 is used in the automated gate.
 
@@ -43,7 +77,7 @@ Required bounds are asserted, not merely printed:
 
 | Observation | Bound |
 | --- | --- |
-| Each measured local operation acknowledgement | 2.5 seconds |
+| Each measured local operation acknowledgement (through the client proxy) | 2.5 seconds |
 | Human offline comment visible in the local UI | 2 seconds |
 | Cold restart of an enrolled replica with the hub inaccessible | 6 seconds |
 | All replicas converge after communication is restored | 10 seconds |
@@ -71,20 +105,43 @@ acknowledgement stays 2,500 ms, UI visibility 2,000 ms and convergence 10,000 ms
 The helper startup timeout stays 15,000 ms; HTTP, retry, watchdog, dispatch and
 independent benchmark limits are unchanged.
 
+Each operation acknowledgement is measured from the caller through the client
+proxy hop (admission check, runtime IPC and the disk barrier). Harness operations
+record `timings.kind = 'client-proxy-ack'`, agent effects `agent-effect-ack`, and
+browser operations are checked against the same bound from request to response;
+the 2.5 second bound is unchanged and now includes the proxy hop. A replica's
+admission check reuses a positive hub answer for 10 seconds (see
+[connectivity boundaries](PARDNER-CLIENT.md#connectivity-and-recovery-boundaries)).
+The cold-restart observation (`offline-start`) runs from the SIGKILLed client's
+exit until the restarted client answers with saved local project state, so it
+includes the project runtime acquiring its storage lease; `orphan-runtime-exit`
+records that the killed client's runtime child exited first. Each report also
+lists the per-kind maxima.
+
 Seeds vary operation ordering/replica use, the killed replica and point in the
 schedule, reconnect ordering and delay, the number of lost hub acknowledgements,
 and worker crash points. The final scenario also checks complete commit evidence
-and the union of one Actor’s offline read receipts across both replicas, while
+and the union of one Actor’s offline read receipts across both of Alice’s
+replicas (her laptop and the hub desktop, partitioned from each other), while
 another Actor’s unread state remains independent. Network gates cut both HTTP and native WebSocket paths
-and destroy existing connections; the local HTTP/UI service stays reachable.
+(the WebSocket upgrade to the hub crosses the same gate) and destroy existing
+connections; the local HTTP/UI service stays reachable. A lost delivery
+acknowledgement is the hub's `/delivery` response to an `ack` action, which the
+replica client proxies for its agents.
 
 ## Evidence, not equality alone
 
 The runner records expected operation intents before sending them, and associates
-acknowledgements with the known originating replica. At the end, each replica is
+acknowledgements with the known originating replica. Operations already in the
+document after enrollment (the hub's Actor registrations) are recorded as the
+baseline and excluded from the acknowledged-operation count. At the end, each replica is
 checked independently for operation ID, Actor, type, full payload, originating
 replica, created task count, final task fields, comment contents/cardinality, and
-handoff comment/mention effects. Only then are snapshot hashes compared.
+handoff comment/mention effects. Every acknowledged operation must also be shown
+as signed by a machine, with no flag for its Actor, on every replica within ten
+seconds of convergence (`attribution` in the timings). Only then are snapshot
+hashes compared; they leave out each replica's own attribution view, which names
+that replica's machine as this computer.
 
 Each agent has a durable SQLite inbox and effect ledger outside the workspace.
 The runner kills workers before acknowledgement and after effects have been saved,
@@ -104,6 +161,8 @@ retirement, documentation, fresh-checkout execution, and the completed 20-seed r
 
 ## Verified milestone
 
-The 20-seed run and clean-checkout verification passed for the candidate recorded
-in [PARDNER-GOAL-AUDIT.md](PARDNER-GOAL-AUDIT.md). That audit lists final artifacts,
+The 20-seed run and clean-checkout verification passed for the standalone-service
+candidate recorded in [PARDNER-GOAL-AUDIT.md](PARDNER-GOAL-AUDIT.md), before the
+scenario moved to client mode; a 20-seed run of the client topology is still
+required to requalify. That audit lists final artifacts,
 measured maxima, and the separate manual rehearsal boundary.

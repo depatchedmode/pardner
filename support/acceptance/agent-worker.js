@@ -4,7 +4,9 @@ import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { cli } from '../cli-resources.js'
 
-const { directory, serviceDirectory, actorId } = JSON.parse(process.argv[2])
+// A standalone worker names its service directory and Actor; a client worker holds a client agent-grant credential
+// file and runs `pardner --token-file`, whose Actor is the one the credential is bound to.
+const { directory, serviceDirectory, tokenFile, actorId } = JSON.parse(process.argv[2])
 await mkdir(directory, { recursive: true })
 const database = new DatabaseSync(join(directory, 'inbox.sqlite'))
 database.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
@@ -13,7 +15,7 @@ database.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
 `)
 const send = message => process.send(message)
 async function command(args) {
-  const output = await cli(serviceDirectory, [...args, '--actor', actorId])
+  const output = tokenFile ? await cli(directory, [...args, '--token-file', tokenFile]) : await cli(serviceDirectory, [...args, '--actor', actorId])
   if (output.code !== 0) throw Object.assign(new Error(output.result.error.message), output.result.error)
   return output.result
 }

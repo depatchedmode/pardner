@@ -1,14 +1,16 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
-import { cli, startCliService } from '../support/cli-resources.js'
+import { startClientProcess } from '../support/acceptance/client-process.js'
 import { NetworkGate } from '../support/acceptance/network-gate.js'
 import { ExpectedOperations, hash } from '../support/acceptance/expected-operations.js'
 import { candidateFingerprint } from '../support/acceptance/candidate.js'
 import { AgentProcess } from '../support/acceptance/agent-process.js'
+import { joinApproved } from '../support/enrollment.js'
 
 const args = process.argv.slice(2)
 const option = (key, fallback) => { const index = args.indexOf(`--${key}`); return index < 0 ? fallback : args[index + 1] }
@@ -23,69 +25,132 @@ function random(seed) {
   return () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 2 ** 32 }
 }
 
+// Runtime children of a client process; a SIGKILLed client must not leave one holding the project storage lease.
+const childPids = pid => { try { return execFileSync('pgrep', ['-P', String(pid)], { encoding: 'utf8' }).trim().split('\n').filter(Boolean).map(Number) } catch { return [] } }
+const alive = pid => { try { process.kill(pid, 0); return true } catch { return false } }
+const email = name => `${name.toLowerCase()}@example.test`
+const AGENT_HARNESS = 'anthropic-claude-code'
+
+/**
+ * Client topology: side 0 is Alice's always-on desktop client, the project authority (hub), with no browser. Side 1
+ * is Alice's laptop, joined with a `device` invitation (the same Actor on a second replica); side 2 is Bob's laptop,
+ * joined with a `human` invitation. Each laptop reaches the hub only through its own NetworkGate, advertised as the
+ * hub's loopback public URL when that laptop enrolled. The hub approves each laptop after comparing its confirmation
+ * code. Builder is Alice's agent joined on her laptop and Reviewer is Bob's agent joined on his, each with an `agent`
+ * invitation used on a machine already in the project (no approval); their workers hold agent-grant credentials.
+ */
 async function runSeed(seed) {
   const rng = random(seed), expected = new ExpectedOperations(), timings = []
   const root = await mkdtemp(join(tmpdir(), `pardner-acceptance-${seed}-`))
   const reportDirectory = join(output, `seed-${seed}`)
   await mkdir(reportDirectory, { recursive: true })
   const directories = [join(root, 'hub'), join(root, 'alice'), join(root, 'bob')]
+  const deviceNames = ['Alice desktop', 'Alice laptop', 'Bob laptop']
   const services = [], gates = [], contexts = [], replicaIds = [], agents = [], pageErrors = []
-  let scenarioError
+  const actors = {}, grants = {}
+  let scenarioError, project
   let browser, next = 0, responseQueue = Promise.resolve()
   const requestTimes = new Map()
   const opId = () => `seed-${seed}-operation-${++next}`
   const progress = text => console.log(`[seed ${seed}] ${text}`)
-  const execute = async (side, type, payload, actorId = 'alice', operationId = opId()) => {
-    const request = { operationId, type, actorId, payload }
+  const human = side => side === 2 ? 'bob' : 'alice'
+  const api = path => `/projects/${project.id}/api/automerge${path}`
+  // The hub advertises `gate` as its public URL, so the laptop that enrolls next reaches it only through that gate.
+  const start = (side, gate) => startClientProcess(directories[side], ['--device-name', deviceNames[side], ...(gate ? ['--public-url', gate.httpUrl] : [])])
+  const advertise = async gate => {
+    await services[0]?.stop()
+    services[0] = await start(0, gate)
+    for (const each of gates) each.retarget({ httpUrl: services[0].url })
+  }
+  // Every harness operation goes through the client proxy: the local operator acts as the side's person, and an
+  // agent writes with its own agent-grant credential, so the proxy binds and checks the author as in use.
+  const execute = async (side, type, payload, who = human(side), operationId = opId()) => {
+    const request = { operationId, type, actorId: actors[who], payload }
     expected.intend(request, replicaIds[side])
     const started = performance.now()
-    const result = await cli(directories[side], ['operation', '--request', JSON.stringify(request)])
-    assert.equal(result.code, 0, result.stdout + result.stderr)
+    const receipt = await services[side].call(api('/operations'), request, grants[who] ? { bearer: grants[who].token } : {})
     const elapsed = performance.now() - started
-    expected.acknowledge(request, result.result, elapsed)
-    timings.push({ kind: 'local-ack', operationId, elapsed })
-    return result.result
+    expected.acknowledge(request, receipt, elapsed)
+    timings.push({ kind: 'client-proxy-ack', side, operationId, elapsed })
+    return receipt
   }
-  const show = async (side, id) => {
-    const result = await cli(directories[side], ['show', id, '--actor', side === 2 ? 'bob' : 'alice'])
-    assert.equal(result.code, 0, result.stdout)
-    return result.result
-  }
-  const snapshot = async side => {
-    const connection = JSON.parse(await readFile(join(directories[side], 'connection.json'), 'utf8'))
-    const response = await fetch(`${connection.httpUrl}/automerge/doc`, { headers: { Authorization: `Bearer ${connection.token}` }, signal: AbortSignal.timeout(2000) })
-    assert.equal(response.status, 200)
-    return (await response.json()).doc
+  const show = (side, id) => services[side].call(api(`/task/${encodeURIComponent(id)}/context`), undefined, { timeout: 5000 })
+  const snapshot = async side => (await services[side].call(api('/doc'), undefined, { timeout: 5000 })).doc
+  const status = side => services[side].call(api('/status'), undefined, { timeout: 5000 })
+  // Every acknowledged operation shown as signed, with no Actor flag, on every replica, within ten seconds.
+  const attributed = async () => {
+    const started = performance.now()
+    for (;;) {
+      const docs = await Promise.all([0, 1, 2].map(snapshot))
+      if (docs.every(doc => expected.attributed(doc))) {
+        timings.push({ kind: 'attribution', elapsed: performance.now() - started })
+        return docs
+      }
+      assert.ok(performance.now() - started <= 10000, 'Acknowledged operations were not all shown as signed on every replica within ten seconds')
+      await delay(40)
+    }
   }
   const converge = async () => {
     const started = performance.now()
     while (true) {
       const docs = await Promise.all([0, 1, 2].map(snapshot))
-      const statuses = await Promise.all([1, 2].map(side => cli(directories[side], ['status'])))
+      const statuses = await Promise.all([1, 2].map(status))
       const elapsed = performance.now() - started
       assert.ok(elapsed <= 10000, 'Replicas did not converge within ten seconds')
-      if (docs.every(doc => JSON.stringify(doc.heads) === JSON.stringify(docs[0].heads)) && statuses.every(status => status.result.syncPending === false)) {
+      if (docs.every(doc => JSON.stringify(doc.heads) === JSON.stringify(docs[0].heads)) && statuses.every(current => current.syncPending === false)) {
         timings.push({ kind: 'convergence', elapsed })
         return docs
       }
       await delay(40)
     }
   }
+  // A new laptop waits for the hub's owner to approve it after comparing the confirmation code; an agent joined on a
+  // laptop already in the project is named there without approval.
+  const enroll = async (side, invitation, operationId, agent) => {
+    const joined = await joinApproved({ join: body => services[side].call('/join', body), approver: (path, body) => services[0].call(path, body),
+      invitation, operationId, agent })
+    assert.equal(joined.project.id, project.id)
+    return joined.project
+  }
+  const openBoard = async (side, page) => {
+    const { url } = await services[side].call('/open', {})
+    await page.goto(url)
+    await page.getByRole('button', { name: /Pardner task 0 / }).click()
+  }
   try {
-    services[0] = await startCliService(directories[0])
-    replicaIds[0] = JSON.parse(await readFile(join(directories[0], 'workspace.json'), 'utf8')).replicaId
-    for (const [id, kind] of [['alice', 'human'], ['bob', 'human'], ['builder', 'agent'], ['reviewer', 'agent']]) await execute(0, 'actor.register', { id, handle: id, kind })
-    const { token: hubToken } = JSON.parse(await readFile(join(directories[0], 'connection.json'), 'utf8'))
-    for (const side of [1, 2]) {
-      const gate = await new NetworkGate(services[0]).start()
-      gates.push(gate)
-      services[side] = await startCliService(directories[side], ['--role', 'replica', '--hub', gate.httpUrl, '--hub-ws', gate.wsUrl, '--hub-token', hubToken])
-      replicaIds[side] = JSON.parse(await readFile(join(directories[side], 'workspace.json'), 'utf8')).replicaId
+    // gates[0] stands between Alice's laptop and the hub, gates[1] between Bob's laptop and the hub.
+    for (let side = 1; side <= 2; side++) gates.push(await new NetworkGate({ httpUrl: 'http://127.0.0.1:9' }).start())
+    progress('Enrolling Alice’s laptop, Bob’s laptop and their agents through per-laptop network gates')
+    await advertise(gates[0])
+    await services[0].call('/identity', { name: 'Alice', email: email('Alice'), operationId: 'identity' })
+    ;({ project } = await services[0].call('/projects', { name: `Acceptance ${seed}`, operationId: 'create' }))
+    actors.alice = project.actorId
+    services[1] = await start(1)
+    const device = await services[0].call(`/projects/${project.id}/invites`, { purpose: 'device', operationId: 'invite-laptop' })
+    assert.equal((await enroll(1, device.invitation, 'join-laptop')).actorId, actors.alice)
+    const builderInvite = await services[1].call(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'invite-builder' })
+    await enroll(1, builderInvite.invitation, 'join-builder', { harnessId: AGENT_HARNESS, name: 'Builder' })
+    await advertise(gates[1])
+    services[2] = await start(2)
+    await services[2].call('/identity', { name: 'Bob', email: email('Bob'), operationId: 'identity' })
+    const bobInvite = await services[0].call(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite-bob' })
+    actors.bob = (await enroll(2, bobInvite.invitation, 'join-bob')).actorId
+    const reviewerInvite = await services[2].call(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'invite-reviewer' })
+    await enroll(2, reviewerInvite.invitation, 'join-reviewer', { harnessId: AGENT_HARNESS, name: 'Reviewer' })
+    for (const [side, who] of [[1, 'builder'], [2, 'reviewer']]) {
+      const grant = await services[side].call(`/projects/${project.id}/agent-grant`, { harnessId: AGENT_HARNESS })
+      grants[who] = { ...grant, apiBase: `${services[side].url}/pardner/client/v1/projects/${project.id}/api`, file: join(root, `${who}-credential.json`) }
+      await writeFile(grants[who].file, JSON.stringify(grants[who]), { mode: 0o600 })
+      actors[who] = grant.actorId
     }
-    progress('Creating 100 tasks and 400 comments through the CLI')
+    for (const side of [0, 1, 2]) replicaIds[side] = (await status(side)).replicaId
+    const enrolled = await converge()
+    for (const [who, label] of [['builder', 'Builder'], ['reviewer', 'Reviewer']]) assert.equal(enrolled[0].actors[actors[who]].displayName, label)
+    expected.ignore(Object.keys(enrolled[0].operations))
+    progress('Creating 100 tasks and 400 comments through the hub client')
     const taskIds = []
     for (let i = 0; i < 100; i++) {
-      taskIds.push((await execute(0, 'task.create', { title: `Pardner task ${i}`, description: `Seed ${seed}, task ${i}. ${'Complete local-first context. '.repeat(30)}`, assignee: i % 2 ? 'bob' : 'alice' })).result.taskId)
+      taskIds.push((await execute(0, 'task.create', { title: `Pardner task ${i}`, description: `Seed ${seed}, task ${i}. ${'Complete local-first context. '.repeat(30)}`, assignee: actors[i % 2 ? 'bob' : 'alice'] })).result.taskId)
       for (let j = 0; j < 4; j++) await execute(0, 'comment.add', { taskId: taskIds[i], text: `Fixture comment ${i}/${j}: ${'Evidence and context. '.repeat(30)}` })
     }
     await converge()
@@ -97,25 +162,20 @@ async function runSeed(seed) {
       await context.tracing.start({ screenshots: true, snapshots: true, sources: true })
       const page = await context.newPage()
       page.on('pageerror', error => pageErrors.push(error.message))
+      const intent = request => ({ ...request.postDataJSON(), actorId: actors[human(side)] })
       page.on('request', request => {
-        if (new URL(request.url()).pathname !== '/automerge/operations' || request.method() !== 'POST') return
-        const body = request.postDataJSON()
-        expected.intend(body, replicaIds[side]); requestTimes.set(request, performance.now())
+        if (!new URL(request.url()).pathname.endsWith('/api/automerge/operations') || request.method() !== 'POST') return
+        expected.intend(intent(request), replicaIds[side]); requestTimes.set(request, performance.now())
       })
       page.on('response', response => {
         const request = response.request()
         if (!requestTimes.has(request)) return
         responseQueue = responseQueue.then(async () => {
           assert.equal(response.status(), 200)
-          expected.acknowledge(request.postDataJSON(), await response.json(), performance.now() - requestTimes.get(request))
+          expected.acknowledge(intent(request), await response.json(), performance.now() - requestTimes.get(request))
         })
       })
-      const { token } = JSON.parse(await readFile(join(directories[side], 'connection.json'), 'utf8'))
-      await page.goto(`${services[side].httpUrl}/pardner/`)
-      await page.getByLabel('Local service token').fill(token)
-      await page.getByRole('button', { name: 'Connect', exact: true }).click()
-      await page.getByLabel('Actor', { exact: true }).selectOption(side === 1 ? 'alice' : 'bob')
-      await page.getByRole('button', { name: /Pardner task 0 alice/ }).click()
+      await openBoard(side, page)
       pages.push(page)
     }
     progress('Partitioning both replicas and varying 200 operation schedules')
@@ -133,37 +193,37 @@ async function runSeed(seed) {
     await responseQueue
     // Different tasks have one offline owner; the explicit conflict scenario below
     // supplies competing same-field edits independently of the fixture workload.
+    let restartedSide
     for (let i = 0; i < 200; i++) {
       const index = 1 + Math.floor(rng() * 99), side = index % 2 + 1
       const taskId = taskIds[index], field = rng() < .5 ? 'priority' : 'description'
       const value = field === 'priority' ? `p${Math.floor(rng() * 4)}` : `Scripted operation ${i}, seed ${seed}, task ${index}`
       const context = await show(side, taskId)
-      await execute(side, 'task.update', { taskId, updates: { [field]: value }, expectedRevisions: { [field]: context.revisions[field] } }, side === 1 ? 'alice' : 'bob')
+      await execute(side, 'task.update', { taskId, updates: { [field]: value }, expectedRevisions: { [field]: context.revisions[field] } })
       if (i === 80 + seed % 40) {
-        const killedSide = seed % 2 + 1
+        const killedSide = restartedSide = seed % 2 + 1
+        const runtimes = childPids(services[killedSide].child.pid)
         await services[killedSide].stop('SIGKILL')
         const started = performance.now()
-        services[killedSide] = await startCliService(directories[killedSide])
+        while (runtimes.some(alive)) {
+          assert.ok(performance.now() - started <= 6000, 'A project runtime outlived its SIGKILLed client')
+          await delay(10)
+        }
+        timings.push({ kind: 'orphan-runtime-exit', side: killedSide, runtimes: runtimes.length, elapsed: performance.now() - started })
+        services[killedSide] = await start(killedSide)
+        // The restart is complete when the project runtime (and its storage lease) answers with saved local state.
+        while (!(await status(killedSide).catch(() => ({}))).savedLocally) await delay(20)
         const elapsed = performance.now() - started
         assert.ok(elapsed <= 6000, `Offline restart took ${elapsed}ms`)
-        timings.push({ kind: 'offline-start', elapsed })
+        timings.push({ kind: 'offline-start', side: killedSide, elapsed })
       }
     }
-    // The browser connected to the killed process is reopened using its persisted
-    // tab credentials; each replica still has its distinct local service.
-    for (let side = 1; side <= 2; side++) {
-      if (new URL(pages[side - 1].url()).port !== new URL(services[side].httpUrl).port) {
-        const { token } = JSON.parse(await readFile(join(directories[side], 'connection.json'), 'utf8'))
-        await pages[side - 1].goto(`${services[side].httpUrl}/pardner/`)
-        await pages[side - 1].getByLabel('Local service token').fill(token)
-        await pages[side - 1].getByRole('button', { name: 'Connect', exact: true }).click()
-        await pages[side - 1].getByLabel('Actor', { exact: true }).selectOption(side === 1 ? 'alice' : 'bob')
-        await pages[side - 1].getByRole('button', { name: /Pardner task 0 alice/ }).click()
-      }
-    }
+    // The browser of the killed client reopens on the same address; its session cookie persists across the restart.
+    await pages[restartedSide - 1].reload()
+    await pages[restartedSide - 1].getByRole('button', { name: /Pardner task 0 / }).click()
     for (const side of [1, 2]) {
       const context = await show(side, taskIds[0])
-      await execute(side, 'task.update', { taskId: taskIds[0], updates: { status: side === 1 ? 'in-progress' : 'review' }, expectedRevisions: { status: context.revisions.status } }, side === 1 ? 'alice' : 'bob')
+      await execute(side, 'task.update', { taskId: taskIds[0], updates: { status: side === 1 ? 'in-progress' : 'review' }, expectedRevisions: { status: context.revisions.status } })
     }
     gates[seed % 2].loseResponse('/automerge/sync-ack', 1 + seed % 2)
     for (const index of seed % 2 ? [1, 0] : [0, 1]) { gates[index].partition(false); await delay(40 + Math.floor(rng() * 120)) }
@@ -176,16 +236,17 @@ async function runSeed(seed) {
     await responseQueue
     await converge()
     progress('Running the human → builder → reviewer → human handoff with durable workers')
-    await pages[0].getByLabel('Recipient', { exact: true }).selectOption('builder')
+    await pages[0].getByRole('button', { name: 'Hand off work', exact: true }).click()
+    await pages[0].getByLabel('Recipient', { exact: true }).selectOption({ label: 'Builder · agent' })
     const handoffText = `Seed ${seed}: builder, please implement the accepted work.`
     await pages[0].getByLabel('Handoff message', { exact: true }).fill(handoffText)
     await pages[0].getByRole('button', { name: 'Hand off', exact: true }).click()
     await pages[0].getByText(handoffText, { exact: true }).waitFor()
     await responseQueue
     await converge()
-    for (const [index, actorId] of ['builder', 'reviewer'].entries()) {
+    for (const [index, who] of ['builder', 'reviewer'].entries()) {
       let intentStarted
-      const agent = new AgentProcess({ directory: join(root, actorId), serviceDirectory: directories[index + 1], actorId }, message => {
+      const agent = new AgentProcess({ directory: join(root, who), tokenFile: grants[who].file, actorId: actors[who] }, message => {
         if (message.intent) { expected.intend(message.intent, replicaIds[index + 1]); intentStarted = performance.now() }
         if (message.checkpoint === 'effect-saved') {
           const intent = expected.intents.get(message.receipt.requestId)
@@ -199,7 +260,8 @@ async function runSeed(seed) {
     }
     assert.equal((await agents[0].run('received')).result.paused, true)
     if (seed % 2) { await agents[0].stop('SIGKILL'); await agents[0].start() }
-    gates[0].loseResponse('/automerge/deliveries/ack')
+    // A replica's delivery calls reach the hub as /delivery with the action in the body.
+    gates[0].loseResponse('/delivery', 1, body => body?.action === 'ack')
     assert.equal((await agents[0].run('acknowledged')).error.code, 'HUB_UNAVAILABLE')
     await agents[0].stop('SIGKILL'); await agents[0].start()
     assert.equal((await agents[0].run('acknowledged')).result.paused, true)
@@ -210,7 +272,7 @@ async function runSeed(seed) {
     gates[0].partition(false)
     await converge()
     let taskContext = await show(1, taskIds[0])
-    await execute(1, 'task.handoff', { taskId: taskIds[0], to: 'reviewer', status: 'review', message: 'Builder finished; reviewer, check the recorded work.',
+    await execute(1, 'task.handoff', { taskId: taskIds[0], to: actors.reviewer, status: 'review', message: 'Builder finished; reviewer, check the recorded work.',
       expectedRevisions: { assignee: taskContext.revisions.assignee, status: taskContext.revisions.status } }, 'builder')
     await converge()
     const reviewerPause = seed % 2 ? 'effect-saved' : 'received'
@@ -218,7 +280,7 @@ async function runSeed(seed) {
     await agents[1].stop('SIGKILL'); await agents[1].start()
     assert.equal((await agents[1].run()).result.complete, true)
     taskContext = await show(2, taskIds[0])
-    await execute(2, 'task.handoff', { taskId: taskIds[0], to: 'alice', status: 'review', message: 'Reviewer finished; Alice can confirm completion.',
+    await execute(2, 'task.handoff', { taskId: taskIds[0], to: actors.alice, status: 'review', message: 'Reviewer finished; Alice can confirm completion.',
       expectedRevisions: { assignee: taskContext.revisions.assignee, status: taskContext.revisions.status } }, 'reviewer')
     await converge()
     for (const agent of agents) assert.equal((await agent.run()).result.idle, true)
@@ -254,10 +316,11 @@ async function runSeed(seed) {
     await execute(1, 'task.link-commit', { taskId: taskIds[0], commit }, 'builder')
     await converge()
     const observed = (await show(1, taskIds[0])).comments.map(comment => ({ commentId: comment.id, revisionId: comment.revisionId }))
+    // Alice reads half on her laptop and half on her desktop while they are partitioned; Bob's unread state is his own.
     gates.forEach(gate => gate.partition())
     const halfway = Math.ceil(observed.length / 2)
-    await execute(1, 'read.mark', { taskId: taskIds[0], comments: observed.slice(0, halfway) }, 'alice')
-    await execute(2, 'read.mark', { taskId: taskIds[0], comments: observed.slice(halfway) }, 'alice')
+    await execute(1, 'read.mark', { taskId: taskIds[0], comments: observed.slice(0, halfway) })
+    await execute(0, 'read.mark', { taskId: taskIds[0], comments: observed.slice(halfway) })
     gates.forEach(gate => gate.partition(false))
     await converge()
     assert.equal((await show(1, taskIds[0])).unreadCount, 0)
@@ -273,15 +336,20 @@ async function runSeed(seed) {
     }
     assert.deepEqual(pageErrors, [])
     progress('Verifying acknowledged operations and final effects against the independent manifest')
-    const docs = await converge()
+    await converge()
+    // Signatures travel in their own document, so they may land just after the boards converged.
+    const docs = await attributed()
     const verified = docs.map(doc => expected.verify(doc))
     assert.ok(verified.every(result => result.snapshotHash === verified[0].snapshotHash))
-    const report = { seed, candidateSha256: candidate.sha256, scenarioPassed: true, timings, gates: gates.map(gate => gate.events), verified, agentEvidence,
+    const maxima = {}
+    for (const { kind, elapsed } of timings) maxima[kind] = Math.max(maxima[kind] ?? 0, elapsed)
+    const report = { seed, candidateSha256: candidate.sha256, scenarioPassed: true, topology: 'client', maxima, timings, gates: gates.map(gate => gate.events), verified, agentEvidence,
       manifest: expected.report(), heads: docs.map(doc => doc.heads), fixture: { tasks: 100, comments: 400, scriptedOperations: 200 },
-      limits: { localAckMs: 2500, localVisibleMs: 2000, offlineStartMs: 6000, convergenceMs: 10000 } }
+      limits: { localAckMs: 2500, clientProxyAckMs: 2500, agentEffectAckMs: 2500, localVisibleMs: 2000, offlineStartMs: 6000, convergenceMs: 10000 } }
     await writeFile(join(reportDirectory, 'report.json'), JSON.stringify(report, null, 2))
     await writeFile(join(reportDirectory, 'snapshot.json'), JSON.stringify(docs[0]))
-    return { seed, scenarioPassed: true, report: join(reportDirectory, 'report.json'), hash: hash(report) }
+    progress(`Maxima (ms): ${Object.entries(maxima).map(([kind, value]) => `${kind} ${value.toFixed(1)}`).join(', ')}`)
+    return { seed, scenarioPassed: true, report: join(reportDirectory, 'report.json'), maxima, hash: hash(report) }
   } catch (error) {
     scenarioError = error
     await writeFile(join(reportDirectory, 'failure.json'), JSON.stringify({ seed, error: error.stack, timings, gates: gates.map(gate => gate.events), manifest: expected.report() }, null, 2))

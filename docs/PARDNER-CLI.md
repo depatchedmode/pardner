@@ -1,47 +1,88 @@
 # Pardner local service and CLI
 
-The default service and executable now use the schema 5 workspace. Human and
+The default service and executable now use the schema 8 workspace. Human and
 agent Actors author through the same local HTTP operations. See the
 [implementation evidence](PARDNER-EVIDENCE.md) for tested candidates and limitations.
 
 ## Open the local UI
 
-For the new Start/Join flow and session-bound authorship, use the
-[local client preview](PARDNER-CLIENT.md): `pardner client serve` followed by
-`pardner client open`. It opens without manually entering an API key and keeps
-each project in a separate local runtime. The standalone instructions below
-remain available for existing workspaces.
+People open Pardner with `pardner` (or `pardner open`). It uses the
+[local client](PARDNER-CLIENT.md) in the per-user directory `~/.pardner/client`
+(override with `--data`). If no client service answers there, it starts
+`pardner client serve` in the background, logging to `client.log` (mode 0600) in
+that directory, waits up to 15 seconds for it, and then signs the browser in
+through a one-time link. `--output-file FILE` writes the private launch URL
+instead of launching a browser. Serve flags such as `--http-port` and `--harness`
+are passed to a service it starts. If the recorded port answers but rejects the
+client's operator token, it reports `PORT_IN_USE` and stops nothing. If a started
+service exits, it reports the service's error, such as `STORAGE_IN_USE`.
 
-The client also supports `show --project ID`, `revoke --project ID --kind
-device|agent|member --id ID --operation-id ID`, and `export --project ID
+`pardner client status` reports the running client. `pardner client stop` asks it
+to shut down with the local operator token (browser sessions cannot) and waits
+until it releases its data directory. Each project runs in a separate local
+runtime. The standalone `pardner serve` instructions below are for agents and
+integrations.
+
+`pardner client invite --project ID --purpose human|agent|device --output-file FILE
+--operation-id ID` writes a private invitation to `FILE`. Human and My device
+invitations are joined from another computer, so they need the client started with
+`--public-url <https origin>`; without it they fail with `PUBLIC_URL_REQUIRED`,
+naming the loopback address and the fix, and nothing is written. Agent invitations
+work without it for an agent on the same computer. `pardner client join
+--invitation-file FILE --operation-id ID` fails with `INVITATION_UNREACHABLE`, naming
+the address, when an invitation points to another computer's loopback address; a
+temporary hub outage reports `HUB_UNAVAILABLE` and can be retried with the same
+operation ID. See [Invite and join](PARDNER-CLIENT.md#invite-and-join).
+
+The client also supports `show --project ID` and `export --project ID
 --output-file FILE`. Use the [recovery guide](PARDNER-CLIENT-RECOVERY.md) for full
 cold backups, fresh-install restoration and authority replacement. A content
 export does not replace the private registry and replica backup.
 
-Build the browser client with `npm ci --prefix ui-prototype` and `npm run ui:build`.
-Start the local service, then open its HTTP address at `/pardner/` (normally
-`http://127.0.0.1:8004/pardner/`). Enter the token from the local connection file
-and select the human or agent Actor making changes. The token is remembered in
-browser local storage without application expiry; no token is compiled into the
-application. Actor selection and filters are remembered by workspace.
+Joining and membership use signed records ([client guide](PARDNER-CLIENT.md#invite-and-join)):
 
-For a companion device on the same trusted network, use **Pair another device**
-on the desktop. Enable LAN access, restart with the same data directory, then scan the displayed
-QR code to pair automatically, or use the address and code to connect manually.
-See [companion device and LAN access](PARDNER-LAN.md)
-for HTTP transport limitations, secret rotation, disabling access, and recovery.
+| Command | What it does |
+| --- | --- |
+| `client invite --project ID --purpose human\|agent\|device --output-file FILE --operation-id ID [--role admin\|member] [--person PERSON_ID]` | Signs an offer with this machine's key and writes the private invitation to FILE. Human invitations are for the owner and admins; `--role admin` is the owner's alone. `--person` pairs a machine for someone else (owner or admin) |
+| `client join --invitation-file FILE --operation-id ID [--wait SECONDS]` | Sends a join request and reports `{ join: { state, requestId, code } }` until it is approved, then `{ project }`. Run it again with the same operation ID to continue; `--wait` polls and prints the code to stderr |
+| `client requests --project ID` | Lists the join requests this machine may approve, adding this approver's nonce so each shows its confirmation code |
+| `client approve --project ID --request REQUEST_ID --code CODE` | Signs the admission, only if CODE matches the code this machine derives for the request |
+| `client reject --project ID --request REQUEST_ID` | Rejects a waiting request |
+| `client revoke --project ID --kind member\|machine\|agent --id ID --operation-id ID` | `member` signs `member.remove` for a person ID or a person's human Actor ID; `machine` (or the older `device`, with a machine or device ID) signs `machine.remove`; `agent` revokes one of this machine's own agents locally. A wrong kind of ID is refused before the operation ID is used |
+| `client role --project ID --person PERSON_ID --role admin\|member --operation-id ID` | The owner signs `member.role`, naming the role record it replaces |
+| `client resume --project ID` | On the computer that hosts the project: confirms that no machine holds newer state than this restored hub, so it serves other machines again ([recovery](PARDNER-CLIENT-RECOVERY.md#a-restored-hub)) |
+| `client people --project ID [--json]` | Lists, as text, each person with their role, who let them in, their machines (short ID, this machine, hosting the project, agents only, online or last seen), agents and person ID, then removed people and machines with who removed them. `--json` prints the same view as data |
+| `client review --project ID [--json]` | Lists, as text, the changes that need review: unattributed changes (no valid signature by a member machine, with the reason and the machine that relayed it), changes made by a removed machine, and changes claiming an Actor their machine may not act as, each with the Activity entries it wrote, then any equivocation with the machine it names. Change hashes appear only as details. `--json` prints `changes` and `equivocations` as data |
+| `client leave --project ID --operation-id ID` | Signs `member.remove` for this machine's own person: every machine of theirs loses access. The owner can't leave |
+| `client profile --project ID --name NAME --email EMAIL --operation-id ID` | Signs a `profile` record so every member sees the new name and email; this computer also keeps them for later projects. Agent names don't change |
+| `client invites --project ID [--limit N] [--offset N]` | Lists invitations newest first (10 by default, at most 50 at a time), with who issued each and when, its state, and who used or revoked it |
+| `client revoke-invite --project ID --invite INVITE_ID` | Revokes an unused invitation |
+
+`client list` and `client status` also report `removedProjects`: each project this
+computer was removed from, or whose person was removed or left, with who removed
+it. The project's local copy stays, and `client export` still works.
+
+`client create` suggests pairing a second machine: if the owner loses every
+machine, nobody can remove or demote admins.
+
+Build the browser client with `npm ci --prefix ui-prototype` and `npm run ui:build`
+before opening it. The board is signed in by the client session: the signed-in
+Actor authors every change, and filters are remembered per project and Actor. No
+token is entered in or compiled into the browser. The standalone service's
+`/pardner/` page serves no board; it points people to `pardner open`.
+
+Phone access is not currently offered; it is planned through the hub over HTTPS.
 
 The board, task editor, handoff form, comments, conflict alternatives, explicit
 read receipts, history, and commit evidence use the same operation API as the CLI.
-The browser owns no Automerge database; the local service persists and synchronizes
-its workspace. Keep that service running for local authoring.
+The browser owns no Automerge database; the client's project runtime persists and
+synchronizes its workspace. Keep the client running for local authoring.
 
-`npm run test:ui` builds the UI and tests independent Chromium contexts, mobile
-Chromium/WebKit over LAN HTTP, connection failures, and a local WebSocket proxy.
-Install pinned engines with `npx playwright install chromium webkit` after
-installing root dependencies. LAN cases explicitly skip when no suitable IPv4
-interface exists. Physical phones and the full multi-replica gate are separate
-qualification steps.
+`npm run test:ui` builds the UI and tests client-mode boards in independent
+Chromium and WebKit contexts, connection failures and the session-bound
+connection. Install pinned engines with `npx playwright install chromium webkit`
+after installing root dependencies. The full multi-replica gate is a separate
+qualification step.
 
 ## Start a workspace
 
@@ -52,11 +93,19 @@ install the package to put `pardner` on PATH. The examples below use `pardner`.
 pardner serve --data .pardner
 ```
 
-This starts the hub on loopback ports 8004/8005. It generates a local API token and
-writes `.pardner/connection.json` with mode 0600. CLI commands discover that file;
-`--data`, `--server`, and `--token` override connection settings. The equivalent
-environment variables are `PARDNER_DATA_DIR`, `PARDNER_LOCAL_URL`, and
+This starts the standalone agent and integration service on loopback ports
+8004/8005: one project on this computer for agents and scripts. It generates a local
+API token and writes `.pardner/connection.json` with mode 0600. CLI commands discover
+that file; `--data`, `--server`, and `--token` override connection settings. The
+equivalent environment variables are `PARDNER_DATA_DIR`, `PARDNER_LOCAL_URL`, and
 `PARDNER_API_TOKEN`. `npm run sync` also starts this runtime.
+
+The standalone service is **not** the client. It keeps its own data, so its tasks do
+not appear in `pardner open`, and the client's projects do not appear here. It serves
+no other machine: it signs its project genesis with a one-time key that it does not
+keep, so no machine can ever be admitted to it. Use the
+[local client](PARDNER-CLIENT.md) for a project that people open or that other
+machines join.
 
 Register the first Actor explicitly, then register the other humans and agents:
 
@@ -72,59 +121,40 @@ Actor IDs remain stable across replicas. Handles are accepted where an Actor is
 selected. Mutations require `--actor` or `PARDNER_ACTOR`; there is no implicit
 human or agent identity. `--agent` is an Actor-selection alias.
 
-## Enroll another machine
+## Another machine
 
-Each machine runs one service owning its own directory. Configure a reachable hub
-HTTP and native WebSocket address, its API token, and a separately enrolled replica
-credential at initial enrollment. On the hub, configure `PARDNER_REPLICA_CREDENTIALS`
-as a JSON object mapping administrator-chosen replica IDs to unique random secrets:
+Machines sync only through the client, and only as member machines: each client
+directory's machine key is its only credential towards other machines. Host a project
+in one client and join it from another with an invitation
+([client guide](PARDNER-CLIENT.md)). There is no shared secret to provision or
+rotate: to cut a machine off, remove it (`pardner client revoke --kind machine`).
 
-```sh
-export PARDNER_REPLICA_CREDENTIALS='{"laptop":"REPLACE_WITH_RANDOM_REPLICA_SECRET"}'
-pardner serve --data .pardner-hub
-```
+The hand-run hub and replica roles are retired. `pardner serve --role hub|replica`,
+`--hub`, `--hub-ws` and `--hub-token`, and the environment variables
+`PARDNER_ROLE`, `PARDNER_HUB_URL`, `PARDNER_HUB_WS_URL`, `PARDNER_HUB_TOKEN`,
+`PARDNER_REPLICA_ID`, `PARDNER_REPLICA_TOKEN` and `PARDNER_REPLICA_CREDENTIALS` are
+refused with an explanation. A directory that held a hand-run replica is left
+unchanged and refused (`ROLE_MISMATCH`); a hand-run hub's directory still opens as a
+standalone service.
 
-Generate each secret with `openssl rand -hex 32`. Never reuse the API token or
-another replica's secret. The default empty registry disables native replication.
-Distribute the matching ID and secret privately to that trusted machine, then run:
+How machines authenticate:
+- **Sync socket.** The native socket opens with the machine handshake: both sides
+  sign a transcript of the protocol version, project ID, both machine IDs, both
+  fresh nonces, both roles and the route as dialled. The hub serves only a current
+  member machine, and the joining machine accepts nothing until the hub is a member
+  machine in the log rooted at the project ID it expected.
+- **HTTP.** A session opens with the same exchange (`POST …/session`, then
+  `…/session/confirm`); each later request is signed by the machine key over the
+  session, a sequence number, the method, the URL as dialled, the body and the
+  project, in the `x-pardner-session`, `x-pardner-seq` and `x-pardner-signature`
+  headers. A replayed request is refused.
+- **Inside one machine.** The client's own loopback hop to its project runtime keeps
+  its local token and ticket, as do browser cookies, the operator token and agent
+  grants. None of them is accepted between machines.
 
-```sh
-export PARDNER_REPLICA_ID=laptop
-export PARDNER_REPLICA_TOKEN=REPLACE_WITH_RANDOM_REPLICA_SECRET
-```
-
-```sh
-pardner serve --data .pardner --role replica \
-  --hub http://hub-host:8004 --hub-ws ws://hub-host:8005/automerge \
-  --hub-token "$PARDNER_HUB_TOKEN"
-```
-
-The default binding is loopback. A hub accepting other machines must explicitly
-set `PARDNER_BIND_HOST` to the intended interface and expose its HTTP/WebSocket
-ports. Enrollment requires the hub; reopening an enrolled directory does not.
-`pardner serve --data .pardner` remembers the role, addresses, ports, and local
-credentials. CLI and UI should connect to the local service on each machine.
-
-Replica credentials grant **full document-write authority**. Native Automerge changes
-are merged and persisted without the operation API's schema, attribution, revision,
-or command validation. Enroll only machines trusted to uphold those invariants;
-ordinary Actor/API credentials cannot mint native tickets or open native sessions.
-The enrollment ID identifies the credential holder, not a signed Actor or CRDT
-mutation. API credentials remain necessary for discovery and API requests.
-
-Native clients request `POST /automerge/ws-ticket` with the ordinary API bearer
-token, an `x-pardner-replica-token` header, and JSON
-`{"purpose":"replica","replicaId":"laptop"}`. The returned ticket opens only
-`/automerge`; an ordinary ticket opens only UI subscriptions. Direct bearer,
-header, or legacy query API tokens never authorize `/automerge`.
-
-Tickets are short-lived, single-use, and scoped to either UI subscriptions or native
-replication. Insecure local mode does not bypass replica enrollment. Remove or rotate
-a credential in the hub configuration and restart the hub to disconnect existing
-sessions and invalidate outstanding tickets. CLI replicas save their enrollment
-credentials in the private `connection.json`; environment values override them.
-Existing replicas must be provisioned with these separate credentials before they
-can reconnect. Cached workspaces still open offline.
+Member machines are trusted full document writers: their synchronized changes bypass
+the operation API's schema, attribution, revision and command validation. Changes
+are not signed yet, so a member machine's word is taken for who made a change.
 
 Existing incompatible storage is rejected and left intact. Choose a fresh
 directory; there is no automatic migration. A second process cannot own the same
@@ -135,8 +165,14 @@ register maps. Retried creation requests on disconnected replicas therefore shar
 each field's merge location. A shared map records superseded field revisions, so
 a late retry cannot resurrect an initial value after an edit or explicit
 resolution. Version 4 added goals, veins, and task–vein links to version 3;
-schema 5 adds request-bound stored operation identities and integrity inspection.
-Earlier directories must be preserved and replaced with a fresh workspace; all
+schema 5 adds request-bound stored operation identities and integrity inspection;
+schema 6 adds the signed project genesis and membership records, and derives the
+workspace ID from the genesis. Schema 7 stores every string as an immutable scalar
+value, including operation payload copies and membership records. Reads remain
+ordinary strings; field-level authored alternatives, explicit resolution and retry
+identity are unchanged. Schema 8 moves membership records to version 2: each
+admission or pairing carries the joining machine's signed consent, and person IDs
+are derived from machine keys. Earlier directories must be preserved and replaced with a fresh workspace; all
 services participating in a workspace must use the same schema version.
 
 ## Read, edit, and hand off
@@ -145,6 +181,7 @@ services participating in a workspace must use the same schema version.
 comments, revisions, conflicts, history, commit evidence, and sync status. It does
 not mark comments read. Comment `revisionIds` includes every concurrent revision;
 submit only revisions actually observed using `pardner read --receipts`.
+With `--actor`, each comment also lists `unreadRevisionIds`, the revisions that Actor has no receipt for, authors included.
 
 An edit supplies the revisions observed in `show` for the affected fields:
 
@@ -185,7 +222,7 @@ No inspection or retry repairs/replays the conflicting mutations. Ordinary field
 resolution does not resolve operation integrity. Same-field collisions also
 require explicit field resolution.
 
-This identity format requires schema 5 on every service. Older workspace data is
+This identity format requires schema 8 on every service. Older workspace data is
 preserved and rejected as incompatible; do not overwrite or automatically migrate
 it. Enroll a new workspace using compatible services.
 
@@ -297,8 +334,8 @@ its deterministic workers do not establish the [real-agent rehearsal](PARDNER-CL
 
 ## Native transport diagnostics
 
-`npm run stress:native-peer -- all --runs 2` starts a temporary production hub and exercises one Actor across replicas, two Actors across replicas, and offline recovery. `--hub-restart` gives each run a fresh temporary hub. To target an existing hub, set `PARDNER_SYNC_SERVER`, `PARDNER_API_TOKEN`, `PARDNER_WS_BASE`, `PARDNER_ACTOR`, and `PARDNER_SECOND_ACTOR`; both Actors must already be registered. Remote runs create diagnostic tasks in that workspace.
-
-`npm run smoke:native-peer -- show-task <taskId>` returns complete task context. Set `PARDNER_PEER_STORAGE_PATH` to use a persisted replica, including cached offline reads. With `PARDNER_ACTOR`, `create-task [title]` and `set-task <taskId> <field> <value>` submit attributed operations. `PARDNER_OPERATION_ID` supplies a stable ID for retries. A successful write means saved locally; synchronization is reported separately in its receipt. `watch` streams snapshots until SIGINT/SIGTERM and closes its storage cleanly.
-
-Native diagnostic storage must be a separate directory from any running local service. These tools use the same runtime, disk barrier, directory ownership, schema checks, and fresh-ticket reconnect path as Pardner. They do not replace the full acceptance suite.
+The `smoke:native-peer` and `stress:native-peer` tools drove hand-run replicas with
+shared tokens and are retired with them. Their scenarios run in the regression suite
+with member machines: one Actor and two Actors across replicas and offline recovery
+(`test/sync-use-cases.test.js`), and transport admission
+(`test/native-replica-auth.test.js`).

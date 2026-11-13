@@ -7,7 +7,8 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium, webkit } from 'playwright'
 import Server from '../automerge-sync-server.js'
-import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
+import { withClientReplicas } from '../support/client-workspace.js'
+import { admitMembers, hubRuntime, projectFor, replicaRuntime } from '../support/machines.js'
 
 // Independent canonical encoder: expected fingerprints never use production helpers.
 function canonical(value) {
@@ -15,18 +16,24 @@ function canonical(value) {
   if (value && typeof value === 'object') return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical(value[k])).join(',')+'}'
   return JSON.stringify(value)
 }
-const fingerprint = request => createHash('sha256').update(canonical({type: request.type, actorId: 'actor-a', payload: request.payload})).digest('hex')
+const fingerprint = (request, actorId = 'actor-a') => createHash('sha256').update(canonical({type: request.type, actorId, payload: request.payload})).digest('hex')
 const token = 'disposable-integrity-token'
-const replicaCredentials = Object.fromEntries([0, 1].map(i => [`peer-${i}`, `disposable-integrity-replica-${i}`]))
 const actors = [{id: 'actor-a', handle: 'alice', kind: 'human'}]
 async function until(check) {
   const deadline=Date.now()+10000
   while(!await check()) { assert.ok(Date.now()<deadline, 'Convergence exceeded 10 seconds'); await delay(25) }
 }
-for (const order of [[0,1],[1,0]]) it(`preserves public collision evidence after sync order ${order}, restart and browser inspection`, {timeout:60000}, async () => {
+for (const order of [[0,1],[1,0]]) it(`preserves public collision evidence after sync order ${order} and restart`, {timeout:60000}, async () => {
   const root=await mkdtemp(join(tmpdir(),'pardner-integrity-'))
-  const make=(name, settings={})=>new Server({replicaCredentials,store:new WorkspaceRuntime({directory:join(root,name),role:name==='hub'?'hub':'replica',actors,token,replicaCredentialId:name,replicaToken:replicaCredentials[name],retryMs:100,...settings}),env:{},apiToken:token,httpPort:0,wsPort:0,logger:{}})
-  let hub=make('hub'), peers=[], browser
+  // The hub and two member machines of one fixture project; each peer reconnects with its own machine key.
+  const project=projectFor(join(root,'hub'))
+  const make=(name, settings={})=>{
+    const store=name==='hub'?hubRuntime(join(root,name),{actors,retryMs:100}):replicaRuntime(join(root,name),project,Number(name.slice(5)),{actors,retryMs:100,...settings})
+    const server=new Server({store,env:{},apiToken:token,httpPort:0,wsPort:0,logger:{}})
+    if(name==='hub'){const start=server.start.bind(server);server.start=async()=>{await start();await admitMembers(server.store,project)}}
+    return server
+  }
+  let hub=make('hub'), peers=[]
   async function api(server,path,body) {
     const response=await fetch(`http://127.0.0.1:${server.httpPort}${path}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})})
     return {status:response.status,...await response.json()}
@@ -34,7 +41,7 @@ for (const order of [[0,1],[1,0]]) it(`preserves public collision evidence after
   const write=(server,request)=>api(server,'/automerge/operations',request)
   const context=(server,id)=>api(server,`/automerge/task/${id}/context`)
   const requests=['Left full payload','Right full payload'].map(title=>({operationId:'collision',actorId:'alice',type:'task.create',payload:{title,description:'preserve complete intent',tags:['integrity']}}))
-  const expected=requests.map(fingerprint).sort()
+  const expected=requests.map(request => fingerprint(request)).sort()
   const same={operationId:'equivalent',actorId:'alice',type:'task.create',payload:{title:'Equivalent retry'}}
   try {
     await hub.start()
@@ -92,30 +99,45 @@ for (const order of [[0,1],[1,0]]) it(`preserves public collision evidence after
       assert.equal(Object.keys((await api(server,'/automerge/doc')).doc.operations).length,3)
       if (server === hub) assert.equal(server.store.deliveryLedger.pending().length,0)
     }
-    for(const engine of [chromium,webkit]) {
-      browser=await engine.launch({headless:true})
-      const page=await browser.newPage({viewport:{width:1440,height:1000}})
-      await page.goto(`http://127.0.0.1:${hub.httpPort}/pardner/`)
-      await page.getByLabel('Local service token').fill(token)
-      await page.getByRole('button',{name:'Connect',exact:true}).click()
-      await page.getByLabel('Actor',{exact:true}).selectOption('actor-a')
-      await page.getByText('Left full payload',{exact:true}).click()
-      const conflict=page.getByRole('region',{name:'Operation integrity conflict'})
-      await conflict.waitFor()
-      assert.match(await conflict.innerText(),/Unresolved operation ID conflict/)
-      for(const details of await conflict.locator('details').all()) await details.locator('summary').click()
-      const text=await conflict.innerText()
-      for(const expectedFingerprint of expected) assert.ok(text.includes(expectedFingerprint))
-      assert.ok(text.includes('Right full payload'))
-      for(const pre of await conflict.locator('pre').all()) assert.ok(await pre.evaluate(el=>el.scrollWidth<=el.clientWidth), 'Integrity payload must wrap within the panel')
-      await conflict.getByRole('heading').scrollIntoViewIfNeeded()
-      if(process.env.PARDNER_INTEGRITY_SCREENSHOTS) await page.screenshot({path:join(process.env.PARDNER_INTEGRITY_SCREENSHOTS,`integrity-${order.join('')}-${engine.name()}.png`)})
-      await browser.close();browser=null
-    }
   } finally {
-    await browser?.close()
     for(const peer of peers) await peer?.stop()
     await hub?.stop()
     await rm(root,{recursive:true,force:true})
   }
+})
+
+// One person's two devices reuse a request ID offline: the hub's browser shows both complete variants.
+for (const engine of [chromium, webkit]) it(`shows a client-mode operation ID collision with both variants in ${engine.name()}`, { timeout: 90000 }, async () => {
+  const humans = ['Alice', { name: 'Alice', device: true }, { name: 'Alice', device: true }]
+  await withClientReplicas(engine, { humans, contextOptions: { viewport: { width: 1440, height: 1000 } } },
+    async ({ people: [laptop, desktop, tablet], newPage, partition }) => {
+      assert.equal(desktop.actorId, laptop.actorId, 'a linked device writes as the same Actor')
+      const requests = ['Left full payload', 'Right full payload'].map(title => ({ type: 'task.create', payload: { title, description: 'preserve complete intent', tags: ['integrity'] } }))
+      const expected = requests.map(request => fingerprint(request, laptop.actorId)).sort()
+      const receipts = []
+      await partition(async () => {
+        for (const [index, device] of [desktop, tablet].entries()) {
+          receipts[index] = await device.operate(requests[index].type, requests[index].payload, undefined, 'collision')
+          assert.equal(receipts[index].savedLocally, true)
+        }
+      }, async () => {
+        for (const person of [laptop, desktop, tablet]) {
+          if ((await person.task(receipts[0].result.taskId).catch(() => null))?.integrityConflicts.length !== 1) return false
+        }
+        return true
+      })
+      const page = await newPage()
+      await laptop.open(page)
+      await page.getByText('Left full payload', { exact: true }).click()
+      const conflict = page.getByRole('region', { name: 'Operation integrity conflict' })
+      await conflict.waitFor()
+      assert.match(await conflict.innerText(), /Unresolved operation ID conflict/)
+      for (const details of await conflict.locator('details').all()) await details.locator('summary').click()
+      const text = await conflict.innerText()
+      for (const expectedFingerprint of expected) assert.ok(text.includes(expectedFingerprint))
+      assert.ok(text.includes('Right full payload'))
+      for (const pre of await conflict.locator('pre').all()) assert.ok(await pre.evaluate(el => el.scrollWidth <= el.clientWidth), 'Integrity payload must wrap within the panel')
+      await conflict.getByRole('heading').scrollIntoViewIfNeeded()
+      if (process.env.PARDNER_INTEGRITY_SCREENSHOTS) await page.screenshot({ path: join(process.env.PARDNER_INTEGRITY_SCREENSHOTS, `integrity-client-${engine.name()}.png`) })
+    })
 })

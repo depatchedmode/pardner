@@ -1,0 +1,69 @@
+[
+  {
+    "id": "F-045-01",
+    "story_id": "STORY-045",
+    "severity": "high",
+    "category": "flow",
+    "criterion": "Dead ends / One way per task",
+    "score": "fail",
+    "description": "Retiring a device or agent has no UI. The You profile lists \"Devices: filament.local, filament.local\" with no IDs, no names that distinguish them, and no actions; after the ThinkPad was revoked it is still listed with no revoked marker (corroborates flag 22). Device IDs and agent Actor IDs come only from `client show` JSON.",
+    "expected": "Devices and Agents lists in the own profile with a Revoke action and a revoked state.",
+    "actual": "CLI only; device list indistinguishable and stale.",
+    "screenshot": "screenshots/step-1-profile.png",
+    "suggested_fix": "Add revoke actions and revoked state to ProfileDialog, show device IDs or join dates.",
+    "files_likely_involved": [
+      "ui-prototype/src/Avatar.jsx",
+      "lib/client-service.js"
+    ]
+  },
+  {
+    "id": "F-045-02",
+    "story_id": "STORY-045",
+    "severity": "high",
+    "category": "error-handling",
+    "criterion": "Recovery loops",
+    "score": "fail",
+    "description": "After `client revoke --kind agent` for the Cursor Actor, `client operation --harness cursor` fails with FORBIDDEN \"Harness is not enrolled on this device; join an Agent invitation first\" (the catalog expected ACTOR_REVOKED). Following that advice, joining a fresh Agent invitation with harness cursor returns HTTP 200 and marks the invite Used, but the harness is still refused with the same message. A never-revoked harness (anthropic-claude-code) enrolled the same way works at once. The advice loops and burns invitations (bears on flag 6).",
+    "expected": "A revoked agent is told it was revoked; join refuses up front without consuming the invite, or re-enrolment actually works.",
+    "actual": "Misleading advice; invite consumed; agent still blocked.",
+    "screenshot": "",
+    "suggested_fix": "Return ACTOR_REVOKED from harness lookup and reject the join before redeeming.",
+    "files_likely_involved": [
+      "lib/client-service.js",
+      "lib/client-invites.js"
+    ]
+  },
+  {
+    "id": "F-045-03",
+    "story_id": "STORY-045",
+    "severity": "medium",
+    "category": "error-handling",
+    "criterion": "Error messages are actionable",
+    "score": "warn",
+    "description": "Revoking a non-existent agent ID (`--kind agent --id actor-doesnotexist`) returns FORBIDDEN \"Agent belongs to another human\" instead of not found.",
+    "expected": "NOT_FOUND \"No agent with that ID in this project\".",
+    "actual": "Misleading ownership error.",
+    "screenshot": "",
+    "suggested_fix": "Distinguish unknown IDs from foreign ones.",
+    "files_likely_involved": [
+      "lib/client-service.js"
+    ]
+  },
+  {
+    "id": "F-045-04",
+    "story_id": "STORY-045",
+    "severity": "low",
+    "category": "consistency",
+    "criterion": "Component consistency",
+    "score": "warn",
+    "description": "The People dialog puts Close right next to the title (x≈697-766) while the Invite and Profile dialogs right-align Close to the content edge (x≈886-955).",
+    "expected": "Same dialog header layout everywhere.",
+    "actual": "Close position differs by ~190px between dialogs.",
+    "screenshot": "screenshots/step-1-people.png",
+    "suggested_fix": "Use the shared dialog header component in PeopleDialog.",
+    "files_likely_involved": [
+      "ui-prototype/src/Avatar.jsx",
+      "ui-prototype/src/pardner.css"
+    ]
+  }
+]

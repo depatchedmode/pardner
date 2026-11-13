@@ -1,106 +1,413 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
-import { WebSocket } from 'ws'
-import { Repo } from '@automerge/automerge-repo'
-import { WebSocketClientAdapter } from '@automerge/automerge-repo-network-websocket'
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
+import { WebSocket } from 'ws'
 import AutomergeSyncServer from '../automerge-sync-server.js'
-import { replicaOptions } from '../support/replica-credentials.js'
-import { withStartedServer, authedFetch, mintWsTicket, mintReplicaTicket, wsUrl } from '../support/resources.js'
+import { initiateHandshake } from '../lib/machine-handshake.js'
+import { admitMembers, handshakeSocket, hubRuntime, replicaRuntime, signedRequest, testProject } from '../support/machines.js'
 
-async function rejected(server, path, headers = {}) {
-  const socket = new WebSocket(wsUrl(server, path), { headers })
-  socket.on('error', () => {})
-  socket.on('open', () => socket.close())
-  try {
-    const status = await new Promise((resolve, reject) => {
-      socket.once('unexpected-response', (_request, response) => { response.resume(); resolve(response.statusCode) })
-      socket.once('open', () => reject(new Error('Unauthorized connection opened')))
-      socket.once('error', reject)
-    })
-    assert.equal(status, 401)
-  } finally { socket.terminate() }
+// Transport admission at the project runtime (docs/PARDNER-TRUST-DESIGN.md, section 5): another machine reaches a
+// hub only with its machine key. Every hub here is signed by a fixture key; replicas are member machines of it.
+
+const token = 'admission-test-token'
+const actors = [{ id: 'alice', handle: 'alice', kind: 'human' }]
+
+async function eventually(check, message, timeout = 10000) {
+  const deadline = Date.now() + timeout
+  for (;;) {
+    const value = await check()
+    if (value) return value
+    assert.ok(Date.now() < deadline, message)
+    await delay(25)
+  }
 }
 
-function requestReplicaTicket(server, replicaId, secret) {
-  return authedFetch(server, '/automerge/ws-ticket', {
-    method: 'POST', headers: { 'x-pardner-replica-token': secret },
-    body: JSON.stringify({ purpose: 'replica', replicaId }),
-  })
+async function withHub(run, { project = testProject({ members: 3 }) } = {}) {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-admission-'))
+  const started = []
+  const hub = async (directory = join(root, 'hub'), options = {}) => {
+    const server = new AutomergeSyncServer({ store: hubRuntime(directory, { actors, project, retryMs: 100 }), env: {}, apiToken: token,
+      httpPort: 0, wsPort: 0, logger: {}, ...options })
+    await server.start()
+    await admitMembers(server.store, project)
+    started.push(server)
+    return server
+  }
+  const replicas = []
+  const replica = async (server, index, directory = join(root, `replica-${index}-${randomUUID()}`)) => {
+    const runtime = replicaRuntime(directory, project, index, { hub: server, actors, retryMs: 100 })
+    replicas.push(runtime)
+    await runtime.init()
+    return runtime
+  }
+  try { await run({ root, project, hub, replica }) } finally {
+    await Promise.allSettled(replicas.map(runtime => runtime.close()))
+    await Promise.allSettled(started.map(server => server.stop()))
+    await rm(root, { recursive: true, force: true })
+  }
 }
 
-it('ordinary credentials cannot reach the raw CRDT writer through any supported credential transport', async () => {
-  await withStartedServer({ allowLegacyWsQueryToken: true, replicaCredentials: {
-    [replicaOptions.replicaCredentialId]: replicaOptions.replicaToken, other: 'other-replica-secret',
-  } }, async server => {
+const nativeUrl = server => `ws://127.0.0.1:${server.wsPort}/automerge`
+const httpRoute = server => `http://127.0.0.1:${server.httpPort}`
+
+/** Opens a native socket and records every frame the hub sends. */
+async function rawSocket(server) {
+  const socket = new WebSocket(nativeUrl(server))
+  const frames = []
+  socket.on('message', (data, binary) => frames.push(binary ? { type: 'binary' } : JSON.parse(data.toString())))
+  await once(socket, 'open')
+  return { socket, frames }
+}
+
+it('a non-member machine is refused and served nothing, on the sync socket and over HTTP', async () => {
+  await withHub(async ({ project, hub }) => {
+    const server = await hub()
     const before = server.store.getDoc()
-    await rejected(server, '/automerge', { authorization: 'Bearer test-token' })
-    await rejected(server, '/automerge', { 'x-pardner-token': 'test-token' })
-    await rejected(server, '/automerge?token=test-token')
-    await rejected(server, `/automerge?ticket=${await mintWsTicket(server)}`)
-    for (const [id, secret] of [
-      [replicaOptions.replicaCredentialId, 'test-token'],
-      [replicaOptions.replicaCredentialId, ''],
-      ['unenrolled', replicaOptions.replicaToken],
-      ['other', replicaOptions.replicaToken],
-      ['__proto__', replicaOptions.replicaToken],
-    ]) {
-      const response = await requestReplicaTicket(server, id, secret)
-      assert.equal(response.status, 403)
-      assert.equal((await response.json()).code, 'REPLICA_REQUIRED')
-    }
-    assert.equal(server.nativeWsServer.clients.size, 0)
-    await server.store.repo.flush([server.store.docHandle.documentId])
+    const { socket, frames } = await rawSocket(server)
+    const closed = once(socket, 'close')
+    await assert.rejects(initiateHandshake(socket, { key: project.stranger, projectId: project.projectId, route: nativeUrl(server), role: 'replica' }),
+      { code: 'NOT_MEMBER' })
+    assert.equal((await closed)[0], 4403)
+    // A stranger proves its own key and is then refused; only the handshake reply reached it, no records or document data.
+    assert.deepEqual(frames.map(frame => frame.type), ['hello-reply', 'refused'])
+    const session = await signedRequest(project.stranger, { projectId: project.projectId, route: httpRoute(server) }, '/automerge/sync-ack',
+      { workspaceId: project.projectId, heads: [] })
+    assert.equal(session.status, 403); assert.equal(session.result.code, 'NOT_MEMBER')
+    assert.equal(server.syncSessions.size, 0)
     assert.deepEqual(server.store.getDoc(), before)
   })
 })
 
-it('native sync requires enrollment even when local API authentication is disabled', async () => {
-  await withStartedServer({ apiToken: '', allowInsecureLocal: true, replicaCredentials: {} }, async server => {
-    await rejected(server, '/automerge')
-    await rejected(server, `/automerge?ticket=${await mintWsTicket(server)}`)
-    assert.equal((await requestReplicaTicket(server, replicaOptions.replicaCredentialId, replicaOptions.replicaToken)).status, 403)
+it('a bearer token is refused between machines: on signed routes, the native socket and the retired replica ticket', async () => {
+  await withHub(async ({ project, hub }) => {
+    const server = await hub()
+    for (const headers of [{ Authorization: 'Bearer device-token-from-an-earlier-version' }, { 'x-pardner-replica-token': 'replica-secret' }, {}]) {
+      const response = await fetch(`${httpRoute(server)}/automerge/sync-ack`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ workspaceId: project.projectId, heads: [] }) })
+      assert.equal(response.status, 401)
+    }
+    // No replica credential mints a native ticket: only the client's own loopback hop could, and this hub has none.
+    const ticket = await fetch(`${httpRoute(server)}/automerge/ws-ticket`, { method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-pardner-replica-token': 'replica-secret' },
+      body: JSON.stringify({ purpose: 'replica', replicaId: 'laptop' }) })
+    assert.equal(ticket.status, 403); assert.equal((await ticket.json()).code, 'REPLICA_REQUIRED')
+    // Even the local API token is no proof on the native socket: Automerge frames before a handshake close it.
+    const socket = new WebSocket(`${nativeUrl(server)}?token=${token}`, { headers: { Authorization: `Bearer ${token}` } })
+    const frames = []
+    socket.on('message', (data, binary) => frames.push(binary ? 'binary' : JSON.parse(data.toString()).type))
+    await once(socket, 'open')
+    const closed = once(socket, 'close')
+    socket.send(Buffer.from([0xa1, 0x64, 0x74, 0x79, 0x70, 0x65, 0x64, 0x6a, 0x6f, 0x69, 0x6e]))
+    assert.equal((await closed)[0], 4403)
+    assert.deepEqual(frames, ['refused'])
   })
 })
 
-it('replica tickets are confined to native sync, single use, and expire', async () => {
-  await withStartedServer({ wsTicketTtlMs: 100 }, async server => {
-    const scoped = await mintReplicaTicket(server)
-    await rejected(server, `/?ticket=${scoped}`)
-    await rejected(server, `/automerge?ticket=${scoped}`)
-    const expired = await mintReplicaTicket(server)
-    await delay(120)
-    await rejected(server, `/automerge?ticket=${expired}`)
-    const ticket = await mintReplicaTicket(server)
-    const socket = new WebSocket(wsUrl(server, `/automerge?ticket=${ticket}`))
+it('a recorded handshake is useless against a new connection, another hub of the project and another project', async () => {
+  const other = testProject()
+  await withHub(async ({ root, project, hub }) => {
+    const server = await hub()
+    // Record what the member sends on one successful connection.
+    const recorded = []
+    const live = await rawSocket(server)
+    const send = live.socket.send.bind(live.socket)
+    live.socket.send = (data, ...rest) => { recorded.push(JSON.parse(data)); return send(data, ...rest) }
+    await initiateHandshake(live.socket, { key: project.keys[0], projectId: project.projectId, route: nativeUrl(server), role: 'replica',
+      knownRecords: () => project.all })
+    live.socket.terminate()
+    const [hello, confirm] = recorded
+    const replay = async target => {
+      const { socket, frames } = await rawSocket(target)
+      const closed = once(socket, 'close')
+      socket.send(JSON.stringify(hello))
+      await eventually(() => frames.length, 'no answer to the replayed hello')
+      if (frames[0].type === 'hello-reply') socket.send(JSON.stringify(confirm))
+      await closed
+      return frames.map(frame => frame.type === 'refused' ? frame.code : frame.type)
+    }
+    // A new connection: the hub's fresh nonce makes the recorded confirmation fail.
+    assert.deepEqual(await replay(server), ['hello-reply', 'HANDSHAKE_INVALID'])
+    // Another hub of the same project (other routes): the hello names the route it was dialled on.
+    const second = await hub(join(root, 'second-hub'))
+    assert.deepEqual(await replay(second), ['ROUTE_REJECTED'])
+    // Another project's hub.
+    const elsewhere = new AutomergeSyncServer({ store: hubRuntime(join(root, 'elsewhere'), { actors, project: other }), env: {}, apiToken: token,
+      httpPort: 0, wsPort: 0, logger: {} })
+    await elsewhere.start()
+    try { assert.deepEqual(await replay(elsewhere), ['WRONG_PROJECT']) } finally { await elsewhere.stop() }
+    assert.equal(server.syncSessions.size, 0)
+  })
+})
+
+it('a captured signed request is refused when replayed, in its session or at another hub', async () => {
+  await withHub(async ({ root, project, hub }) => {
+    const server = await hub(), second = await hub(join(root, 'second-hub'))
+    const captured = []
+    const { SessionClient } = await import('../lib/machine-session.js')
+    const send = async (url, { headers = {}, body }) => {
+      const request = { url, init: { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }) } }
+      if (headers['x-pardner-signature']) captured.push(request)
+      const response = await fetch(request.url, request.init)
+      const result = await response.json()
+      if (!response.ok) throw Object.assign(new Error(result.error), { code: result.code })
+      return result
+    }
+    const client = new SessionClient({ key: project.keys[0], projectId: project.projectId, route: httpRoute(server), send, knownRecords: async () => project.all })
+    const receipt = await client.request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } })
+    assert.equal(receipt.acknowledged, true)
+    const [request] = captured
+    const again = await fetch(request.url, request.init)
+    assert.equal(again.status, 401); assert.equal((await again.json()).code, 'REQUEST_REPLAYED')
+    const elsewhere = await fetch(request.url.replace(httpRoute(server), httpRoute(second)), request.init)
+    assert.equal(elsewhere.status, 401); assert.equal((await elsewhere.json()).code, 'SESSION_UNKNOWN')
+    // Changing the body under a fresh sequence number breaks the signature.
+    const tampered = { ...request.init, headers: { ...request.init.headers, 'x-pardner-seq': '7' } }
+    const forged = await fetch(request.url, tampered)
+    assert.equal(forged.status, 401); assert.equal((await forged.json()).code, 'AUTH_REQUIRED')
+  })
+})
+
+it('the joiner refuses a hub machine that is not a member of the project it expects, and accepts nothing from it', async () => {
+  await withHub(async ({ root, project }) => {
+    // This hub holds the project's real genesis and records but answers with a key no record certifies.
+    const impostor = new AutomergeSyncServer({ store: hubRuntime(join(root, 'impostor'), { actors, project: { ...project, owner: project.stranger } }),
+      env: {}, apiToken: token, httpPort: 0, wsPort: 0, logger: {} })
+    await impostor.start()
+    await admitMembers(impostor.store, project)
     try {
-      await once(socket, 'open')
-      await rejected(server, `/automerge?ticket=${ticket}`)
-    } finally { socket.terminate() }
+      const joiner = replicaRuntime(join(root, 'joiner'), project, 0, { hub: impostor, actors, retryMs: 100 })
+      await assert.rejects(joiner.init(), { code: 'RESPONDER_NOT_MEMBER' })
+      await joiner.close()
+      assert.equal(joiner.records.size, 0, 'no record from the impostor was stored')
+      assert.equal(joiner.manifest.url, undefined, 'no document was accepted')
+    } finally { await impostor.stop() }
   })
 })
 
-it('enrolled replicas are explicitly trusted full writers and synchronize durably', async () => {
-  await withStartedServer({}, async server => {
-    const ticket = await mintReplicaTicket(server)
-    const adapter = new WebSocketClientAdapter(wsUrl(server, `/automerge?ticket=${ticket}`), 60000)
-    const repo = new Repo({ network: [adapter] })
-    try {
-      const handle = await repo.find(server.store.docHandle.url, { signal: AbortSignal.timeout(10000) })
-      handle.change(doc => { doc.trustedReplicaMarker = 'full-writer' })
-      const deadline = Date.now() + 3000
-      while (server.store.docHandle.doc().trustedReplicaMarker !== 'full-writer') {
-        assert.ok(Date.now() < deadline, 'Trusted replica write did not arrive')
-        await delay(10)
-      }
-      await server.store.repo.flush([server.store.docHandle.documentId])
-    } finally { adapter.socket?.terminate(); await repo.shutdown() }
+it('a removed machine is refused, and its open sync session closes when the removal arrives', async () => {
+  await withHub(async ({ project, hub, replica }) => {
+    const server = await hub()
+    const removed = await replica(server, 0), kept = await replica(server, 1)
+    await eventually(() => removed.status().hubConnected && kept.status().hubConnected, 'replicas never connected')
+    assert.equal(server.syncSessions.get(project.keys[0].machineId)?.size, 1)
+    await server.store.addRecords([project.remove(project.keys[0])])
+    await eventually(() => !removed.status().hubConnected, 'the removed machine’s session stayed open')
+    await eventually(() => removed.status().hubRefusal?.code === 'REVOKED', 'the removed machine was never refused')
+    assert.equal(server.syncSessions.has(project.keys[0].machineId), false)
+    assert.equal(kept.status().hubConnected, true, 'other members keep syncing')
+    const session = await signedRequest(project.keys[0], { projectId: project.projectId, route: httpRoute(server) }, '/automerge/sync-ack',
+      { workspaceId: project.projectId, heads: [] })
+    assert.equal(session.status, 403); assert.equal(session.result.code, 'REVOKED')
   })
 })
 
-it('rejects enrollment that reuses an ordinary API credential or another replica secret', () => {
-  for (const replicaCredentials of [{ laptop: 'api' }, { laptop: 'secret', desktop: 'secret' }, { laptop: '' }]) {
-    assert.throws(() => new AutomergeSyncServer({ env: {}, apiToken: 'api', replicaCredentials }), /Replica credentials/)
-  }
+it('a removed machine is told who removed it only once it proves its key, on the socket and over HTTP', async () => {
+  await withHub(async ({ project, hub }) => {
+    const server = await hub()
+    const removed = project.keys[0]
+    await server.store.addRecords([project.remove(removed)])
+    const expected = { removal: { kind: 'machine', left: false, by: { personId: project.ownerId, name: 'Owner' } } }
+    // The removed machine itself finishes the signatures and is refused with who removed it (#154).
+    const { socket } = await rawSocket(server)
+    const refused = await initiateHandshake(socket, { key: removed, projectId: project.projectId, route: nativeUrl(server), role: 'replica' }).catch(error => error)
+    assert.deepEqual([refused.code, refused.details], ['REVOKED', expected])
+    // Someone who presents the removed machine's public key without its private key learns nothing beyond the code.
+    const impostor = { machineId: removed.machineId, publicKey: removed.publicKey, sign: project.stranger.sign.bind(project.stranger) }
+    const posing = await rawSocket(server)
+    const failed = await initiateHandshake(posing.socket, { key: impostor, projectId: project.projectId, route: nativeUrl(server), role: 'replica' }).catch(error => error)
+    assert.notEqual(failed.code, undefined)
+    assert.equal(failed.details, undefined, 'an impostor is told nothing about the removal')
+    assert.equal(posing.frames.some(frame => frame.type === 'welcome' || frame.records), false)
+    // The same over HTTP: the session's confirmation carries the details, never its hello.
+    const { SessionClient } = await import('../lib/machine-session.js')
+    const send = async (url, { headers = {}, body }) => {
+      const response = await fetch(url, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+      const result = await response.json()
+      if (!response.ok) throw Object.assign(new Error(result.error), { code: result.code, details: result.details })
+      return result
+    }
+    const told = await new SessionClient({ key: removed, projectId: project.projectId, route: httpRoute(server), send, knownRecords: async () => project.all })
+      .request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } }).catch(error => error)
+    assert.deepEqual([told.code, told.details], ['REVOKED', expected])
+    const hello = await new SessionClient({ key: impostor, projectId: project.projectId, route: httpRoute(server), send, knownRecords: async () => project.all })
+      .request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } }).catch(error => error)
+    assert.equal(hello.details, undefined, 'an impostor is told nothing about the removal over HTTP either')
+    assert.equal(server.sessions.active.size, 0)
+  })
+})
+
+it('an unproven party gets the same answer whether the key it presents is unknown, removed or a member’s, on the socket and over HTTP', async () => {
+  await withHub(async ({ project, hub }) => {
+    const server = await hub()
+    const [removed, current] = project.keys
+    await server.store.addRecords([project.remove(removed)])
+    // Each presents a public key and signs with a different private key, so none proves the key it names.
+    const posing = key => ({ machineId: key.machineId, publicKey: key.publicKey, sign: project.stranger.sign.bind(project.stranger) })
+    const unknown = (await import('../lib/machine-key.js')).generateMachineKey()
+    const answers = []
+    for (const key of [unknown, removed, current]) {
+      const { socket, frames } = await rawSocket(server)
+      const closed = once(socket, 'close')
+      const error = await initiateHandshake(socket, { key: posing(key), projectId: project.projectId, route: nativeUrl(server), role: 'replica' }).catch(failure => failure)
+      const [code] = await closed
+      const http = await signedRequest(posing(key), { projectId: project.projectId, route: httpRoute(server) }, '/automerge/sync-ack',
+        { workspaceId: project.projectId, heads: [] })
+      answers.push({ frames: frames.map(frame => [frame.type, frame.code ?? null, frame.details ?? null]), error: [error.code, error.details ?? null], close: code,
+        http: [http.status, http.result.code, http.result.details ?? null] })
+    }
+    assert.deepEqual(answers[1], answers[0], 'a removed machine’s key looks like an unknown one until it is proved')
+    assert.deepEqual(answers[2], answers[0], 'so does a current member’s key')
+    assert.deepEqual(answers[0].frames.map(([type]) => type), ['hello-reply', 'refused'], 'the reply carries no records or document data')
+    assert.equal(server.syncSessions.size, 0)
+    assert.equal(server.sessions.active.size, 0)
+  })
+})
+
+it('removal also ends a live signed HTTP session at once', async () => {
+  await withHub(async ({ project, hub }) => {
+    const server = await hub()
+    const { SessionClient } = await import('../lib/machine-session.js')
+    const send = async (url, { headers = {}, body }) => {
+      const response = await fetch(url, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+      const result = await response.json()
+      if (!response.ok) throw Object.assign(new Error(result.error), { code: result.code })
+      return result
+    }
+    const client = new SessionClient({ key: project.keys[1], projectId: project.projectId, route: httpRoute(server), send, knownRecords: async () => project.all })
+    await client.request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } })
+    assert.equal(server.sessions.active.size, 1)
+    await server.store.addRecords([project.remove(project.keys[1])])
+    assert.equal(server.sessions.active.size, 0)
+    await assert.rejects(client.request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } }), { code: 'REVOKED' })
+  })
+})
+
+it('two live sync sessions for one machine are reported, and a dead one is replaced without a report', async () => {
+  await withHub(async ({ root, project, hub, replica }) => {
+    const server = await hub()
+    const original = await replica(server, 0, join(root, 'original'))
+    await eventually(() => original.status().hubConnected, 'the original never connected')
+    // A copy of the same client directory, running beside its original.
+    await original.close()
+    await cp(join(root, 'original'), join(root, 'copy'), { recursive: true })
+    const first = await replica(server, 0, join(root, 'original'))
+    const copy = await replica(server, 0, join(root, 'copy'))
+    await eventually(() => first.status().hubConnected && copy.status().hubConnected, 'both copies never connected')
+    const report = await eventually(() => server.store.status().duplicateMachines.find(entry => entry.machineId === project.keys[0].machineId),
+      'the duplicate was never reported')
+    assert.equal(report.sessions, 2)
+    assert.ok(server.securityCounters.duplicateMachine >= 1)
+    // Both stay connected: the report is not a guard.
+    assert.equal(first.status().hubConnected && copy.status().hubConnected, true)
+    // A session that no longer answers is closed when the same machine reconnects, and is not reported.
+    const clean = await hub(join(root, 'clean-hub'))
+    const silent = await handshakeSocket(nativeUrl(clean), { key: project.keys[1], projectId: project.projectId, records: project.all,
+      socketOptions: { autoPong: false } })
+    const reconnect = await handshakeSocket(nativeUrl(clean), { key: project.keys[1], projectId: project.projectId, records: project.all })
+    await eventually(() => clean.syncSessions.get(project.keys[1].machineId)?.size === 1, 'the silent session was never closed', 8000)
+    assert.deepEqual(clean.store.status().duplicateMachines, [])
+    silent.terminate(); reconnect.terminate()
+  })
+})
+
+it('a restored hub serves no removed machine that connects first, and resumes after a member that saw a later state syncs', { timeout: 60000 }, async () => {
+  await withHub(async ({ root, project, hub, replica }) => {
+    const hubDirectory = join(root, 'hub')
+    let server = await hub(hubDirectory)
+    const ports = { httpPort: server.httpPort, wsPort: server.wsPort }
+    let removed = await replica(server, 0, join(root, 'removed')), member = await replica(server, 1, join(root, 'member'))
+    await eventually(() => !removed.status().syncPending && !member.status().syncPending, 'replicas never synced')
+    await Promise.all([removed.close(), member.close()])
+    // A cold backup of the hub.
+    await server.stop()
+    await cp(hubDirectory, join(root, 'backup'), { recursive: true })
+    // The hub runs on; the member syncs with it, and the owner removes the other machine while it is offline.
+    server = await hub(hubDirectory, ports)
+    member = await replica(server, 1, join(root, 'member'))
+    await eventually(() => !member.status().syncPending, 'the member never synced after the backup')
+    await server.store.addRecords([project.remove(project.keys[0])])
+    await eventually(() => member.records.membership().removedMachines.includes(project.keys[0].machineId), 'the member never received the removal')
+    await member.close()
+    await server.stop()
+    // The hub is restored from the backup: it no longer holds the removal.
+    await rm(hubDirectory, { recursive: true, force: true })
+    await cp(join(root, 'backup'), hubDirectory, { recursive: true })
+    server = await hub(hubDirectory, ports)
+    assert.equal(server.store.hubStatus().waiting, true)
+    assert.equal(server.store.hubStatus().reason, 'restored')
+    assert.equal(server.store.records.membership().removedMachines.includes(project.keys[0].machineId), false)
+    // The removed machine connects first. It looks like a member to the stale hub, but it saw nothing newer, so it is
+    // not served: no welcome, no document data, and it vouches for nothing.
+    removed = await replica(server, 0, join(root, 'removed'))
+    await eventually(() => removed.status().hubRefusal?.code === 'HUB_WAITING', 'the waiting hub did not refuse the first machine')
+    assert.equal(server.syncSessions.size, 0)
+    assert.equal(server.store.hubStatus().waiting, true)
+    const signed = await signedRequest(project.keys[0], { projectId: project.projectId, route: httpRoute(server) }, '/automerge/sync-ack',
+      { workspaceId: project.projectId, heads: [] })
+    assert.equal(signed.status, 503); assert.equal(signed.result.code, 'HUB_WAITING')
+    // The member that synced after the backup connects; the hub takes its records, learns the removal, and resumes.
+    member = await replica(server, 1, join(root, 'member'))
+    await eventually(() => member.status().hubConnected, 'the member was never served')
+    assert.equal(server.store.hubStatus().waiting, false)
+    assert.deepEqual(server.store.hubStatus().resumedBy, { machineId: project.keys[1].machineId })
+    assert.ok(server.store.records.membership().removedMachines.includes(project.keys[0].machineId))
+    await eventually(() => removed.status().hubRefusal?.code === 'REVOKED', 'the removed machine was served after the hub caught up')
+    assert.equal(server.syncSessions.has(project.keys[0].machineId), false)
+  })
+})
+
+it('a restored hub that nobody can vouch for waits until its operator confirms nothing newer exists', { timeout: 60000 }, async () => {
+  await withHub(async ({ root, hub, replica }) => {
+    const hubDirectory = join(root, 'hub')
+    let server = await hub(hubDirectory)
+    const ports = { httpPort: server.httpPort, wsPort: server.wsPort }
+    let member = await replica(server, 1, join(root, 'member'))
+    await eventually(() => !member.status().syncPending, 'the member never synced')
+    await member.close()
+    await server.stop()
+    await cp(hubDirectory, join(root, 'restored'), { recursive: true })
+    server = await hub(join(root, 'restored'), ports)
+    member = await replica(server, 1, join(root, 'member'))
+    await eventually(() => member.status().hubRefusal?.code === 'HUB_WAITING', 'the restored hub served before it was confirmed')
+    const resumed = await (await fetch(`${httpRoute(server)}/automerge/hub/resume`, { method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}' })).json()
+    assert.equal(resumed.waiting, false); assert.equal(resumed.resumedBy, 'operator')
+    await eventually(() => member.status().hubConnected && !member.status().syncPending, 'the member never resumed syncing')
+    // Its new checkpoints are ahead of the old run's, so a later restart is not mistaken for another restore.
+    const reopened = new AutomergeSyncServer({ store: hubRuntime(join(root, 'restored'), {}), env: {}, apiToken: token, httpPort: 0, wsPort: 0, logger: {} })
+    await member.close()
+    await server.stop()
+    await reopened.start()
+    try { assert.equal(reopened.store.hubStatus().waiting, false) } finally { await reopened.stop() }
+  })
+})
+
+it('a hub that sees a checkpoint it never reached catches up from that member, even when its files look untouched', { timeout: 60000 }, async () => {
+  await withHub(async ({ root, project, hub, replica }) => {
+    const hubDirectory = join(root, 'hub')
+    let server = await hub(hubDirectory)
+    const ports = { httpPort: server.httpPort, wsPort: server.wsPort }
+    let member = await replica(server, 1, join(root, 'member'))
+    await eventually(() => !member.status().syncPending && member.manifest.hubCheckpoint, 'the member never kept a checkpoint')
+    await member.close()
+    await server.stop()
+    // Roll the hub's own state back in place, as a filesystem snapshot would, without changing its files' identity.
+    const statePath = join(hubDirectory, 'hub-state.json')
+    const state = JSON.parse(await readFile(statePath, 'utf8'))
+    await writeFile(statePath, JSON.stringify({ ...state, starts: state.starts - 1 }))
+    server = await hub(hubDirectory, ports)
+    assert.equal(server.store.hubStatus().waiting, false, 'nothing on disk shows the rollback')
+    member = await replica(server, 1, join(root, 'member'))
+    await eventually(() => member.status().hubConnected, 'the member was never served')
+    assert.deepEqual(server.store.hubStatus().resumedBy, { machineId: project.keys[1].machineId })
+    assert.ok(server.store.hubStatus().starts > state.starts, 'its new checkpoints are ahead of the lost run')
+  })
 })

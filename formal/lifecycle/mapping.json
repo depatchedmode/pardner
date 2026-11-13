@@ -1,9 +1,9 @@
 {
-  "revision": "9e8d14b7510a532c5a9dbee503701f8e79e09e7b",
+  "revision": "0254a245f23b572d83e68923e3cf19a1efdd236e",
   "files": {
-    "automerge-sync-server.js": "8cd603a75d94393937dd9ad613c6a73250089999ce92e05943cc222c273d9f84",
-    "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
-    "lib/workspace-runtime.js": "db3eb7b8aaf0a3a2360c13e26439b193931e3e9e22ffc61712b9a1d4caae0a31",
-    "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
+    "automerge-sync-server.js": "4ea7545bbea2ec334a0b09a139ff51e12833ffeb0b44b95991675ae2cf46d69e",
+    "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
+    "lib/workspace-runtime.js": "7c063d8530337a206edd9c659c95905154ce54622a21f1c0a74cc5434cdca20c",
+    "lib/workspace.js": "d9926568c6f48d929955b0d0b2b85d23de09dfb143327e84d7c8f9c6c51f3c52"
   }
 }

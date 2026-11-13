@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { createOperationId } from './operation-id.js'
 
-function CloudContext({ context, cloud, actor, act, busy, canManageAccess }) {
+function CloudContext({ context, cloud, actor, act, busy, canManage }) {
   const [text, setText] = useState('')
   const [taskId, setTaskId] = useState(context.allowedTaskIds[0] ?? '')
   const [capture, setCapture] = useState({ commit: '', diff: '', tests: '' })
@@ -41,7 +41,7 @@ function CloudContext({ context, cloud, actor, act, busy, canManageAccess }) {
         <button disabled={busy || !actor} value="rejected">Reject Cloud result</button>
       </form>}
 
-      {row.evidence ? <p>Immutable evidence: <code>{row.evidence.sha256}</code>. Independent check and human acceptance remain separate.</p> : row.state === 'terminal' && row.runId && canManageAccess && <form onSubmit={event => {
+      {row.evidence ? <p>Immutable evidence: <code>{row.evidence.sha256}</code>. Independent check and human acceptance remain separate.</p> : row.state === 'terminal' && row.runId && canManage && <form onSubmit={event => {
         event.preventDefault()
         void act('/pardner/control/cloud/executions/freeze', { ...capture, ...authority, taskId: row.intent.taskId, executionId: row.executionId })
       }}>
@@ -51,21 +51,21 @@ function CloudContext({ context, cloud, actor, act, busy, canManageAccess }) {
         <button disabled={busy || !actor}>Freeze attempt evidence</button>
       </form>}
     </section>)}
-    {context.hold && canManageAccess && <form onSubmit={event => { event.preventDefault(); void act('/pardner/control/cloud/contexts/release', { contextId: context.contextId, evidence: review }) }}>
+    {context.hold && canManage && <form onSubmit={event => { event.preventDefault(); void act('/pardner/control/cloud/contexts/release', { contextId: context.contextId, evidence: review }) }}>
       <label>Cloud hold review<input required value={review} onChange={event => setReview(event.target.value)} /></label>
       <button disabled={busy}>Release reviewed Cloud hold</button>
     </form>}
   </article>
 }
 
-export default function CloudControl({ cloud, actor, act, busy, canManageAccess }) {
+export default function CloudControl({ cloud, actor, act, busy, canManage }) {
   const [mapping, setMapping] = useState({ contextId: '', projectId: '', actorId: '', repository: '', startingRef: '', allowedTaskIds: '', allowedFromActorIds: '' })
   if (!cloud) return null
   return <section aria-label="Cursor Cloud">
     <h2>Cursor Cloud</h2>
     <p>{cloud.dispatchEnabled ? 'Dispatch enabled' : 'Live dispatch disabled'} · {cloud.configured ? 'Transport configured' : 'Access not configured'} · Live qualification pending.</p>
     <p className="muted">Intent and evidence are saved on this service. Cancellation holds the queue and does not undo changes.</p>
-    {canManageAccess && <details><summary>Register Cloud context</summary>
+    {canManage && <details><summary>Register Cloud context</summary>
       <p>Use a registered project and agent Actor with explicit task and sender IDs. This reserves a new Cloud agent identity; it does not adopt an existing chat.</p>
       <form onSubmit={event => {
         event.preventDefault()
@@ -78,6 +78,6 @@ export default function CloudControl({ cloud, actor, act, busy, canManageAccess 
         <button disabled={busy}>Register Cloud context</button>
       </form>
     </details>}
-    {cloud.contexts.map(context => <CloudContext key={context.contextId} {...{ context, cloud, actor, act, busy, canManageAccess }} />)}
+    {cloud.contexts.map(context => <CloudContext key={context.contextId} {...{ context, cloud, actor, act, busy, canManage }} />)}
   </section>
 }

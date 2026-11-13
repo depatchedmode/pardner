@@ -8,6 +8,7 @@ import { save } from '@automerge/automerge'
 import { DurableRepo } from '../lib/durable-repo.js'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
 import { Workspace, createWorkspaceData } from '../lib/workspace.js'
+import { testGenesis } from '../support/genesis.js'
 import { withWorkspaceServer } from '../support/workspace-test.js'
 
 const issue = { repository: 'depatchedmode/pardner', number: 77 }
@@ -53,7 +54,7 @@ it('keeps a concurrent issue link that an unlink on another replica did not obse
     const directory = await mkdtemp(join(tmpdir(), 'pardner-issues-'))
     const repo = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
     resources.push({ directory, repo })
-    const handle = source ? repo.import(save(source.handle.doc())) : repo.create(createWorkspaceData({ actors }))
+    const handle = source ? repo.import(save(source.handle.doc())) : repo.create(createWorkspaceData({ actors, genesis: testGenesis() }))
     return new Workspace({ repo, handle, replicaId: `replica-${resources.length}` })
   }
   const run = (workspace, type, payload, actorId = 'alice') => workspace.execute({ operationId: randomUUID(), type, actorId, payload })

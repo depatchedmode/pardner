@@ -8,6 +8,10 @@ import { promisify } from 'node:util'
 import { chromium, webkit } from 'playwright'
 import { bootstrapPath, createClientApi, projectConfiguration, takeBootstrapGrant } from '../ui-prototype/src/client-api.js'
 import { createConnection } from '../ui-prototype/src/connection.js'
+import { sameComputerRoute } from '../support/client-workspace.js'
+import { joinApproved } from '../support/enrollment.js'
+import { buildOffer, encodeInvitation } from '../lib/enrollment.js'
+import { generateMachineKey } from '../lib/machine-key.js'
 import { createPresenceReporter, focusByTask, presenceIndex, sortParticipants } from '../ui-prototype/src/presence.js'
 
 const run = promisify(execFile)
@@ -67,8 +71,8 @@ it('clears a bootstrap grant from the fragment while keeping other fragment stat
   assert.deepEqual(replaced, ['/pardner/?x=1#view=board'])
   assert.equal(takeBootstrapGrant({ hash: '#grant=only', pathname: '/pardner/', search: '' }, history), 'only')
   assert.equal(replaced.at(-1), '/pardner/')
-  assert.equal(takeBootstrapGrant({ hash: '#pair=12345678', pathname: '/pardner/', search: '' }, history), null)
-  assert.equal(replaced.length, 2, 'a standalone pairing fragment is left for the pairing flow')
+  assert.equal(takeBootstrapGrant({ hash: '#view=board', pathname: '/pardner/', search: '' }, history), null)
+  assert.equal(replaced.length, 2, 'a fragment without a grant is left in place')
 })
 
 it('calls the client API with the session cookie only and preserves backend error codes', async () => {
@@ -109,17 +113,13 @@ it('keeps session-authenticated drafts and retries bound to project and Actor wi
   assert.equal(bobHere.draft('task-1'), null)
   assert.equal(otherProject.draft('task-1'), null)
   assert.equal(otherProject.pending(), null)
-  alice.remember('ignored')
-  assert.equal(alice.credential(), 'session')
+  alice.savePreferences({ view: 'board' })
   assert.equal([...local.values.keys()].some(key => key.endsWith(':credential')), false)
   await assert.rejects(alice.request('/automerge/doc'), { code: 'AUTH_REQUIRED' })
   assert.equal(sent.headers.Authorization, undefined)
   assert.equal(sent.headers['X-Pardner-Workspace'], 'project-a')
   assert.equal(sent.credentials, 'same-origin')
   assert.equal(alice.pending().operationId, 'op-1', 'an uncertain request survives an authentication failure')
-  // Standalone services keep their original storage keys.
-  const standalone = createConnection({ workspaceId: 'project-a', apiBase: '', wsPath: '/' }, { storage: local, drafts, fetcher })
-  assert.equal(standalone.pending(), null)
 })
 
 it('reports browser activity only after real interaction and ends the activity lease with the idle window', async () => {
@@ -189,10 +189,11 @@ async function gitProfile(name) {
   return directory
 }
 
-async function person(t, startClient, name, agent) {
+// `route: false` stands for a client started without --public-url.
+async function person(t, startClient, name, agent, { route = true } = {}) {
   const directory = await mkdtemp(join(tmpdir(), `pardner-ui-${name.toLowerCase()}-`))
   const gitDirectory = await gitProfile(name)
-  const client = await startClient({ directory, port: 0, deviceName: `${name}’s laptop`, gitDirectory, setupAgent: agent })
+  const client = await startClient({ directory, ...(route ? await sameComputerRoute() : { port: 0 }), deviceName: `${name}’s laptop`, gitDirectory, setupAgent: agent })
   t.after(async () => {
     await client.stop()
     await rm(directory, { recursive: true, force: true })
@@ -206,7 +207,7 @@ async function person(t, startClient, name, agent) {
     assert.equal(response.ok, true, `${path}: ${JSON.stringify(result)}`)
     return result
   }
-  return { client, call, open: async () => (await call('/open', {})).url }
+  return { client, call, directory, open: async () => (await call('/open', {})).url }
 }
 
 async function eventually(read, message, timeout = 20000) {
@@ -247,6 +248,11 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     const switcher = page.getByRole('button', { name: 'Project: Shared board. Switch project' })
     await switcher.waitFor()
     await page.getByRole('button', { name: /^You: Alice, human, (idle|active)\. Open your profile$/ }).waitFor()
+    // The owner of a new project, on one machine, is told to pair a second one; the suggestion can be put off.
+    const pairing = page.getByRole('status', { name: 'Pair a second machine' })
+    await pairing.getByText('If you lose every machine you own, nobody can remove or demote an admin any more', { exact: false }).waitFor({ timeout: 30000 })
+    await pairing.getByRole('button', { name: 'Not now' }).click()
+    await pairing.waitFor({ state: 'detached' })
     // A registered setup agent is not evidence of activity.
     await page.getByRole('button', { name: 'Alpha, agent, offline. Open profile' }).waitFor()
     assert.equal(await page.getByRole('combobox', { name: 'Actor', exact: true }).count(), 0, 'there is no author picker')
@@ -268,10 +274,11 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await page.getByRole('button', { name: 'Invite' }).click()
     await page.getByRole('menuitem', { name: /^Human/ }).click()
     const dialog = page.getByRole('dialog', { name: 'Invite a person' })
+    assert.equal(await dialog.getByLabel('Role').inputValue(), 'member', 'the owner chooses the role; member by default')
     await dialog.getByRole('button', { name: 'Create invitation' }).click()
     await dialog.getByRole('button', { name: 'Copy invite' }).waitFor()
     await dialog.getByRole('region', { name: 'New invitation' }).getByText(/Waiting to be used · Expires in \d+ h/).waitFor()
-    assert.equal((await page.content()).includes('pardner-invite-v1.'), false)
+    assert.equal((await page.content()).includes('pardner-invite-v2.'), false)
     let copied
     if (engine === chromium) {
       await dialog.getByRole('button', { name: 'Copy invite' }).click()
@@ -281,7 +288,7 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     // WebKit does not expose Chromium's clipboard permissions. Exercise its explicit reveal path.
     await dialog.getByRole('button', { name: 'Show invite text' }).click()
     const invitation = await dialog.getByLabel('Invite text').inputValue()
-    assert.match(invitation, /pardner-invite-v1\./)
+    assert.match(invitation, /pardner-invite-v2\./)
     if (copied !== undefined) assert.equal(invitation, copied)
     await dialog.getByRole('button', { name: 'Hide invite text' }).click()
     assert.equal((await page.content()).includes(invitation), false)
@@ -296,6 +303,20 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await bobPage.getByRole('button', { name: 'Join a project' }).click()
     await bobPage.getByLabel('Invitation').fill(invitation)
     await bobPage.getByRole('button', { name: 'Join project' }).click()
+    // Bob waits; Alice opens his request, both screens show one code, and Alice approves it.
+    const waiting = bobPage.getByRole('region', { name: 'Waiting for approval' })
+    await waiting.getByText('Your confirmation code appears here when the person approving opens your request.').waitFor({ timeout: 30000 })
+    // The People button counts the requests waiting for this machine; the panel shows each with its code.
+    await page.getByRole('button', { name: 'People, 1 waiting to join' }).click({ timeout: 30000 })
+    const requests = page.getByRole('dialog', { name: 'People', exact: true })
+    const request = requests.getByRole('listitem', { name: 'Bob wants to join as a member' })
+    await request.getByText('bob@example.test · Bob’s laptop').waitFor()
+    const approverCode = (await request.locator('.confirmation-code').textContent()).trim()
+    assert.match(approverCode, /^\d{4} \d{4}$/)
+    await waiting.getByTestId('join-code').getByText(approverCode, { exact: true }).waitFor({ timeout: 30000 })
+    await request.getByRole('button', { name: `Approve Bob, code ${approverCode}` }).click()
+    await requests.getByText('No one is waiting to join.').waitFor({ timeout: 30000 })
+    await requests.getByRole('button', { name: 'Close' }).click()
     await bobPage.getByRole('button', { name: 'Project: Shared board. Switch project' }).waitFor({ timeout: 30000 })
     await bobPage.getByRole('button', { name: /^You: Bob, human/ }).waitFor()
     const bobAvatar = page.getByRole('button', { name: /^Bob, human, (idle|active)\. Open profile$/ })
@@ -407,12 +428,299 @@ for (const engine of [chromium, webkit]) it(`links a second device from the iden
     await form.getByLabel('My device invitation').fill(human.invitation)
     await form.getByRole('button', { name: 'Link device' }).click()
     await form.getByText('This is a Human invitation. Confirm your identity first, then join with it.').waitFor()
-    assert.equal(alice.client.registry.read().invites[human.invite.id].recipient, undefined, 'a refused paste never reaches the hub')
+    assert.deepEqual(alice.client.registry.read().invites[human.invite.id].requests, {}, 'a refused paste never reaches the hub')
     await form.getByLabel('My device invitation').fill(device.invitation)
+    // Before anything is sent, the page says whose identity this computer joins (#155).
+    await form.getByText('This computer will be linked as Alice <alice@example.test> in “Linked board”.').waitFor()
     await form.getByRole('button', { name: 'Link device' }).click()
+    const waiting = page.getByRole('region', { name: 'Waiting for approval' })
+    await waiting.getByText(/link this computer as Alice <alice@example\.test> in “Linked board”/).waitFor({ timeout: 30000 })
+    // Alice approves from her own client after comparing the code.
+    const [pending] = (await alice.call(`/projects/${project.id}/join-requests`)).requests
+    assert.equal(pending.person.name, 'Alice'); assert.equal(pending.purpose, 'device')
+    const { request } = await alice.call(`/projects/${project.id}/join-requests/${pending.id}/code`, {})
+    await waiting.getByTestId('join-code').getByText(request.code, { exact: true }).waitFor({ timeout: 30000 })
+    await alice.call(`/projects/${project.id}/join-requests/${pending.id}/approve`, { code: request.code })
     await page.getByRole('button', { name: 'Project: Linked board. Switch project' }).waitFor({ timeout: 30000 })
     await page.getByRole('button', { name: /^You: Alice, human/ }).waitFor()
     assert.equal(desktop.client.registry.read().identity.id, alice.client.registry.read().identity.id, 'the device adopts the sponsor identity')
     assert.equal(alice.client.registry.read().invites[device.invite.id].state, 'redeemed')
     assert.deepEqual(errors, [])
   })
+
+for (const engine of [chromium, webkit]) it(`refuses a loopback-only invitation and keeps the Invite dialog usable through a hub outage in ${engine.name()}`,
+  { timeout: 150000 }, async t => {
+    const { startClient } = await import(serviceModule)
+    const browser = await engine.launch({ headless: true })
+    t.after(() => browser.close())
+    const errors = []
+    const newPage = async () => {
+      const page = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage()
+      page.on('pageerror', error => errors.push(error.message))
+      return page
+    }
+    const openInvite = async (page, projectName, { item = /^Human/, title = 'Invite a person' } = {}) => {
+      await page.getByRole('button', { name: `Project: ${projectName}. Switch project` }).waitFor({ timeout: 30000 })
+      await page.getByRole('button', { name: 'Invite' }).click()
+      await page.getByRole('menuitem', { name: item }).click()
+      return page.getByRole('dialog', { name: title })
+    }
+
+    // Carol's client was started without --public-url, so a Human invitation could only be used on her computer.
+    const carol = await person(t, startClient, 'Carol', undefined, { route: false })
+    await carol.call('/identity', { name: 'Carol', email: 'carol@example.test', operationId: 'identity' })
+    await carol.call('/projects', { name: 'Loopback board', operationId: 'create' })
+    const carolPage = await newPage()
+    await carolPage.goto(await carol.open())
+    const refusing = await openInvite(carolPage, 'Loopback board')
+    await refusing.getByText('None yet.').waitFor()
+    assert.equal(await refusing.getByRole('alert').count(), 0, 'no alert before the person acts')
+    await refusing.getByRole('button', { name: 'Create invitation' }).click()
+    const refusal = refusing.getByRole('alert')
+    await refusal.getByText('This invitation would only work on this computer', { exact: true }).waitFor()
+    await refusal.getByText(`would point to ${carol.client.url}, which only this computer can reach`, { exact: false }).waitFor()
+    assert.equal(await refusal.locator('code').textContent(), 'pardner client serve --public-url <https origin>')
+    assert.equal(await refusing.getByRole('button', { name: 'Copy invite' }).count(), 0)
+    assert.equal(Object.keys(carol.client.registry.read().invites).length, 0, 'the refused invitation was never recorded')
+    await refusing.getByRole('button', { name: 'Close' }).click()
+
+    // An invitation whose only route is another computer's loopback address names it instead of advising a retry.
+    const { port } = await sameComputerRoute()
+    const unreachable = `http://127.0.0.1:${port}`
+    const loopbackInvitation = encodeInvitation({ projectName: 'Elsewhere', secret: 'i'.repeat(43), offer: buildOffer(generateMachineKey(), {
+      projectId: 'a'.repeat(64), offerId: 'offer-unreachable-1', purpose: 'human', role: 'member', routes: [`${unreachable}/pardner/client/v1/enroll`],
+      expiresAt: Date.now() + 3600000 }) })
+    await carolPage.getByRole('button', { name: 'Project: Loopback board. Switch project' }).click()
+    await carolPage.getByRole('menuitem', { name: 'Start or join a project…' }).click()
+    await carolPage.getByRole('button', { name: 'Join a project' }).click()
+    await carolPage.getByLabel('Invitation').fill(loopbackInvitation)
+    await carolPage.getByRole('button', { name: 'Join project' }).click()
+    const unreachableAlert = carolPage.getByRole('alert')
+    await unreachableAlert.getByText('This invitation points somewhere this computer can’t reach', { exact: true }).waitFor({ timeout: 30000 })
+    await unreachableAlert.getByText(`This invitation points to ${unreachable}, which this computer can't reach`, { exact: false }).waitFor()
+    assert.doesNotMatch(await unreachableAlert.textContent(), /retry/i)
+
+    // Bob joined Alice's project; with Alice's computer (the hub) down, his Invite dialog explains rather than loading forever.
+    // Bob is a member, so since #196 the invitation he may issue is My device (pairing his own machine), issued by the hub.
+    const alice = await person(t, startClient, 'Alice')
+    await alice.call('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+    const { project } = await alice.call('/projects', { name: 'Outage board', operationId: 'create' })
+    const invite = await alice.call(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite-bob' })
+    const bob = await person(t, startClient, 'Bob')
+    await bob.call('/identity', { name: 'Bob', email: 'bob@example.test', operationId: 'identity' })
+    await joinApproved({ join: body => bob.call('/join', body), approver: alice.call, invitation: invite.invitation, operationId: 'join' })
+    await alice.client.stop()
+    const bobPage = await newPage()
+    await bobPage.goto(await bob.open())
+    const dialog = await openInvite(bobPage, 'Outage board', { item: /^My device/, title: 'Pair one of your machines' })
+    const history = dialog.getByRole('region', { name: 'Invitations for this project' })
+    await history.getByText('Couldn’t load invitations.').waitFor({ timeout: 20000 })
+    await history.getByText('issued by its hub, the computer of the person who started it', { exact: false }).waitFor()
+    assert.equal(await dialog.getByRole('alert').count(), 0, 'a failed list is not an alert before any action')
+    assert.equal(await history.getByText('Loading…').count(), 0)
+    await dialog.getByRole('button', { name: 'Create invitation' }).click()
+    const outage = dialog.getByRole('alert')
+    await outage.getByText('The project’s hub is unreachable', { exact: true }).waitFor()
+    await outage.getByText('Invitations for this project are issued by its hub', { exact: false }).waitFor()
+    assert.equal(await dialog.getByText('Project authority unavailable', { exact: false }).count(), 0, 'the raw server message is not the heading')
+    assert.equal(await history.getByText('issued by its hub', { exact: false }).count(), 0, 'the list does not repeat the alert')
+    await history.getByText('Couldn’t load invitations.').waitFor()
+
+    // When the hub is back, Retry loads the list and the same Create invitation succeeds.
+    const hub = await startClient({ directory: alice.directory })
+    // Stopped before the fixture removes this directory: after hooks run in the order they were added, so a hook here
+    // would run after the removal, which then races the running client and can leave it running.
+    try {
+      await history.getByRole('button', { name: 'Retry' }).click()
+      await history.getByText('None yet.').waitFor({ timeout: 20000 })
+      await dialog.getByRole('button', { name: 'Create invitation' }).click()
+      await dialog.getByRole('button', { name: 'Copy invite' }).waitFor({ timeout: 20000 })
+      assert.equal(await dialog.getByRole('alert').count(), 0)
+      assert.deepEqual(errors, [])
+    } finally {
+      await hub.stop()
+    }
+  })
+
+// A Git profile with only user.name; global and system config are hidden so the email cannot leak in.
+async function startNameOnlyClient(t, startClient, name) {
+  const directory = await mkdtemp(join(tmpdir(), `pardner-ui-${name.toLowerCase()}-`))
+  const gitDirectory = await mkdtemp(join(tmpdir(), `pardner-git-${name.toLowerCase()}-`))
+  await run('git', ['init', '-q'], { cwd: gitDirectory })
+  await run('git', ['config', 'user.name', name], { cwd: gitDirectory })
+  const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM }
+  process.env.GIT_CONFIG_GLOBAL = '/dev/null'
+  process.env.GIT_CONFIG_NOSYSTEM = '1'
+  let client
+  try { client = await startClient({ directory, ...await sameComputerRoute(), deviceName: `${name}’s laptop`, gitDirectory }) } finally {
+    for (const [key, value] of [['GIT_CONFIG_GLOBAL', saved.global], ['GIT_CONFIG_NOSYSTEM', saved.nosystem]]) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value
+    }
+  }
+  t.after(async () => {
+    await client.stop()
+    await rm(directory, { recursive: true, force: true })
+    await rm(gitDirectory, { recursive: true, force: true })
+  })
+  return client
+}
+
+// Fixture Actors registered straight into the project's people, so the header overflows into "+N".
+async function addFixturePeople(client, projectId, people) {
+  const { actorsFor } = await import(new URL('../lib/client-identity.js', import.meta.url))
+  const project = client.project(projectId)
+  for (const [index, { name, agent }] of people.entries()) {
+    const id = `00000000-0000-4000-8000-00000000000${index + 1}`
+    const device = { id: `00000000-0000-4000-9000-00000000000${index + 1}`, name: `${name}’s desk` }
+    for (const actor of actorsFor({ id, name, email: `${name.toLowerCase()}@example.test` }, device, agent)) {
+      await client.registerActor(project, actor)
+    }
+  }
+}
+
+it('explains sign-in, the Git prefill, invitation follow-up and People focus in chromium', { timeout: 180000 }, async t => {
+  const { startClient } = await import(serviceModule)
+  const client = await startNameOnlyClient(t, startClient, 'Nadia')
+  const call = async (path, body) => {
+    const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${client.registry.read().operatorToken}` },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+    assert.equal(response.ok, true, path)
+    return response.json()
+  }
+  const browser = await chromium.launch({ headless: true })
+  t.after(() => browser.close())
+  const errors = []
+  const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
+  page.on('pageerror', error => errors.push(error.message))
+
+  // Signed out: the person can run the command; a reused link says why it failed.
+  const { url: openUrl } = await call('/open', {})
+  await page.goto(openUrl.split('#')[0])
+  await page.getByText('Run pardner open on this computer, or ask your agent to.', { exact: false }).waitFor()
+  assert.equal(await page.getByText('pardner client open').count(), 0)
+  await page.goto(openUrl)
+  await page.getByRole('button', { name: /^Continue as/ }).waitFor()
+  const stranger = await (await browser.newContext()).newPage()
+  await stranger.goto(openUrl)
+  await stranger.getByText('This sign-in link was already used or is more than 60 seconds old. Links work once.').waitFor()
+
+  // Git supplied only a name, so the note says which field still needs typing.
+  assert.equal(await page.getByLabel('Name').inputValue(), 'Nadia')
+  assert.equal(await page.getByLabel('Email').inputValue(), '')
+  await page.getByText('Name filled in from your Git configuration; enter your email.').waitFor()
+  await page.getByLabel('Email').fill('nadia@example.test')
+  await page.getByRole('button', { name: 'Continue as Nadia' }).click()
+  // With no name given, the setup agent is named after its owner and harness.
+  await page.getByText('Your Codex agent is registered as Nadia’s Codex.', { exact: false }).waitFor()
+  await page.getByLabel('Project name').fill('Chrome board')
+  await page.getByRole('button', { name: 'Start project' }).click()
+  await page.getByRole('button', { name: 'Project: Chrome board. Switch project' }).waitFor()
+  const projectId = (await call('/session')).projects[0].id
+
+  // The new invitation is not repeated in history; after revoking it, another is one click away.
+  await page.getByRole('button', { name: 'Invite' }).click()
+  await page.getByRole('menuitem', { name: /^Human/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Invite a person' })
+  await dialog.getByRole('button', { name: 'Create invitation' }).click()
+  const ready = dialog.getByRole('region', { name: 'New invitation' })
+  await ready.getByRole('button', { name: 'Copy invite' }).waitFor()
+  await dialog.getByText('No other invitations.').waitFor()
+  assert.equal(await dialog.locator('.invite-list li').count(), 0, 'the shown invitation is not listed twice')
+  await ready.getByText('The invitation stays hidden', { exact: false }).waitFor()
+  await ready.getByRole('button', { name: 'Show invite text' }).click()
+  await ready.getByLabel('Invite text').waitFor()
+  assert.equal(await ready.getByText('The invitation stays hidden', { exact: false }).count(), 0, 'no hidden note while visible')
+  await ready.getByRole('button', { name: 'Revoke this invitation' }).click()
+  await ready.getByText('This invitation can no longer be used.', { exact: false }).waitFor()
+  assert.equal(await ready.getByText(/Expires/).count(), 0, 'a revoked invitation shows no expiry')
+  const firstId = (await call(`/projects/${projectId}/invites`)).invites[0].id
+  await ready.getByRole('button', { name: 'Create another invitation' }).click()
+  await ready.getByRole('button', { name: 'Copy invite' }).waitFor()
+  await ready.getByText(/Waiting to be used · Expires in \d+ h/).waitFor()
+  const { invites } = await call(`/projects/${projectId}/invites`)
+  assert.equal(invites.length, 2, 'a fresh operation ID creates a second invitation')
+  assert.equal(invites.find(invite => invite.id === firstId).state, 'revoked')
+  await dialog.locator('.invite-list li', { hasText: 'Revoked' }).waitFor()
+  assert.equal(await dialog.locator('.invite-list li').count(), 1)
+  await dialog.getByRole('button', { name: 'Close' }).click()
+
+  // People → Profile → Close returns to the list, and closing the list returns focus to "+N".
+  await addFixturePeople(client, projectId, [
+    { name: 'Omar', agent: { harnessId: 'cursor', name: 'Cursor (ci)' } },
+    { name: 'Priya', agent: { harnessId: 'openai-codex', name: 'Quill' } },
+  ])
+  const more = page.getByRole('button', { name: /more Actors?\. Show everyone$/ })
+  await more.waitFor({ timeout: 30000 })
+  await more.click()
+  const people = page.getByRole('dialog', { name: 'People in this project' })
+  await people.getByRole('button', { name: 'Omar', exact: true }).click()
+  const profile = page.getByRole('dialog', { name: 'Omar' })
+  await profile.waitFor()
+  await page.keyboard.press('Escape')
+  await people.waitFor()
+  assert.equal(await profile.count(), 0)
+  await people.getByRole('button', { name: 'Close' }).click()
+  await page.waitForFunction(() => /Show everyone$/.test(document.activeElement?.getAttribute('aria-label') ?? ''))
+  assert.deepEqual(errors, [])
+})
+
+it('shows letter initials and keeps an owner’s Git details off agent profiles in chromium', { timeout: 120000 }, async t => {
+  const { startClient } = await import(serviceModule)
+  const alice = await person(t, startClient, 'Alice', { harnessId: 'anthropic-claude-code', name: 'Alpha' })
+  await alice.call('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+  const { project } = await alice.call('/projects', { name: 'Initials board', operationId: 'create' })
+  await addFixturePeople(alice.client, project.id, [{ name: 'Omar', agent: { harnessId: 'cursor', name: 'Cursor (ci)' } }])
+  const browser = await chromium.launch({ headless: true })
+  t.after(() => browser.close())
+  const errors = []
+  const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
+  page.on('pageerror', error => errors.push(error.message))
+  await page.goto(await alice.open())
+  const stack = page.getByRole('group', { name: 'People in this project' })
+  const cursor = stack.getByRole('button', { name: /^Cursor \(ci\), agent, / })
+  await cursor.waitFor({ timeout: 30000 })
+  assert.equal(await cursor.locator('.avatar-initials').textContent(), 'CC', 'punctuation is not an initial')
+
+  await cursor.click()
+  const agentProfile = page.getByRole('dialog', { name: 'Cursor (ci)' })
+  await agentProfile.getByText('Works for').waitFor()
+  await agentProfile.locator('dd', { hasText: /^Omar$/ }).waitFor()
+  for (const label of ['Name', 'Email', 'Git name', 'Git email']) {
+    assert.equal(await agentProfile.locator('dt', { hasText: new RegExp(`^${label}$`) }).count(), 0, `${label} is not on an agent profile`)
+  }
+  assert.equal(await agentProfile.getByText('omar@example.test').count(), 0, 'the owner’s email is not shown as the agent’s')
+  await page.keyboard.press('Escape')
+
+  await stack.getByRole('button', { name: /^Omar, human, / }).click()
+  const humanProfile = page.getByRole('dialog', { name: 'Omar' })
+  await humanProfile.locator('dt', { hasText: /^Email$/ }).waitFor()
+  await humanProfile.getByText('omar@example.test').waitFor()
+  assert.equal(await humanProfile.locator('dt', { hasText: /^Git (name|email)$/ }).count(), 0)
+  assert.deepEqual(errors, [])
+})
+
+it('tells two people’s default agents apart in the header and Actor pickers in chromium', { timeout: 120000 }, async t => {
+  const { startClient } = await import(serviceModule)
+  const priya = await person(t, startClient, 'Priya', {})
+  await priya.call('/identity', { name: 'Priya', email: 'priya@example.test', operationId: 'identity' })
+  const { project } = await priya.call('/projects', { name: 'Two agents', operationId: 'create' })
+  await addFixturePeople(priya.client, project.id, [{ name: 'Marcus', agent: { harnessId: 'openai-codex', name: null } }])
+  const browser = await chromium.launch({ headless: true })
+  t.after(() => browser.close())
+  const errors = []
+  const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
+  page.on('pageerror', error => errors.push(error.message))
+  await page.goto(await priya.open())
+  const stack = page.getByRole('group', { name: 'People in this project' })
+  const initials = []
+  for (const name of ['Priya’s Codex', 'Marcus’s Codex']) {
+    const avatar = stack.getByRole('button', { name: new RegExp(`^${name}, agent, `) })
+    await avatar.waitFor({ timeout: 30000 })
+    initials.push(await avatar.locator('.avatar-initials').textContent())
+  }
+  assert.deepEqual(initials, ['PC', 'MC'])
+  const options = await page.getByLabel('Assigned to').locator('option').allTextContents()
+  assert.deepEqual(options.filter(option => option.endsWith(' · agent')).sort(), ['Marcus’s Codex · agent', 'Priya’s Codex · agent'])
+  assert.deepEqual(errors, [])
+})

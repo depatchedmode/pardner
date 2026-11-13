@@ -1,0 +1,16 @@
+[
+ {"id":"F-096-01","story_id":"STORY-096","severity":"medium","category":"a11y","criterion":"Keyboard nav / Feedback","score":"warn",
+  "description":"The only confirmation of who a mention notified is the native title tooltip on a non-focusable <span class='mention'>. Keyboard and touch users cannot see it, and nothing shows delivery state (pending, claimed, acknowledged).",
+  "expected":"Chips show the recipient's name inline and are focusable, with an accessible description. Ideally a 'Notified: Setup agent (Priya), Cursor reviewer' line under the comment, with delivery state.",
+  "actual":"A hover-only title. Chips look identical whether or not the agent has picked up the mention.",
+  "screenshot":"screenshots/step-2-chips.png",
+  "suggested_fix":"Render the display name as chip text; add a per-comment 'Notified …' summary with mention state from model.mentions.",
+  "files_likely_involved":["ui-prototype/src/mentions.js","ui-prototype/src/Pardner.jsx"]},
+ {"id":"F-096-02","story_id":"STORY-096","severity":"low","category":"layout","criterion":"Wrap quality","score":"warn",
+  "description":"Long handle chips break mid-handle across lines ('@agent-04d9f305fe442c1739ad-' / 'cursor') at 1440px and at 390px.",
+  "expected":"Chips do not wrap internally (or show a short display name).",
+  "actual":"Wrapped chip backgrounds split across two lines.",
+  "screenshot":"screenshots/mobile-check.png",
+  "suggested_fix":"white-space: nowrap on .mention, and shorter chip text (display name).",
+  "files_likely_involved":["ui-prototype/src/styles.css","ui-prototype/src/mentions.js"]}
+]

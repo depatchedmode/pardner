@@ -6,9 +6,8 @@ import { join } from 'node:path'
 import { cbor } from '@automerge/automerge-repo'
 import { WebSocket } from 'ws'
 import { withWorkspaceServer } from '../support/workspace-test.js'
-import { replicaOptions } from '../support/replica-credentials.js'
-import { mintReplicaTicket, waitFor } from '../support/resources.js'
-import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
+import { memberSocket, waitFor } from '../support/resources.js'
+import { admitMembers, replicaRuntime } from '../support/machines.js'
 
 const invalidMetadata = [
   ...['../../../../outside', '/tmp/outside', '..\\outside', 'C:\\outside',
@@ -17,12 +16,8 @@ const invalidMetadata = [
   null, 'invalid-metadata', [],
 ]
 
-async function connect(server) {
-  const ticket = await mintReplicaTicket(server)
-  const ws = new WebSocket(`ws://127.0.0.1:${server.wsPort}/automerge?ticket=${ticket}`)
-  await once(ws, 'open', { signal: AbortSignal.timeout(3000) })
-  return ws
-}
+// A member machine past the handshake: its Automerge frames are still validated before Repo or storage sees them.
+const connect = server => memberSocket(server)
 
 it('rejects unsafe native join metadata from enrolled replicas before Repo or storage sees it', { timeout: 15000 }, async () => {
   await withWorkspaceServer(async ({ server, directory }) => {
@@ -77,9 +72,7 @@ it('accepts ephemeral native peers without a storage ID', async () => {
 
 it('valid peers still synchronize and persist decodable sync state in the existing layout', { timeout: 15000 }, async () => {
   await withWorkspaceServer(async ({ server, create, directory }) => {
-    const peer = new WorkspaceRuntime({ ...replicaOptions, directory: join(directory, 'replica'), role: 'replica',
-      hubUrl: `http://127.0.0.1:${server.httpPort}`, hubWsUrl: `ws://127.0.0.1:${server.wsPort}/automerge`,
-      token: 'test-token', retryMs: 100 })
+    const peer = replicaRuntime(join(directory, 'replica'), await admitMembers(server.store), 0, { hub: server, retryMs: 100 })
     try {
       await peer.init()
       const taskId = await create({ title: 'Valid native sync' })
@@ -100,9 +93,7 @@ it('valid peers still synchronize and persist decodable sync state in the existi
 it('replicas refuse unsafe storage metadata from the hub without a storage error', { timeout: 15000 }, async () => {
   await withWorkspaceServer(async ({ server, create, directory }) => {
     const replicaDirectory = join(directory, 'replica')
-    const peer = new WorkspaceRuntime({ ...replicaOptions, directory: replicaDirectory, role: 'replica',
-      hubUrl: `http://127.0.0.1:${server.httpPort}`, hubWsUrl: `ws://127.0.0.1:${server.wsPort}/automerge`,
-      token: 'test-token', retryMs: 100 })
+    const peer = replicaRuntime(replicaDirectory, await admitMembers(server.store), 0, { hub: server, retryMs: 100 })
     try {
       await peer.init()
       await waitFor(() => peer.status().hubConnected)

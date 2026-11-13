@@ -1,0 +1,8 @@
+[
+  {"id": "F-136-01", "story_id": "STORY-136", "severity": "medium", "category": "disclosure", "criterion": "Feedback / system status visibility", "score": "warn",
+   "description": "Mention delivery state (pending, claimed, acknowledged, released, expired) is visible only through the agent CLI. In the browser the mentioning comment looks the same before and after an agent claims and releases it, so the person cannot tell whether her request was picked up or handed back.",
+   "expected": "A small status on mention comments, e.g. 'Notified Cursor · waiting' / 'Picked up by Cursor' / 'Released by Cursor — waiting for another agent'.",
+   "actual": "Plain comment, no delivery cue.",
+   "screenshot": "screenshots/step-4-panel-scrolled.png", "suggested_fix": "Expose per-mention delivery state on the comment and in Activity.",
+   "files_likely_involved": ["ui-prototype/src/Comments.jsx", "lib/client-proxy.js"]}
+]

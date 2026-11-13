@@ -16,6 +16,9 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { getHeads } from '@automerge/automerge'
 import AutomergeSyncServer from '../automerge-sync-server.js'
 import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
+import { generateMachineKey } from '../lib/machine-key.js'
+import { agentNameRecord } from '../lib/enrollment.js'
+import { testGenesis } from '../support/genesis.js'
 
 const actors = [{ id: 'alice', handle: 'alice', kind: 'human' }]
 const token = 'lifecycle-test-token'
@@ -79,6 +82,35 @@ it('returns a local-save receipt only after the storage barrier completes, and n
       { code: 'STORAGE_FAILED' })
     assert.deepEqual(runtime.repo.persistedHeads.get(runtime.workspace.handle.documentId), result.heads, 'persisted heads must not advance past a failed barrier')
     assert.equal(storage.writes.at(-1).failed, true)
+  } finally {
+    release?.()
+    await runtime.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+it('answers the record gate only after the storage barrier completes, and not when it fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-lifecycle-gate-'))
+  const key = generateMachineKey(), genesis = testGenesis(key)
+  const runtime = new WorkspaceRuntime({ directory: join(root, 'hub'), role: 'hub', actors, genesis })
+  let release
+  try {
+    await runtime.init()
+    const storage = instrumentStorage(runtime)
+    release = storage.hold()
+    const record = agentNameRecord(key, genesis.projectId, genesis.subject, { harnessId: 'openai-codex', name: 'Gated' })
+    const answer = runtime.addRecords([record])
+    assert.equal(await settled(answer), 'pending', 'the gate must wait for the storage barrier')
+    release()
+    const result = await answer
+    assert.deepEqual(result.recordIds, [record.recordId])
+    assert.deepEqual(runtime.repo.persistedHeads.get(runtime.workspace.handle.documentId), getHeads(runtime.workspace.handle.doc()))
+    const heads = getHeads(runtime.workspace.handle.doc())
+
+    storage.failOnce()
+    const next = agentNameRecord(key, genesis.projectId, genesis.subject, { harnessId: 'cursor', name: 'Unconfirmed' })
+    await assert.rejects(runtime.addRecords([next]), { code: 'STORAGE_FAILED' })
+    assert.deepEqual(runtime.repo.persistedHeads.get(runtime.workspace.handle.documentId), heads, 'persisted heads must not advance past a failed barrier')
   } finally {
     release?.()
     await runtime.close()

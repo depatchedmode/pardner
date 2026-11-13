@@ -45,7 +45,15 @@ wins; an unauthenticated upgrade cannot wake a runtime), outage classification
 (an HTML 502 gateway page and a hub `SERVICE_STOPPING` 503 keep local saves
 working while an explicit `AUTH_REQUIRED` revokes), boundary normalisation of
 agent/device metadata, an aborted WebSocket handshake leaking no upstream
-socket, and the start-failure backoff. These suites run in `npm run test:runtime`
+socket, and the start-failure backoff. It also covers invitation routes: a
+client without `--public-url` refuses Human and My device invitations with
+`PUBLIC_URL_REQUIRED` (locally and when a member asks such a hub) while Agent
+invitations still work, and joining a loopback invitation that cannot be
+connected to reports `INVITATION_UNREACHABLE` naming the address, whereas a
+gateway or hub answering 502/503 stays a retryable `HUB_UNAVAILABLE`.
+Multi-client fixtures give issuing clients an explicit loopback route through
+`sameComputerRoute()` in `support/client-workspace.js`; `client-cli` checks the
+same refusal through `pardner client invite`. These suites run in `npm run test:runtime`
 and `npm run test:cli`, not only through full discovery. The public-gateway assertion checks configuration and Host
 rejection, not an actual Internet route. These fixtures do not involve live LLMs.
 The shutdown regressions pause a WebSocket upgrade at its upstream ticket, send
@@ -61,7 +69,11 @@ start/join, hidden invitations, remote saved edits, draft isolation, rebasing a
 draft onto a collaborator's newer save without reverting their field, focus,
 reported agent models and project switching. A second journey links a device
 from the identity step with a My device invitation and shows that Human
-invitations pasted there are refused before reaching the hub. Chromium additionally checks the
+invitations pasted there are refused before reaching the hub. A third journey
+shows the loopback-only refusal and an unreachable-invitation join under human
+headings, then stops a real hub: the joined computer's Invite dialog shows no alert
+before any action, a failed list with **Retry** instead of endless "Loading…", and
+recovers once the hub restarts. Chromium additionally checks the
 clipboard; WebKit exercises explicit reveal and hide without unsupported clipboard
 permissions. Both engines must run; a missing backend or browser is a failure.
 
@@ -76,5 +88,8 @@ screenshots alone establish neither persistence nor remote presence.
 Invitations, browser grants, cookies, enrollment credentials and raw browser
 traces are private. Capture the default hidden invitation state. Do not copy
 private request headers or bootstrap fragments into evidence or screenshots.
-Keep [companion browser](companion.md) coverage for standalone mode; a new
-client walkthrough does not replace those regression assertions.
+The client listens on loopback only and offers no phone or companion browser.
+Security coverage elsewhere: `test/markdown-privacy.test.js` (persisted images,
+CSP, referrer-free links, `test:ui`), `test/framing.test.js` (headers and iframe
+rejection) and `test/vite-security.test.js` (development listener) run through
+full test discovery.

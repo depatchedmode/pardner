@@ -1,23 +1,51 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { request as httpRequest } from 'node:http'
+import { createServer, request as httpRequest } from 'node:http'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startClient } from '../lib/client-service.js'
 import { invitationData } from '../lib/client-invites.js'
+import { acquireStorageLease } from '../lib/storage-lease.js'
+import { joinApproved } from '../support/enrollment.js'
+import { eventually, sameComputerRoute } from '../support/client-workspace.js'
+import { unsignedWrite } from '../support/unsigned-peer.js'
 
 const execute = promisify(execFile)
+const pardner = async (args, env = {}) => {
+  const { stdout, stderr } = await execute(process.execPath, ['bin/pardner.js', ...args], { cwd: process.cwd(), env: { ...process.env, ...env } })
+  // Node's node:sqlite ExperimentalWarning is not Pardner output.
+  assert.ok(!stderr.includes('ExperimentalWarning'), stderr)
+  const value = JSON.parse(stdout); assert.equal(value.success, true); return value
+}
+const pardnerFailure = async (args, env = {}) => {
+  const error = await execute(process.execPath, ['bin/pardner.js', ...args], { cwd: process.cwd(), env: { ...process.env, ...env } }).then(() => null, error => error)
+  assert.ok(error, `Expected pardner ${args.join(' ')} to fail`)
+  return JSON.parse(error.stdout).error
+}
+const connectionOf = async directory => JSON.parse(await readFile(join(directory, 'client-connection.json'), 'utf8'))
+const alive = pid => { try { process.kill(pid, 0); return true } catch { return false } }
+// Spawned client services are detached, so every test stops them even when an assertion fails.
+async function stopSpawned(directory, env = {}) {
+  try { await pardner(['client', 'stop', '--data', directory], env) } catch {
+    try { const { pid } = await connectionOf(directory); if (pid !== process.pid) process.kill(pid, 'SIGTERM') } catch { /* nothing was started */ }
+  }
+}
 test('CLI performs real identity/create/agent save and writes private launch/invite material only to files', { timeout: 30000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-cli-client-'))
   let client
   try {
     client = await startClient({ directory, port: 0, setupAgent: { model: 'reported-codex-model', managedBy: 'T3' } })
     const run = async args => {
-      const { stdout } = await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', directory], { cwd: process.cwd() })
-      const value = JSON.parse(stdout); assert.equal(value.success, true); return { value, stdout }
+      const { stdout, stderr } = await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', directory], { cwd: process.cwd() })
+      const value = JSON.parse(stdout); assert.equal(value.success, true); return { value, stdout, stderr }
+    }
+    const refused = async args => {
+      const error = await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', directory], { cwd: process.cwd() }).then(() => null, error => error)
+      assert.ok(error, `Expected client ${args.join(' ')} to fail`)
+      return JSON.parse(error.stdout).error
     }
     await run(['identity', '--name', 'Alice', '--email', 'alice@example.test', '--operation-id', 'identity'])
     const { value: { project } } = await run(['create', '--name', 'CLI board', '--operation-id', 'create'])
@@ -26,6 +54,10 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
     assert.equal(saved.savedLocally, true); assert.notEqual(saved.actorId, project.actorId)
     const { value: replay } = await run(['operation', '--project', project.id, '--request', JSON.stringify(request)])
     assert.equal(replay.replayed, true)
+    assert.deepEqual(await refused(['operation', '--project', project.id, '--request', '{not json']),
+      { code: 'INVALID_ARGUMENT', message: '--request must be valid JSON', details: null })
+    assert.deepEqual(await refused(['operation', '--project', project.id]),
+      { code: 'INVALID_ARGUMENT', message: 'Supply --request with the operation JSON', details: null })
     const grantFile = join(directory, 'agent.json')
     const grantOutput = await run(['agent-grant', '--project', project.id, '--output-file', grantFile])
     const grant = JSON.parse(await readFile(grantFile, 'utf8'))
@@ -34,17 +66,88 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
     assert.equal(grant.managedBy, 'T3')
     assert.ok(!grantOutput.stdout.includes(grant.token))
     assert.equal((await stat(grantFile)).mode & 0o777, 0o600)
+    // A name given at grant time selects the agent it names, or is refused; it is never ignored.
+    assert.equal((await run(['agent-grant', '--project', project.id, '--name', 'Alice’s Codex', '--output-file', grantFile])).value.actorId, grant.actorId)
+    const misnamed = await refused(['agent-grant', '--project', project.id, '--name', 'Overnight Codex', '--output-file', grantFile])
+    assert.equal(misnamed.code, 'AGENT_NAME_CONFLICT')
+    assert.match(misnamed.message, /^Alice already has a Codex agent in this project named “Alice’s Codex”\./)
+    assert.deepEqual(misnamed.details, { actorId: grant.actorId, name: 'Alice’s Codex' })
     const output = join(directory, 'invite.txt')
-    const { stdout } = await run(['invite', '--project', project.id, '--purpose', 'human', '--operation-id', 'invite', '--output-file', output])
+    // Without --public-url a Human or My device invitation would carry this client's loopback address.
+    for (const purpose of ['human', 'device']) {
+      const loopbackOnly = await refused(['invite', '--project', project.id, '--purpose', purpose, '--operation-id', `invite-${purpose}`, '--output-file', output])
+      assert.equal(loopbackOnly.code, 'PUBLIC_URL_REQUIRED')
+      assert.match(loopbackOnly.message, new RegExp(`would point to ${client.url.replaceAll('.', '\\.')}, which only this computer can reach`))
+      assert.match(loopbackOnly.message, /Restart this client with `pardner client serve --public-url <https origin>`/)
+      await assert.rejects(stat(output), { code: 'ENOENT' })
+    }
+    // An agent invitation is for an agent on this computer, so the loopback route is fine.
+    const { stdout } = await run(['invite', '--project', project.id, '--purpose', 'agent', '--operation-id', 'invite', '--output-file', output])
     const invitation = await readFile(output, 'utf8')
     assert.equal(invitationData(invitation).projectId, project.id)
     assert.ok(!stdout.includes(invitation)); assert.equal((await stat(output)).mode & 0o777, 0o600)
     const launch = join(directory, 'launch.txt')
     const opened = await run(['open', '--output-file', launch])
     assert.ok((await readFile(launch, 'utf8')).includes('#grant=')); assert.ok(!opened.stdout.includes('#grant='))
+    assert.equal(opened.value.outputFile, launch); assert.equal(opened.value.expiresInSeconds, 60)
+    assert.ok(!opened.stderr.includes('ExperimentalWarning'), opened.stderr)
     const status = await run(['status'])
     assert.ok(!status.stdout.includes(client.registry.read().operatorToken))
     assert.ok(!status.stdout.includes(client.project(project.id).internalToken))
+    // The machine ID is reported with the device; no key material is.
+    const machineId = client.registry.machineKey.machineId
+    assert.equal(status.value.device.machineId, machineId)
+    assert.ok(!status.stdout.includes(client.registry.machineKey.publicKey) && !status.stdout.includes('PRIVATE KEY'))
+    const { value: shown } = await run(['show', '--project', project.id])
+    assert.equal(shown.membership.projectId, project.id)
+    assert.deepEqual(shown.membership.machines.map(machine => machine.id), [machineId])
+    assert.equal(shown.membership.people[0].role, 'owner')
+    assert.deepEqual(shown.membership.notStored, [])
+    assert.match((await run(['create', '--name', 'Second', '--operation-id', 'second'])).value.suggestion, /Pair a second machine/)
+  } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('an agent Actor runs coordination commands through the client proxy with --token-file', { timeout: 60000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-token-file-'))
+  let client
+  try {
+    client = await startClient({ directory, port: 0 })
+    const operator = client.registry.read().operatorToken
+    const api = async (path, body) => {
+      const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
+        headers: { Authorization: `Bearer ${operator}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+      assert.equal(response.status, 200); return response.json()
+    }
+    await api('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+    const { project } = await api('/projects', { name: 'Token file board', operationId: 'create' })
+    const grantFile = join(directory, 'agent.json')
+    await pardner(['client', 'agent-grant', '--data', directory, '--project', project.id, '--output-file', grantFile])
+    const grant = JSON.parse(await readFile(grantFile, 'utf8'))
+    assert.equal(grant.apiBase, `${client.url}/pardner/client/v1/projects/${project.id}/api`)
+    const created = await pardner(['task', 'create', '--title', 'Agent task through the proxy', '--token-file', grantFile])
+    assert.equal(created.actorId, grant.actorId)
+    assert.notEqual(created.actorId, project.actorId)
+    const taskId = created.result.taskId
+    const shown = await pardner(['show', taskId, '--token-file', grantFile])
+    assert.equal(shown.history[0].actorId, grant.actorId)
+    // A person mentions the agent; the agent's inbox is its own without naming --actor.
+    const { actors } = await api(`/projects/${project.id}`)
+    const handle = actors.find(actor => actor.id === grant.actorId).handle
+    await api(`/projects/${project.id}/api/automerge/operations`, { type: 'comment.add', operationId: 'mention', payload: { taskId, text: `@${handle} please review` } })
+    const pending = await pardner(['mentions', 'pending', '--token-file', grantFile])
+    assert.equal(pending.mentions.length, 1)
+    const claim = await pardner(['mentions', 'claim-next', '--request-id', 'claim', '--token-file', grantFile])
+    assert.equal(claim.claimed, true)
+    assert.equal((await pardner(['mentions', 'ack', claim.mention.id, '--claim-token', claim.claimToken, '--token-file', grantFile])).acknowledged, true)
+    // A file holding only the token works with an explicit --server; the Actor comes from the client session.
+    const rawFile = join(directory, 'agent-token')
+    await writeFile(rawFile, `${grant.token}\n`, { mode: 0o600 })
+    const comment = await pardner(['comment', taskId, 'Done', '--server', grant.apiBase, '--token-file', rawFile])
+    assert.equal(comment.actorId, grant.actorId)
+    const mismatch = await pardnerFailure(['comment', taskId, 'Pretend', '--actor', project.actorId, '--token-file', grantFile])
+    assert.equal(mismatch.code, 'ACTOR_MISMATCH')
+    const both = await pardnerFailure(['tasks', '--token', grant.token, '--token-file', grantFile])
+    assert.equal(both.code, 'INVALID_ARGUMENT')
   } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
 })
 
@@ -72,6 +175,29 @@ test('explicit public gateway produces HTTPS invitations while browser origin st
   } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
 })
 
+test('a public gateway may be plain HTTP only on loopback', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-loopback-gateway-'))
+  let client
+  try {
+    for (const publicUrl of ['http://pardner.example.test', 'http://192.168.1.20:8443', 'https://pardner.example.test/path', 'ftp://127.0.0.1']) {
+      await assert.rejects(startClient({ directory, port: 0, publicUrl }), /explicit HTTPS origin, or an HTTP origin on loopback/)
+    }
+    client = await startClient({ directory, port: 0, publicUrl: 'http://127.0.0.1:47123' })
+    const operator = { Authorization: `Bearer ${client.registry.read().operatorToken}`, 'Content-Type': 'application/json' }
+    const api = async (path, body) => {
+      const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: 'POST', headers: operator, body: JSON.stringify(body) })
+      assert.equal(response.status, 200); return response.json()
+    }
+    await api('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+    const { project } = await api('/projects', { name: 'Loopback gateway', operationId: 'create' })
+    const { invitation } = await api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
+    assert.equal(invitationData(invitation).endpoint, 'http://127.0.0.1:47123/pardner/client/v1/enroll')
+    await client.stop()
+    client = await startClient({ directory, port: 0, publicUrl: 'http://localhost:47124' })
+    assert.equal(client.gatewayUrl, 'http://localhost:47124')
+  } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
+})
+
 test('programmatic client started from Node input-type mode launches isolated file-based runtimes', { timeout: 30000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-inline-client-'))
   try {
@@ -92,4 +218,194 @@ test('programmatic client started from Node input-type mode launches isolated fi
     const { stdout } = await execute(process.execPath, ['--input-type=module', '-e', source, directory])
     assert.equal(JSON.parse(stdout).savedLocally, true)
   } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('bare pardner starts a detached client service, writes the launch grant to a file and client stop ends it', { timeout: 60000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-open-'))
+  const data = join(directory, 'client')
+  try {
+    const launchFile = join(directory, 'launch.txt')
+    const opened = await pardner(['--data', data, '--output-file', launchFile])
+    const launch = await readFile(launchFile, 'utf8')
+    const connection = await connectionOf(data)
+    assert.ok(launch.startsWith(`${connection.url}/pardner/#grant=`)); assert.ok(!JSON.stringify(opened).includes('#grant='))
+    assert.equal(opened.localUrl, `${connection.url}/pardner/`)
+    assert.notEqual(connection.pid, process.pid); assert.ok(alive(connection.pid))
+    const session = await fetch(`${connection.url}/pardner/client/v1/session`, { headers: { Authorization: `Bearer ${connection.token}` } })
+    assert.equal(session.status, 200)
+    assert.equal((await stat(join(data, 'client.log'))).mode & 0o777, 0o600)
+    assert.ok(!(await readFile(join(data, 'client.log'), 'utf8')).includes('ExperimentalWarning'))
+    // A project runtime child must not keep the service alive after shutdown.
+    await pardner(['client', 'identity', '--name', 'Alice', '--email', 'alice@example.test', '--operation-id', 'identity', '--data', data])
+    await pardner(['client', 'create', '--name', 'Opened board', '--operation-id', 'create', '--data', data])
+    assert.deepEqual(await pardner(['client', 'stop', '--data', data]), { success: true, stopped: true, running: false })
+    for (let i = 0; i < 50 && alive(connection.pid); i++) await new Promise(resolve => setTimeout(resolve, 100))
+    assert.equal(alive(connection.pid), false, 'the serve process exits after shutdown')
+    await assert.rejects(fetch(`${connection.url}/pardner/client/v1/session`, { signal: AbortSignal.timeout(2000) }))
+    assert.deepEqual(await pardner(['client', 'stop', '--data', data]), { success: true, stopped: false, running: false })
+  } finally { await stopSpawned(data); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('pardner open reuses the running client in the per-user default directory', { timeout: 60000 }, async () => {
+  const home = await mkdtemp(join(tmpdir(), 'pardner-home-'))
+  const data = join(home, '.pardner', 'client'), env = { HOME: home }
+  try {
+    await pardner(['open', '--output-file', join(home, 'first.txt')], env)
+    const first = await connectionOf(data)
+    await pardner(['open', '--output-file', join(home, 'second.txt')], env)
+    assert.equal((await connectionOf(data)).pid, first.pid)
+    const log = await readFile(join(data, 'client.log'), 'utf8')
+    assert.equal(log.match(/"serving":true/g).length, 1, 'only one client service was started')
+    assert.notEqual(await readFile(join(home, 'first.txt'), 'utf8'), await readFile(join(home, 'second.txt'), 'utf8'))
+    assert.equal((await pardner(['client', 'stop'], env)).stopped, true)
+  } finally { await stopSpawned(data, env); await rm(home, { recursive: true, force: true }) }
+})
+
+test('client shutdown accepts only the operator token, never a browser session', { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-shutdown-'))
+  let client
+  try {
+    client = await startClient({ directory, port: 0 })
+    const operator = { Authorization: `Bearer ${client.registry.read().operatorToken}`, 'Content-Type': 'application/json' }
+    const call = (path, headers) => fetch(`${client.url}/pardner/client/v1${path}`, { method: 'POST', headers, body: '{}' })
+    const { url } = await (await call('/open', operator)).json()
+    const bootstrap = await fetch(`${client.url}/pardner/client/v1/bootstrap`, { method: 'POST',
+      headers: { Origin: client.url, 'Content-Type': 'application/json' }, body: JSON.stringify({ grant: new URL(url).hash.slice('#grant='.length) }) })
+    assert.equal(bootstrap.status, 200)
+    const cookie = bootstrap.headers.get('set-cookie').split(';')[0]
+    const human = await call('/shutdown', { Cookie: cookie, Origin: client.url, 'Content-Type': 'application/json' })
+    assert.equal(human.status, 403); assert.equal((await human.json()).code, 'FORBIDDEN')
+    assert.equal((await call('/shutdown', { 'Content-Type': 'application/json', Origin: client.url })).status, 401)
+    assert.equal(client.stopping, undefined)
+    const stopped = await call('/shutdown', operator)
+    assert.deepEqual(await stopped.json(), { stopping: true })
+    await client.stopPromise
+  } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('pardner open reports PORT_IN_USE for a stale port held by another process and starts nothing', { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-stale-'))
+  const other = createServer((_req, res) => res.writeHead(401).end())
+  try {
+    await new Promise(resolve => other.listen(0, '127.0.0.1', resolve))
+    const url = `http://127.0.0.1:${other.address().port}`
+    await writeFile(join(directory, 'client-connection.json'), JSON.stringify({ url, token: 'stale-token' }), { mode: 0o600 })
+    const error = await pardnerFailure(['open', '--data', directory, '--output-file', join(directory, 'launch.txt')])
+    assert.equal(error.code, 'PORT_IN_USE'); assert.ok(error.message.includes(url))
+    assert.equal((await pardnerFailure(['client', 'stop', '--data', directory])).code, 'PORT_IN_USE')
+    await assert.rejects(stat(join(directory, 'client.log')), { code: 'ENOENT' })
+    assert.equal(other.listening, true)
+  } finally { other.close(); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('pardner open surfaces why a started client service exited', { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-in-use-'))
+  const lease = await acquireStorageLease(directory)
+  try {
+    const error = await pardnerFailure(['open', '--data', directory, '--output-file', join(directory, 'launch.txt')])
+    assert.equal(error.code, 'STORAGE_IN_USE')
+  } finally { lease.close(); await stopSpawned(directory); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('client people lists people, machines, agents and removed entries in words; leave and invites work from the CLI', { timeout: 90000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-cli-people-'))
+  const clients = []
+  try {
+    const start = async (name, deviceName) => {
+      const directory = join(root, name)
+      // An explicit loopback route: Alice's Human invitation is used by another client on this computer (#162).
+      const client = await startClient({ directory, ...await sameComputerRoute(), deviceName, gitDirectory: root })
+      clients.push(client)
+      const call = async (path, body) => {
+        const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
+          headers: { Authorization: `Bearer ${client.registry.read().operatorToken}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+        const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result)); return result
+      }
+      await call('/identity', { name, email: `${name.toLowerCase()}@example.test`, operationId: 'identity' })
+      const text = async args => (await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', directory], { cwd: process.cwd() })).stdout
+      const json = async args => { const value = JSON.parse(await text([...args, '--json'])); assert.equal(value.success, true); return value }
+      return { client, call, text, json }
+    }
+    const alice = await start('Alice', 'Studio'), bob = await start('Bob', 'Workshop')
+    const { project } = await alice.call('/projects', { name: 'CLI people', operationId: 'create' })
+    const output = join(root, 'invite.txt')
+    await alice.json(['invite', '--project', project.id, '--purpose', 'human', '--operation-id', 'invite-bob', '--output-file', output])
+    await joinApproved({ join: body => bob.call('/join', body), approver: alice.call, invitation: await readFile(output, 'utf8'), operationId: 'join' })
+    // The listing is plain text by default, and the same view as data with --json.
+    const listing = await alice.text(['people', '--project', project.id])
+    assert.match(listing, /^CLI people: 2 people, 2 machines, 2 agents\n/)
+    assert.match(listing, /\nAlice \(you\) · Owner · alice@example\.test\n {2}Started the project\n {2}Machines:\n {4}Studio \[[a-z2-7]{6}\] · this machine · hosts the project\n/)
+    assert.match(listing, /\nBob · Member · bob@example\.test\n {2}Let in by Alice\n {2}Machines:\n {4}Workshop \[[a-z2-7]{6}\] · /)
+    assert.ok(!listing.includes('machine-'), 'machine IDs appear only as their short form')
+    const data = await alice.json(['people', '--project', project.id])
+    assert.deepEqual(data.people.people.map(person => person.name), ['Alice', 'Bob'])
+    assert.equal(data.listing, undefined)
+    // Invitations are listed, newest first, with who issued and used each, and can be revoked.
+    await alice.json(['invite', '--project', project.id, '--purpose', 'device', '--operation-id', 'invite-device', '--output-file', join(root, 'device.txt')])
+    const { invites } = await alice.json(['invites', '--project', project.id])
+    assert.deepEqual(invites.map(entry => [entry.purpose, entry.state, entry.issuedBy.name]), [['device', 'issued', 'Alice'], ['human', 'redeemed', 'Alice']])
+    assert.equal(invites[1].usedBy.name, 'Bob')
+    const revoked = await alice.json(['revoke-invite', '--project', project.id, '--invite', invites[0].id])
+    assert.equal(revoked.invite.state, 'revoked')
+    // Bob leaves from the CLI; Alice's listing then shows him as having left, and Bob's client lists the project as removed.
+    const left = await bob.json(['leave', '--project', project.id, '--operation-id', 'leave'])
+    assert.equal(left.left, true)
+    assert.match(await alice.text(['people', '--project', project.id]), /\nRemoved\n {2}Bob · was member · left the project · machines: Workshop\n/)
+    const status = await bob.json(['list'])
+    assert.deepEqual(status.projects, [])
+    assert.deepEqual(status.removedProjects.map(entry => [entry.name, entry.removal.left, entry.message]),
+      [['CLI people', true, 'You left this project. Its copy on this computer stays saved here.']])
+  } finally {
+    for (const client of clients.reverse()) await client.stop()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('client review lists the changes whose signer could not be confirmed, in words, with who relayed them', { timeout: 90000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-cli-review-'))
+  const clients = []
+  let peer
+  try {
+    const start = async (name, deviceName) => {
+      const directory = join(root, name)
+      const client = await startClient({ directory, ...await sameComputerRoute(), deviceName, gitDirectory: root })
+      clients.push(client)
+      const call = async (path, body) => {
+        const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
+          headers: { Authorization: `Bearer ${client.registry.read().operatorToken}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+        const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result)); return result
+      }
+      await call('/identity', { name, email: `${name.toLowerCase()}@example.test`, operationId: 'identity' })
+      const text = async args => (await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', directory], { cwd: process.cwd() })).stdout
+      const json = async args => { const value = JSON.parse(await text([...args, '--json'])); assert.equal(value.success, true); return value }
+      return { client, call, text, json }
+    }
+    const alice = await start('Alice', 'Studio'), bob = await start('Bob', 'Workshop')
+    const { project } = await alice.call('/projects', { name: 'CLI review', operationId: 'create' })
+    const output = join(root, 'invite.txt')
+    await alice.json(['invite', '--project', project.id, '--purpose', 'human', '--operation-id', 'invite-bob', '--output-file', output])
+    await joinApproved({ join: body => bob.call('/join', body), approver: alice.call, invitation: await readFile(output, 'utf8'), operationId: 'join' })
+    await bob.call(`/projects/${project.id}/api/automerge/operations`, { type: 'task.create', operationId: 'signed', payload: { title: 'Signed on the workshop' } })
+    assert.match(await alice.text(['review', '--project', project.id]), /^CLI review: 0 changes need review\n[\s\S]*Every change here is signed by a member machine\.\n$/)
+    // A modified client on Bob's machine writes a change it never signs.
+    const bobActor = bob.client.project(project.id).actorId
+    const { url: boardUrl } = await alice.call(`/projects/${project.id}/api/automerge/url`)
+    peer = await unsignedWrite({ key: bob.client.registry.machineKey, projectId: project.id, boardUrl, actorId: bobActor, title: 'Never signed',
+      nativeUrl: `${alice.client.url.replace(/^http/, 'ws')}/pardner/client/v1/replica/${project.id}/native` })
+    const listing = await eventually(async () => {
+      const text = await alice.text(['review', '--project', project.id])
+      return text.startsWith('CLI review: 1 change needs review') && text
+    }, 'the unsigned change was never listed', 30000)
+    assert.match(listing, /\nUnattributed: no signature arrived · relayed by Bob · Workshop \[[a-z2-7]{6}\]\n {2}Bob: task\.create “Never signed” at /)
+    assert.match(listing, /\n {2}Change [a-f0-9]{64}/, 'the change hash only as a detail')
+    const data = await alice.json(['review', '--project', project.id])
+    assert.equal(data.changes.length, 1)
+    assert.equal(data.changes[0].state, 'unattributed')
+    assert.deepEqual(data.changes[0].operations, [peer.operationId])
+    assert.equal(data.listing, undefined)
+  } finally {
+    await peer?.repo.shutdown()
+    for (const client of clients.reverse()) await client.stop()
+    await rm(root, { recursive: true, force: true })
+  }
 })

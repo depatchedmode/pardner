@@ -6,11 +6,18 @@ import { join } from 'node:path'
 import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
 import { startClient } from '../lib/client-service.js'
-import { CLIENT_API } from '../lib/client-identity.js'
+import { CLIENT_API, agentName, setupAgent } from '../lib/client-identity.js'
+import { invitationData, unreachableInvitation } from '../lib/client-invites.js'
+import { sameComputerRoute } from '../support/client-workspace.js'
+import { joinApproved, unwrap } from '../support/enrollment.js'
+import { createHello } from '../lib/machine-handshake.js'
+import { generateMachineKey } from '../lib/machine-key.js'
+import { buildOffer, encodeInvitation } from '../lib/enrollment.js'
 
-async function fixture(t, name) {
+// Every fixture has an explicit loopback route unless `route: false` stands for a client started without --public-url.
+async function fixture(t, name, { route = true, agent = { harnessId: 'openai-codex', name: `${name} agent` } } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-client-'))
-  const client = await startClient({ directory, port: 0, deviceName: `${name} laptop`, setupAgent: { harnessId: 'openai-codex', name: `${name} agent` } })
+  const client = await startClient({ directory, ...(route ? await sameComputerRoute() : { port: 0 }), deviceName: `${name} laptop`, setupAgent: agent })
   t.after(async () => { await client.stop(); await rm(directory, { recursive: true, force: true }) })
   const api = async (path, body, options = {}) => {
     const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST',
@@ -20,8 +27,25 @@ async function fixture(t, name) {
     if (!options.failure) assert.equal(response.status, 200, JSON.stringify(result))
     return { result, response }
   }
-  await api('/identity', { name, email: `${name.toLowerCase()}@example.test`, operationId: 'identity' })
-  return { client, api, directory }
+  await api('/identity', { name, email: `${name.toLowerCase().replace(/\W+/g, '.')}@example.test`, operationId: 'identity' })
+  return { client, api, directory, call: unwrap(api) }
+}
+// `joiner` joins `invitation` and `approver` approves it after comparing the confirmation code.
+const enroll = (joiner, approver, invitation, operationId = 'join', agent) =>
+  joinApproved({ join: body => joiner.call('/join', body), approver: approver.call, invitation, operationId, agent })
+// A client service with no identity yet, for linking a machine into an existing person.
+async function blankClient(t, prefix, options) {
+  const directory = await mkdtemp(join(tmpdir(), prefix))
+  const client = await startClient({ directory, port: 0, ...options })
+  t.after(async () => { await client.stop(); await rm(directory, { recursive: true, force: true }) })
+  const call = async (path, body) => {
+    const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${client.registry.read().operatorToken}` }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+    const result = await response.json()
+    if (!response.ok) throw Object.assign(new Error(JSON.stringify(result)), { code: result.code, status: response.status })
+    return result
+  }
+  return { client, call, directory }
 }
 async function eventually(read, predicate) {
   const end = Date.now() + 10000
@@ -35,9 +59,16 @@ test('two real clients create, invite, join, save and share authenticated presen
   const { result: again } = await alice.api('/projects', { name: 'Shared board', operationId: 'create' })
   assert.equal(again.project.id, project.id)
   const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
-  const { result: joined } = await bob.api('/join', { invitation: invitation.invitation, operationId: 'join' })
+  const joined = await enroll(bob, alice, invitation.invitation)
   assert.equal(joined.project.id, project.id)
   assert.notEqual(joined.project.actorId, project.actorId)
+  // Bob's replica verifies and stores the records it synced: the genesis and Alice's approval of Bob's machine.
+  const { result: { device: aliceDevice } } = await alice.api('/session')
+  const { result: { device: bobDevice } } = await bob.api('/session')
+  const membership = await eventually(async () => (await bob.api(`/projects/${project.id}`)).result.membership, value => value.machines.length === 2)
+  assert.deepEqual(membership.machines.map(machine => machine.id).sort(), [aliceDevice.machineId, bobDevice.machineId].sort())
+  assert.equal(membership.people.find(person => person.role === 'owner').displayName, 'Alice')
+  assert.equal(membership.people.find(person => person.role === 'member').displayName, 'Bob')
   const path = `/projects/${project.id}/api/automerge/operations`
   const request = { type: 'task.create', operationId: 'bob-task', payload: { title: 'Saved by Bob' } }
   const { result: saved } = await bob.api(path, request)
@@ -58,20 +89,27 @@ test('member-issued device and agent invitations preserve Bob and reuse enrolled
   const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
   const { result: { project } } = await alice.api('/projects', { name: 'Members', operationId: 'create' })
   const { result: human } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'human' })
-  await bob.api('/join', { invitation: human.invitation, operationId: 'join' })
+  await enroll(bob, alice, human.invitation)
+  // An agent on Bob's own machine needs no approval: his machine names it through the hub's gate.
   const { result: agent } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'agent' })
-  await bob.api('/join', { invitation: agent.invitation, operationId: 'agent-join' })
+  const { result: agentJoin } = await bob.api('/join', { invitation: agent.invitation, operationId: 'agent-join' })
+  assert.equal(agentJoin.project.id, project.id)
   assert.equal(Object.keys(bob.client.registry.read().projects).length, 1)
+  // Bob, a member, pairs his own second machine; his own machine approves it.
   const { result: device } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'device', operationId: 'device' })
-  const directory = await mkdtemp(join(tmpdir(), 'pardner-device-'))
-  const linked = await startClient({ directory, port: 0, deviceName: 'Bob desktop' })
-  t.after(async () => { await linked.stop(); await rm(directory, { recursive: true, force: true }) })
-  const response = await fetch(`${linked.url}${CLIENT_API}/join`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${linked.registry.read().operatorToken}` },
-    body: JSON.stringify({ invitation: device.invitation, operationId: 'link' }) })
-  const result = await response.json()
-  assert.equal(response.status, 200, JSON.stringify(result))
-  assert.equal(linked.registry.read().identity.id, bob.client.registry.read().identity.id)
-  assert.notEqual(linked.registry.read().identity.id, alice.client.registry.read().identity.id)
+  const linked = await blankClient(t, 'pardner-device-', { deviceName: 'Bob desktop' })
+  const pending = await linked.call('/join', { invitation: device.invitation, operationId: 'link' })
+  assert.equal(pending.join.linkingAs.name, 'Bob')
+  const { result: { requests } } = await bob.api(`/projects/${project.id}/join-requests`)
+  assert.equal(requests[0].person.name, 'Bob', 'the approver sees whose identity the machine joins')
+  assert.equal(requests[0].device.name, 'Bob desktop')
+  await joinApproved({ join: body => linked.call('/join', body), approver: bob.call, invitation: device.invitation, operationId: 'link' })
+  const linkedMachine = linked.client.registry.machineKey.machineId
+  const { machines, people } = (await alice.api(`/projects/${project.id}`)).result.membership
+  assert.equal(machines.find(machine => machine.id === linkedMachine).personId, bob.client.registry.read().identity.id)
+  assert.equal(people.length, 2, 'pairing never creates a second person')
+  assert.equal(linked.client.registry.read().identity.id, bob.client.registry.read().identity.id)
+  assert.notEqual(linked.client.registry.read().identity.id, alice.client.registry.read().identity.id)
   const replay = await bob.api(`/projects/${project.id}/invites`, { purpose: 'device', operationId: 'device' })
   assert.equal(replay.result.invitation, device.invitation)
   assert.equal(replay.result.invite.state, 'redeemed')
@@ -118,7 +156,7 @@ test('offline restart preserves projects, identity, credentials and operation re
   const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
   const { result: { project } } = await alice.api('/projects', { name: 'Remote', operationId: 'remote' })
   const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'human' })
-  await bob.api('/join', { invitation: invitation.invitation, operationId: 'join' })
+  await enroll(bob, alice, invitation.invitation)
   const { result: { project: local } } = await bob.api('/projects', { name: 'Local', operationId: 'local' })
   const identity = bob.client.registry.read().identity
   await alice.client.stop()
@@ -145,28 +183,40 @@ test('offline restart preserves projects, identity, credentials and operation re
   await new Promise(resolve => badRuntime.child.once('exit', resolve))
   const independent = await call(`/projects/${local.id}/api/automerge/operations`, { type: 'task.create', operationId: 'independent', payload: { title: 'Other project works' } })
   assert.equal(independent.savedLocally, true)
+  // Stopped before Bob's fixture removes the directory this client uses: after hooks run in the order they were added.
+  await restarted.stop()
 })
 
-test('recipient proof, revocation and changed retries cannot recover another admission', { timeout: 45000 }, async t => {
+test('recipient proof, removal and changed retries cannot recover another admission', { timeout: 45000 }, async t => {
   const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
   const { result: { project } } = await alice.api('/projects', { name: 'Private', operationId: 'create' })
   const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
-  await bob.api('/join', { invitation: invitation.invitation, operationId: 'join' })
+  await enroll(bob, alice, invitation.invitation)
   const attempt = Object.values(bob.client.registry.read().attempts).find(a => a.recipient)
-  const enroll = async body => {
+  const enroll2 = async body => {
     const response = await fetch(`${alice.client.url}${CLIENT_API}/enroll`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     return { status: response.status, result: await response.json() }
   }
-  const retry = await enroll(attempt.recipient)
+  // The same request, resent, reports its approval and the same credential; nothing else does.
+  const retry = await enroll2({ action: 'request', ...attempt.recipient })
   assert.equal(retry.status, 200)
-  assert.equal(retry.result.deviceToken, attempt.receipt.deviceToken)
-  assert.equal((await enroll({ ...attempt.recipient, recipientProof: 'different'.repeat(8) })).result.code, 'INVITE_USED')
-  assert.equal((await enroll({ ...attempt.recipient, device: { ...attempt.recipient.device, name: 'changed' } })).result.code, 'OPERATION_ID_REUSED')
-  const { result: changed } = await alice.api('/projects', { name: 'Changed', operationId: 'create' }, { failure: true })
-  assert.equal(changed.code, 'OPERATION_ID_REUSED')
-  await bob.api(`/projects/${project.id}/revoke`, { kind: 'device', id: bob.client.registry.read().device.id, operationId: 'revoke' })
-  const { result } = await bob.api(`/projects/${project.id}/api/automerge/operations`, { type: 'task.create', operationId: 'denied', payload: { title: 'denied' } }, { failure: true })
-  assert.equal(result.code, 'REVOKED')
+  assert.equal(retry.result.receipt.admissionId, attempt.receipt.admissionId)
+  assert.equal(retry.result.receipt.machineId, bob.client.registry.machineKey.machineId)
+  for (const field of ['deviceToken', 'replicaToken']) assert.equal(retry.result.receipt[field], undefined, 'no bearer credential is issued between machines')
+  assert.equal((await enroll2({ action: 'request', ...attempt.recipient, recipientProof: 'different'.repeat(8) })).result.code, 'INVITE_USED')
+  assert.equal((await enroll2({ action: 'status', offerId: attempt.recipient.request.offerId, requestId: attempt.requestId, recipientProof: 'different'.repeat(8) })).result.code, 'AUTH_REQUIRED')
+  const changed = { ...attempt.recipient, request: { ...attempt.recipient.request, device: { ...attempt.recipient.request.device, name: 'changed' } } }
+  assert.equal((await enroll2({ action: 'request', ...changed })).result.code, 'AUTH_REQUIRED', 'a changed request no longer matches its invitation key')
+  const { result: changedCreate } = await alice.api('/projects', { name: 'Changed', operationId: 'create' }, { failure: true })
+  assert.equal(changedCreate.code, 'OPERATION_ID_REUSED')
+  // A machine can't remove itself; the owner removes it, and its writes are refused once the removal is observed.
+  const bobMachine = bob.client.registry.machineKey.machineId
+  const { result: self } = await bob.api(`/projects/${project.id}/revoke`, { kind: 'machine', id: bobMachine, operationId: 'self' }, { failure: true })
+  assert.equal(self.code, 'FORBIDDEN')
+  assert.equal(self.error, 'A machine can’t remove itself. Remove it from another of your machines, or ask an admin.')
+  await alice.api(`/projects/${project.id}/revoke`, { kind: 'machine', id: bobMachine, operationId: 'remove-bob' })
+  await eventually(async () => (await bob.api(`/projects/${project.id}/api/automerge/operations`,
+    { type: 'task.create', operationId: `denied-${Date.now()}`, payload: { title: 'denied' } }, { failure: true })).result, result => result.code === 'REVOKED')
 })
 
 test('browser WebSocket tickets bind origin, project and principal; direct child credentials remain private', { timeout: 30000 }, async t => {
@@ -231,19 +281,23 @@ test('WebSocket proxy forwards a document delivered in the same packet as its up
 })
 
 test('agent-only enrollment has its own author and cannot obtain a human browser session', { timeout: 30000 }, async t => {
-  const alice = await fixture(t, 'Alice')
+  // A client without --public-url still invites an agent on this same computer.
+  const alice = await fixture(t, 'Alice', { route: false })
   const { result: { project } } = await alice.api('/projects', { name: 'Agent', operationId: 'create' })
   const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'agent' })
-  const directory = await mkdtemp(join(tmpdir(), 'pardner-agent-'))
-  const agent = await startClient({ directory, port: 0, setupAgent: { harnessId: 'anthropic-claude-code', name: 'Gamma' } })
-  t.after(async () => { await agent.stop(); await rm(directory, { recursive: true, force: true }) })
+  const box = await blankClient(t, 'pardner-agent-', { setupAgent: { harnessId: 'anthropic-claude-code', name: 'Gamma' } })
+  const agent = box.client
   const api = async (path, body) => {
     const response = await fetch(`${agent.url}${CLIENT_API}${path}`, { method: 'POST', headers: { Authorization: `Bearer ${agent.registry.read().operatorToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     return { status: response.status, result: await response.json() }
   }
+  // An Agent invitation used on another machine pairs that machine to Alice, for her agents only.
   const input = { invitation: invitation.invitation, operationId: 'join' }
+  const joined = await joinApproved({ join: body => box.call('/join', body), approver: alice.call, ...input })
+  assert.equal(joined.project.id, project.id)
   assert.equal((await api('/join', input)).status, 200)
-  assert.equal((await api('/join', input)).status, 200)
+  const { membership } = (await alice.api(`/projects/${project.id}`)).result
+  assert.equal(membership.machines.find(machine => machine.id === agent.registry.machineKey.machineId).agentsOnly, true)
   assert.equal((await api('/projects', { name: 'Impersonate human', operationId: 'bad' })).status, 403)
   const deniedLaunch = await api('/open', {})
   assert.equal(deniedLaunch.status, 403)
@@ -257,6 +311,87 @@ test('agent-only enrollment has its own author and cannot obtain a human browser
   assert.notEqual(grant.result.actorId, project.actorId)
   assert.equal(grant.result.model, undefined)
   assert.equal(grant.result.managedBy, undefined)
+})
+
+test('agents are named after their owner and harness; a different name for an enrolled agent is refused, not ignored', { timeout: 45000 }, async t => {
+  const priya = await fixture(t, 'Priya Raman', { agent: {} }), marcus = await fixture(t, 'Marcus Lee', { agent: { harnessId: 'anthropic-claude-code' } })
+  assert.equal((await priya.api('/session')).result.setupAgent.name, 'Priya Raman’s Codex')
+  const { result: { project } } = await priya.api('/projects', { name: 'Names', operationId: 'create' })
+  const { result: human } = await priya.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'human' })
+  await enroll(marcus, priya, human.invitation)
+  const agentNames = actors => Object.values(actors).filter(actor => actor.kind === 'agent').map(actor => actor.displayName).sort()
+  const { actors, membership } = (await priya.api(`/projects/${project.id}`)).result
+  assert.deepEqual(agentNames(actors), ['Marcus Lee’s Claude', 'Priya Raman’s Codex'])
+  // Each agent's signed label (an agent.name record) carries the same name as its Actor.
+  assert.deepEqual(membership.agentNames.map(label => label.displayName).sort(), ['Marcus Lee’s Claude', 'Priya Raman’s Codex'])
+  // The board reads Actors from the document view, which carries the same names on every member's client.
+  await eventually(async () => agentNames((await marcus.api(`/projects/${project.id}/api/automerge/doc`)).result.doc.actors),
+    names => names.join() === 'Marcus Lee’s Claude,Priya Raman’s Codex')
+
+  const { result: invitation } = await priya.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'agent' })
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-agent-'))
+  const box = await startClient({ directory, port: 0, setupAgent: { harnessId: 'openai-codex', name: 'Overnight Codex' } })
+  const boxCall = async (path, body) => {
+    const response = await fetch(`${box.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { Authorization: `Bearer ${box.registry.read().operatorToken}`,
+      'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+    const result = await response.json()
+    if (!response.ok) throw Object.assign(new Error(JSON.stringify(result)), { code: result.code })
+    return result
+  }
+  t.after(async () => { await box.stop(); await rm(directory, { recursive: true, force: true }) })
+  const joinBox = async (operationId, agent) => {
+    const response = await fetch(`${box.url}${CLIENT_API}/join`, { method: 'POST', headers: { Authorization: `Bearer ${box.registry.read().operatorToken}`,
+      'Content-Type': 'application/json' }, body: JSON.stringify({ invitation: invitation.invitation, operationId, ...(agent ? { agent } : {}) }) })
+    return { status: response.status, result: await response.json() }
+  }
+  const refused = await joinBox('overnight')
+  assert.equal(refused.status, 409)
+  assert.equal(refused.result.code, 'AGENT_NAME_CONFLICT')
+  assert.equal(refused.result.error, 'Priya Raman already has a Codex agent in this project named “Priya Raman’s Codex”. ' +
+    'Each person has one agent per harness, and agents keep the name they joined with. Use that name, or none, to add this computer to it.')
+  assert.deepEqual(agentNames(priya.client.project(project.id).people), ['Marcus Lee’s Claude', 'Priya Raman’s Codex'])
+  assert.deepEqual(Object.values(priya.client.registry.read().invites[invitationData(invitation.invitation).id].requests ?? {}), [],
+    'the refusal took no place on the invitation')
+  // The refusal left the invitation usable: the same computer joins as a new, explicitly named agent instead.
+  const joined = await joinApproved({ join: body => boxCall('/join', body), approver: priya.call, invitation: invitation.invitation,
+    operationId: 'overnight-claude', agent: { harnessId: 'anthropic-claude-code', name: 'Overnight Claude' } })
+  assert.equal(joined.project.id, project.id)
+  assert.deepEqual(agentNames(priya.client.project(project.id).people), ['Marcus Lee’s Claude', 'Overnight Claude', 'Priya Raman’s Codex'])
+  const labels = (await priya.api(`/projects/${project.id}`)).result.membership.agentNames.map(label => label.displayName).sort()
+  assert.deepEqual(labels, ['Marcus Lee’s Claude', 'Overnight Claude', 'Priya Raman’s Codex'])
+})
+
+test('a machine paired with no agent name given labels its agent with the name that agent was enrolled under', { timeout: 60000 }, async t => {
+  const priya = await fixture(t, 'Priya Raman', { agent: {} })
+  const { result: { project } } = await priya.api('/projects', { name: 'Labels', operationId: 'create' })
+  const machine = async setupAgent => {
+    const directory = await mkdtemp(join(tmpdir(), 'pardner-agent-'))
+    const client = await startClient({ directory, port: 0, setupAgent })
+    t.after(async () => { await client.stop(); await rm(directory, { recursive: true, force: true }) })
+    const call = async (path, body) => {
+      const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { Authorization: `Bearer ${client.registry.read().operatorToken}`,
+        'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+      const result = await response.json()
+      if (!response.ok) throw Object.assign(new Error(JSON.stringify(result)), { code: result.code })
+      return result
+    }
+    return { client, call }
+  }
+  const pair = async (box, operationId) => {
+    const { result: invitation } = await priya.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId })
+    await joinApproved({ join: body => box.call('/join', body), approver: priya.call, invitation: invitation.invitation, operationId })
+  }
+  // Priya's Claude agent is enrolled from one machine under a name of its own.
+  await pair(await machine({ harnessId: 'anthropic-claude-code', name: 'Overnight Claude' }), 'first')
+  // A second machine runs the same agent and gives no name.
+  const second = await machine({ harnessId: 'anthropic-claude-code' })
+  await pair(second, 'second')
+  const { actors, membership } = (await priya.api(`/projects/${project.id}`)).result
+  const actor = Object.values(actors).find(entry => entry.kind === 'agent' && entry.harnessId === 'anthropic-claude-code')
+  assert.equal(actor.displayName, 'Overnight Claude')
+  const label = membership.agentNames.find(entry => entry.machineId === second.client.registry.machineKey.machineId)
+  assert.equal(label.id, actor.id)
+  assert.equal(label.displayName, 'Overnight Claude', 'the new machine’s signed label agrees with the Actor')
 })
 
 test('reopening with a new browser principal replays setup instead of allocating projects or recipient proofs', { timeout: 30000 }, async t => {
@@ -282,7 +417,8 @@ test('reopening with a new browser principal replays setup instead of allocating
   const invited = await request(alice.client, firstCookie, `/projects/${first.project.id}/invites`, inviteInput)
   assert.equal((await request(alice.client, secondCookie, `/projects/${first.project.id}/invites`, inviteInput)).invitation, invited.invitation)
   const join = { invitation: invited.invitation, operationId: 'browser-join' }
-  const joined = await request(bob.client, await bootstrap(bob.client), '/join', join)
+  const bobCookie = await bootstrap(bob.client)
+  const joined = await joinApproved({ join: body => request(bob.client, bobCookie, '/join', body), approver: alice.call, ...join })
   const attemptsBefore = bob.client.registry.read().attempts
   const again = await request(bob.client, await bootstrap(bob.client), '/join', join)
   assert.equal(joined.project.id, again.project.id)
@@ -290,24 +426,17 @@ test('reopening with a new browser principal replays setup instead of allocating
   assert.equal(Object.keys(bob.client.registry.read().projects).length, 1)
 })
 
-test('concurrent human redemptions cannot admit the same identity through two unrelated grants', { timeout: 30000 }, async t => {
-  const { randomUUID, randomBytes } = await import('node:crypto')
-  const { invitationData } = await import('../lib/client-invites.js')
-  const alice = await fixture(t, 'Alice')
+test('one identity cannot be admitted twice through two unrelated invitations', { timeout: 30000 }, async t => {
+  const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
   const { result: { project } } = await alice.api('/projects', { name: 'Concurrent admission', operationId: 'create' })
   const first = (await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'one' })).result
   const second = (await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'two' })).result
-  const identity = { id: randomUUID(), name: 'Bob', email: 'bob@example.test' }
-  const results = await Promise.all([first, second].map(async ({ invitation }) => {
-    const parsed = invitationData(invitation)
-    const response = await fetch(parsed.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      inviteId: parsed.id, invitationSecret: parsed.secret, recipientProof: randomBytes(32).toString('base64url'), operationId: randomUUID(),
-      identity, device: { id: randomUUID(), name: 'New machine' }, agent: { harnessId: 'openai-codex', name: 'Beta' },
-    }) })
-    return { status: response.status, result: await response.json() }
-  }))
-  assert.equal(results.filter(result => result.status === 200).length, 1)
-  assert.equal(results.find(result => result.status !== 200).result.code, 'IDENTITY_MISMATCH')
+  const pending = await Promise.all([first, second].map(({ invitation }, index) => bob.call('/join', { invitation, operationId: `join-${index}` })))
+  await enroll(bob, alice, first.invitation, 'join-0')
+  const { request } = (await alice.call(`/projects/${project.id}/join-requests/${pending[1].join.requestId}/code`, {}))
+  const { result, response } = await alice.api(`/projects/${project.id}/join-requests/${request.id}/approve`, { code: request.code }, { failure: true })
+  assert.equal(response.status, 409); assert.equal(result.code, 'ALREADY_MEMBER')
+  assert.equal((await alice.api(`/projects/${project.id}`)).result.membership.people.length, 2)
 })
 
 test('a second harness reuses Bob’s replica with distinct authorship, remote presence and delivery admission', { timeout: 45000 }, async t => {
@@ -319,7 +448,7 @@ test('a second harness reuses Bob’s replica with distinct authorship, remote p
   const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
   const { result: { project } } = await alice.api('/projects', { name: 'Two harnesses', operationId: 'create' })
   const { result: human } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'human' })
-  await bob.api('/join', { invitation: human.invitation, operationId: 'join' })
+  await enroll(bob, alice, human.invitation)
   const original = bob.client.registry.read()
   const runtime = await bob.client.runtime(bob.client.project(project.id))
   const { result: codex } = await bob.api(`/projects/${project.id}/agent-grant`, {})
@@ -391,8 +520,13 @@ test('a second harness reuses Bob’s replica with distinct authorship, remote p
   await bob.api(`/projects/${project.id}/revoke`, { kind: 'agent', id: claude.actorId, operationId: 'revoke-claude' })
   const revoked = await bob.api(`/projects/${project.id}/agent-grant`, { harnessId: 'anthropic-claude-code' }, { failure: true })
   assert.equal(revoked.result.code, 'ACTOR_REVOKED')
+  assert.equal(revoked.result.error, 'This agent was revoked on this computer. Join a new Agent invitation here to restore it.')
   const stillHuman = await bob.api(`/projects/${project.id}/api/automerge/operations`, { type: 'task.create', operationId: 'human-still-active', payload: { title: 'Bob still works' } })
   assert.equal(stillHuman.result.savedLocally, true)
+  // Following that advice works (#153): a new Agent invitation joined here restores the harness.
+  const { result: again } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'claude-again' })
+  await bob.api('/join', { invitation: again.invitation, operationId: 'claude-again', agent: { harnessId: 'anthropic-claude-code', name: 'Gamma', model: 'reported-model', managedBy: 'T3' } })
+  assert.equal((await bob.api(`/projects/${project.id}/agent-grant`, { harnessId: 'anthropic-claude-code' })).result.actorId, claude.actorId)
 })
 
 test('the hub client also enrolls a second harness without changing its setup agent or runtime', { timeout: 30000 }, async t => {
@@ -421,33 +555,39 @@ test('a rejected enrollment leaves the invitation usable by its intended recipie
   const { result: device } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'device', operationId: 'device' })
   const { result: wrong, response } = await bob.api('/join', { invitation: device.invitation, operationId: 'wrong-person' }, { failure: true })
   assert.equal(response.status, 409); assert.equal(wrong.code, 'IDENTITY_MISMATCH')
-  assert.equal(alice.client.registry.read().invites[device.invite.id].recipient, undefined, 'a rejected attempt must not bind the invitation')
-  const directory = await mkdtemp(join(tmpdir(), 'pardner-device-'))
-  const linked = await startClient({ directory, port: 0, deviceName: 'Alice desktop' })
-  t.after(async () => { await linked.stop(); await rm(directory, { recursive: true, force: true }) })
-  const link = await fetch(`${linked.url}${CLIENT_API}/join`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${linked.registry.read().operatorToken}` },
-    body: JSON.stringify({ invitation: device.invitation, operationId: 'link' }) })
-  const result = await link.json()
-  assert.equal(link.status, 200, JSON.stringify(result))
-  assert.equal(linked.registry.read().identity.id, alice.client.registry.read().identity.id)
+  assert.deepEqual(alice.client.registry.read().invites[device.invite.id].requests, {}, 'a refused attempt never reaches the hub')
+  const linked = await blankClient(t, 'pardner-device-', { deviceName: 'Alice desktop' })
+  await joinApproved({ join: body => linked.call('/join', body), approver: alice.call, invitation: device.invitation, operationId: 'link' })
+  assert.equal(linked.client.registry.read().identity.id, alice.client.registry.read().identity.id)
   assert.equal(alice.client.registry.read().invites[device.invite.id].state, 'redeemed')
 })
 
-test('a revocation that lands during enrollment wins over activation', { timeout: 45000 }, async t => {
+test('a revoked invitation cannot be approved, and an approval in progress cannot be revoked', { timeout: 45000 }, async t => {
   const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
   const { result: { project } } = await alice.api('/projects', { name: 'Race', operationId: 'create' })
   const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
+  const { join } = await bob.call('/join', { invitation: invitation.invitation, operationId: 'join' })
+  const { request } = await alice.call(`/projects/${project.id}/join-requests/${join.requestId}/code`, {})
+  await alice.api(`/projects/${project.id}/invites/${invitation.invite.id}/revoke`, {})
+  const refused = await alice.api(`/projects/${project.id}/join-requests/${join.requestId}/approve`, { code: request.code }, { failure: true })
+  assert.equal(refused.response.status, 404, JSON.stringify(refused.result), 'the revoked invitation’s request is gone from the approver’s list')
+  const { result, response } = await bob.api('/join', { invitation: invitation.invitation, operationId: 'join' }, { failure: true })
+  assert.equal(response.status, 403, JSON.stringify(result)); assert.equal(result.code, 'JOIN_REJECTED')
+  assert.equal(result.error, 'The invitation was revoked')
+  assert.ok(Object.values(alice.client.project(project.id).admissions).every(admission => admission.state !== 'active'))
+  assert.equal(Object.values(bob.client.registry.read().projects).length, 0)
+
+  const { result: second } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'second' })
   const register = alice.client.registerActor.bind(alice.client)
+  let revocation
   alice.client.registerActor = async (...args) => {
-    alice.client.invites.revokeFor(alice.client.project(project.id), alice.client.registry.read().identity.id, invitation.invite.id)
+    revocation ??= alice.api(`/projects/${project.id}/invites/${second.invite.id}/revoke`, {}, { failure: true })
     return register(...args)
   }
-  const { result, response } = await bob.api('/join', { invitation: invitation.invitation, operationId: 'join' }, { failure: true })
-  assert.equal(response.status, 403, JSON.stringify(result)); assert.equal(result.code, 'REVOKED')
-  const hub = alice.client.project(project.id)
-  assert.ok(Object.values(hub.admissions).every(admission => admission.state !== 'active'), 'no admission may activate after revocation')
-  assert.equal(alice.client.registry.read().invites[invitation.invite.id].state, 'revoked')
-  assert.equal(Object.values(bob.client.registry.read().projects).filter(p => p.state === 'ready').length, 0)
+  await enroll(bob, alice, second.invitation, 'join-second')
+  const late = await revocation
+  assert.equal(late.response.status, 409); assert.equal(late.result.code, 'REQUEST_CLOSED')
+  assert.equal(alice.client.registry.read().invites[second.invite.id].state, 'redeemed')
 })
 
 test('an unauthenticated WebSocket upgrade cannot restart a dead project runtime', { timeout: 30000 }, async t => {
@@ -464,11 +604,37 @@ test('an unauthenticated WebSocket upgrade cannot restart a dead project runtime
   assert.equal(client.starting.size, 0)
 })
 
+test('another machine’s handshake cannot wake a dead hosted runtime, which restarts by itself after the backoff', { timeout: 30000 }, async t => {
+  const { WebSocket } = await import('ws')
+  const { client, call } = await blankClient(t, 'pardner-revive-', { restartBackoffMs: 400 })
+  await call('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+  const { project } = await call('/projects', { name: 'Dormant hub', operationId: 'create' })
+  const key = client.project(project.id).key
+  const runtime = await client.runtime(client.project(project.id))
+  runtime.child.kill('SIGKILL')
+  await new Promise(resolve => runtime.child.once('exit', resolve))
+  // The hello is unauthenticated, so it gets an outage, not a fresh runtime.
+  const hello = createHello(generateMachineKey(), { projectId: project.id, route: `${client.url}${CLIENT_API}/replica/${project.id}`, role: 'replica' })
+  const response = await fetch(`${client.url}${CLIENT_API}/replica/${project.id}/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hello }) })
+  assert.equal(response.status, 503); assert.equal((await response.json()).code, 'HUB_UNAVAILABLE')
+  const socket = new WebSocket(`${client.url.replace(/^http/, 'ws')}${CLIENT_API}/replica/${project.id}/native`)
+  assert.match(await new Promise(resolve => { socket.once('error', error => resolve(error.message)); socket.once('open', () => resolve('open')) }), /401/)
+  assert.equal(client.runtimes.get(key), runtime, 'no anonymous request replaced the dead runtime')
+  assert.equal(client.starting.size, 0)
+  const deadline = Date.now() + 15000
+  const restarted = () => { const current = client.runtimes.get(key); return current && current !== runtime && !current.dead }
+  while (!restarted()) {
+    assert.ok(Date.now() < deadline, 'the hosted runtime was never restarted')
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  assert.equal(client.runtimes.get(key).connection.workspaceId, project.id)
+})
+
 test('gateway error pages and hub 5xx responses are outages: replicas keep saving locally and only explicit revocation revokes', { timeout: 45000 }, async t => {
   const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
   const { result: { project } } = await alice.api('/projects', { name: 'Degraded', operationId: 'create' })
   const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
-  await bob.api('/join', { invitation: invitation.invitation, operationId: 'join' })
+  await enroll(bob, alice, invitation.invitation)
   let reply = { status: 502, type: 'text/html', body: '<html><body><h1>502 Bad Gateway</h1></body></html>' }
   const gateway = createServer((_req, res) => { res.writeHead(reply.status, { 'Content-Type': reply.type }); res.end(reply.body) })
   await new Promise(resolve => gateway.listen(0, '127.0.0.1', resolve))
@@ -486,33 +652,171 @@ test('gateway error pages and hub 5xx responses are outages: replicas keep savin
   reply = { status: 503, type: 'application/json', body: JSON.stringify({ code: 'SERVICE_STOPPING', error: 'The service is stopping' }) }
   const { result: stopping } = await bob.api(path, { type: 'task.create', operationId: 'through-503', payload: { title: 'Saved while the hub restarts' } })
   assert.equal(stopping.savedLocally, true)
-  reply = { status: 401, type: 'application/json', body: JSON.stringify({ code: 'AUTH_REQUIRED', error: 'Device is not admitted to this project' }) }
+  // A write checks this machine's own records and never waits on the hub; an authentication failure is not a removal.
+  reply = { status: 401, type: 'application/json', body: JSON.stringify({ code: 'AUTH_REQUIRED', error: 'Sign in again' }) }
+  const { result: unauthenticated } = await bob.api(path, { type: 'task.create', operationId: 'through-401', payload: { title: 'Saved through a 401' } })
+  assert.equal(unauthenticated.savedLocally, true)
+  // Only the hub saying this machine was removed revokes it.
+  reply = { status: 403, type: 'application/json', body: JSON.stringify({ code: 'REVOKED', error: 'This machine was removed from the project' }) }
+  const { result: removed, response: removal } = await bob.api(`/projects/${project.id}`, undefined, { failure: true })
+  assert.equal(removal.status, 403); assert.equal(removed.code, 'REVOKED')
   const { result: revoked, response } = await bob.api(path, { type: 'task.create', operationId: 'denied', payload: { title: 'denied' } }, { failure: true })
   assert.equal(response.status, 403); assert.equal(revoked.code, 'REVOKED')
 })
 
+test('without --public-url, Human and My device invitations are refused at issue time and nothing is recorded', { timeout: 30000 }, async t => {
+  const alice = await fixture(t, 'Alice', { route: false })
+  const { result: { project } } = await alice.api('/projects', { name: 'Loopback only', operationId: 'create' })
+  for (const purpose of ['human', 'device']) {
+    const { result, response } = await alice.api(`/projects/${project.id}/invites`, { purpose, operationId: `invite-${purpose}` }, { failure: true })
+    assert.equal(response.status, 409); assert.equal(result.code, 'PUBLIC_URL_REQUIRED')
+    assert.equal(result.error, `A ${purpose === 'human' ? 'Human' : 'My device'} invitation is used on another computer, but this client has no public address, ` +
+      `so the invitation would point to ${alice.client.url}, which only this computer can reach. ` +
+      'Restart this client with `pardner client serve --public-url <https origin>`, then create the invitation again.')
+    assert.deepEqual(result.details, { purpose, endpoint: `${alice.client.url}/pardner/client/v1/enroll` })
+    assert.equal(result.invitation, undefined)
+  }
+  const { result: agent } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'invite-agent' })
+  assert.equal(invitationData(agent.invitation).endpoint, `${alice.client.url}/pardner/client/v1/enroll`)
+  const { result: listed } = await alice.api(`/projects/${project.id}/invites`)
+  assert.deepEqual(listed.invites.map(invite => invite.purpose), ['agent'])
+})
+
+test('a member asking a hub without --public-url is told the hub must be restarted with one', { timeout: 45000 }, async t => {
+  const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
+  const { result: { project } } = await alice.api('/projects', { name: 'Hub route', operationId: 'create' })
+  const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
+  await enroll(bob, alice, invitation.invitation)
+  // The hub restarts on the same port but without its public route.
+  alice.client.registry.update(state => { state.publicUrl = null })
+  await alice.client.stop()
+  const hub = await startClient({ directory: alice.directory })
+  // Stopped before the fixture removes this directory: after hooks run in the order they were added, so a hook here
+  // would run after the removal, which then races the running client and can leave it running.
+  try {
+    assert.equal(hub.gatewayUrl, hub.url)
+    const { result, response } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'device', operationId: 'device' }, { failure: true })
+    assert.equal(response.status, 409); assert.equal(result.code, 'PUBLIC_URL_REQUIRED')
+    assert.match(result.error, /^A My device invitation is used on another computer, but this project's hub \(the computer that started the project, where its invitations are issued\) has no public address/)
+    assert.ok(result.error.includes(`would point to ${hub.url}, which only the hub's computer can reach. Restart the hub's client with \`pardner client serve --public-url <https origin>\``), result.error)
+    const { result: agent } = await bob.api(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'agent' })
+    assert.equal(invitationData(agent.invitation).endpoint, `${hub.url}/pardner/client/v1/enroll`)
+  } finally {
+    await hub.stop()
+  }
+})
+
+test('joining names an unreachable loopback invitation address, while a reachable hub that is down still advises retry', { timeout: 45000 }, async t => {
+  const bob = await fixture(t, 'Bob')
+  // A signed offer whose only route is `endpoint`, from a machine this test never runs.
+  const issuer = generateMachineKey()
+  const envelope = endpoint => encodeInvitation({ projectName: 'Elsewhere', secret: 'i'.repeat(43), offer: buildOffer(issuer, {
+    projectId: 'a'.repeat(64), offerId: 'offer-unreachable-1', purpose: 'human', role: 'member', routes: [endpoint], expiresAt: Date.now() + 3600000 }) })
+  // An invitation issued before this refusal existed: its address is the creator's own loopback listener.
+  const { port } = await sameComputerRoute()
+  const unreachable = `http://127.0.0.1:${port}`
+  const loopback = envelope(`${unreachable}/pardner/client/v1/enroll`)
+  const { result, response } = await bob.api('/join', { invitation: loopback, operationId: 'join-loopback' }, { failure: true })
+  assert.equal(response.status, 409); assert.equal(result.code, 'INVITATION_UNREACHABLE')
+  assert.deepEqual(result.details, { endpoint: unreachable })
+  assert.ok(result.error.startsWith(`This invitation points to ${unreachable}, which this computer can't reach`), result.error)
+  assert.match(result.error, /--public-url <https origin>/)
+  assert.doesNotMatch(result.error, /retry/i)
+  const again = await bob.api('/join', { invitation: loopback, operationId: 'join-loopback' }, { failure: true })
+  assert.equal(again.result.code, 'INVITATION_UNREACHABLE', 'retrying the same attempt reports the same cause')
+  // A gateway that answers for a hub that is down is a temporary outage.
+  let reply = { status: 502, type: 'text/html', body: '<html><body><h1>502 Bad Gateway</h1></body></html>' }
+  const gateway = createServer((_req, res) => { res.writeHead(reply.status, { 'Content-Type': reply.type }); res.end(reply.body) })
+  await new Promise(resolve => gateway.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => gateway.close(resolve)))
+  const reachable = envelope(`http://127.0.0.1:${gateway.address().port}/pardner/client/v1/enroll`)
+  for (const [index, next] of [reply, { status: 503, type: 'application/json', body: JSON.stringify({ code: 'SERVICE_STOPPING', error: 'Client is stopping' }) }].entries()) {
+    reply = next
+    const outage = await bob.api('/join', { invitation: reachable, operationId: `join-outage-${index}` }, { failure: true })
+    assert.equal(outage.response.status, 503); assert.equal(outage.result.code, 'HUB_UNAVAILABLE')
+  }
+  // An HTTPS route that does not answer may come back, so it keeps the outage code and its retry advice.
+  const https = { endpoint: 'https://pardner.example.test/pardner/client/v1/enroll' }
+  const offline = Object.assign(new Error('Project authority unavailable; retry this attempt'), { code: 'HUB_UNAVAILABLE', details: { cause: 'fetch failed' } })
+  assert.equal(unreachableInvitation(https, offline), offline)
+  const answered = Object.assign(new Error('Project authority unavailable; retry this attempt'), { code: 'HUB_UNAVAILABLE', details: { status: 503 } })
+  assert.equal(unreachableInvitation({ endpoint: `${unreachable}/pardner/client/v1/enroll` }, answered), answered)
+})
+
+test('identity, harness and revocation refusals name the actual problem', { timeout: 45000 }, async t => {
+  const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
+  const refusal = async (api, path, body, status, code, error) => {
+    const { result, response } = await api(path, body, { failure: true })
+    assert.equal(response.status, status, JSON.stringify(result)); assert.equal(result.code, code); assert.equal(result.error, error)
+    return result
+  }
+  await refusal(alice.api, '/identity', { name: '   ', email: 'alice@example.test', operationId: 'blank' }, 400, 'INVALID_ARGUMENT', 'Supply a name')
+  await refusal(alice.api, '/identity', { name: 'A'.repeat(201), email: 'alice@example.test', operationId: 'long' }, 400, 'INVALID_ARGUMENT',
+    'Use a name of at most 200 characters')
+  const exists = await refusal(alice.api, '/identity', { name: 'Alice', email: 'alice@elsewhere.test', operationId: 'fix-email' }, 409, 'IDENTITY_EXISTS',
+    "This client already has an identity (Alice <alice@example.test>); it can't be changed. To use a different identity, start a separate client directory.")
+  assert.deepEqual(exists.details, { identity: { name: 'Alice', email: 'alice@example.test' } })
+  const harness = 'Unsupported execution harness; use openai-codex, anthropic-claude-code or cursor'
+  assert.throws(() => setupAgent({ harnessId: 'claude' }), { code: 'INVALID_ARGUMENT', message: harness })
+  assert.equal(agentName({ name: 'Maya' }, { harnessId: 'not-a-harness', name: null }), 'Maya’s agent')
+  assert.equal(agentName({ name: 'Maya' }, setupAgent({ harnessId: 'cursor' })), 'Maya’s Cursor')
+  const { result: { project } } = await alice.api('/projects', { name: 'Refusals', operationId: 'create' })
+  await refusal(alice.api, `/projects/${project.id}/agent-grant`, { harnessId: 'claude' }, 400, 'INVALID_ARGUMENT', harness)
+  const aliceId = alice.client.registry.read().identity.id
+  // Removing your own person is leaving, which the owner can't do.
+  await refusal(alice.api, `/projects/${project.id}/revoke`, { kind: 'member', id: aliceId, operationId: 'self' }, 403, 'FORBIDDEN',
+    'The project owner can’t leave. The owner stays with the project for as long as it exists.')
+  await refusal(alice.api, `/projects/${project.id}/revoke`, { kind: 'agent', id: 'actor-doesnotexist', operationId: 'missing-agent' }, 404, 'NOT_FOUND',
+    'No agent with that ID in this project')
+  const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
+  await enroll(bob, alice, invitation.invitation)
+  await refusal(bob.api, `/projects/${project.id}/revoke`, { kind: 'member', id: aliceId, operationId: 'not-owner' }, 403, 'FORBIDDEN',
+    'The project owner can’t be removed')
+  // A member removing themselves leaves the project (test/trust-enrollment.test.js); removing anyone else is refused (test/enrollment.test.js).
+  await refusal(bob.api, `/projects/${project.id}/invites`, { purpose: 'human', operationId: 'member-invite' }, 403, 'FORBIDDEN',
+    'Only the owner or an admin can invite people. Ask an admin, or pair another of your own machines with My device.')
+  const aliceAgent = Object.values(alice.client.project(project.id).people).find(person => person.kind === 'agent' && person.humanId === aliceId)
+  await refusal(bob.api, `/projects/${project.id}/revoke`, { kind: 'agent', id: aliceAgent.id, operationId: 'foreign-agent' }, 403, 'FORBIDDEN',
+    'Agent belongs to another human')
+})
+
 test('enrollment normalises agent and device metadata at the boundary and leaves a refused invitation usable', { timeout: 30000 }, async t => {
+  const { generateMachineKey, personIdFor } = await import('../lib/machine-key.js')
+  const { JOIN_DOMAIN, agentNameRecord, joinMac } = await import('../lib/enrollment.js')
+  const { offerHash } = await import('../lib/membership.js')
+  const { invitationData } = await import('../lib/client-invites.js')
+  const { canonical } = await import('../lib/workspace-schema.js')
   const alice = await fixture(t, 'Alice')
   const { result: { project } } = await alice.api('/projects', { name: 'Boundary', operationId: 'create' })
   const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
-  const envelope = JSON.parse(Buffer.from(invitation.invitation.slice('pardner-invite-v1.'.length), 'base64url').toString())
+  const { offer, secret } = invitationData(invitation.invitation)
   const enroll = async body => {
-    const response = await fetch(`${alice.client.url}${CLIENT_API}/enroll`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const response = await fetch(`${alice.client.url}${CLIENT_API}/enroll`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request', ...body }) })
     return { status: response.status, result: await response.json() }
   }
-  const base = { inviteId: envelope.id, invitationSecret: envelope.secret, recipientProof: 'p'.repeat(48), operationId: 'enroll',
-    identity: { id: '11111111-2222-4333-8444-555555555555', name: 'Carol', email: 'carol@example.test' }, device: { id: '66666666-7777-4888-9999-aaaaaaaaaaaa', name: 'Carol laptop' } }
-  for (const [index, agent] of [{ harnessId: 'openai-codex', name: {} }, { harnessId: 'openai-codex', model: ['x'] }, { harnessId: 'openai-codex', name: 'x'.repeat(201) }].entries()) {
-    const refused = await enroll({ ...base, operationId: `refused-${index}`, agent })
+  const key = generateMachineKey(), personId = personIdFor(key.publicKey)
+  // A request signed and keyed correctly, but with metadata the joining client did not normalise.
+  const signed = fields => {
+    const request = { v: 2, projectId: offer.projectId, offerId: offer.offerId, offerHash: offerHash(offer), purpose: 'human', personId, machineId: key.machineId, publicKey: key.publicKey,
+      device: { id: '66666666-7777-4888-9999-aaaaaaaaaaaa', name: 'Carol laptop' }, agent: setupAgent({ harnessId: 'openai-codex', name: 'Beta' }),
+      profile: { name: 'Carol', email: 'carol@example.test' }, ...fields }
+    const body = { ...request, signature: key.sign(JOIN_DOMAIN, Buffer.from(canonical(request))).toString('base64url') }
+    return { request: body, mac: joinMac(secret, body), records: [agentNameRecord(key, offer.projectId, personId, { harnessId: 'openai-codex', name: 'Beta' })], recipientProof: 'p'.repeat(48) }
+  }
+  for (const fields of [{ agent: { harnessId: 'openai-codex', name: {} } }, { agent: { harnessId: 'openai-codex', name: 'Beta', model: ['x'] } },
+    { agent: { harnessId: 'openai-codex', name: 'x'.repeat(201) } }, { device: { id: '66666666-7777-4888-9999-aaaaaaaaaaaa', name: ' Carol laptop ', extra: 'dropped' } }]) {
+    const refused = await enroll(signed(fields))
     assert.equal(refused.status, 400, JSON.stringify(refused.result)); assert.equal(refused.result.code, 'INVALID_ARGUMENT')
   }
-  assert.equal(alice.client.registry.read().invites[invitation.invite.id].recipient, undefined, 'refused metadata never binds the invitation')
-  const accepted = await enroll({ ...base, agent: { harnessId: 'openai-codex', name: ' Carol’s agent ', model: 'gpt-x' }, device: { ...base.device, extra: 'dropped', name: ' Carol laptop ' } })
+  assert.deepEqual(alice.client.registry.read().invites[invitation.invite.id].requests, {}, 'refused metadata never takes a slot')
+  const accepted = await enroll(signed({}))
   assert.equal(accepted.status, 200, JSON.stringify(accepted.result))
-  assert.deepEqual(accepted.result.device, { id: base.device.id, name: 'Carol laptop' })
-  assert.equal(accepted.result.agent.name, 'Carol’s agent')
+  assert.equal(accepted.result.state, 'pending')
+  const { request } = await alice.call(`/projects/${project.id}/join-requests/${accepted.result.requestId}/code`, {})
+  assert.deepEqual(request.device, { id: '66666666-7777-4888-9999-aaaaaaaaaaaa', name: 'Carol laptop' })
+  await alice.call(`/projects/${project.id}/join-requests/${request.id}/approve`, { code: request.code })
   const people = alice.client.project(project.id).people
-  assert.ok(Object.values(people).every(person => person.devices.every(device => Object.keys(device).sort().join() === 'id,name')))
+  assert.ok(Object.values(people).every(person => person.devices.every(device => ['id,name', 'id,machineId,name'].includes(Object.keys(device).sort().join()))))
 })
 
 test('a handshake that ws aborts does not leak the upstream runtime socket', { timeout: 30000 }, async t => {

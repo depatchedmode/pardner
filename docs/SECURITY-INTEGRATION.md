@@ -8,6 +8,14 @@ not an installed runtime.
 The historical schema-2 installation remains untouched. PR86's schema-5 candidate
 belongs to reliability and is not incorporated here.
 
+> **Superseded for transport (#199).** The enrolled replica secrets, replica
+> tickets and hub token described below are retired. Machines now admit each other
+> only with their machine keys: the sync socket opens with a mutual machine
+> handshake and every other request between machines is signed, so there is no
+> shared secret to provision or rotate; removing a machine ends its sessions at
+> once. See [PARDNER-CLI.md](PARDNER-CLI.md#another-machine) and README's
+> current-implementation section. The rest of this record is historical.
+
 ## Source dispositions
 
 All eight actual heads were fetched and reviewed against main before integration.
@@ -82,7 +90,10 @@ integration already in that head. This did not import unrelated old-main changes
 ## Local-first and trust decision
 
 The local service still owns the persisted replica. Browser pages, including LAN
-companions, have no independent database and need that service. Existing enrolled
+companions, have no independent database and need that service. (Since the client
+cutover the board opens only through the local client on loopback; the LAN
+companion has been removed and phone access is planned through the hub over
+HTTPS. This decision is unchanged.) Existing enrolled
 replicas can reopen/save offline; online sync now additionally needs an enrolled
 replica credential. The hub remains required for enrollment and new delivery
 leases; accepted work may continue saving locally during a hub outage.

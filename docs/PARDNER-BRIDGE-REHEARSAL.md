@@ -247,7 +247,9 @@ no shared filesystem. Both VMs were stopped afterward, preserving their disks.
 An earlier attempt stopped at fingerprint validation because the importing
 launcher generated a local Python bytecode file; it did not run the gates.
 
-To repeat infrastructure checks without preparing a manual Claude handoff:
+To repeat infrastructure checks without preparing a manual Claude handoff, the
+record used the following entry point, since retired with the hand-run roles (#199;
+see [PARDNER-REMOTE-TEST.md](PARDNER-REMOTE-TEST.md)):
 
 ```sh
 python3 scripts/remote/rehearse.py --infrastructure-only

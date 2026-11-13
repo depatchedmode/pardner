@@ -8,15 +8,18 @@ distinguish locally saved heads from explicit hub persistence acknowledgement.
 
 ## How to get to it (user POV)
 
-Join a hub with `pardner serve --role replica --hub URL --hub-ws ws://host:port/automerge --hub-token TOKEN`
-after provisioning a separate replica ID/secret and the hub registry as described
-in [the CLI guide](../../../../docs/PARDNER-CLI.md#enroll-another-machine)
-(there is no `enroll` command; without the hub's token the replica fails with
-`AUTH_REQUIRED`), then use its CLI or `/pardner/` browser. Later restarts reuse
-the saved role, hub settings, and ports. Keep that local service reachable while
-disconnecting its hub path. Select the
-editing Actor. After reconnect, inspect alternatives and use **Resolve status**
-and **Keep this status** for a task status conflict.
+Join a project from a second client with an invitation (`pardner client join`,
+approved on the hub after comparing the confirmation code); its project runtime
+syncs with the hub over the machine handshake, with no shared secret
+([CLI guide](../../../../docs/PARDNER-CLI.md#another-machine)). Later restarts reuse
+the saved routes. Keep that client reachable while disconnecting its hub path.
+Library-level fixtures (`support/machines.js`) build a hub and member replicas
+with test-only machine keys. The standalone service serves no board and no other
+machine; for the browser, each person's local
+client joins the project (`withClientReplicas` in `support/client-workspace.js`
+does this with a hub client and a human invite) and opens through `pardner client
+open`, authoring as its signed-in Actor. After reconnect, inspect alternatives and
+use **Resolve status** and **Keep this status** for a task status conflict.
 
 ## Driving it with service fixtures and public clients
 
@@ -28,8 +31,10 @@ Expected: unchanged workspace identity, startup under six seconds, locally
 saved offline work with sync pending, and convergence after reconnect. Other
 cases inspect stale acknowledgements, authored conflicts, and SIGKILL recovery.
 
-`npm run verify` also runs one complete acceptance scenario with public CLI and
-browser mutations. Inspect `output/acceptance/<run>/seed-1/report.json`, the intent
+`npm run verify` also runs one complete acceptance scenario on client mode: a hub
+client, Alice's laptop (device invitation) and Bob's laptop (human invitation)
+behind per-laptop network gates, with every mutation through a client project
+API proxy (operator, agent `--token-file` CLI, or browser session). Inspect `output/acceptance/<run>/seed-1/report.json`, the intent
 manifest, per-replica readback, and browser traces. Those traces and the seed
 report contain disposable credentials; retain them only through
 `verify:sanitize` (SKILL.md, Artifact privacy). Required qualification adds
@@ -54,7 +59,7 @@ mapped runtime files change or the check reports drift; see
 
 ## Gotchas
 
-Companion browsers own no offline Automerge replica. Cutting the hub path must
+Browsers own no offline Automerge replica. Cutting the hub path must
 leave the local service available; the acceptance network gate cuts both HTTP
 and native WebSocket paths. Equal snapshots alone cannot detect shared data
 loss—check expected operation intents and receipts. Process kills do not prove
@@ -67,3 +72,11 @@ cannot open the raw native writer, even in insecure-local mode, and that enrolle
 tickets are scoped, single-use and expiring. Enrolled replicas remain trusted full
 writers. `test/private-state.test.js` checks private workspace/database/trace modes,
 existing sidecar repair and unsafe final-link rejection under permissive umasks.
+
+## Plain string storage
+
+`test/workspace-operations.test.js` exercises every registered operation and
+checks all decoded changes for `makeText`, including losing alternatives and
+retries, then reopens the document. It asserts ordinary JavaScript output and
+retains explicit resolution and duplicate retry behavior. Schema 6 documents
+are refused without changing their bytes.

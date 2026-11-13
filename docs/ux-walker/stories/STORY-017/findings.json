@@ -1,0 +1,23 @@
+[
+  {"id":"F-017-01","story_id":"STORY-017","severity":"medium","category":"consistency","criterion":"One way per task","score":"warn",
+   "description":"Using a My device invitation has two surfaces with different labels and rules: 'Link this device' (My device invitation / Link device) exists only before identity confirmation, and afterwards the same invitation goes through 'Join a project' (Invitation / Join project), whose hint ('You keep your own identity; nobody else can create it for you.') doesn't describe device linking.",
+   "expected":"One 'Use an invitation' form that detects the purpose and adapts its copy (e.g. 'This links this computer to Infra On-call as you').",
+   "actual":"No 'Link this device' on Start or join; she must guess that Join a project accepts a My device invitation.",
+   "screenshot":"screenshots/step-3-start-or-join.png",
+   "suggested_fix":"Merge the two forms; after decoding the purpose, show purpose-specific confirmation copy.",
+   "files_likely_involved":["ui-prototype/src/ClientApp.jsx","ui-prototype/src/client-api.js"]},
+  {"id":"F-017-02","story_id":"STORY-017","severity":"medium","category":"error-handling","criterion":"Feedback: state accuracy","score":"warn",
+   "description":"While the inviter's My device dialog stays open, a used invitation keeps showing 'Waiting to be used' with Copy invite, Show invite text and Revoke; it only shows 'Used' after closing and reopening.",
+   "expected":"The dialog refreshes (poll or on focus) and shows 'Used by priya-air' with the actions removed.",
+   "actual":"Stale 'Waiting to be used · Expires in 24 h' with live action buttons.",
+   "screenshot":"screenshots/edge-desktop-dialog-still-open.png",
+   "suggested_fix":"Poll the invitation list while the dialog is open (or refresh on window focus).",
+   "files_likely_involved":["ui-prototype/src/ClientApp.jsx"]},
+  {"id":"F-017-03","story_id":"STORY-017","severity":"low","category":"consistency","criterion":"Information consistency on one screen","score":"warn",
+   "description":"Right after the join, the project switcher says 'Infra On-call · Saved locally · waiting for hub' while the header SaveStatus for the same project says 'Saved locally · synced'.",
+   "expected":"Both surfaces show the same current state.",
+   "actual":"Conflicting labels side by side.",
+   "screenshot":"screenshots/step-6b-switcher-both.png",
+   "suggested_fix":"Refresh session.projects after join completes, or feed the switcher from the same live status as the header.",
+   "files_likely_involved":["ui-prototype/src/ClientApp.jsx","ui-prototype/src/Pardner.jsx"]}
+]

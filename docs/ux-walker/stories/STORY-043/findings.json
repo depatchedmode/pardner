@@ -1,0 +1,87 @@
+[
+  {
+    "id": "F-043-01",
+    "story_id": "STORY-043",
+    "severity": "high",
+    "category": "flow",
+    "criterion": "Dead ends / One way per task",
+    "score": "fail",
+    "description": "There is no UI to remove a member. J. Doe's profile shows Identity, Devices and Live sessions with only a Close button. Removal requires `client show --project ID`, reading JSON to find the humanId, and `client revoke --kind member`.",
+    "expected": "A creator-only \"Remove from project\" action on the member's profile (with confirmation).",
+    "actual": "CLI-only; 2 terminal commands plus JSON reading.",
+    "screenshot": "screenshots/step-1-profile.png",
+    "suggested_fix": "Add the action to ProfileDialog for the creator, calling the existing revoke route.",
+    "files_likely_involved": [
+      "ui-prototype/src/Avatar.jsx",
+      "ui-prototype/src/ClientApp.jsx",
+      "lib/client-service.js"
+    ]
+  },
+  {
+    "id": "F-043-02",
+    "story_id": "STORY-043",
+    "severity": "medium",
+    "category": "error-handling",
+    "criterion": "Error messages are actionable",
+    "score": "fail",
+    "description": "Flag 21 confirmed: `client revoke --kind member --id <J. Doe actor ID>` returns NOT_FOUND \"Admission not found\" with no hint that the identity (humanId) is needed. The failed attempt also consumes the operation ID: retrying with the correct humanId and the same --operation-id returns OPERATION_ID_REUSED \"Operation ID belongs to different input\".",
+    "expected": "Accept the actor ID, or say \"Use the person's identity ID (humanId from client show)\"; failed validation should not reserve the operation ID.",
+    "actual": "NOT_FOUND, then OPERATION_ID_REUSED.",
+    "screenshot": "screenshots/step-1-profile.png",
+    "suggested_fix": "Resolve actor IDs to humanId in revoke, improve the message.",
+    "files_likely_involved": [
+      "lib/client-service.js",
+      "lib/client-cli.js"
+    ]
+  },
+  {
+    "id": "F-043-03",
+    "story_id": "STORY-043",
+    "severity": "medium",
+    "category": "error-handling",
+    "criterion": "Labels / copy",
+    "score": "warn",
+    "description": "The creator revoking her own membership gets FORBIDDEN \"Only creator may revoke other memberships\", which tells the creator she is not the creator.",
+    "expected": "\"The project creator can't be removed.\"",
+    "actual": "Misleading refusal reason.",
+    "screenshot": "screenshots/step-7-priya-after.png",
+    "suggested_fix": "Special-case self-revocation by the creator.",
+    "files_likely_involved": [
+      "lib/client-service.js"
+    ]
+  },
+  {
+    "id": "F-043-04",
+    "story_id": "STORY-043",
+    "severity": "high",
+    "category": "error-handling",
+    "criterion": "Recovery advice",
+    "score": "fail",
+    "description": "After revocation, the removed person's board says \"Project access revoked; local data remains saved / This invitation or membership was revoked. Ask for a new invitation.\" with Retry and Open another project. Following the advice fails: a new Human invitation is refused with IDENTITY_MISMATCH \"Existing human identity requires My device proof\", and for a revoked device (STORY-045) a new My device invitation is refused with REVOKED \"Project membership is not available\". Retry can never succeed. Recovery actually needs a fresh client directory, which is never said. The revoked project also disappears from `client list`.",
+    "expected": "Revocation is described as permanent for this identity/device, Retry is hidden, and the real recovery path (if any) is stated.",
+    "actual": "Advice and Retry lead to dead ends.",
+    "screenshot": "screenshots/step-6-jdoe-revoked.png",
+    "suggested_fix": "Use a REVOKED-specific hint that does not suggest a new invitation; drop Retry for definitive revocation.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx",
+      "lib/client-invites.js"
+    ]
+  },
+  {
+    "id": "F-043-05",
+    "story_id": "STORY-043",
+    "severity": "medium",
+    "category": "hierarchy",
+    "criterion": "Status accuracy",
+    "score": "warn",
+    "description": "Revoked Actors look like ordinary offline members: J. Doe stays in Priya's avatar stack and People list as \"Human · Offline\", a revoked agent (Cursor, STORY-045) as \"Agent · Offline\", the invite row stays \"Used\", and `client show` has no revoked flag.",
+    "expected": "Revoked members are marked (or moved to a \"Removed\" group) everywhere they appear.",
+    "actual": "No visible difference between revoked and offline.",
+    "screenshot": "screenshots/step-7-priya-after.png",
+    "suggested_fix": "Expose revocation in the actor directory and render a Removed badge.",
+    "files_likely_involved": [
+      "ui-prototype/src/Avatar.jsx",
+      "lib/client-service.js"
+    ]
+  }
+]

@@ -1,0 +1,1179 @@
+{
+ "timestamp": "2026-11-09T19:00:05.238563Z",
+ "catalog": "docs/ux-paths/catalog.md (client mode, 2026-11-09)",
+ "total_stories": 146,
+ "walking": 146,
+ "skipping": 0,
+ "re_verifying": 0,
+ "flagged_first": 78,
+ "order": [
+  {
+   "id": "STORY-002",
+   "title": "Running `pardner open` again when the service is already up",
+   "topic": "First launch and sign-in",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-004",
+   "title": "Reused or expired sign-in link \u2192 signed-out screen and Check again",
+   "topic": "First launch and sign-in",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-005",
+   "title": "Signed out in the middle of a session (server-side revoke)",
+   "topic": "First launch and sign-in",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-007",
+   "title": "PORT_IN_USE \u2014 another process on the client's port",
+   "topic": "First launch and sign-in",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-009",
+   "title": "Checking and stopping the service (`client status` / `client stop`)",
+   "topic": "First launch and sign-in",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-010",
+   "title": "Agent-only device tries to open a human browser",
+   "topic": "First launch and sign-in",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-012",
+   "title": "Long first-day journey \u2014 agent sets up, person signs in, mishaps, restart",
+   "topic": "First launch and sign-in",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-013",
+   "title": "First-run confirmation with Git-prefilled identity",
+   "topic": "Identity confirmation and device linking",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-014",
+   "title": "No Git config, so the person types their identity",
+   "topic": "Identity confirmation and device linking",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-015",
+   "title": "Link a second laptop with a My device invitation from the browser",
+   "topic": "Identity confirmation and device linking",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-016",
+   "title": "Pasting the wrong kind of invitation on the Link this device page",
+   "topic": "Identity confirmation and device linking",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-018",
+   "title": "Confirmed a duplicate identity by mistake, then tried to link",
+   "topic": "Identity confirmation and device linking",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-019",
+   "title": "Two tabs racing on the identity step (IDENTITY_EXISTS in the browser)",
+   "topic": "Identity confirmation and device linking",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-020",
+   "title": "Reviewing your own profile (\"You\") after linking",
+   "topic": "Identity confirmation and device linking",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-021",
+   "title": "Lost laptop: revoking a linked device and re-linking a replacement",
+   "topic": "Identity confirmation and device linking",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-023",
+   "title": "End-to-end: a new teammate's first day across two computers",
+   "topic": "Identity confirmation and device linking",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-024",
+   "title": "First project from the Welcome page",
+   "topic": "Start, join and switch projects",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-027",
+   "title": "Join errors: expired, used, revoked, and pasted wrong",
+   "topic": "Start, join and switch projects",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-028",
+   "title": "Hub offline during join, then resuming after reload",
+   "topic": "Start, join and switch projects",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-029",
+   "title": "Switching between projects with the header switcher (mouse and keyboard)",
+   "topic": "Start, join and switch projects",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-030",
+   "title": "\"Unconfirmed change\" in the switcher and finding the saved request",
+   "topic": "Start, join and switch projects",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-031",
+   "title": "\"This project didn't open.\" recovery",
+   "topic": "Start, join and switch projects",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-034",
+   "title": "Full onboarding of a two-person team across two computers",
+   "topic": "Start, join and switch projects",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-035",
+   "title": "Two tabs racing the same Start and Join",
+   "topic": "Start, join and switch projects",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-036",
+   "title": "Invite a teammate to a project from the Invite menu",
+   "topic": "Invitations lifecycle",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-041",
+   "title": "A recipient on another computer redeems a Human invitation (and the loopback trap)",
+   "topic": "Invitations lifecycle",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-043",
+   "title": "Creator removes a member who joined from a leaked invite",
+   "topic": "Invitations lifecycle",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-049",
+   "title": "Use the +N People dialog in a crowded project",
+   "topic": "People, presence, profiles and focus",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-051",
+   "title": "Switch to another tab, then close the window (hidden \u2192 Idle, pagehide \u2192 Offline)",
+   "topic": "People, presence, profiles and focus",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-054",
+   "title": "Agent shows Offline after onboarding, until its harness reports presence",
+   "topic": "People, presence, profiles and focus",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-056",
+   "title": "Keyboard-only and screen-reader pass over presence surfaces",
+   "topic": "People, presence, profiles and focus",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-061",
+   "title": "Close a half-written draft with Escape, then come back to it",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-064",
+   "title": "Jump from a vein to its tasks, then create a task under that filter",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-065",
+   "title": "Create a task that the active filters hide",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-068",
+   "title": "Create and triage tasks with the keyboard only",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-072",
+   "title": "Move a task to Review with the quick Status select",
+   "topic": "Task detail, editing, drafts and conflicts",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-073",
+   "title": "Edit draft survives closing the panel and reloading the tab",
+   "topic": "Task detail, editing, drafts and conflicts",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-074",
+   "title": "Edit draft survives a project switch and comes back",
+   "topic": "Task detail, editing, drafts and conflicts",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-077",
+   "title": "Resolve a concurrent status conflict with \"Keep this status\"",
+   "topic": "Task detail, editing, drafts and conflicts",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-078",
+   "title": "Resolve an assignee or tags conflict where the values are raw data",
+   "topic": "Task detail, editing, drafts and conflicts",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-079",
+   "title": "Link a GitHub issue to a task (with input mistakes)",
+   "topic": "Task detail, editing, drafts and conflicts",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-080",
+   "title": "Unlink a wrongly linked GitHub issue",
+   "topic": "Task detail, editing, drafts and conflicts",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-082",
+   "title": "Reconstruct what happened to a task from History",
+   "topic": "Task detail, editing, drafts and conflicts",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-083",
+   "title": "Inspect an operation integrity conflict",
+   "topic": "Task detail, editing, drafts and conflicts",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-086",
+   "title": "Try to @mention a teammate by name and get the \"matches no Actor\" hint",
+   "topic": "Comments, mentions, read receipts and handoff",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-087",
+   "title": "Catch up on new comments and Mark all read",
+   "topic": "Comments, mentions, read receipts and handoff",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-089",
+   "title": "A non-author clicks Keep this comment and gets stuck behind a saved request",
+   "topic": "Comments, mentions, read receipts and handoff",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-090",
+   "title": "Edit or delete a comment (CLI only) and the delete-permission gap",
+   "topic": "Comments, mentions, read receipts and handoff",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-091",
+   "title": "Hand off in-progress work to a reviewer",
+   "topic": "Comments, mentions, read receipts and handoff",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-093",
+   "title": "Agent claims a mention, replies, and acknowledges",
+   "topic": "Comments, mentions, read receipts and handoff",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-094",
+   "title": "Agent hands work back to a human via CLI",
+   "topic": "Comments, mentions, read receipts and handoff",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-095",
+   "title": "Full loop: human mentions agent, agent works, hands back, human reviews and catches up",
+   "topic": "Comments, mentions, read receipts and handoff",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-096",
+   "title": "Comment with mixed known and unknown handles, then review the chips",
+   "topic": "Comments, mentions, read receipts and handoff",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-097",
+   "title": "First visit to an empty Goals view, then seeding a goal and vein from the CLI",
+   "topic": "Goals, veins and Activity",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-098",
+   "title": "Marking a vein Proven from the Goals view",
+   "topic": "Goals, veins and Activity",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-105",
+   "title": "Filtering Activity to goal and vein changes, and discovering where verdicts went",
+   "topic": "Goals, veins and Activity",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-108",
+   "title": "Agent reads the plan layer and records a verdict through the CLI only",
+   "topic": "Goals, veins and Activity",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-110",
+   "title": "First visit to the Control tab on a fresh client",
+   "topic": "Control tab (T3 and Cursor Cloud)",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-112",
+   "title": "Full first run \u2014 project, thread mapping, follow-up, approval, verdict, artifact",
+   "topic": "Control tab (T3 and Cursor Cloud)",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-113",
+   "title": "Withdraw a follow-up before it is sent",
+   "topic": "Control tab (T3 and Cursor Cloud)",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-114",
+   "title": "Cancel a running T3 run, then release the cancellation hold",
+   "topic": "Control tab (T3 and Cursor Cloud)",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-117",
+   "title": "Unqualified T3 version holds every thread",
+   "topic": "Control tab (T3 and Cursor Cloud)",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-119",
+   "title": "Credential expiring \u2014 pair again",
+   "topic": "Control tab (T3 and Cursor Cloud)",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-121",
+   "title": "Cursor Cloud context \u2014 register, save intent, cancel, freeze evidence, verdict, release hold",
+   "topic": "Control tab (T3 and Cursor Cloud)",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-124",
+   "title": "Grant refused for a second harness, then enroll it through an Agent invitation",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-125",
+   "title": "Set up an agent-only build box from an Agent invitation",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-127",
+   "title": "Mistakes with `--token-file` and how each one fails",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-128",
+   "title": "Send a raw operation with `client operation`",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-130",
+   "title": "Revoke an agent and observe what its tools see",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-131",
+   "title": "Attach a Codex bridge to a client project",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-132",
+   "title": "Bridge config refusals under client-credential rules",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-134",
+   "title": "Use the control runtime's guarded agent CLI and wrapper scripts",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-135",
+   "title": "Run a standalone `pardner serve` for an integration",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-136",
+   "title": "Agent claims a mention, can't finish, and releases it",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-138",
+   "title": "Trying a second change while one is unconfirmed",
+   "topic": "Resilience, recovery and boundaries",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-140",
+   "title": "The creator revokes a member, who sees REVOKED on their next write",
+   "topic": "Resilience, recovery and boundaries",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-141",
+   "title": "Exporting retained work after revocation",
+   "topic": "Resilience, recovery and boundaries",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-143",
+   "title": "The client service crashes or is stopped while the board is open",
+   "topic": "Resilience, recovery and boundaries",
+   "action": "walk",
+   "reason": "never walked; flagged",
+   "flagged": true
+  },
+  {
+   "id": "STORY-001",
+   "title": "First-ever launch on a Mac with a bare `pardner`",
+   "topic": "First launch and sign-in",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-003",
+   "title": "Headless Linux box with no browser launcher (`--output-file`)",
+   "topic": "First launch and sign-in",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-006",
+   "title": "Startup shell stuck \u2014 service down or browser build broken",
+   "topic": "First launch and sign-in",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-008",
+   "title": "Slow or failing start \u2014 CLIENT_START_TIMEOUT, CLIENT_START_FAILED, STORAGE_IN_USE",
+   "topic": "First launch and sign-in",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-011",
+   "title": "Opening a standalone `pardner serve` in the browser",
+   "topic": "First launch and sign-in",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-017",
+   "title": "Linking a second project on an already-linked laptop",
+   "topic": "Identity confirmation and device linking",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-022",
+   "title": "CLI-only identity setup by an agent, with validation and operation-ID mistakes",
+   "topic": "Identity confirmation and device linking",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-025",
+   "title": "Start project when the response is lost, and the resumed attempt",
+   "topic": "Start, join and switch projects",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-026",
+   "title": "Join a teammate's project by pasting the invitation prompt",
+   "topic": "Start, join and switch projects",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-032",
+   "title": "Last-project memory across reloads and sign-ins",
+   "topic": "Start, join and switch projects",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-033",
+   "title": "Agent-led setup with `client create` and `client join`",
+   "topic": "Start, join and switch projects",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-037",
+   "title": "Copy the invite while screen-sharing",
+   "topic": "Invitations lifecycle",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-038",
+   "title": "Copy is blocked, so copy the text by hand",
+   "topic": "Invitations lifecycle",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-039",
+   "title": "Revoke a mistaken invitation and create a new one",
+   "topic": "Invitations lifecycle",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-040",
+   "title": "Read invitation states and expiry in the history list",
+   "topic": "Invitations lifecycle",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-042",
+   "title": "Non-creator invites from a replica, and the hub is unreachable",
+   "topic": "Invitations lifecycle",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-044",
+   "title": "A non-creator tries to remove a member",
+   "topic": "Invitations lifecycle",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-045",
+   "title": "Retire an old laptop and a retired agent harness",
+   "topic": "Invitations lifecycle",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-046",
+   "title": "The full life of one invite, from creation to expiry, by CLI",
+   "topic": "Invitations lifecycle",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-047",
+   "title": "Choosing the wrong invite type and recovering",
+   "topic": "Invitations lifecycle",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-048",
+   "title": "Glance at who is around, then open a teammate's profile from the header",
+   "topic": "People, presence, profiles and focus",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-050",
+   "title": "Watch your own state go Active \u2192 Idle \u2192 Active (idle timeout)",
+   "topic": "People, presence, profiles and focus",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-052",
+   "title": "See \"Here now\" on a card and open the task to see who is in it",
+   "topic": "People, presence, profiles and focus",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-053",
+   "title": "Jump from a profile's Focus link straight into the task",
+   "topic": "People, presence, profiles and focus",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-055",
+   "title": "Full collaborative morning \u2014 triage by presence, coordinate via focus",
+   "topic": "People, presence, profiles and focus",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-057",
+   "title": "Operator/agent reads presence from the CLI",
+   "topic": "People, presence, profiles and focus",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-058",
+   "title": "Create a first task from the empty board",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-059",
+   "title": "Fill every field on a new task, including tags and an assignee",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-060",
+   "title": "Submit a title that is empty or only spaces",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-062",
+   "title": "Throw away a draft with Discard draft",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-063",
+   "title": "Filter the board to one person's open work and have it remembered",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-066",
+   "title": "Create a task before your Actor has synced",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-067",
+   "title": "The create request fails or stays pending",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-069",
+   "title": "Use the board on a narrow window and a small laptop",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-070",
+   "title": "An agent creates a task from the CLI and the person sees it appear",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-071",
+   "title": "A shared board changes underneath the filters",
+   "topic": "Task board and creation",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-075",
+   "title": "Newer save on a field Maya did not touch",
+   "topic": "Task detail, editing, drafts and conflicts",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-076",
+   "title": "Newer save on a field Maya also changed (STALE_UPDATE then rebase)",
+   "topic": "Task detail, editing, drafts and conflicts",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-081",
+   "title": "Agent commits work and the human reviews Evidence and History",
+   "topic": "Task detail, editing, drafts and conflicts",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-084",
+   "title": "A full collaborative day on one task",
+   "topic": "Task detail, editing, drafts and conflicts",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-085",
+   "title": "Post a progress comment with no mentions",
+   "topic": "Comments, mentions, read receipts and handoff",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-088",
+   "title": "Resolve a concurrent comment edit with Keep this comment (author)",
+   "topic": "Comments, mentions, read receipts and handoff",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-092",
+   "title": "Someone changes the task while you're writing a handoff",
+   "topic": "Comments, mentions, read receipts and handoff",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-099",
+   "title": "Spotting \"Ready for a verdict\" and drilling into the vein's tasks",
+   "topic": "Goals, veins and Activity",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-100",
+   "title": "Resolving a disputed vein status with the Keep buttons",
+   "topic": "Goals, veins and Activity",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-101",
+   "title": "A vein moved to two goals at once (goal conflict)",
+   "topic": "Goals, veins and Activity",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-102",
+   "title": "Conflicting goal title and description edits",
+   "topic": "Goals, veins and Activity",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-103",
+   "title": "Adding tasks to a vein and watching the counts change",
+   "topic": "Goals, veins and Activity",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-104",
+   "title": "Reading the Activity feed by day and jumping to subjects",
+   "topic": "Goals, veins and Activity",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-106",
+   "title": "Paging back with Show older activity to the start of the project",
+   "topic": "Goals, veins and Activity",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-107",
+   "title": "End-to-end experiment cycle: goal, veins, work, verdicts, goal achieved",
+   "topic": "Goals, veins and Activity",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-109",
+   "title": "Vein filter persistence and stale filters after a vein link",
+   "topic": "Goals, veins and Activity",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-111",
+   "title": "Pair T3, mistyping the code first",
+   "topic": "Control tab (T3 and Cursor Cloud)",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-115",
+   "title": "Review a foreign run that someone started directly in T3",
+   "topic": "Control tab (T3 and Cursor Cloud)",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-116",
+   "title": "Unknown outcome after a lost reply \u2014 look up, then retry or abandon",
+   "topic": "Control tab (T3 and Cursor Cloud)",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-118",
+   "title": "Record an independent check and a rejected human verdict, with artifact mistakes",
+   "topic": "Control tab (T3 and Cursor Cloud)",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-120",
+   "title": "Stale reads and an unreachable service",
+   "topic": "Control tab (T3 and Cursor Cloud)",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-122",
+   "title": "An agent credential tries to use Control",
+   "topic": "Control tab (T3 and Cursor Cloud)",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-123",
+   "title": "Mint the setup agent's credential for a fresh project",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-126",
+   "title": "Agent works a task end to end with `--token-file`",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-129",
+   "title": "Agent tries operations that are outside the board allowlist",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-133",
+   "title": "Reconcile an uncertain bridge dispatch",
+   "topic": "Agent credentials, CLI and bridge attach",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-137",
+   "title": "Wi-Fi drops mid-save and the saved request is replayed",
+   "topic": "Resilience, recovery and boundaries",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-139",
+   "title": "Working on a replica while the hub is unreachable",
+   "topic": "Resilience, recovery and boundaries",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-142",
+   "title": "Cold backup and restore into a fresh installation",
+   "topic": "Resilience, recovery and boundaries",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-144",
+   "title": "Control runtime start, status, open and stop",
+   "topic": "Resilience, recovery and boundaries",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-145",
+   "title": "Trying to open the board from a phone on the same Wi-Fi",
+   "topic": "Resilience, recovery and boundaries",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  },
+  {
+   "id": "STORY-146",
+   "title": "A crash screen caused by blocked browser storage",
+   "topic": "Resilience, recovery and boundaries",
+   "action": "walk",
+   "reason": "never walked",
+   "flagged": false
+  }
+ ]
+}
