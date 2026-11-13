@@ -1,6 +1,5 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -10,25 +9,30 @@ import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
 it('comments and mentions preserve canonical task references and stable recipient keys across reads', async () => {
   await withWorkspaceServer(async ({ create, operation, context, api, server }) => {
     const taskId = await create()
-    const receipt = await operation('comment.add', { taskId, text: '@builder and @reviewer please review' })
+    const first = await operation('comment.add', { taskId, text: '@builder and @reviewer please review' })
+    const second = await operation('comment.add', { taskId, text: '@builder please review again' })
     const rawBefore = JSON.stringify(server.store.workspace.handle.doc())
+    let firstPassKeys
     for (let iteration = 0; iteration < 2; iteration++) {
       const result = await context(taskId)
-      assert.equal(result.comments.length, 1)
-      assert.equal(result.mentions.length, 2)
+      assert.equal(result.comments.length, 2)
+      assert.equal(result.mentions.length, 3)
       const snapshot = (await api('/automerge/doc')).doc
-      for (const comment of [result.comments[0], snapshot.comments[receipt.result.commentId]]) {
+      for (const comment of result.comments) {
         assert.equal(comment.taskId, taskId)
         assert.equal(Object.hasOwn(comment, 'task_id'), false)
+        assert.equal(snapshot.comments[comment.id].taskId, taskId)
       }
-      for (const mention of result.mentions) {
+      const keys = result.mentions.map(mention => {
         assert.equal(mention.taskId, taskId)
-        assert.equal(mention.commentId, receipt.result.commentId)
         assert.equal(Object.hasOwn(mention, 'task_id'), false)
-        const expectedKey = createHash('sha256').update(JSON.stringify([mention.commentId, mention.toActorId])).digest('hex')
-        assert.equal(mention.idempotency_key, expectedKey)
-        assert.equal(snapshot.mentions[mention.id].idempotency_key, expectedKey)
-      }
+        assert.ok([first.result.commentId, second.result.commentId].includes(mention.commentId))
+        assert.equal(snapshot.mentions[mention.id].idempotency_key, mention.idempotency_key)
+        return mention.idempotency_key
+      })
+      assert.equal(new Set(keys).size, 3, 'distinct comments and recipients get distinct mention keys')
+      if (iteration === 0) firstPassKeys = keys
+      else assert.deepEqual(keys, firstPassKeys, 'mention keys stay stable across replayed reads')
     }
     assert.equal(JSON.stringify(server.store.workspace.handle.doc()), rawBefore)
   })

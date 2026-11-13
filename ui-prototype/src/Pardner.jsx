@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { GOAL_STATUSES, STATUS_LABELS as LABELS, STATUSES } from '@pardner/domain-vocab'
 import ActorMarkdown from './ActorMarkdown.jsx'
 import './pardner.css'
 import { createOperationId } from './operation-id.js'
@@ -7,21 +8,8 @@ import PhoneAccess from './PhoneAccess.jsx'
 import ControlPane from './ControlPane.jsx'
 import ClientApp from './ClientApp.jsx'
 import { AvatarStack } from './Avatar.jsx'
+import { syncStatusText } from './sync-status.js'
 
-const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
-const LABELS = {
-  backlog: 'Backlog',
-  'up-next': 'Up next',
-  'in-progress': 'In progress',
-  review: 'Review',
-  completed: 'Completed',
-  'dead-end': 'Dead end',
-  abandoned: 'Abandoned',
-  open: 'Open',
-  proven: 'Proven',
-  achieved: 'Achieved',
-}
-const GOAL_STATUSES = ['open', 'achieved', 'abandoned']
 const labelActor = (actor) =>
   actor ? `${actor.displayName || actor.handle} · ${actor.kind}` : 'Unassigned'
 
@@ -66,13 +54,9 @@ function ErrorNotice({ error, retry }) {
   )
 }
 function SaveStatus({ status, connected, busy, heads }) {
-  let text = 'Connecting to local service'
-  if (busy) text = 'Saving locally…'
-  else if (!connected) text = 'Local service disconnected'
-  else if (status?.storageError) text = 'Local save failed'
-  else if (!status?.savedLocally || status.heads?.join(',') !== heads) text = 'Saving locally…'
-  else if (status.syncPending) text = 'Saved locally · waiting for hub'
-  else text = 'Saved locally · synced'
+  const text = !status && connected && !busy
+    ? 'Connecting to local service'
+    : syncStatusText(status, { connected, busy, heads })
   return (
     <span
       className="save-status"

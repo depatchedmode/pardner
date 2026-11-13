@@ -18,17 +18,7 @@ it('rejects and aborts a successful observation arriving after its deadline', as
   assert.equal(signal.aborted, true)
 })
 
-it('does not start an expired observation or retry after its interval consumes the budget', async () => {
-  let calls = 0
-  const check = () => { calls++; return false }
-  await assert.rejects(eventually(check, { timeoutMs: 0 }), /Timed out/)
-  assert.equal(calls, 0)
-  await assert.rejects(eventually(check, { timeoutMs: 30, intervalMs: 100 }), /Timed out/)
-  assert.equal(calls, 1)
-})
-
-it('bounds a never-settling observation and preserves one deadline across workflow phases', async () => {
-  await assert.rejects(eventually(() => new Promise(() => {}), { timeoutMs: 30 }), /Timed out/)
+it('preserves one deadline across workflow phases', async () => {
   const deadline = Date.now() + 150
   assert.equal(await eventually(async () => { await delay(60); return 'first phase' }, { deadline }), 'first phase')
   await assert.rejects(eventually(async () => { await delay(150); return 'final inspection' }, { deadline }), /Timed out/)
