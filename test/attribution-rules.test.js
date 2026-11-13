@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import * as A from '@automerge/automerge'
-import { SHARDS, createSignaturesData, machineActor, machinePrefix, shardOf, signChange, storedSignatures, verifyChange } from '../lib/change-signatures.js'
-import { machineIndex } from '../lib/attribution.js'
+import { CANDIDATES_PER_PASS, MAX_CANDIDATES, SHARDS, createSignaturesData, keptCandidates, machineActor, machinePrefix, shardOf, signChange, storedSignatures, verifyChange } from '../lib/change-signatures.js'
+import { VerificationDeferred, machineIndex } from '../lib/attribution.js'
 import { ChangeLog } from '../lib/change-log.js'
 import { generateMachineKey, personIdFor } from '../lib/machine-key.js'
 import { actorId as actorFor } from '../lib/client-identity.js'
@@ -16,6 +16,19 @@ import { actors, entryOf, eventually, execute, operationOf, signerOf, stateOf, w
 
 // The rules that make a signer line mean "this machine signed exactly this content" (docs/PARDNER-TRUST-DESIGN.md,
 // section 3), for every peer, even when another member's client writes unusual but well-formed data.
+
+/**
+ * Makes `shard` one map again on the hub, in as many passes as its candidates take (each verifies at most
+ * CANDIDATES_PER_PASS of one change, resumed where the last stopped). Returns the number of passes.
+ */
+function settleShard(attribution, shard) {
+  for (let passes = 1; passes < 100; passes++) {
+    const before = attribution.verifications
+    try { attribution.writeEntries([], new Set([shard])); return passes } catch (error) { if (!(error instanceof VerificationDeferred)) throw error }
+    assert.ok(attribution.verifications - before <= CANDIDATES_PER_PASS, `one pass verified ${attribution.verifications - before} candidates of one change`)
+  }
+  throw new Error('the shard was never settled')
+}
 
 const reviewEntry = (runtime, hash) => runtime.getDoc().attribution.review.find(entry => entry.change === hash)
 
@@ -743,7 +756,7 @@ it('a change with many candidate signatures has them read once for each state of
     try { for (let index = 0; index < 100; index++) reader.values(hash) } finally { backend.getAll = getAll }
     assert.equal(reads, 0, `the candidates were read ${reads} more times for 100 lookups of one state`)
     // Made one map again while no change of this hash is known: the candidates are kept, at most 16 of them.
-    server.store.attribution.writeEntries([], new Set([shard]))
+    settleShard(server.store.attribution, shard)
     assert.equal(storedSignatures(signatures.doc(), hash).length, 16)
   })
 })
@@ -833,6 +846,13 @@ it('past 16 candidates for a change whose signer cannot be established, a signat
   const settled = keptCandidates({ values: sorted([...unknown, genuine]), held: null, possible: [], others: [bob.publicKey], verify })
   assert.equal(settled.length, MAX_CANDIDATES)
   assert.ok(!settled.some(value => Buffer.from(value).equals(genuine)), 'a signature by a machine that cannot be the signer is kept before one that may be')
+  // Sixteen other known machines each with a valid signature of their own, ahead of the genuine signer in key order:
+  // one value per possible signer is always kept, so the genuine one is not cut at the seventeenth place.
+  const crowd = Array.from({ length: MAX_CANDIDATES }, () => generateMachineKey())
+  const theirs = crowd.map(key => new Uint8Array(signChange(key, projectId, hash)))
+  const many = keptCandidates({ values: sorted([...theirs, genuine]), held: null, possible: [...crowd.map(key => key.publicKey), bob.publicKey], others: [], verify })
+  assert.ok(many.some(value => Buffer.from(value).equals(genuine)), 'sixteen other machines’ signatures pushed the genuine one out')
+  assert.equal(many.length, MAX_CANDIDATES + 1)
   // The value this peer cached is kept first whatever else is there.
   assert.ok(Buffer.from(keptCandidates({ values: sorted([...junk, genuine]), held: junk[39], possible: [bob.publicKey], others: [], verify })[0]).equals(junk[39]))
 })
@@ -855,11 +875,60 @@ it('past 16 candidate signatures arriving before their change, the valid one is 
     bob.signatures.update(doc => A.merge(doc, merged))
     const signatures = server.store.workspace.signatures
     await eventually(() => A.hasHeads(signatures.doc(), A.getHeads(bob.signatures.doc())), 'the candidates never arrived')
-    server.store.attribution.writeEntries([], new Set([shard]))
+    // The hub settles the shard in passes, each verifying at most CANDIDATES_PER_PASS candidates of the change.
+    assert.ok(settleShard(server.store.attribution, shard) > 1, 'the candidates were all examined in one pass')
+    // The change is not in the board, so nothing else will finish examining it: its results are released for eviction.
+    assert.ok(!server.store.attribution.examining.has(hash), 'a change examined only for a shard merge stays pinned')
     const kept = storedSignatures(signatures.doc(), hash)
     assert.equal(kept.length, 16)
     assert.ok(kept.some(value => Buffer.from(value).equals(valid)), 'the valid signature was dropped')
     bob.board.update(doc => A.merge(doc, fork))
     await eventually(() => server.store.attribution.stateOf(hash).state === 'signed', 'the hub never found the valid signature')
   })
+})
+
+it('a genuine signature behind sixteen identical junk values in a candidate list is read, kept first, and found', { timeout: 90000 }, async () => {
+  const projectId = 'cd'.repeat(32), hash = 'ef'.repeat(32), shard = shardOf(hash)
+  const key = generateMachineKey()
+  const genuine = new Uint8Array(signChange(key, projectId, hash))
+  const junk = new Uint8Array(64).fill(7)
+  const doc = A.change(A.from(createSignaturesData()), draft => { draft[shard][hash] = [...Array(MAX_CANDIDATES).fill(junk), genuine] })
+  // Every position is read and the values made distinct: the genuine one is not hidden behind the first sixteen.
+  const values = storedSignatures(doc, hash)
+  assert.equal(values.length, 2)
+  assert.ok(values.some(value => Buffer.from(value).equals(genuine)), 'the genuine signature was not read')
+  const kept = keptCandidates({ values: [...values].sort(Buffer.compare), possible: [key.publicKey], verify: (publicKey, value) => verifyChange(publicKey, projectId, hash, value) })
+  assert.ok(Buffer.from(kept[0]).equals(genuine), 'the genuine signature is not kept first')
+
+  // Through a hub: a member's change whose only signature sits behind sixteen copies of one junk value is signed.
+  await withHub(async ({ project, server, bare }) => {
+    const bob = await bare(1)
+    await eventually(() => bob.board.doc().operations && bob.signatures.doc().v, 'Bob never synced')
+    const { hash: change } = writeTask(bob, 'Signed behind junk')
+    const signature = signChange(bob.key, project.projectId, change)
+    bob.signatures.change(draft => { draft[shardOf(change)][change] = [...Array(MAX_CANDIDATES).fill(junk), signature] })
+    await eventually(() => server.store.attribution.stateOf(change).state === 'signed', 'the hub never found the genuine signature')
+  })
+})
+
+it('a change whose signature sits among hundreds of invalid candidates is examined within the per-slice bound, resumed across slices, each value once, and signed', { timeout: 120000 }, async () => {
+  // A small memo of checks: the change under examination keeps its results, so no candidate is verified twice.
+  await withHub(async ({ project, server, bare }) => {
+    const attribution = server.store.attribution
+    const slices = []
+    const work = attribution.work.bind(attribution)
+    attribution.work = () => { const before = attribution.verifications; try { return work() } finally { slices.push(attribution.verifications - before) } }
+    const bob = await bare(1)
+    await eventually(() => bob.board.doc().operations && bob.signatures.doc().v, 'Bob never synced')
+    const { hash: change } = writeTask(bob, 'Signed among many')
+    const junk = Array.from({ length: 600 }, (_, index) => { const value = new Uint8Array(64); value[0] = index >> 8; value[1] = index & 255; return value })
+    const signature = signChange(bob.key, project.projectId, change)
+    const start = attribution.verifications
+    bob.signatures.change(draft => { draft[shardOf(change)][change] = [...junk, signature] })
+    await eventually(() => attribution.stateOf(change).state === 'signed', 'the hub never found the genuine signature', 60000)
+    const examined = slices.filter(count => count > 0)
+    assert.ok(Math.max(...examined) <= CANDIDATES_PER_PASS, `a slice verified ${Math.max(...examined)} candidates of one change`)
+    assert.ok(examined.length >= Math.ceil(601 / CANDIDATES_PER_PASS), `the examination was not spread across slices: ${examined.length}`)
+    assert.ok(attribution.verifications - start <= 601, `${attribution.verifications - start} verifications for 601 distinct values: some were verified again`)
+  }, { hubOptions: { attribution: { quietMs: 400, pollMs: 100, checksKept: 40 } } })
 })

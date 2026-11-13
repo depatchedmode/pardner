@@ -56,6 +56,15 @@ test('one entry whose payload cannot be turned into words is shown as such, and 
   assert.doesNotThrow(() => activityRows({ activity: [recordEntry], attribution: { machines: {} } }))
   assert.doesNotThrow(() => describeRecord({ entry: recordEntry }, { machines: {} }))
   assert.doesNotThrow(() => signerLine({ machines: {} }, recordEntry))
+  // A record whose own signature fails is never called signed by the machine it names; the change that wrote it is named.
+  const forged = { id: 'f', kind: 'record', key: 'f', record: { kind: 'profile', subject: 'person-a', signer: 'machine-alice' }, flags: { invalidRecord: true },
+    changes: [{ hash: 'h', state: 'signed', machineId: 'machine-mallory' }] }
+  const machines = { 'machine-alice': { name: 'Alice laptop', person: 'Alice' }, 'machine-mallory': { name: 'Mallory laptop', person: 'Mallory' } }
+  const line = signerLine({ machines }, forged)
+  assert.ok(!/^Signed by/.test(line.text), line.text)
+  assert.match(line.text, /^Not signed by the machine it names/)
+  assert.match(line.text, /written to the board by a change: Signed by .*machine-mallory|written to the board by a change: Signed by .*Mallory/)
+  assert.equal(line.tone, 'flag')
 })
 
 test('the board view shows every record it can read when one change left another unreadable, and lists the ones it cannot', async () => {
@@ -75,7 +84,10 @@ test('the board view shows every record it can read when one change left another
   const snapshot = new Workspace({ handle: { doc: () => doc }, replicaId: 'replica-test' }).snapshot()
   assert.equal(snapshot.tasks[kept.event.result.taskId].title, 'Kept')
   assert.equal(snapshot.comments[comment.event.result.commentId].content, 'Kept words')
-  assert.deepEqual(snapshot.unreadable.map(item => [item.kind, item.id]).sort(), [['comment', 'comment-orphan'], ['task', broken.event.result.taskId]])
+  // Each record and field that can't be read is listed: the comment with no text, the title that is not a revision, and
+  // the Activity entry holding none of what an entry holds.
+  assert.deepEqual([...new Set(snapshot.unreadable.map(item => `${item.kind} ${item.id}`))].sort(), ['comment comment-orphan', 'operation op-odd-link', `task ${broken.event.result.taskId}`].sort())
+  assert.equal(snapshot.tasks[broken.event.result.taskId].title, '', 'a title that is not a revision reads as empty, and the task is still shown')
   assert.equal(snapshot.tasks[huge.event.result.taskId].order, (2n ** 60n).toString(), 'an integer JSON cannot hold is shown as its exact digits')
   assert.doesNotThrow(() => JSON.stringify(snapshot))
 })

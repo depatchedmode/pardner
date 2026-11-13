@@ -1,7 +1,9 @@
 // Who made each change, as this computer's Pardner checked it (lib/activity.js on the service). Every Activity entry
 // is derived from one change, and its signer line is that change's own verdict: it means "this machine signed
-// exactly this content". A change without a valid signature is shown, never hidden. Plain words first: people and
-// machine names, never a raw hash as the main label. Names of people and machines are as they are now.
+// exactly this content", and it is the only part of an entry that is verified. What the entry says the change did
+// is its author's description, compared with what the change wrote on a best-effort basis: a flag says only that the
+// two differ. A change without a valid signature is shown, never hidden. Plain words first: people and machine
+// names, never a raw hash as the main label. Names of people and machines are as they are now.
 
 const own = (map, key) => (map && typeof key === 'string' && Object.hasOwn(map, key) ? map[key] : null)
 
@@ -21,7 +23,7 @@ const FLAGS = {
   alsoWrote: 'the change also altered content outside this entry',
   invalidRecord: 'its record signature doesn’t check out',
   alsoCreated: 'another change also claims to create this board',
-  mismatch: 'it doesn’t match what its change did',
+  mismatch: 'this description does not match what the change wrote',
   badTime: 'its change’s time can’t be shown',
 }
 
@@ -107,8 +109,12 @@ function signerLineOf(attribution, entry) {
   const changes = Array.isArray(entry.changes) ? entry.changes : []
   let lines
   if (entry.kind === 'record') {
-    lines = [{ text: `Signed by ${machineLabel(attribution, entry.record.signer)}`, tone: entry.flags?.invalidRecord ? 'flag' : 'signed' }]
-    for (const change of changes) if (['unattributed', 'removed'].includes(change.state)) lines.push({ ...changeLine(attribution, change), text: `written to the board by ${changeLine(attribution, change).text.toLowerCase()}` })
+    // A record whose own signature fails names a signer it cannot prove: say so, and name who wrote it to the board.
+    const invalid = Boolean(entry.flags?.invalidRecord)
+    lines = [invalid
+      ? { text: `Not signed by the machine it names (${machineLabel(attribution, entry.record.signer)})`, tone: 'flag' }
+      : { text: `Signed by ${machineLabel(attribution, entry.record.signer)}`, tone: 'signed' }]
+    for (const change of changes) if (invalid || ['unattributed', 'removed'].includes(change.state)) lines.push({ ...changeLine(attribution, change), text: `written to the board by a change: ${changeLine(attribution, change).text}` })
   } else {
     lines = changes.length ? changes.map(change => changeLine(attribution, change)) : [{ text: 'Signature pending', tone: 'pending' }]
     if (changes.length > 1) lines = lines.map((line, index) => ({ ...line, text: `${line.text} (${changes[index].replicaId ? 'on another replica, ' : ''}${new Date(changes[index].timestamp).toLocaleString()})` }))

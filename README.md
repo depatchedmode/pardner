@@ -150,7 +150,14 @@ already checked. No change is refused, dropped or hidden. A received change that
 carries this machine's own actor but that it did not sign is unattributed, and the
 machine reports that another machine used its actor.
 
-**A signer line means: this machine signed exactly this content.** Activity is a
+**A signer line means: this machine signed exactly this content.** That is what
+Pardner guarantees about every change, as a signed commit does in git: Activity
+shows, for each change, the machine that signed it and that machine's person. What
+an entry says the change did (its fields, values and words) is the author's own
+description, like a commit message: Pardner compares it with what the change wrote
+and flags a difference, but that check is best-effort, not a guarantee (below; its
+known gaps are listed in [#228](https://github.com/depatchedmode/pardner/issues/228)).
+None of those gaps lets a member fake who signed a change. Activity is a
 log of the board's changes, as a git log is a log of commits. Each entry is derived
 from one change. The change's decoded operations say only which keys of which of the
 board's top-level maps it wrote; every value shown is what Automerge itself reads at
@@ -173,7 +180,8 @@ passed; one change is always derived whole, so its own time is not bounded
 checked and not shown, and a change that cannot be decoded or read is its own entry
 for review.
 
-**An operation's entry must match what its change did.** For each operation type,
+**An operation's description is checked against what its change did, on a
+best-effort basis.** For each operation type,
 `lib/operation-writes.js` states the exact writes its event implies (which maps and
 keys, and the values or register contents), and the change's writes are compared
 with them. A missing write, an extra write or a different value flags the entry as
@@ -196,7 +204,15 @@ issue (each revision it names must be one). Each entry carries its one reading
 the previous value only where the board then held it, `unchanged` only where every
 value the field then held is the one written, and the comment text its change wrote.
 An event naming one field twice is flagged. The board's creation may write only what
-a new board holds and the Actors it starts with, which its genesis entry lists.
+a new board holds and the Actors it starts with, which its genesis entry lists. An
+unflagged entry is one this check found no difference in, not one proven to describe
+its change: [#228](https://github.com/depatchedmode/pardner/issues/228) lists the
+cases known to pass unflagged (earlier changes by the same author that a change's
+`deps` do not name, a retried request whose changes read differently, a read
+receipt naming a comment that does not exist, and a field written with a value of
+the wrong kind). The browser and the CLI say so: only the signer line is called
+verified, and a flagged entry says its description does not match what the change
+wrote.
 
 Activity names each entry's signer, the person and the machine; says "signature
 pending" while a signature may still be on its way; says "unattributed" and names
@@ -242,13 +258,24 @@ unflagged operation; that change then has its own Activity entry under its own
 signer. The edit form's "saved a newer …" notice credits the operation that the
 field's current value names, confirmed only when that operation's own entry is
 signed and unflagged, no other change wrote the value or into it, and nothing is
-still being read; otherwise it says unconfirmed. A board record whose stored data
-cannot be read is listed, and the board says how many. A top-level part of the board
+still being read; otherwise it says unconfirmed. Every read that hands records to
+the CLI, the hub or the browser (the board, each record's context, the board's
+Actors, the review list) reads each record on its own, as `SHAPES` in
+`lib/workspace-schema.js` says: an Actor, task, goal, vein, comment, mention,
+Activity entry, read receipt or vein link that is not a map, or has no ID it can be
+known by, is left out; a field holding a value of the wrong kind (a number for a
+task's tags, say, or a list with an element of the wrong kind), and a field with no
+readable revision, read as that kind's empty value. Each is listed in `unreadable`
+with its record and field, the board names it ("Not shown: …", "Shown empty: …"),
+and a task's panel names its own fields shown empty. Nothing on the board is changed
+or refused; the write path reads the board as it is, so an operation still records
+the value the board held. A top-level part of the board
 that a change rewrote with a value of the wrong kind (null, a number, text or a list
 where a map belongs, or a map where the schema version, project ID, name or time
 belongs) is listed with the changes that wrote it and their signers, the board names
 it, and everything else still reads; a record or write that needs it is refused as
-unreadable. The board is called by the project its metadata names, and reopens with
+unreadable. A top-level key holding several values written concurrently is read as
+the value Automerge picks (a map, when it picks one) and listed as such. The board is called by the project its metadata names, and reopens with
 the schema version and project ID its creation wrote. The task context's
 `history` (`pardner show`, and what agents read) lists the board's current operation
 events and is not attributed. Browser Activity and task History, `pardner activity`,
@@ -257,7 +284,8 @@ entries, and every CLI item carries its entry's flags, its review state and each
 signer as data; the standalone service checks no signatures, and its entries say so.
 The board announces changes that need review, with a filter for them.
 
-What a signer line does not cover: the exempt values above; side effects of a
+What a signer line does not cover: whether its entry describes the change, beyond
+the best-effort check above; the exempt values above; side effects of a
 membership record change beyond its records (flagged, not described); the names and
 titles shown beside it, which are current; and whether the act was allowed.
 
@@ -275,9 +303,17 @@ saved in the signature cache.
 Everything read from the signature document is checked for shape: only map shards,
 change-hash keys and 64-byte values. Every concurrent shard map and value is read,
 so no member can hide a valid signature behind others; a shard key's maps are read
-once per change to that key, a change's candidate values once for each state of the
-document, de-duplicated by content in one pass, and the hub makes a shard that holds
-more than one value into one map holding every entry. While a change's signer cannot
+once per change to that key, a change's candidate values (every concurrent value and
+every position of a candidate list) once for each state of the document,
+de-duplicated by content, and the hub makes a shard that holds more than one value
+into one map holding every entry. Candidates are verified in passes: one slice of
+background work, or one write into the signature document, makes at most 250 Ed25519
+verifications, at most 32 of them (`CANDIDATES_PER_PASS`, about 3.5 ms) for one
+change, and a change or shard with more is examined further in the next pass from
+where it stopped. Each result is kept while its change is under examination, its
+shard is being merged or it proves an equivocation report, and otherwise up to
+50,000 results, so no examination starts again from the beginning; copies stored
+ahead of a genuine signature delay it but never hide it. While a change's signer cannot
 be established (its change has not arrived, or its actor names no known machine),
 every distinct candidate for it is kept, as a list at its key, up to 16; once the
 signer is known the hub keeps the one that verifies. Past 16, what may be genuine is

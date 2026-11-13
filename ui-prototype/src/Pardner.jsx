@@ -16,6 +16,7 @@ import { quickStatusEditable } from './task-status.js'
 import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
 import { boardData, dictionary } from './board-data.js'
+import { emptyFields, unreadableLines } from './unreadable.js'
 import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, needsReview, newerAuthors, reviewNotice, signerLine, taskRows } from './attribution.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
@@ -202,8 +203,8 @@ function EventRow({ event: row, lookups, within, onTask, onVein, onGoal, formatT
   )
 }
 
-/** The note Activity and History carry: which parts of an entry are looked up now. */
-const CurrentLegend = () => <p className="muted current-legend">Names and titles marked <Current>like this</Current> are as they are now; times, words and values are as each entry’s signer wrote them.</p>
+/** The note Activity and History carry: what is verified, what is the author's description, and what is looked up now. */
+const CurrentLegend = () => <p className="muted current-legend">Only the signer line is verified. What an entry says is its author’s description, checked against what the change wrote where Pardner can. Names and titles marked <Current>like this</Current> are as they are now.</p>
 
 export default function Pardner() {
   const [config, setConfig] = useState(null)
@@ -553,9 +554,12 @@ export function Workspace({ config, reloadConfiguration, session }) {
   const review = reviewNotice(doc.attribution)
   // Records the board could not read: each is listed instead of stopping the whole board (lib/workspace.js snapshot).
   const unreadableItems = Array.isArray(doc.unreadable) ? doc.unreadable : []
-  // A top-level part of the board a change rewrote (its tasks, say) is named; each other record is counted.
-  const unreadableParts = [...new Set(unreadableItems.filter(item => item?.kind === 'root' && typeof item.id === 'string').map(item => item.id))]
-  const unreadableCount = unreadableItems.length - unreadableItems.filter(item => item?.kind === 'root').length
+  // A top-level part of the board a change rewrote (its tasks, say) is named, and so is each other record and field.
+  const rootIds = concurrent => [...new Set(unreadableItems.filter(item => item?.kind === 'root' && typeof item.id === 'string' && Boolean(item.concurrent) === concurrent).map(item => item.id))]
+  const unreadableParts = rootIds(false)
+  // A part holding values written concurrently is shown as the one Automerge picks.
+  const concurrentParts = rootIds(true).filter(id => !unreadableParts.includes(id))
+  const unreadableRecords = unreadableLines(unreadableItems, { tasks: doc.tasks, goals, veins })
   const openVein = (_element, veinId) => {
     focusAfterView.current = () => viewNav.current?.querySelector('[aria-pressed="true"]')?.focus()
     showVein(veinId)
@@ -613,9 +617,10 @@ export function Workspace({ config, reloadConfiguration, session }) {
       {connectionError && <div className="notice" role="status"><p>{connectionError.message}</p>
         <button onClick={retryConnection}>Retry connection</button>
       </div>}
-      {(unreadableCount > 0 || unreadableParts.length > 0) && <div className="notice warning" role="status">
+      {(unreadableRecords.length > 0 || unreadableParts.length > 0 || concurrentParts.length > 0) && <div className="notice warning unreadable-notice" role="status">
         {unreadableParts.length > 0 && <p>Part of this board can’t be read, so what it holds isn’t shown: {unreadableParts.join(', ')}. Activity lists the changes that wrote it.</p>}
-        {unreadableCount > 0 && <p>{unreadableCount === 1 ? 'One record' : `${unreadableCount} records`} on this board can’t be read and {unreadableCount === 1 ? 'isn’t' : 'aren’t'} shown. Activity lists the changes that wrote {unreadableCount === 1 ? 'it' : 'them'}.</p>}
+        {concurrentParts.length > 0 && <p>Part of this board was written twice at once, and only one version of it is shown: {concurrentParts.join(', ')}. Activity lists the changes that wrote it.</p>}
+        {unreadableRecords.length > 0 && <p>Some records on this board can’t be read. {unreadableRecords.join(' ')} Activity lists every change and who signed it.</p>}
       </div>}
       {review && <div className="notice warning review-notice" role="status">
         {review.map(line => <p key={line}>{line}</p>)}
@@ -875,9 +880,10 @@ function RecordStatusSelect({ kind, record, statuses, submit, disabled }) {
 function Goals({ goals, veins, showVein, actor, actors, attribution = null, submit, busy, pending, errorNotice, errorOrigin }) {
   const list = Object.values(goals).sort((a, b) =>
     GOAL_STATUSES.indexOf(a.status) - GOAL_STATUSES.indexOf(b.status) || a.created_at.localeCompare(b.created_at))
-  const veinsByGoal = {}
+  // Keyed by board data: a Map, so a goal ID such as __proto__ is only a key.
+  const veinsByGoal = new Map()
   for (const vein of Object.values(veins).sort((a, b) => a.created_at.localeCompare(b.created_at))) {
-    for (const goalId of vein.goalIds) (veinsByGoal[goalId] ??= []).push(vein)
+    for (const goalId of vein.goalIds) veinsByGoal.set(goalId, [...(veinsByGoal.get(goalId) ?? []), vein])
   }
   const disabled = busy || Boolean(pending)
   // A disputed status names every alternative instead of the merge's pick, and offers no select.
@@ -920,7 +926,7 @@ function Goals({ goals, veins, showVein, actor, actors, attribution = null, subm
   const recordId = errorNotice ? errorOrigin?.recordId : null
   const noticeGoal = goals[recordId]
     ? recordId
-    : list.find(goal => (veinsByGoal[goal.id] ?? []).some(vein => vein.id === recordId))?.id
+    : list.find(goal => (veinsByGoal.get(goal.id) ?? []).some(vein => vein.id === recordId))?.id
   const noticeFallback = errorNotice && !noticeGoal
   return (
     <section className="goals" aria-label="Goals">
@@ -930,7 +936,7 @@ function Goals({ goals, veins, showVein, actor, actors, attribution = null, subm
         No goals yet. Start a vein with <code>pardner vein create --title … --goal …</code>.
       </p>}
       {list.map(goal => {
-        const goalVeins = veinsByGoal[goal.id] ?? []
+        const goalVeins = veinsByGoal.get(goal.id) ?? []
         return (
           <article className="goal" key={goal.id} aria-label={goal.title} data-goal-id={goal.id} tabIndex={-1}>
             <div className="goal-heading">
@@ -1328,6 +1334,8 @@ function TaskDetail({
         <button onClick={onClose}>Close</button>
       </div>
       <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />
+      {emptyFields(context.unreadable, 'task', taskId).length > 0 && <p className="notice warning" role="status">
+        Shown empty, because what this task holds there can’t be read: {emptyFields(context.unreadable, 'task', taskId).join(', ')}.</p>}
       {here.length > 0 && <div className="here-now">
         <span className="muted">Here now</span>
         <AvatarStack actors={here} index={session.index} max={6} size="sm" label="Here now" labelSuffix=", on this task"

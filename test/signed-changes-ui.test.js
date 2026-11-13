@@ -155,3 +155,41 @@ for (const engine of [chromium, webkit]) it(`a board part a member's change rewr
       } finally { await rewrite.repo.shutdown() }
     })
   })
+
+for (const engine of [chromium, webkit]) it(`a board holding an Actor that is not a map and a task whose tags are a number still renders, opens the edit form, and names what it could not read, in ${engine.name()}`,
+  { timeout: 180000 }, async () => {
+    await withClientReplicas(engine, { humans: ['Alice', 'Bob'] }, async ({ people, newPage, eventually, project }) => {
+      const [alice, bob] = people
+      const { result } = await alice.operate('task.create', { title: 'Tags soon unreadable', tags: ['one'] })
+      await eventually(async () => (await bob.doc()).tasks[result.taskId], 'the task never reached Bob')
+      const page = await newPage()
+      const errors = []
+      page.on('pageerror', error => errors.push(error.message))
+      await alice.open(page)
+      const card = page.locator(`.task-card[data-task-id="${result.taskId}"]`)
+      await card.waitFor({ timeout: 30000 })
+      // A modified client on Bob's machine writes a null Actor and a number for the task's tags, and signs its change.
+      const nativeUrl = `${alice.client.url.replace(/^http/, 'ws')}/pardner/client/v1/replica/${project.id}/native`
+      const { url: boardUrl } = await alice.call(`/projects/${project.id}/api/automerge/url`)
+      const rewrite = await signedWrite({ key: bob.client.registry.machineKey, projectId: project.id, nativeUrl, boardUrl,
+        write: doc => { doc.actors.bad = null; doc.taskFields[`${result.taskId}:tags`].value = 7 } })
+      try {
+        const notice = page.locator('.unreadable-notice')
+        await notice.getByText('Not shown: Actor bad.', { exact: false }).waitFor({ timeout: 30000 })
+        await notice.getByText('Shown empty: tags of task “Tags soon unreadable”.', { exact: false }).waitFor()
+        // The board still shows the task; its panel says what it shows empty, and its edit form opens with no tags.
+        await card.click()
+        const panel = page.getByRole('complementary', { name: 'Task details' })
+        await panel.getByText('Shown empty, because what this task holds there can’t be read: tags.').waitFor({ timeout: 30000 })
+        await panel.getByRole('button', { name: 'Edit task', exact: true }).click()
+        const tags = panel.getByRole('region', { name: 'Edit task' }).getByLabel('Tags, separated by commas')
+        await tags.waitFor()
+        assert.equal(await tags.inputValue(), '')
+        assert.equal(await panel.getByRole('region', { name: 'Edit task' }).getByLabel('Title').inputValue(), 'Tags soon unreadable')
+        assert.deepEqual(errors, [], 'the page threw')
+        const doc = await alice.doc()
+        assert.ok(doc.unreadable.some(item => item.kind === 'actor' && item.id === 'bad'))
+        assert.ok(doc.unreadable.some(item => item.kind === 'task' && item.id === result.taskId && item.field === 'tags'))
+      } finally { await rewrite.repo.shutdown() }
+    })
+  })

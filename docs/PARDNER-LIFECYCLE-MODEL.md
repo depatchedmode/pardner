@@ -683,7 +683,8 @@ board as of its change's dependencies, changed `lib/workspace.js` and
 `lib/workspace-runtime.js`. Each drift was reviewed against its diff before the
 mapping was recorded:
 - `lib/workspace.js` (`ReplicaEdit`, `Handle`, `Respond`): the new read-only
-  `readable()` gives every read the board's top-level maps that hold one map (an
+  `readable()` gives every read the board's top-level maps whose value is a map
+  (Automerge's pick where several were written concurrently, which is listed; an
   empty one in place of any other value) and lists the rest; `snapshot()` and
   `context()` read through it, and `context()` refuses a record it cannot read as
   `UNREADABLE` (a missing record only when a map it would be in cannot be read). The constructor takes the project ID from the replica's metadata and
@@ -715,3 +716,34 @@ assumption, invariant, witness or mutation text changed. Fresh default check:
 hold; all ten witnesses are reachable. All eight mutations were caught, reported
 as drift and reproduced by the model; the working tree was unchanged. See
 `attributionReviewFour` in the evidence JSON.
+
+## Attribution close-out mapping review (2026-11-12)
+
+Reading every board record through one shape, so no record stops a view, changed
+`lib/workspace.js` and `lib/workspace-runtime.js`. Each drift was reviewed against
+its diff before the mapping was recorded:
+- `lib/workspace.js` (`ReplicaEdit`, `Handle`, `Respond`): `readable()` now hands
+  its view to `containReads` (lib/workspace-schema.js), so the records each read
+  takes from it are read through `SHAPES` and what cannot be read is added to the
+  same `unreadable` list; `snapshot()` reads Actors and read receipts through
+  `storedRecords` and lists a record it cannot read once; a new read-only
+  `actors()` returns the board's readable Actors. Two comments now say that a
+  top-level key holding concurrent values is read as Automerge's pick when that is
+  a map, and the item listing such a key carries `concurrent: true`. `apply()`,
+  its flush, `confirm()` and the `STORAGE_FAILED` path are unchanged.
+- `lib/workspace-runtime.js` (`ReplicaEdit`, `SyncDown`, `ReplicaSendAck`,
+  `Handle`, `StoreCloseBegin`, `StoreCloseComplete`, `ReplicaReceive`,
+  `ReplicaAckCommit`): `getAgents` returns `Workspace.actors()`, and
+  `prepareDelivery` reconciles with the mentions that can be read; it still flushes
+  before it reconciles. Nothing on the acknowledgement, receive or shutdown paths
+  changed. A later one-line change in `currentWriters`, a read used only by
+  the attribution view, takes a comment's author only when it is text.
+- `lib/attribution.js` and `lib/change-signatures.js`, which are not mapped, now
+  read every value stored for a change and verify candidates in bounded passes;
+  `confirmOwn()` and the acknowledgement barrier are unchanged.
+
+No guard, effect, anchor, atomicity assumption, invariant, witness or mutation text
+changed. Fresh default check: 174614 states, 679456 transitions, all four
+invariants and `ShutdownCompletes` hold; all ten witnesses are reachable. All eight
+mutations were caught, reported as drift and reproduced by the model; the working
+tree was unchanged. See `attributionCloseOut` in the evidence JSON.
