@@ -145,6 +145,7 @@ services participating in a workspace must use the same schema version.
 comments, revisions, conflicts, history, commit evidence, and sync status. It does
 not mark comments read. Comment `revisionIds` includes every concurrent revision;
 submit only revisions actually observed using `pardner read --receipts`.
+With `--actor`, each comment also lists `unreadRevisionIds`, the revisions that Actor has no receipt for, authors included.
 
 An edit supplies the revisions observed in `show` for the affected fields:
 

@@ -176,6 +176,7 @@ async function runSeed(seed) {
     await responseQueue
     await converge()
     progress('Running the human → builder → reviewer → human handoff with durable workers')
+    await pages[0].getByRole('button', { name: 'Hand off work', exact: true }).click()
     await pages[0].getByLabel('Recipient', { exact: true }).selectOption('builder')
     const handoffText = `Seed ${seed}: builder, please implement the accepted work.`
     await pages[0].getByLabel('Handoff message', { exact: true }).fill(handoffText)

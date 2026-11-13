@@ -324,6 +324,34 @@ describe('shared workspace operations', () => {
       assert.equal(workspace.taskContext(taskId, 'builder').unreadCount, 1)
     })
   })
+  it('lists each comment\'s unread revisions for its reader without changing unreadCount', async () => {
+    await withWorkspaces(async (workspace, create) => {
+      const taskId = await createTask(workspace)
+      const original = await command(workspace, 'comment.add', { taskId, text: 'Original' })
+      const commentId = original.result.commentId
+      const doomed = (await command(workspace, 'comment.add', { taskId, text: 'Doomed' })).result.commentId
+      const peer = await create(workspace)
+      const first = await command(workspace, 'comment.edit', { commentId, text: 'Human revision', expectedRevisions: [original.operationId] })
+      // Only the author may edit a comment, so the concurrent revision is Alice's on another replica.
+      const second = await command(peer, 'comment.edit', { commentId, text: 'Peer revision', expectedRevisions: [original.operationId] }, 'alice')
+      workspace.handle.merge(peer.handle)
+      const unread = (observer) => Object.fromEntries(workspace.taskContext(taskId, observer).comments.map(comment => [comment.id, comment.unreadRevisionIds]))
+      const { revisionIds } = workspace.taskContext(taskId).comments.find(comment => comment.id === commentId)
+      assert.deepEqual(revisionIds.slice().sort(), [first.operationId, second.operationId].sort())
+      assert.deepEqual(unread('alice')[commentId], revisionIds, 'the author sees their own comment as raw unread')
+      assert.deepEqual(unread(null)[commentId], revisionIds)
+      await command(workspace, 'read.mark', { taskId, comments: [{ commentId, revisionId: first.operationId }] })
+      assert.deepEqual(unread('alice')[commentId], revisionIds.filter(id => id !== first.operationId))
+      assert.deepEqual(unread('bob')[commentId], revisionIds, 'receipts are per Actor')
+      await command(workspace, 'comment.delete', { commentId: doomed, expectedRevisions: workspace.taskContext(taskId).comments.find(comment => comment.id === doomed).revisionIds })
+      for (const observer of ['alice', 'bob', 'builder', null]) {
+        const context = workspace.taskContext(taskId, observer)
+        assert.ok(!context.comments.some(comment => comment.id === doomed), 'a deleted comment is absent')
+        assert.equal(context.unreadCount, context.comments.filter(comment => comment.unreadRevisionIds.length).length)
+      }
+    })
+  })
+
   it('rejects old schemas and supports explicit first-Actor registration', async () => {
     await withWorkspaces(async workspace => {
       const old = workspace.repo.create({ tasks: {} })
