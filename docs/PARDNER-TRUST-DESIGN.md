@@ -91,6 +91,11 @@ recordId = sha256(canonical(record) ‖ signature)
 - **Actor IDs.** The change's Automerge actor ID starts with the machine ID's raw 16-byte digest and ends with 8 random bytes chosen each time a document is loaded. A restored backup and its original, or two handles in one process, therefore never reuse an actor and sequence number, which Automerge refuses (measured: one suffix per process failed 16 of 166 runtime tests). automerge-repo picks a random actor on every load, so Pardner sets its own after loading, and makes the creation change with the machine actor.
 - **What a peer checks.** The signature verifies, the change's actor prefix names the signing machine, and that machine is or was a member. A change that fails is flagged, never refused. The board shows the change as made by that machine's person, or by the agent the machine names. Peers take the machine's word only for *which* Actor on that machine acted (see [The local trust zone](#the-local-trust-zone)).
 - **What a peer does not check.** Whether the operation was "allowed". Members may change anything, as in git. The local service still enforces the board's rules (for example, only the author deletes a comment, #160) on every write it makes, and the operations log shows every change with its signer, so a bad change can be reviewed and undone.
+- **What the signature covers, and what it does not.** The guarantee is the signer of each change. The description Activity shows for a change (which fields it changed, from what to what) is the author's own statement, like a git commit message.
+  - Pardner derives each entry from the signed change, compares the description with what the change wrote and with the board as it stood before, and warns when they differ.
+  - That comparison is best-effort. Five review rounds (#220, #222, #223, #225, #227) each found ways for a member to write a wrong description that is not flagged, so it is not offered as a guarantee. The known cases are in #228.
+  - None of them lets a member change who signed a change. The UI and CLI call only the signature verified.
+- **Malformed content never stops a view.** A member may write any value. A record or field of the wrong kind is left out of what is read and named as unreadable; nothing is deleted or refused.
 - **Where signatures travel (decided by the spike).** A signature cannot sit inside the change it signs. Signatures live in a second Automerge document beside the board, sharded by the first byte of the change hash, and synced by automerge-repo as it is today.
   - Writers sign each change at once and save the entry with the next background save, off the acknowledgement path. Ed25519 signatures are deterministic, so at start-up a writer re-creates any of its own entries that are missing.
   - Each peer keeps the signatures it has verified in a local grow-only cache, so deleting an entry from the shared document does not unattribute a change for peers that saw it.
@@ -285,6 +290,7 @@ This is a plan. None of these scenarios has been run.
 | Admins | Only the owner removes or demotes admins. A lost owner freezes the admin list (Q4) |
 | Invitations | Admin approval with a confirmation code only, with no forge check. The code includes an approver nonce added after the request is stored |
 | Signing | Every change is signed from stage 1. Signatures live in a second Automerge document. Changes are applied then checked, and flagged, never refused |
+| Descriptions | The signature guarantees who made a change. What Activity says the change did is the author's statement, checked on a best-effort basis (#228) |
 | Hand-run roles | Retired. Client mode is the only way to host or join |
 | Admission rule | The handshake replaces bearer tokens, and AGENTS.md is reworded with it (Q2) |
 | Enrollment | Hub-only until the direct lane is qualified (Q3) |
