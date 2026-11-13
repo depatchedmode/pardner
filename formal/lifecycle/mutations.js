@@ -39,15 +39,15 @@ export const MUTATIONS = [
   {
     name: 'receipt-before-persist', property: 'ReceiptAfterBarrier', file: WORKSPACE,
     description: 'workspace.apply returns savedLocally without awaiting the flush',
-    find: 'try {\n      await this.repo.flush([this.handle.documentId])\n    } catch (error) {',
-    replace: 'try {\n      void this.repo.flush([this.handle.documentId])\n    } catch (error) {',
+    find: 'try {\n      await this.repo.flush([this.handle.documentId])\n',
+    replace: 'try {\n      void this.repo.flush([this.handle.documentId])\n',
     check: { file: CONFORMANCE, pattern: 'local-save receipt only after the storage barrier' },
   },
   {
     name: 'ack-before-persist', property: 'ReceiptAfterBarrier', file: WORKSPACE,
     description: 'workspace.acknowledge responds without awaiting the flush',
-    find: '    await this.repo.flush([this.handle.documentId])\n    return { acknowledged: true',
-    replace: '    void this.repo.flush([this.handle.documentId])\n    return { acknowledged: true',
+    find: '    await this.repo.flush(this.documents())\n    return { acknowledged: true',
+    replace: '    void this.repo.flush(this.documents())\n    return { acknowledged: true',
     check: { file: CONFORMANCE, pattern: 'acknowledges heads only after the hub persisted them' },
   },
   {
@@ -62,19 +62,23 @@ export const MUTATIONS = [
     description: 'synchronizeAcknowledgement records the current heads without the requested-heads guards',
     find: `      if (receipt.acknowledged) {
         const doc = this.workspace.handle.doc()
-        requireValue(Array.isArray(receipt.hubHeads), 'Invalid hub persistence acknowledgement')
-        if (canonical(getHeads(doc)) === canonical(requestedHeads) && hasHeads(doc, receipt.hubHeads)) {
-          await this.repo.flush([this.workspace.handle.documentId])
+        requireValue(Array.isArray(receipt.hubHeads) && (!signatures || Array.isArray(receipt.hubSignatureHeads)), 'Invalid hub persistence acknowledgement')
+        const signaturesHeld = !signatures || hasHeads(signatures.doc(), receipt.hubSignatureHeads)
+        if (canonical(getHeads(doc)) === canonical(requestedHeads) && hasHeads(doc, receipt.hubHeads) && signaturesHeld) {
+          await this.repo.flush(this.workspace.documents())
           if (canonical(getHeads(this.workspace.handle.doc())) === canonical(requestedHeads)) {
             this.acknowledgedHeads = requestedHeads
+            // The requested snapshot, never the current heads: a signature written since stays unacknowledged.
+            if (signatures) this.acknowledgedSignatureHeads = requestedSignatureHeads
             this.lastSyncedAt = new Date().toISOString()
           }
         }
       }`,
     replace: `      if (receipt.acknowledged) {
         requireValue(Array.isArray(receipt.hubHeads), 'Invalid hub persistence acknowledgement')
-        await this.repo.flush([this.workspace.handle.documentId])
+        await this.repo.flush(this.workspace.documents())
         this.acknowledgedHeads = getHeads(this.workspace.handle.doc())
+        if (signatures) this.acknowledgedSignatureHeads = getHeads(signatures.doc())
         this.lastSyncedAt = new Date().toISOString()
       }`,
     check: { file: RUNTIME_TESTS, pattern: 'does not let a delayed hub acknowledgement clear newer local work' },
@@ -119,6 +123,8 @@ export const MUTATIONS = [
     try {
       await this.workspace?.queue
       await this.harvests
+      // Pending signatures go into the signature document; each is already in the signature cache.
+      this.attribution?.close()
       // The hub's own state is written before the directory's lease is released.
       await this.hubStateWrites?.catch(() => {})
       await this.repo?.shutdown()
@@ -127,6 +133,7 @@ export const MUTATIONS = [
       this.closed = true
       this.deliveryLedger?.close()
       this.records?.close()
+      this.signatureCache?.close()
       this.lease?.close()
       this.lease = null
     }`,
@@ -136,6 +143,8 @@ export const MUTATIONS = [
     try {
       await this.workspace?.queue
       await this.harvests
+      // Pending signatures go into the signature document; each is already in the signature cache.
+      this.attribution?.close()
       // The hub's own state is written before the directory's lease is released.
       await this.hubStateWrites?.catch(() => {})
       await this.repo?.shutdown()
@@ -144,6 +153,7 @@ export const MUTATIONS = [
       this.closed = true
       this.deliveryLedger?.close()
       this.records?.close()
+      this.signatureCache?.close()
     }`,
     check: { file: CONFORMANCE, pattern: 'drains queued persistence before releasing the storage lease' },
   },

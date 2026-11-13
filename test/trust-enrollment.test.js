@@ -352,15 +352,20 @@ test('an enrolled replica reopens offline after approval and keeps saving locall
   await alice.client.stop()
   await bob.client.stop()
   const reopened = await startClient({ directory: bob.directory, port: 0 })
-  t.after(() => reopened.stop())
-  const response = await fetch(`${reopened.url}${CLIENT_API}/projects/${project.id}/api/automerge/operations`, { method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${reopened.registry.read().operatorToken}` },
-    body: JSON.stringify({ type: 'task.create', operationId: 'offline', payload: { title: 'Saved with the hub down' } }) })
-  const saved = await response.json()
-  assert.equal(response.status, 200, JSON.stringify(saved))
-  assert.equal(saved.savedLocally, true); assert.equal(saved.syncPending, true)
-  const records = await (await reopened.runtime(reopened.project(project.id))).request('/automerge/membership')
-  assert.ok(records.machines.some(machine => machine.id === reopened.registry.machineKey.machineId), 'the replica holds its own admission record offline')
+  // Stopped before Bob's fixture removes this directory: after hooks run in the order they were added, so a hook
+  // here would run after the removal, which then races the running client and can leave it running.
+  try {
+    const response = await fetch(`${reopened.url}${CLIENT_API}/projects/${project.id}/api/automerge/operations`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${reopened.registry.read().operatorToken}` },
+      body: JSON.stringify({ type: 'task.create', operationId: 'offline', payload: { title: 'Saved with the hub down' } }) })
+    const saved = await response.json()
+    assert.equal(response.status, 200, JSON.stringify(saved))
+    assert.equal(saved.savedLocally, true); assert.equal(saved.syncPending, true)
+    const records = await (await reopened.runtime(reopened.project(project.id))).request('/automerge/membership')
+    assert.ok(records.machines.some(machine => machine.id === reopened.registry.machineKey.machineId), 'the replica holds its own admission record offline')
+  } finally {
+    await reopened.stop()
+  }
 })
 
 test('confirmation codes depend on the offer, the joiner’s key and the nonce', () => {

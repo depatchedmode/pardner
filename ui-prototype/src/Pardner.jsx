@@ -15,12 +15,15 @@ import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js
 import { quickStatusEditable } from './task-status.js'
 import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
+import { boardData, dictionary } from './board-data.js'
+import { emptyFields, unreadableLines } from './unreadable.js'
+import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, needsReview, newerAuthors, reviewNotice, signerLine, taskRows } from './attribution.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const StatusOptions = ({ values = STATUSES }) => values.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
 const ACTIVITY_SHOWS = [
-  ['changes', 'All changes'], ['status', 'Status changes and handoffs'], ['comments', 'Comments'],
-  ['commits', 'Commits and branches'], ['plans', 'Goals and veins'], ['actors', 'Actors registered'], ['reads', 'Read receipts'],
+  ['changes', 'All changes'], ['review', 'Needs review'], ['status', 'Status changes and handoffs'], ['comments', 'Comments'],
+  ['commits', 'Commits and branches'], ['plans', 'Goals and veins'], ['members', 'People and machines'], ['actors', 'Actors registered'], ['reads', 'Read receipts'],
 ]
 const ACTIVITY_PAGE = 100
 const dayStart = date => new Date(date.getFullYear(), date.getMonth(), date.getDate())
@@ -151,31 +154,57 @@ function SaveStatus({ status, connected, busy, heads }) {
   )
 }
 
-// One event as a plain sentence. Activity passes handlers so subjects become
-// buttons; History passes none and stays plain text.
-function EventRow({ event, lookups, within, onTask, onVein, onGoal, formatTime, ...articleProps }) {
-  const description = describeEvent(event, lookups, { within })
-  const when = new Date(event.timestamp)
+const CURRENT_TITLE = 'As named now: not part of what was signed'
+
+/** A name or title looked up now, marked as current. */
+const Current = ({ children }) => <span className="current-label" title={CURRENT_TITLE}>{children}</span>
+
+/** Text parts of a sentence or detail: plain strings, statuses, and names or titles marked as current. */
+function renderParts(parts, handlers = {}) {
+  return parts.map((part, index) => {
+    if (typeof part === 'string') return part
+    if (part.status) return <span key={index} className="record-status" data-status={part.status}>{part.label}</span>
+    const open = part.subject && handlers[part.subject]
+    if (open && !part.missing) {
+      return <button key={index} type="button" className={part.current ? 'subject current-label' : 'subject'} title={part.current ? CURRENT_TITLE : undefined}
+        {...(part.subject === 'task' ? { 'data-task-id': part.id } : {})} onClick={click => open(click.currentTarget, part.id)}>{part.label}</button>
+    }
+    return part.current ? <Current key={index}>{part.label}</Current> : part.label
+  })
+}
+
+// One Activity entry as a plain sentence, derived from the change that wrote it (lib/activity.js on the service):
+// what it shows is what that change wrote, and its signer line is that change's own verdict. Names and titles are
+// looked up now and marked so. Activity passes handlers so subjects become buttons; History passes none and stays
+// plain text.
+function EventRow({ event: row, lookups, within, onTask, onVein, onGoal, formatTime, ...articleProps }) {
+  const { attribution } = lookups
+  const { entry } = row
+  const description = entry.kind === 'record' ? describeRecord(row, attribution) : entry.kind === 'unrecognised' ? describeChange(row, attribution)
+    : describeEvent(entry.shows ?? {}, lookups, { within })
+  const signer = signerLine(attribution, entry)
+  const when = new Date(row.timestamp || 0)
+  // A time a date cannot show is unknown, never a failure of the row.
+  const timed = Boolean(row.timestamp) && Number.isFinite(when.getTime())
   const handlers = { task: onTask, vein: onVein, goal: onGoal }
   return (
     <article className="event" {...articleProps}>
       <p className="event-line">
-        <strong>{description.actor}</strong>
-        {description.parts.map((part, index) => {
-          if (typeof part === 'string') return part
-          if (part.status) return <span key={index} className="record-status" data-status={part.status}>{part.label}</span>
-          const open = handlers[part.subject]
-          if (!open || part.missing) return part.label
-          return <button key={index} type="button" className="subject" {...(part.subject === 'task' ? { 'data-task-id': part.id } : {})}
-            onClick={click => open(click.currentTarget, part.id)}>{part.label}</button>
-        })}
+        <strong>{description.actorCurrent ? <Current>{description.actor}</Current> : description.actor}</strong>
+        {renderParts(description.parts, handlers)}
       </p>
-      {description.detail && <p className="event-detail">{description.detail}</p>}
+      {description.detail && <p className="event-detail">{renderParts(description.detailParts ?? [description.detail])}</p>}
       {description.excerpt && <p className="event-detail">{description.excerpt}</p>}
-      <time dateTime={when.toISOString()} title={when.toLocaleString()}>{formatTime(when)}</time>
+      {signer && <p className="event-signer" data-tone={signer.tone}>{signer.text}</p>}
+      {/* A record's own signature covers the record, not this time: it is when a machine wrote it to the board. */}
+      {timed ? <time dateTime={when.toISOString()} title={entry.kind === 'record' ? `${when.toLocaleString()}: when a machine wrote this record to the board. The record’s signer didn’t sign this time.` : when.toLocaleString()}>
+        {entry.kind === 'record' ? `Written to the board ${formatTime(when)}` : formatTime(when)}</time> : <time className="muted">Time unknown</time>}
     </article>
   )
 }
+
+/** The note Activity and History carry: what is verified, what is the author's description, and what is looked up now. */
+const CurrentLegend = () => <p className="muted current-legend">Only the signer line is verified. What an entry says is its author’s description, checked against what the change wrote where Pardner can. Names and titles marked <Current>like this</Current> are as they are now.</p>
 
 export default function Pardner() {
   const [config, setConfig] = useState(null)
@@ -310,7 +339,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
       throw Object.assign(new Error('The service workspace changed. Reopening the current workspace.'), { code: 'WORKSPACE_MISMATCH' })
     }
     if (generation !== refreshGeneration.current) return
-    if (observedDoc === docUpdates.current) setDoc(next)
+    if (observedDoc === docUpdates.current) setDoc(boardData(next))
     if (observedStatus === statusUpdates.current) setStatus(state)
   }, [request, config.workspaceId, reloadConfiguration])
   useEffect(() => {
@@ -347,7 +376,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
               void reloadConfiguration().catch(failure => { if (!stopped) setConnectionError(failure) })
               return
             }
-            if (message.doc) { docUpdates.current++; setDoc(message.doc) }
+            if (message.doc) { docUpdates.current++; setDoc(boardData(message.doc)) }
             if (message.status) { statusUpdates.current++; setStatus(message.status) }
           } catch {
             setConnectionError(new Error('The service sent an unreadable update. Reconnecting…'))
@@ -406,12 +435,14 @@ export function Workspace({ config, reloadConfiguration, session }) {
   }, [selected, creating])
   const activityEvents = useMemo(() => {
     const actorId = doc?.actors?.[activityActor] ? activityActor : ''
-    return sortEvents(Object.values(doc?.operations ?? {}).filter(event => {
-      if (actorId && event.actorId !== actorId) return false
-      const group = eventGroup(event)
+    // Every entry is derived from one change; sorting, grouping and filtering use what that change signed.
+    return sortEvents(activityRows(doc).filter(row => {
+      if (actorId && row.actorId !== actorId) return false
+      if (activityShow === 'review') return needsReview(row)
+      const group = row.entry.kind === 'record' ? 'members' : row.entry.kind === 'unrecognised' ? 'other' : eventGroup(row)
       return activityShow === 'changes' ? group !== 'reads' : group === activityShow
     }))
-  }, [doc?.operations, doc?.actors, activityActor, activityShow])
+  }, [doc?.activity, doc?.actors, doc?.attribution, activityActor, activityShow])
   const activityFocus = useRef(null)
   useEffect(() => {
     if (!activityCutoff && activityEvents.length) {
@@ -497,9 +528,10 @@ export function Workspace({ config, reloadConfiguration, session }) {
     </div>}
   </main>
   // The client's Actors carry each person's current profile name (and removal); the document keeps enrollment names.
-  const actors = session.actorsById ? { ...doc.actors, ...session.actorsById } : doc.actors
-  const veins = doc.veins || {}
-  const goals = doc.goals || {}
+  // Each is held without a prototype (boardData), so a lookup by an ID from the board finds only what the board holds.
+  const actors = session.actorsById ? dictionary(doc.actors, session.actorsById) : doc.actors
+  const veins = doc.veins
+  const goals = doc.goals
   const activeVeinFilter = veins[veinFilter] ? veinFilter : ''
   const tasks = Object.values(doc.tasks).filter(
     (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter)
@@ -516,7 +548,18 @@ export function Workspace({ config, reloadConfiguration, session }) {
     activityFocus.current = activityEvents[visibleCount].operationId
     setActivityCutoff({ timestamp: next.timestamp, operationId: next.operationId })
   }
-  const lookups = { actors, tasks: doc.tasks, veins, goals, comments: doc.comments }
+  const lookups = { actors, tasks: doc.tasks, veins, goals, comments: doc.comments, attribution: doc.attribution ?? null, deletions: doc.attribution?.deletions ?? null,
+    activity: doc.activity ?? [] }
+  // Changes whose signer couldn't be confirmed, or that came from a removed machine, are announced on every view.
+  const review = reviewNotice(doc.attribution)
+  // Records the board could not read: each is listed instead of stopping the whole board (lib/workspace.js snapshot).
+  const unreadableItems = Array.isArray(doc.unreadable) ? doc.unreadable : []
+  // A top-level part of the board a change rewrote (its tasks, say) is named, and so is each other record and field.
+  const rootIds = concurrent => [...new Set(unreadableItems.filter(item => item?.kind === 'root' && typeof item.id === 'string' && Boolean(item.concurrent) === concurrent).map(item => item.id))]
+  const unreadableParts = rootIds(false)
+  // A part holding values written concurrently is shown as the one Automerge picks.
+  const concurrentParts = rootIds(true).filter(id => !unreadableParts.includes(id))
+  const unreadableRecords = unreadableLines(unreadableItems, { tasks: doc.tasks, goals, veins })
   const openVein = (_element, veinId) => {
     focusAfterView.current = () => viewNav.current?.querySelector('[aria-pressed="true"]')?.focus()
     showVein(veinId)
@@ -573,6 +616,17 @@ export function Workspace({ config, reloadConfiguration, session }) {
       )}
       {connectionError && <div className="notice" role="status"><p>{connectionError.message}</p>
         <button onClick={retryConnection}>Retry connection</button>
+      </div>}
+      {(unreadableRecords.length > 0 || unreadableParts.length > 0 || concurrentParts.length > 0) && <div className="notice warning unreadable-notice" role="status">
+        {unreadableParts.length > 0 && <p>Part of this board can’t be read, so what it holds isn’t shown: {unreadableParts.join(', ')}. Activity lists the changes that wrote it.</p>}
+        {concurrentParts.length > 0 && <p>Part of this board was written twice at once, and only one version of it is shown: {concurrentParts.join(', ')}. Activity lists the changes that wrote it.</p>}
+        {unreadableRecords.length > 0 && <p>Some records on this board can’t be read. {unreadableRecords.join(' ')} Activity lists every change and who signed it.</p>}
+      </div>}
+      {review && <div className="notice warning review-notice" role="status">
+        {review.map(line => <p key={line}>{line}</p>)}
+        {!(view === 'activity' && activityShow === 'review') && <button onClick={() => { setView('activity'); setActivityShow('review'); setActivityCutoff(null) }}>
+          Review changes
+        </button>}
       </div>}
       <nav aria-label="Workspace views" ref={viewNav}>
         <button
@@ -694,6 +748,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
             showVein={showVein}
             actor={actor}
             actors={actors}
+            attribution={doc.attribution ?? null}
             submit={submit}
             busy={busy}
             pending={pending}
@@ -708,8 +763,11 @@ export function Workspace({ config, reloadConfiguration, session }) {
               <h2>Activity</h2>
               <span className="muted">Showing {visibleCount.toLocaleString()} of {activityEvents.length.toLocaleString()}</span>
             </div>
+            {activityEvents.length > 0 && <CurrentLegend />}
+            {doc.attribution?.summary?.notDerived > 0 && <p className="muted" role="status">Reading {doc.attribution.summary.notDerived.toLocaleString()} more changes…</p>}
             {!activityEvents.length && <p className="empty">
-              {Object.keys(doc.operations).length ? 'No activity matches these filters.' : 'No activity yet.'}
+              {activityShow === 'review' ? 'Every change here is signed by a member machine.'
+                : (doc.activity ?? []).length ? 'No activity matches these filters.' : 'No activity yet.'}
             </p>}
             {visibleEvents.map((event, index) => {
               const when = new Date(event.timestamp)
@@ -819,12 +877,13 @@ function RecordStatusSelect({ kind, record, statuses, submit, disabled }) {
   )
 }
 
-function Goals({ goals, veins, showVein, actor, actors, submit, busy, pending, errorNotice, errorOrigin }) {
+function Goals({ goals, veins, showVein, actor, actors, attribution = null, submit, busy, pending, errorNotice, errorOrigin }) {
   const list = Object.values(goals).sort((a, b) =>
     GOAL_STATUSES.indexOf(a.status) - GOAL_STATUSES.indexOf(b.status) || a.created_at.localeCompare(b.created_at))
-  const veinsByGoal = {}
+  // Keyed by board data: a Map, so a goal ID such as __proto__ is only a key.
+  const veinsByGoal = new Map()
   for (const vein of Object.values(veins).sort((a, b) => a.created_at.localeCompare(b.created_at))) {
-    for (const goalId of vein.goalIds) (veinsByGoal[goalId] ??= []).push(vein)
+    for (const goalId of vein.goalIds) veinsByGoal.set(goalId, [...(veinsByGoal.get(goalId) ?? []), vein])
   }
   const disabled = busy || Boolean(pending)
   // A disputed status names every alternative instead of the merge's pick, and offers no select.
@@ -860,13 +919,14 @@ function Goals({ goals, veins, showVein, actor, actors, submit, busy, pending, e
     <RecordConflicts
       kind={kind} record={record} actors={actors} goals={goals} labels={LABELS} labelActor={labelActor}
       submit={submit} disabled={!actor || disabled} onDone={keptRecord}
+      changedBy={(field, operationId) => alternativeChangedBySomeoneElse(attribution, `${kind}Fields`, `${record.id}:${field}`, operationId)}
     />
   )
   // The notice sits by its record: under a goal's heading, or in the first row that lists a vein.
   const recordId = errorNotice ? errorOrigin?.recordId : null
   const noticeGoal = goals[recordId]
     ? recordId
-    : list.find(goal => (veinsByGoal[goal.id] ?? []).some(vein => vein.id === recordId))?.id
+    : list.find(goal => (veinsByGoal.get(goal.id) ?? []).some(vein => vein.id === recordId))?.id
   const noticeFallback = errorNotice && !noticeGoal
   return (
     <section className="goals" aria-label="Goals">
@@ -876,7 +936,7 @@ function Goals({ goals, veins, showVein, actor, actors, submit, busy, pending, e
         No goals yet. Start a vein with <code>pardner vein create --title … --goal …</code>.
       </p>}
       {list.map(goal => {
-        const goalVeins = veinsByGoal[goal.id] ?? []
+        const goalVeins = veinsByGoal.get(goal.id) ?? []
         return (
           <article className="goal" key={goal.id} aria-label={goal.title} data-goal-id={goal.id} tabIndex={-1}>
             <div className="goal-heading">
@@ -1241,6 +1301,8 @@ function TaskDetail({
       </aside>
     )
   const { task, comments, history, conflicts, revisions } = context
+  // History is the task's Activity entries, each derived from the change that wrote it, newest first.
+  const historyRows = sortEvents(taskRows({ activity: lookups.activity, attribution: lookups.attribution }, taskId).filter(row => row.type !== 'comment.add'))
   const canWrite = Boolean(actor) && !busy
   const quickStatus = quickStatusEditable({ actor, editing: Boolean(draft), handingOff: handoffOpen, conflicts })
   const newCount = actor ? comments.filter(comment => isNewComment(comment, actor)).length : 0
@@ -1254,17 +1316,10 @@ function TaskDetail({
   const newerFields = draft
     ? Object.keys(draft.fields).filter(field => JSON.stringify(revisions[field]) !== JSON.stringify(draft.revisions[field]))
     : []
-  // Credit each newer field to the Actor whose History event last changed it.
-  const newerGroups = []
-  for (const field of newerFields) {
-    const by = [...history].reverse().find(event => event.changes.some(change => change.field === field))?.actorId ?? null
-    const group = newerGroups.find(candidate => candidate.by === by)
-    if (group) group.fields.push(field)
-    else newerGroups.push({ by, fields: [field] })
-  }
+  const newerGroups = newerAuthors({ fields: newerFields, taskId, revisions, historyRows, attribution: lookups.attribution, activity: lookups.activity })
   const listFields = fields => fields.length < 2 ? fields.join('') : `${fields.slice(0, -1).join(', ')} and ${fields.at(-1)}`
-  const newerNotice = newerGroups.map(({ by, fields }) =>
-    `${by ? labelActor(actors[by]) : 'Someone'} saved ${fields.length === 1 && fields[0] === 'tags' ? '' : 'a '}newer ${listFields(fields)}`).join('; ')
+  const newerNotice = newerGroups.map(({ by, unconfirmed, fields }) =>
+    `${by ? `${labelActor(actors[by])}${unconfirmed ? ' (unconfirmed, see Activity)' : ''}` : 'Someone'} saved ${fields.length === 1 && fields[0] === 'tags' ? '' : 'a '}newer ${listFields(fields)}`).join('; ')
   const here = session.focus[taskId] ? focusedActors(session, session.focus[taskId]) : []
   // An edit error falls back to the panel top once its form has closed.
   // A handoff error does too while its form is closed, so Retry stays visible.
@@ -1279,6 +1334,8 @@ function TaskDetail({
         <button onClick={onClose}>Close</button>
       </div>
       <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />
+      {emptyFields(context.unreadable, 'task', taskId).length > 0 && <p className="notice warning" role="status">
+        Shown empty, because what this task holds there can’t be read: {emptyFields(context.unreadable, 'task', taskId).join(', ')}.</p>}
       {here.length > 0 && <div className="here-now">
         <span className="muted">Here now</span>
         <AvatarStack actors={here} index={session.index} max={6} size="sm" label="Here now" labelSuffix=", on this task"
@@ -1450,6 +1507,8 @@ function TaskDetail({
           {choices.map((choice) => (
             <div key={choice.operationId}>
               <strong>{labelActor(actors[choice.actorId])}</strong>
+              {alternativeChangedBySomeoneElse(lookups.attribution, 'taskFields', `${taskId}:${field}`, choice.operationId)
+                && <p className="comment-changed" role="note">Changed by someone other than {labelActor(actors[choice.actorId])}. See Activity.</p>}
               <p>
                 {typeof choice.value === 'string'
                   ? choice.value
@@ -1586,10 +1645,14 @@ function TaskDetail({
               <time dateTime={comment.timestamp}>{new Date(comment.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
               {isNew && <span className="comment-tag">New</span>}
             </div>
+            {/* The comment as it is now names its recorded author, with no signer line; a change by anyone else to it says so. */}
+            {changedBySomeoneElse(lookups.attribution, comment.id) && <p className="comment-changed" role="note">Changed by someone other than its author. See Activity for who made each change.</p>}
             <MarkdownBody extraPlugins={[remarkMentionChips(deliveredFor(comment.id))]}>{comment.content}</MarkdownBody>
             {comment.conflicts.map((choice) => (
               <div className="conflict" key={choice.operationId}>
                 <strong>{labelActor(actors[choice.actorId])}</strong>
+                {alternativeChangedBySomeoneElse(lookups.attribution, 'commentBodies', comment.id, choice.operationId)
+                  && <p className="comment-changed" role="note">Changed by someone other than {labelActor(actors[choice.actorId])}. See Activity.</p>}
                 <p>{choice.value}</p>
                 <button
                   disabled={!canWrite || comment.actorId !== actor}
@@ -1655,7 +1718,8 @@ function TaskDetail({
       </section>
       <section>
         <h3>History</h3>
-        {sortEvents(history.filter(event => event.type !== 'comment.add')).map(event => (
+        {historyRows.length > 0 && <CurrentLegend />}
+        {historyRows.map(event => (
           <EventRow
             key={event.operationId}
             event={event}

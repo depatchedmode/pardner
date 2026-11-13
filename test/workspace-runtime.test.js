@@ -9,6 +9,7 @@ import { once } from 'node:events'
 import { connect } from 'node:net'
 import { WebSocket } from 'ws'
 import { setTimeout as delay } from 'node:timers/promises'
+import { hasHeads } from '@automerge/automerge'
 import AutomergeSyncServer from '../automerge-sync-server.js'
 import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
 import { requestJson } from '../lib/sync-client.js'
@@ -226,9 +227,14 @@ it('broadcasts native replica changes to every UI subscriber and rejects JSON mu
       await once(socket, 'open')
     }
     const result = await replica.execute({ operationId: randomUUID(), actorId: 'builder', type: 'task.create', payload: { title: 'From a native peer' } })
-    await eventually(() => inboxes.every(inbox => inbox.some(message => message.type === 'document-update' && message.doc.tasks[result.result.taskId])))
+    const signed = message => message.type === 'document-update' && message.doc.tasks[result.result.taskId]
+      && message.doc.activity.find(entry => entry.kind === 'operation' && entry.event.taskId === result.result.taskId && entry.event.type === 'task.create')?.changes[0]?.state === 'signed'
+    await eventually(() => inboxes.every(inbox => inbox.some(signed)))
     for (const inbox of inboxes) {
-      assert.equal(inbox.filter(message => message.type === 'document-update' && message.doc.tasks[result.result.taskId]).length, 1)
+      // One update for the change itself, and at most one more when its signature has been checked.
+      const updates = inbox.filter(message => message.type === 'document-update' && message.doc.tasks[result.result.taskId])
+      assert.ok(updates.length >= 1 && updates.length <= 2, `${updates.length} updates`)
+      assert.equal(updates.filter(signed).length, 1)
     }
     sockets[0].send(JSON.stringify({ type: 'document-change', change: { type: 'task-update', taskId: result.result.taskId, updates: { title: 'Bypass' } } }))
     await eventually(() => inboxes[0].some(message => message.code === 'HTTP_MUTATION_REQUIRED'))
@@ -400,6 +406,8 @@ it('stops while a replica acknowledgement is still being answered', { timeout: 3
     const created = await replica.execute({ operationId: randomUUID(), actorId: 'builder', type: 'task.create', payload: { title: 'Acknowledged during shutdown' } })
     await entered.promise
     await eventually(() => Boolean(hub.store.getDoc().tasks[created.result.taskId]))
+    // The acknowledgement covers the change's signature too, which travels in the signature document.
+    await eventually(() => hasHeads(hub.store.workspace.signatures.doc(), replica.status().signatures.heads))
     stopping = hub.stop()
     release()
     const stopped = await Promise.race([stopping.then(() => true), delay(3000, false)])

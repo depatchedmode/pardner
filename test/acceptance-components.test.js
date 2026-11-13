@@ -152,3 +152,109 @@ it('the independent manifest rejects missing effects even when replicas agree', 
   const broken = { tasks: {}, operations: { [operationId]: { ...request, operationId, requestId: 'one', replicaId: 'replica' } }, comments: {} }
   assert.throws(() => expected.verify(broken), /must appear exactly once/)
 })
+
+const A_MACHINE = 'machine-aaaaaaaaaaaaaaaaaaaaaaaaaa', B_MACHINE = 'machine-bbbbbbbbbbbbbbbbbbbbbbbbbb'
+const GENESIS = { recordId: 'record-genesis', kind: 'project.genesis', subject: 'person-alice', signer: A_MACHINE }
+
+/**
+ * A replica's snapshot with one acknowledged and one baseline operation, each the entry of one change signed as
+ * `changes` says, the membership records `records`, and `extra` entries; `summary` overrides the counts.
+ */
+const REGISTERED = { id: 'alice-agent', handle: 'agent-alice', kind: 'agent', displayName: 'anthropic-claude-code' }
+
+function attributedSnapshot({ expected, here, changes = {}, records = [GENESIS], extra = [], review = [], summary = {}, payload = null, baselinePayload = REGISTERED, flags = {} }) {
+  const machines = { [A_MACHINE]: { personId: 'person-alice', ...(here === 'a' ? { thisMachine: true } : {}) },
+    [B_MACHINE]: { personId: 'person-bob', ...(here === 'b' ? { thisMachine: true } : {}) } }
+  const operations = Object.fromEntries([...expected.intents.values()].map(intent => {
+    const operationId = `op-${hash([intent.operationId, hash({ type: intent.type, actorId: intent.actorId, payload: intent.payload })])}`
+    return [operationId, { ...intent, payload: payload ?? intent.payload, operationId, requestId: intent.operationId, replicaId: 'replica-a', timestamp: '2026-01-01T00:00:01.000Z' }]
+  }))
+  operations['op-baseline'] = { operationId: 'op-baseline', requestId: `enroll-${REGISTERED.id}`, actorId: 'alice', type: 'actor.register', payload: baselinePayload, replicaId: 'replica-a', timestamp: '2026-01-01T00:00:00.000Z' }
+  const changeOf = (id, event) => ({ hash: `change-${id}`, state: 'signed', machineId: A_MACHINE, replicaId: event.replicaId, timestamp: event.timestamp, ...changes[id] })
+  const activity = [
+    ...Object.entries(operations).map(([id, event]) => ({ id: `change-${id}`, kind: 'operation', key: id, event, timestamp: event.timestamp, changes: [changeOf(id, event)], flags: flags[id] ?? {}, review: Boolean(flags[id]) })),
+    ...records.map(record => ({ id: `change-${record.recordId}:${record.recordId}`, kind: 'record', key: record.recordId, record, timestamp: '2026-01-01T00:00:00.000Z',
+      changes: [{ hash: `change-${record.recordId}`, state: 'signed', machineId: A_MACHINE, timestamp: '2026-01-01T00:00:00.000Z', ...(here === 'b' ? { relayedBy: B_MACHINE } : {}) }], flags: {}, review: false })),
+    ...extra,
+  ]
+  const hashes = new Set(activity.flatMap(entry => entry.changes.map(change => change.hash)))
+  return { operations, activity, attribution: { machineId: here === 'a' ? A_MACHINE : B_MACHINE, machines, review,
+    summary: { changes: hashes.size, checking: 0, notDerived: 0, ...summary } } }
+}
+
+it('the acceptance gate compares, by change hash, what each change wrote and who signed it on every replica, and checks every operation and record the harness expects', () => {
+  const expected = new ExpectedOperations()
+  const request = { operationId: 'one', actorId: 'alice', type: 'comment.add', payload: { taskId: 'task', text: 'Signed by Alice’s desktop' } }
+  expected.intend(request, 'replica-a')
+  expected.acknowledge(request, { savedLocally: true, replicaId: 'replica-a', result: {} }, 100)
+  expected.ignore(['op-baseline'])
+  expected.expectRecords('create', [{ kind: 'project.genesis', subject: 'person-alice', signer: A_MACHINE }])
+  const operationId = `op-${hash([request.operationId, hash({ type: request.type, actorId: request.actorId, payload: request.payload })])}`
+  const known = { machineOfReplica: { 'replica-a': A_MACHINE }, personOfActor: { alice: 'person-alice' },
+    baseline: { machineId: A_MACHINE, actorId: 'alice' }, registration: id => (id === REGISTERED.id ? REGISTERED : null), resolve: ({ action, ...fields }) => ({ action, fields }) }
+  // Replica-specific labels (this computer, who relayed a verdict) are normalised away.
+  const a = attributedSnapshot({ expected, here: 'a' })
+  const b = attributedSnapshot({ expected, here: 'b', changes: { [operationId]: { via: B_MACHINE } } })
+  assert.ok(expected.attributed(a) && expected.attributed(b))
+  assert.equal(canonicalView(expected, a), canonicalView(expected, b))
+  const result = expected.verifyAttribution([a, b], known)
+  assert.deepEqual([result.changes, result.operations, result.records], [3, 2, 1])
+  // Two replicas that disagree on the signing machine fail, even though each shows "signed".
+  const other = attributedSnapshot({ expected, here: 'b', changes: { [operationId]: { machineId: B_MACHINE } } })
+  assert.ok(expected.attributed(other))
+  assert.throws(() => expected.verifyAttribution([a, other], known), /attribution differs between replicas/)
+  // Two replicas that agree on the signer but show different signed content fail too.
+  const content = attributedSnapshot({ expected, here: 'b', payload: { taskId: 'task', text: 'Other words' } })
+  assert.throws(() => expected.verifyAttribution([a, content], known), /attribution differs between replicas/)
+  // A signer that is not the machine the harness knows performed the operation fails, on every replica alike.
+  assert.throws(() => expected.verifyAttribution([other, other], known), /signed by machine-b.* but performed on machine-a/)
+  // Content that is not what the harness intended fails, on every replica alike.
+  assert.throws(() => expected.verifyAttribution([content, content], known), /signed payload is not what was intended/)
+  // A signer with no machine ID is not attribution.
+  assert.equal(expected.attributed(attributedSnapshot({ expected, here: 'a', changes: { [operationId]: { machineId: undefined } } })), false)
+  // Baseline operations are checked too.
+  assert.equal(expected.attributed(attributedSnapshot({ expected, here: 'a', changes: { 'op-baseline': { state: 'pending' } } })), false)
+  const forged = attributedSnapshot({ expected, here: 'a', changes: { 'op-baseline': { machineId: B_MACHINE } } })
+  assert.throws(() => expected.verifyAttribution([forged, forged], known), /op-baseline.*signed by machine-b/)
+  // Records: one every replica omits, one signed by another machine, and one never expected each fail.
+  const none = attributedSnapshot({ expected, here: 'a', records: [] })
+  assert.ok(expected.attributed(none), 'every replica may agree')
+  assert.throws(() => expected.verifyAttribution([none, none], known), /Expected record missing \(create\)/)
+  const wrongSigner = attributedSnapshot({ expected, here: 'a', records: [{ ...GENESIS, signer: B_MACHINE }] })
+  assert.throws(() => expected.verifyAttribution([wrongSigner, wrongSigner], known), /Expected record missing/)
+  const surplus = attributedSnapshot({ expected, here: 'a', records: [GENESIS, { recordId: 'record-extra', kind: 'profile', subject: 'person-alice', signer: A_MACHINE }] })
+  assert.throws(() => expected.verifyAttribution([surplus, surplus], known), /Membership records the harness never expected/)
+  // A second entry for an acknowledged operation (another change wrote its key) fails, and is not clean attribution.
+  const copy = { id: 'change-copy', kind: 'operation', key: operationId, event: { ...a.operations[operationId], replicaId: 'replica-b' }, timestamp: '2026-01-01T00:00:02.000Z',
+    changes: [{ hash: 'change-copy', state: 'signed', machineId: A_MACHINE, replicaId: 'replica-b', timestamp: '2026-01-01T00:00:02.000Z' }], flags: { sameKey: ['change-x'] }, review: true }
+  const doubled = attributedSnapshot({ expected, here: 'a', extra: [copy] })
+  assert.equal(expected.attributed(doubled), false)
+  assert.throws(() => expected.verifyAttribution([doubled, doubled], known), /shown in 2 entries/)
+  // A baseline operation is checked against the payload enrollment intends for the Actor it registers.
+  const altered = attributedSnapshot({ expected, here: 'a', baselinePayload: { ...REGISTERED, displayName: 'Someone else' } })
+  assert.throws(() => expected.verifyAttribution([altered, altered], known), /op-baseline's signed payload is not what enrollment intends/)
+  const stranger = attributedSnapshot({ expected, here: 'a', baselinePayload: { ...REGISTERED, id: 'stranger' } })
+  assert.throws(() => expected.verifyAttribution([stranger, stranger], known), /registers an Actor the harness never enrolled/)
+  // Flag values, alterations, unusual writes, replacements and write differences are compared, not only flag names.
+  const flaggedA = attributedSnapshot({ expected, here: 'a', flags: { [operationId]: { sameKey: ['change-x'] } } })
+  const flaggedB = attributedSnapshot({ expected, here: 'b', flags: { [operationId]: { sameKey: ['change-y'] } } })
+  assert.throws(() => expected.verifyAttribution([flaggedA, flaggedB], known), /attribution differs between replicas/)
+  for (const detail of [{ unusual: { count: 1, deleted: [{ map: 'tasks', key: 't' }] } }, { replaced: [{ map: 'operations', key: 'k', pred: ['1@x'] }] },
+    { mismatch: [{ issue: 'differs', map: 'commentBodies', key: 'c', claimed: 'a', wrote: 'b' }] }]) {
+    const withDetail = attributedSnapshot({ expected, here: 'b', changes: { [operationId]: detail } })
+    assert.throws(() => expected.verifyAttribution([a, withDetail], known), /attribution differs between replicas/, Object.keys(detail)[0])
+    assert.equal(expected.attributed(withDetail), Boolean(detail.replaced), `${Object.keys(detail)[0]} is ${detail.replaced ? '' : 'not '}clean attribution`)
+  }
+  const later = attributedSnapshot({ expected, here: 'b', extra: [] })
+  later.activity[0].alteredLater = [{ hash: 'change-edit' }]
+  assert.throws(() => expected.verifyAttribution([a, later], known), /attribution differs between replicas/)
+  // Rule 3 on every replica: an operation whose writes differ from its entry fails even when every replica agrees.
+  const mismatched = attributedSnapshot({ expected, here: 'a', changes: { [operationId]: { mismatch: [{ issue: 'missing', map: 'comments', key: 'c', claimed: {} }] } } })
+  assert.throws(() => expected.verifyAttribution([mismatched, mismatched], known), /writes that differ from its entry/)
+  // Anything left to review, a change not yet derived, or a change missing from Activity is not a clean attribution.
+  assert.equal(expected.attributed(attributedSnapshot({ expected, here: 'a', review: [{ change: 'other' }] })), false)
+  assert.equal(expected.attributed(attributedSnapshot({ expected, here: 'a', summary: { notDerived: 1 } })), false)
+  assert.equal(expected.attributed(attributedSnapshot({ expected, here: 'a', summary: { changes: 4 } })), false)
+})
+
+const canonicalView = (expected, snapshot) => JSON.stringify(expected.stableAttribution(snapshot))

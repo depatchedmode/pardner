@@ -1104,6 +1104,82 @@
     },
     "review": "automerge-sync-server.js: acceptMachine no longer judges a machine before it proves its key. Every well-formed hello is answered alike; membership, the hub's checkpoint comparison (noteCheckpoint), the waiting-hub record exchange and the refusal all run in admit, after both signatures verify and before any welcome, so a native upgrade still reaches registerSyncSession and the Automerge adapter only as a current member (UpgradeArrive), and stop() still terminates it. formerKey is gone and notMember always carries the removal details, since it is only reached after proof. Signed HTTP sessions (lib/machine-session.js, not mapped) likewise answer every hello and judge at confirm. No action guard, effect, atomicity note, invariant, witness or mutation text changed."
   },
+  "signedChangesReview": {
+    "recorded": "2026-11-11",
+    "issue": 197,
+    "mapping": {
+      "revision": "63cb8fc74c7939c1ad3407db1db92d0e47291ebe",
+      "files": {
+        "automerge-sync-server.js": "01f9b82b230d0dabc2d11d7814b2d2e52254fcaab30bb9f6dd0d1eadd952472b",
+        "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
+        "lib/workspace-runtime.js": "36114ae0a330ed85e5afb5724b5a7957b4cf698245ba82877f1d82eb65b92e48",
+        "lib/workspace.js": "d9926568c6f48d929955b0d0b2b85d23de09dfb143327e84d7c8f9c6c51f3c52"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-11T15:56:34.440Z",
+      "finished": "2026-11-11T15:56:56.995Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "Every change is signed (lib/attribution.js, not mapped) and the hub's persistence acknowledgement covers the board and its signature document. lib/workspace.js: acknowledge(heads, signatureHeads) refuses unless both are held, then one flush job persists both documents before the answer (Handle(ack), Respond). lib/workspace-runtime.js: documents are created with this machine's actor and every loaded one adopts a fresh machine actor before any local change; the replica requests both heads, its first guard also requires the hub's signature heads to be held, and its second guard records both requested snapshots, never current heads (ReplicaReceive, ReplicaAckCommit); syncPending stays true until both are acknowledged (ReplicaEdit: heads now stand for the pair); a signature-document change is a deferred local change off the acknowledgement path, like a membership write-back; closeResources pauses the hub poll before abort() and writes pending signatures into the signature document after the operation queue drains, before repo.shutdown(); the cache closes in finally before the lease. automerge-sync-server.js: sync-ack passes signatureHeads; a new signed route answers attribution queries; stop() destroys connections that never carried a request, which hold no modeled request (StopBegin). No action guard, effect, invariant or witness changed; the mutation texts for ack-before-persist, stale-ack-accepted and lease-before-drain follow the new code. Later commits in the same change pace the signature document's background saves to one a second through a storage.saveDoc wrapper that explicit flushes (including DurableRepo.shutdown) bypass, clear its timer in closeResources, start background checking only after initialized is set, and pass record positions to recordEntry when the board is read; each was re-reviewed and accepted, and the mapping recorded here is the final one. The last commit also saves each document's sync state, at most once a second per document and peer, in DurableRepo, through background(), because Repo 2.5.1 throttles those saves per peer and dropped the board's state behind the signature document's."
+  },
   "trustReviewThree": {
     "recorded": "2026-11-11",
     "mapping": {
@@ -1178,5 +1254,529 @@
       ]
     },
     "review": "Reviewed every action named by drift against automerge-sync-server.js and lib/workspace-runtime.js. Checkpoint growth is checked after proof and before welcome (UpgradeArrive). Resume and checkpoint updates share the hub-state write queue; serving sees resumed state only after the write, and StoreCloseBegin still drains this queue before closing the repository and releasing the lease. Record limits precede canonicalization in the gate and harvest; admitted record writes still join the operation queue, make one document change, and await the existing persistence barrier (Handle, Respond, ReplicaEdit). No action guard, effect, atomicity assumption, anchor, invariant, witness or mutation changes. The model excludes membership and restored-hub waiting; focused regressions cover those rules. Full verification and qualification deliberately not run."
+  },
+  "trustStageOneSignedIntegrationReview": {
+    "recorded": "2026-11-11",
+    "mapping": {
+      "revision": "0254a245f23b572d83e68923e3cf19a1efdd236e",
+      "files": {
+        "automerge-sync-server.js": "4ea7545bbea2ec334a0b09a139ff51e12833ffeb0b44b95991675ae2cf46d69e",
+        "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
+        "lib/workspace-runtime.js": "7c063d8530337a206edd9c659c95905154ce54622a21f1c0a74cc5434cdca20c",
+        "lib/workspace.js": "d9926568c6f48d929955b0d0b2b85d23de09dfb143327e84d7c8f9c6c51f3c52"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-11T17:09:56.551Z",
+      "finished": "2026-11-11T17:10:19.399Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "Integration of #220 (signed changes) and #219 (restored-hub freshness, durable resume, record limits) on integration/trust-stage1. Drift against the #220 mapping is exactly #219's change to automerge-sync-server.js and lib/workspace-runtime.js, now beside the signed-changes code. Re-reviewed every action named by drift. The missing-state growth check runs in admit, after both signatures verify and before any welcome or Automerge admission (UpgradeArrive). Resume and checkpoint updates share the hub-state write queue and publish state only after the write; closeResources still pauses attribution, drains the operation queue and harvests, writes pending signatures into the signature document, drains hub-state writes, then shuts the repository down, and closes the signature cache before the lease (StoreCloseBegin, StoreCloseComplete). Record limits precede canonicalization in the record gate and harvest; admitted record writes still join the operation queue, make one document change and await the persistence barrier; the two-document acknowledgement is untouched (Handle, Respond, ReplicaEdit, ReplicaReceive, ReplicaAckCommit). No action guard, effect, atomicity assumption, anchor, invariant, witness or mutation text changed."
+  },
+  "attributionReviewOne": {
+    "recorded": "2026-11-11",
+    "mapping": {
+      "revision": "7785e94f17377ec17c1d27a526e7965f7a811845",
+      "files": {
+        "automerge-sync-server.js": "4ea7545bbea2ec334a0b09a139ff51e12833ffeb0b44b95991675ae2cf46d69e",
+        "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
+        "lib/workspace-runtime.js": "53a8ea5cf2fd3635ad5a9afe42ec46b51b8001888282db1dcf95308dc31fb2c0",
+        "lib/workspace.js": "fbe75195fdd19a0f10bfa0fba4da30291838072100e4e063360485d9d1cce20a"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-11T18:50:03.991Z",
+      "finished": "2026-11-11T18:50:26.601Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "Attribution review fixes (signing only through the write path, content-bound signer lines, hardened signature document). Drift: lib/workspace.js and lib/workspace-runtime.js. Workspace.apply makes its change through an injected write path (WorkspaceRuntime.boardChange, which signs exactly that change through ChangeAttribution.change), still synchronously before the flush; the record gate and record write-back use the same path, each one document change before its flush (Handle, ReplicaEdit). The board's creation change is signed and cached in createDocument before the board is imported; nothing waits on it. synchronizeAcknowledgement first writes pending signatures into the signature document, a local change that only advances its heads, and sends no request while one is unwritten; this only withholds a request that the unfair ReplicaSendAck already need not send. The requested-snapshot guards and two-document flush are unchanged (ReplicaSendAck, ReplicaReceive, ReplicaAckCommit, Respond). attributionView adds read-only content. SyncDown, StoreCloseBegin and StoreCloseComplete: the code they map is unchanged. Changed: the Handle anchor (now this.change(prepared.change)), a new ReplicaSendAck anchor for the unwritten-signature guard, and two mapping notes. No guard, effect, atomicity assumption, invariant, witness or mutation text changed."
+  },
+  "attributionReviewTwoAcknowledgement": {
+    "recorded": "2026-11-11",
+    "mapping": {
+      "revision": "633cf6603d2c1c5d85b348800e57be4e6377c341",
+      "files": {
+        "automerge-sync-server.js": "4ea7545bbea2ec334a0b09a139ff51e12833ffeb0b44b95991675ae2cf46d69e",
+        "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
+        "lib/workspace-runtime.js": "c3acfdcfadb5a2400d47fe1edc9c2370656689ffd8a789323e65214fb52bde20",
+        "lib/workspace.js": "15bdd68343563c2cfef67bbaf3f0ad376aa83e426cc2f6130268dcbaa86bbc6d"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-11T20:29:24.539Z",
+      "finished": "2026-11-11T20:29:47.045Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "Acknowledgement pairing and the signature-cache barrier (attribution review two, item A). Drift: lib/workspace.js and lib/workspace-runtime.js. ReplicaSendAck: synchronizeAcknowledgement now captures the board and signature heads as one pair in the step that found the outbox empty, before the local flush, so a change made during that flush is in neither; the request carries exactly the captured pair, and the unfair action already allows any older snapshot. Handle: Workspace.apply and the record gate add this machine's signature cache to the persistence barrier (Workspace.confirm, ChangeAttribution.confirmOwn): a write whose own signature could not be saved fails as a storage failure and is not acknowledged; a retry replays and asks again. This is one more failure of the modeled flush job, which the storage-failure bound already covers. ReplicaReceive, ReplicaAckCommit, Respond: the requested-snapshot guards and the two-document flush are unchanged. ReplicaEdit, SyncDown, StoreCloseBegin, StoreCloseComplete: the mapped code is unchanged. Changed: two new Handle anchors (this.confirm() and the gate's confirmOwn), notes on the Handle and ReplicaSendAck anchors, and the receipt-before-persist mutation's find text, which now ends at the flush line. No guard, effect, atomicity assumption, invariant or witness changed."
+  },
+  "attributionReviewTwoActivity": {
+    "recorded": "2026-11-11",
+    "mapping": {
+      "revision": "638a6216ee23224c982c9f298d46f6719ab9fb76",
+      "files": {
+        "automerge-sync-server.js": "4ea7545bbea2ec334a0b09a139ff51e12833ffeb0b44b95991675ae2cf46d69e",
+        "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
+        "lib/workspace-runtime.js": "ef514e4ab61f4b0877e76f4cadf822f125b7ed6e05aab4870b34fb1318408b93",
+        "lib/workspace.js": "15bdd68343563c2cfef67bbaf3f0ad376aa83e426cc2f6130268dcbaa86bbc6d"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-11T21:41:34.470Z",
+      "finished": "2026-11-11T21:41:57.235Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "Activity derived from each change (attribution review two). Drift: lib/workspace-runtime.js. getDoc now adds Activity, every entry derived from the change that wrote it (lib/change-log.js, lib/activity.js), and attributionView is rebuilt on it, with read-only views of current comment authorship, deletions and the authorship of each alternative of a conflicted field or comment (re-reviewed again when that last view was added); nothing there writes or waits. The standalone service, which signs nothing, derives its Activity in memory: a heads-changed listener notes new changes and derives a small batch in that same synchronous step, and larger ones in setImmediate slices; nothing waits on the disk, and closeResources clears the slice timer and the listener before it drains the operation queue. ReplicaEdit, Handle: a local change is still made through boardChange before the flush; deriving its entry is synchronous work in the change step, like signing. ReplicaSendAck, ReplicaReceive, ReplicaAckCommit, SyncDown, StoreCloseBegin, StoreCloseComplete: the mapped code is unchanged. No anchor, guard, effect, atomicity assumption, invariant, witness or mutation text changed."
+  },
+  "attributionReviewThree": {
+    "recorded": "2026-11-11",
+    "mapping": {
+      "revision": "a2fb102167882e5ea9969944b0094f09e44503e7",
+      "files": {
+        "automerge-sync-server.js": "4ea7545bbea2ec334a0b09a139ff51e12833ffeb0b44b95991675ae2cf46d69e",
+        "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
+        "lib/workspace-runtime.js": "7469d6cf2dc9229545e37821a514bba2c5f8b3121e40b53f4df25c2638fd4acf",
+        "lib/workspace.js": "92b977421a9505037f7b73fe916cfbb5ba62202e7590fe562ba4795e059bb29f"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-12T01:55:39.845Z",
+      "finished": "2026-11-12T01:56:02.639Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "Content read through Automerge and writes bound to their entry (attribution review three). Drift: lib/workspace.js (ReplicaEdit, Handle, Respond): only snapshot() changed, reading each task, goal, vein, comment and index on its own and listing any it cannot read in unreadable; it is read-only, and execute, apply, the queue and the local-save barrier are unchanged. lib/workspace-runtime.js (ReplicaEdit, SyncDown, ReplicaSendAck, Handle, StoreCloseBegin, StoreCloseComplete, ReplicaReceive, ReplicaAckCommit): only the read-only current-state views changed (currentWriters, the new holderOf, the REGISTER_MAPS constant); nothing there writes, waits or runs in a listener, and boardChange, the acknowledgement path, the attribution start, the receive path and closeResources are unchanged. lib/attribution.js, not mapped, gained a queue that saves equivocation reports and proofs until a save succeeds; confirmOwn() is unchanged. No anchor, guard, effect, atomicity assumption, invariant, witness or mutation text changed."
+  },
+  "attributionReviewFour": {
+    "recorded": "2026-11-12",
+    "mapping": {
+      "revision": "a671f85243eaff868a7f07399f501bd46f9a3777",
+      "files": {
+        "automerge-sync-server.js": "4ea7545bbea2ec334a0b09a139ff51e12833ffeb0b44b95991675ae2cf46d69e",
+        "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
+        "lib/workspace-runtime.js": "31259b8cf12681fdcafcfabbaff1b66691cf2a5bc8717931f6ca037cb10eef1e",
+        "lib/workspace.js": "4d62ea4865d681fc75d1777b4db93b3eafda653266d7b145f0658140abcc14b3"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-12T19:55:26.016Z",
+      "finished": "2026-11-12T19:55:48.603Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "Every top-level read contained, and each entry checked against the board as of its change's dependencies (attribution review four). Drift: lib/workspace.js (ReplicaEdit, Handle, Respond): the read-only readable() gives every read the top-level maps that hold one map and lists the rest; snapshot() and context() read through it, and context() refuses a missing record as UNREADABLE only when a map it would be in cannot be read; the constructor takes the metadata's project ID and accepts the schema version the creation wrote; apply() wraps the preparation and the change so an error from a top-level map of the wrong kind is refused as UNREADABLE, the change still goes through boardChange synchronously before the flush, a change that throws is still refused before any flush, and confirm() and STORAGE_FAILED are unchanged; the Handle anchor names the wrapped line. lib/workspace-runtime.js (ReplicaEdit, SyncDown, ReplicaSendAck, Handle, StoreCloseBegin, StoreCloseComplete, ReplicaReceive, ReplicaAckCommit): opening accepts the project ID the creation wrote; isMap requires an Automerge map; getDoc names the writers of each unreadable top-level key (read-only); getAgents and prepareDelivery read the readable board (prepareDelivery still flushes before it reconciles); the record gate's comparison reads own properties; the gate's change, flush and barrier, the acknowledgement path, the attribution start, the receive path and closeResources are unchanged. Only the Handle anchor text and its note changed."
+  },
+  "attributionCloseOut": {
+    "recorded": "2026-11-12",
+    "mapping": {
+      "revision": "015431e680731aefb5b61e6922cea3d6bd8e2139",
+      "files": {
+        "automerge-sync-server.js": "4ea7545bbea2ec334a0b09a139ff51e12833ffeb0b44b95991675ae2cf46d69e",
+        "lib/durable-repo.js": "2587f70ee4bba0b9e7ed13ad46cabf07d8354573c5a92d9ffe123eed0622d58d",
+        "lib/workspace-runtime.js": "f0f2dd0f8068fd57683c02b4a912deb0f4dfa44bae53b7f3d16ac226c420d1f5",
+        "lib/workspace.js": "5d838e04eff7e591b77e787fb56301594667384f2f8684f5c9e1b69d127661ee"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-12T23:54:43.819Z",
+      "finished": "2026-11-12T23:55:06.635Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    }
   }
 }

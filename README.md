@@ -42,10 +42,11 @@ All document strings are immutable scalar values (Automerge `ImmutableString`),
 including field registers, operation history and membership records. Reads expose
 ordinary JavaScript strings. Different-field merging, authored same-field
 alternatives and explicit resolution retain their existing behavior; Pardner
-replaces whole values and does not splice collaborative text. Schema 8, whose
-membership records carry each machine's consent, refuses earlier storage
-directories, and version 3 client directories refuse earlier ones, without
-migrating or deleting them.
+replaces whole values and does not splice collaborative text. Schema 11, whose
+changes are signed by the machine that made them and whose signature cache keeps
+equivocation reports with the signatures that prove them and the Activity entry
+derived from each change, refuses earlier storage directories, and version 4 client
+directories refuse earlier ones, without migrating or deleting them.
 
 Each client directory has its own Ed25519 machine key, created on first start and
 reported as a machine ID by `client status`. Creating a project signs a
@@ -129,12 +130,222 @@ keeps it listed as removed, says who removed it and how to come back, and is
 never shown as signed out. `client people` gives the same listing as text. Last
 seen is held in the hub's memory only, so it resets when the hub restarts.
 
-What is not enforced yet: **changes are not signed, so a member machine's word is
-taken for who made a change.** Any member may change anything, and the local
-service on the machine that made a change attributes it. Agent grants limit agents
-only on their own machine. Activity entries do not yet show which machine signed a
-change, and nothing flags unattributed changes; both wait for signed changes. A
-member running a modified client could still write a record signed by its own
+**Every change shows which machine made it.** Each Automerge change carries an
+actor ID that starts with its machine's ID and ends with 8 random bytes drawn each
+time the document is loaded, so a restored backup and its original never reuse an
+actor and sequence number. A machine signs only the changes its own write path makes
+(operations, the record gate, record write-backs and the board's creation), each
+at once with its key, over the project ID and Automerge's change hash; it never
+infers authorship from a change's actor ID. It saves the signature in a local,
+grow-only signature cache before the change can be saved, and writes it into the
+project's signature document, a second document beside the board whose ID every
+member derives from the project ID; that document is saved and synced in the
+background, off the acknowledgement path, and at start-up and whenever an entry it
+verified is deleted or overwritten a machine writes back the signatures it holds
+that the document lacks. Every peer applies every change it receives, as before,
+then checks that the signature verifies under the machine the actor names and that
+this machine is or was a member, and keeps each signature it verified in its own
+cache, so deleting an entry from the shared document unattributes nothing it
+already checked. No change is refused, dropped or hidden. A received change that
+carries this machine's own actor but that it did not sign is unattributed, and the
+machine reports that another machine used its actor.
+
+**A signer line means: this machine signed exactly this content.** That is what
+Pardner guarantees about every change, as a signed commit does in git: Activity
+shows, for each change, the machine that signed it and that machine's person. What
+an entry says the change did (its fields, values and words) is the author's own
+description, like a commit message: Pardner compares it with what the change wrote
+and flags a difference, but that check is best-effort, not a guarantee (below; its
+known gaps are listed in [#228](https://github.com/depatchedmode/pardner/issues/228)).
+None of those gaps lets a member fake who signed a change. Activity is a
+log of the board's changes, as a git log is a log of commits. Each entry is derived
+from one change. The change's decoded operations say only which keys of which of the
+board's top-level maps it wrote; every value shown is what Automerge itself reads at
+that key as of that change (with `getAll`, `keys` and `length` at the change's own
+head, which `test/automerge-history-reads.test.js` pins as faithful in Automerge
+3.2.3), so an entry holds exactly what that change put there and nothing later. A
+value is accepted only as plain JSON, and a key such as `__proto__` is ordinary
+data: a change holding several values at one key in its own state, text, a counter,
+bytes, a date, a number JSON cannot hold exactly, or nesting deeper than 32 is
+unrecognised, so an entry reads the same before and after storage and on every peer.
+Its signer line is the verdict for that same change. No entry's content is taken from
+the board's current state or chosen through an ID written inside it. Every peer
+derives the same entry from the same change, whenever the change reached it, and
+keeps it in its signature cache under the change's hash and derivation version (now
+5), so a restart derives only new changes. The derivation runs in slices after the
+board opens: a slice stops before a change that would take it past 2,000 Automerge
+operations (one larger change is derived alone) and starts no change once 10 ms have
+passed; one change is always derived whole, so its own time is not bounded
+(`lib/change-log.js` states each bound). A change not yet derived is counted as being
+checked and not shown, and a change that cannot be decoded or read is its own entry
+for review.
+
+**An operation's description is checked against what its change did, on a
+best-effort basis.** For each operation type,
+`lib/operation-writes.js` states the exact writes its event implies (which maps and
+keys, and the values or register contents), and the change's writes are compared
+with them. A missing write, an extra write or a different value flags the entry as
+not matching what its change did, in review, with each difference said in words:
+what the entry says and what the change wrote. What an event says about the board
+when its operation ran is checked against the board as of its change's dependencies
+(the state its write path read), read with the same faithful history reads: each
+field's previous value, the bookkeeping a field register carries over, the revisions
+an operation retires (each `expectedRevisions` list), the alternatives a link and a
+merged branch's status retire, which Actors a comment's @handles named and which
+Actor a handle named, the fields `task.branch` and `task.merge` copy, the goals a
+vein may leave, and whether a record it names was there. Where the board then held
+several values the write path could have read (one operation written twice by a
+retried request, or one Actor's concurrent records), a value any of them gives is
+accepted, so honest work on several replicas is never flagged. Still exempt
+(`EXEMPT` in `lib/operation-writes.js`): the event's own time and replica; a linked
+commit's hash and message; and whether `task.unlink-issue` retires every link of its
+issue (each revision it names must be one). Each entry carries its one reading
+(`shows`), which every renderer reads: one value per field as its change wrote it,
+the previous value only where the board then held it, `unchanged` only where every
+value the field then held is the one written, and the comment text its change wrote.
+An event naming one field twice is flagged. The board's creation may write only what
+a new board holds and the Actors it starts with, which its genesis entry lists. An
+unflagged entry is one this check found no difference in, not one proven to describe
+its change: [#228](https://github.com/depatchedmode/pardner/issues/228) lists the
+cases known to pass unflagged (earlier changes by the same author that a change's
+`deps` do not name, a retried request whose changes read differently, a read
+receipt naming a comment that does not exist, and a field written with a value of
+the wrong kind). The browser and the CLI say so: only the signer line is called
+verified, and a flagged entry says its description does not match what the change
+wrote.
+
+Activity names each entry's signer, the person and the machine; says "signature
+pending" while a signature may still be on its way; says "unattributed" and names
+the machine that relayed it once the machine that delivered the change has had a
+second on a live connection to send one; and says "made by a removed machine" for a
+signed change that does not come before that machine's removal in the board's
+history. Work from before a removal stays attributed. An entry is flagged and listed
+for review when the key it was written at is not the operation ID inside it, its
+operation ID is not the one its request ID and content give, another change wrote
+the same key (each such change is its own entry), its signer is not certified for
+the Actor it names, its change also deleted content, wrote at the board's top
+level, or wrote into what another change made, its writes do not match its entry, its
+change's time is no time a date can show (shown as unknown), or a second change
+claims to create the board. A change that wrote neither one well-formed operation
+event nor a membership record, or that is too large to read (more than 20,000
+operations or 8 MB), is listed for review as unrecognised, under its own signer,
+saying what it altered. Changes share one entry only when their content is proven
+equal: an Actor's own operation retried on two of its replicas (equal apart from
+each change's replica and time, each listed with its own signer; or one request
+whose events differ only in what each replica's write path read from its own time
+and board, each change matching its own event, where the entry shows the first
+change's reading and each other change whose reading differs carries its own), or one
+membership record written back. An entry replaced or deleted later stays shown as its change
+wrote it. Inside an entry, the time, words, field values and IDs are the signed
+ones, and sorting, grouping and filtering use them; Actor names and task, goal and
+vein titles are looked up now and marked as current. A comment deleted later keeps
+its signed words; its note names the Actor who deleted it, with the signing machine,
+only when the deleting change is that Actor's own signed, unflagged
+`comment.delete`, and otherwise says a change that needs review (naming its signer),
+an unsigned change (naming who relayed it) or a change still being checked marked it
+deleted. A membership record's signer line is the record's own signature, which
+covers exactly the record shown; the time beside it is when a machine wrote the
+record to the board, which the record's signer did not sign, and says so. One
+change's data never stops a view: an entry, a row, a CLI item or a record on the
+board that cannot be read or described fails on its own and says so.
+
+Views of the board as it is now (the board itself, a task's fields, a comment's
+current text, the alternatives of a conflicted field or comment) carry no signer
+line. Where one names an author, it is the Actor the board records, and it says the
+value was changed by someone other than that Actor when the change that wrote it, or
+wrote into it (inside a list of the value included), is not that Actor's own signed,
+unflagged operation; that change then has its own Activity entry under its own
+signer. The edit form's "saved a newer …" notice credits the operation that the
+field's current value names, confirmed only when that operation's own entry is
+signed and unflagged, no other change wrote the value or into it, and nothing is
+still being read; otherwise it says unconfirmed. Every read that hands records to
+the CLI, the hub or the browser (the board, each record's context, the board's
+Actors, the review list) reads each record on its own, as `SHAPES` in
+`lib/workspace-schema.js` says: an Actor, task, goal, vein, comment, mention,
+Activity entry, read receipt or vein link that is not a map, or has no ID it can be
+known by, is left out; a field holding a value of the wrong kind (a number for a
+task's tags, say, or a list with an element of the wrong kind), and a field with no
+readable revision, read as that kind's empty value. Each is listed in `unreadable`
+with its record and field, the board names it ("Not shown: …", "Shown empty: …"),
+and a task's panel names its own fields shown empty. Nothing on the board is changed
+or refused; the write path reads the board as it is, so an operation still records
+the value the board held. A top-level part of the board
+that a change rewrote with a value of the wrong kind (null, a number, text or a list
+where a map belongs, or a map where the schema version, project ID, name or time
+belongs) is listed with the changes that wrote it and their signers, the board names
+it, and everything else still reads; a record or write that needs it is refused as
+unreadable. A top-level key holding several values written concurrently is read as
+the value Automerge picks (a map, when it picks one) and listed as such. The board is called by the project its metadata names, and reopens with
+the schema version and project ID its creation wrote. The task context's
+`history` (`pardner show`, and what agents read) lists the board's current operation
+events and is not attributed. Browser Activity and task History, `pardner activity`,
+`timeline`, `trace task` and `diff`, and `pardner client review` all read the same
+entries, and every CLI item carries its entry's flags, its review state and each
+signer as data; the standalone service checks no signatures, and its entries say so.
+The board announces changes that need review, with a filter for them.
+
+What a signer line does not cover: whether its entry describes the change, beyond
+the best-effort check above; the exempt values above; side effects of a
+membership record change beyond its records (flagged, not described); the names and
+titles shown beside it, which are current; and whether the act was allowed.
+
+Two different changes signed by one machine with the same actor and sequence number
+are reported as equivocation, naming the machine; the report is kept across restarts
+with the verified signatures that prove it (each saved again until a save succeeds),
+and is shown as proven as soon as the second signature arrives. Automerge refuses the second change, so board changes from
+the peer that carries it stop applying until that machine is removed and its copy
+rebuilt. The hub's persistence acknowledgement covers the heads of both the board and
+the signature document. A replica asks for it only once every signature it made is
+in the signature document, about the board and signature heads it captured together
+at that moment; and a write is acknowledged locally only once its own signature is
+saved in the signature cache.
+
+Everything read from the signature document is checked for shape: only map shards,
+change-hash keys and 64-byte values. Every concurrent shard map and value is read,
+so no member can hide a valid signature behind others; a shard key's maps are read
+once per change to that key, a change's candidate values (every concurrent value and
+every position of a candidate list) once for each state of the document,
+de-duplicated by content, and the hub makes a shard that holds more than one value
+into one map holding every entry. Candidates are verified in passes: one slice of
+background work, or one write into the signature document, makes at most 250 Ed25519
+verifications, at most 32 of them (`CANDIDATES_PER_PASS`, about 3.5 ms) for one
+change, and a change or shard with more is examined further in the next pass from
+where it stopped. Each result is kept while its change is under examination, its
+shard is being merged or it proves an equivocation report, and otherwise up to
+50,000 results, so no examination starts again from the beginning; copies stored
+ahead of a genuine signature delay it but never hide it. While a change's signer cannot
+be established (its change has not arrived, or its actor names no known machine),
+every distinct candidate for it is kept, as a list at its key, up to 16; once the
+signer is known the hub keeps the one that verifies. Past 16, what may be genuine is
+kept first: the cached value, then one value per known machine that may be the
+change's signer, then values no known key verifies (a machine not known yet may have
+made them), then the rest. A genuine signature is dropped from the shared document
+only when 16 values rank before it, and its writer puts it back when it sees its
+entry missing. A malformed shard is made again as a map
+with its entries kept. A failed write-back is retried. A
+failure in a background attribution task is contained, logged and shown in status
+(`attribution.failures`), and never stops the service. A member asks the hub about
+every change still waiting for a verdict in turn, 500 at a time.
+
+What is not enforced: **a member may still change anything**, as in git. Peers
+check who made a change, not whether it was allowed, and people review and undo a
+bad change. **A machine's word is taken for which of its Actors acted:** peers
+verify the machine and flag only a change claiming an Actor that machine is not
+certified for, such as another person's Actor, or a person on an agents-only
+machine; agent grants limit agents only on their own machine. **The sync stream
+after the handshake is protected only by TLS** (#215): whoever terminates TLS in
+front of the hub, such as a reverse proxy or tunnel provider, could relay a
+member's handshake and then inject sync traffic, which peers apply and flag as
+unattributed. Changes to the signature document are not signed themselves: a
+member can delete or overwrite an entry, which unattributes a change only on peers
+that never verified it. A member can also front-run another machine's next change
+with an unsigned change under that machine's actor and sequence number; the real
+change is then refused by Automerge where the forgery arrived first, which is
+reported as a conflicting change, not proven equivocation. Whether a change came
+after its machine's removal is read from the board's history, so a member who
+deletes a removal record from the document can move that point when peers write
+the record back; the machine stays removed either way. A member
+running a modified client could still write a record signed by its own
 machine straight into the document. The hub harvests that
 as history, without the current-role check, so a demoted admin could still remove
 a member that way; records from a removed machine are refused. Consent, derived
@@ -175,7 +386,7 @@ identity, so the same Actor can work from more than one machine.
 Local operations are acknowledged only after a disk persistence barrier. Enrolled
 replicas reopen without the hub and reconnect with a fresh machine handshake.
 Member machines are trusted full document writers: their synchronized changes bypass
-operation validation. Ordinary API and Actor credentials authorize only a machine's
+operation validation, and each is attributed to the machine that signed it. Ordinary API and Actor credentials authorize only a machine's
 own API and UI subscriptions; they are never accepted between machines.
 Different-field edits merge; same-field alternatives retain their authors and
 require explicit resolution. A synced indicator requires an explicit hub
@@ -348,9 +559,12 @@ its properties within that model only.
 
 ## Storage and dependencies
 
-A schema 8 directory contains workspace metadata, Automerge storage, the
-grow-only membership record store, an exclusive service lock, and local connection
-settings. The hub additionally holds the SQLite delivery ledger and its own
+A schema 11 directory contains workspace metadata, Automerge storage (the board
+and its signature document), the grow-only membership record store, the grow-only
+signature cache (`signatures.sqlite`: verified change signatures, equivocation
+reports with the signatures that prove them, and the Activity entry derived from
+each board change), an
+exclusive service lock, and local connection settings. The hub additionally holds the SQLite delivery ledger and its own
 waiting state after a restore (`hub-state.json`). A client
 directory also holds its machine key. Client directories and storage directories
 using an earlier schema are refused and left unchanged; choose a fresh directory

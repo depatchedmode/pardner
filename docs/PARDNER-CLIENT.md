@@ -110,10 +110,143 @@ a removed machine, or a signer without the role a record needs, cannot add new
 records. History that arrives by sync is harvested without that check, so a new
 replica keeps a removed admin's earlier admissions.
 
+## Signed changes
+
+Every Automerge change this machine makes carries an actor ID that begins with its
+machine ID's digest and ends with 8 random bytes drawn each time a project's
+documents are loaded. The project runtime signs each change its own write path
+makes (operations, the record gate, record write-backs and the board's creation)
+at once with the machine key, over the project ID and the change's hash; it never
+signs a change because of the actor it carries. It saves the signature
+in the project's signature cache, `signatures.sqlite`, before the change can be
+saved. It then writes the signature into the project's **signature document**, a
+second Automerge document beside the board. Every member derives that document's
+ID from the project ID, so no member can point a project at another one; the hub
+creates it with the board, and the client serves only those two documents. The
+signature document is saved in the background at most once a second and synced
+like the board, off the acknowledgement path: a write is acknowledged once the
+board is on disk. When a project runtime starts, and whenever an entry it verified
+is deleted or overwritten, it writes back every signature in its cache that the
+shared document lacks, its own included. A received change that carries this
+machine's own actor but that it did not sign is unattributed, and the board and
+`client review` say another machine used this computer's actor.
+
+**Checking.** Every change that arrives is applied first, as before, then
+checked: its signature must verify under the machine its actor names, and that
+machine must be or have been a member. Each signature this machine verifies goes
+into its cache, which only grows, so an entry deleted from the shared document
+does not unattribute a change here, and is written back. A change is never
+refused, dropped or hidden. Each one is in one of four states:
+
+- **Signed** by its machine, shown as that machine's person (or the agent the
+  machine names) and the machine.
+- **Signature pending**, while the signature may still be on its way. The hub
+  waits while the machine that sent the change is disconnected, and for a second
+  on a live connection after the change arrived; a member machine asks the hub,
+  and waits while the hub does or while the hub holds a signature that has not
+  arrived yet. Pending lasts milliseconds normally, or the length of an outage.
+  The board shows nothing for the first moment and then "Signature pending".
+- **Unattributed: relayed by** a named machine, once that wait is over and no
+  valid signature exists, for example because the change was never signed or its
+  signature doesn't check out. It becomes signed if a valid signature arrives later.
+- **Made by a removed machine**, for a signed change by a machine this computer
+  holds as removed that does not come before the removal in the board's history.
+  Its earlier work stays signed and attributed.
+
+A change that claims an Actor its machine is not certified for, such as another
+person's Actor, is flagged too; peers take a machine's word only for which of its
+own Actors acted.
+
+**What a signer line covers.** A signer line means that machine signed exactly
+the content shown. That is the guarantee, as a signed commit is in git: who signed
+each change. What an entry says the change did is its author's description, like a
+commit message; Pardner checks it against what the change wrote on a best-effort
+basis and flags a difference, but an unflagged entry is not proven to describe its
+change ([#228](https://github.com/depatchedmode/pardner/issues/228) lists the known
+gaps). Activity is a log of the board's changes: each entry is derived
+from one change (the operation event it made, with the key it wrote, or the
+membership records it wrote), its content is what Automerge itself reads at that
+key as of that change, accepted only as plain JSON, and its signer line is the
+verdict for that same change. Nothing shown under a signer is read from the board's
+current state. An operation's description is also checked, on a best-effort
+basis: the change's writes are compared with the exact writes its event implies,
+and what it says about the board then (a field's old value, say) with the board as
+of its change's dependencies; any difference is flagged ("this description does not
+match what the change wrote"), listed for review and said in words, with what the
+entry says and what the change wrote. README lists the few values still exempt. Every peer derives the same entry from the same change, and
+keeps it in `signatures.sqlite` under the change's hash, so a restart derives only
+the changes that are new. A change that wrote neither one well-formed operation
+event nor a membership record is listed for review as unrecognised, under its own
+signer, saying what it altered; a change that wrote another change's key, or wrote
+an event naming an Actor its machine is not certified for, is its own entry,
+flagged. An entry a later change altered or replaced stays shown as its own change
+wrote it. Until every change has been derived, for a while after a new replica first
+syncs, Activity says how many changes it is still reading. Inside an entry, Actor
+names and task, goal and vein titles are as they are now, marked with a dotted
+underline; times, words, values and IDs are as signed. A membership record's signer
+line is the record's own signature.
+
+**What has no signer line.** The board, a task's fields, a comment's current text
+and the alternatives of a conflicted field or comment are the board as it is now.
+Each names the Actor the board records, and says it was changed by someone other
+than that Actor when the change that wrote it, or wrote into it (inside a list of
+the value included), is not that Actor's own signed, unflagged operation. The edit
+form's "saved a newer …" credits the operation the field's current value names, and
+says unconfirmed unless that operation's own entry is signed and unflagged. A comment
+deleted later keeps its signed words in Activity; its note names who deleted it only
+when the deleting change is that Actor's own signed, unflagged `comment.delete`, and
+otherwise names the change's signer and points to Activity.
+
+**Malformed data.** What a peer reads from the signature document is checked for
+shape; every concurrent shard map and value is read, so no member can hide a valid
+signature behind others, and the hub makes a shard that holds more than one value
+into one map holding every entry. Every value stored for a change is read, and
+candidates are verified in passes of at most 32 for one change, each resumed where
+the last stopped, so no number of copies hides a genuine signature or holds up the
+board. Candidates for a change whose signer cannot be established yet are all kept,
+up to 16 (what may be genuine first), until it can. One change's data never stops a
+view: an entry, row or CLI item that cannot be read fails on its own and says so; a
+board record that is not a map is left out and named ("Not shown: …"), and a field
+holding a value of the wrong kind is shown empty and named ("Shown empty: …"),
+without changing the board; and a change time no date can show is shown as unknown
+and flagged. A shard that is not a map is made again as one
+with its entries kept. A failure in a background attribution task is contained,
+logged and shown in the project's status as `attribution.failures`; it never stops
+the project runtime.
+
+**Where it shows.** Every Activity entry and task history entry has a signer line,
+and so do `pardner activity`, `timeline`, `trace task` and `diff`, which print the
+same entries.
+Membership records appear in Activity under **People and machines**: admissions,
+pairings, removals, role changes, agent names and profiles, each with the machine
+that signed it and the time a machine wrote it to the board (labelled so: the
+record's signer did not sign that time). Every CLI item carries its entry's flags,
+its review state and each signer as data. When changes need review, the
+board shows a notice with **Review changes**, which opens Activity's **Needs
+review** filter. `pardner client review --project ID` lists the same changes as
+text, or as data with `--json`.
+
+**Equivocation.** Two different changes with one actor and sequence number can't
+both be in a document: Automerge refuses the second, and automerge-repo then
+applies nothing from any message that carries it. Pardner reports such a refusal
+with both change hashes and the machine the actor names. When both changes carry
+valid signatures, that machine signed both, and the board and `client review` say
+so. The report is kept in the signature cache with the signatures that prove it
+(a failed save is retried until it succeeds), so it survives a restart and the entries' deletion from the signature document. Board
+changes from the peer that carries the conflicting change stop applying here until
+that machine is removed and its copy rebuilt; every other peer keeps syncing.
+
+**Hub acknowledgement.** A member machine's change counts as synced only when the
+hub acknowledges that it has persisted the heads of both the board and the
+signature document. The member asks only once every signature it made is written
+into the signature document whose heads it sends, so each of its acknowledged
+changes has its signature on the hub's disk too.
+
 Directories made before machine keys are refused, whether a client directory
-without `machine-key.pem` or a storage directory with an earlier schema. They are
-left byte-for-byte unchanged and are never migrated. Start Pardner with a fresh
-`--data` directory.
+without `machine-key.pem` or a storage directory with an earlier schema. Schema 11
+storage, with signed changes and equivocation reports kept with their proof, and version 4 client
+directories are the current ones. Earlier directories are left byte-for-byte unchanged and are never migrated.
+Start Pardner with a fresh `--data` directory.
 
 ## Invite and join
 
