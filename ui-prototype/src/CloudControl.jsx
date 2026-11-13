@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { CANCELLABLE_EXECUTION_STATES } from '@pardner/domain-vocab'
 import { createOperationId } from './operation-id.js'
 
 function CloudContext({ context, cloud, actor, act, busy, canManageAccess }) {
@@ -27,7 +28,7 @@ function CloudContext({ context, cloud, actor, act, busy, canManageAccess }) {
       {row.reason && <p>{row.reason}</p>}
       <pre>{row.output}</pre>
       {row.eventsIncomplete && <p>Event history incomplete; fresh run reads establish state.</p>}
-      {['queued', 'running', 'blocked', 'cancel_requested'].includes(row.state) && <button disabled={busy || !actor} onClick={() => act('/pardner/control/cloud/executions/cancel', { ...authority, taskId: row.intent.taskId, executionId: row.executionId })}>Cancel exact Cloud run</button>}
+      {CANCELLABLE_EXECUTION_STATES.includes(row.state) && <button disabled={busy || !actor} onClick={() => act('/pardner/control/cloud/executions/cancel', { ...authority, taskId: row.intent.taskId, executionId: row.executionId })}>Cancel exact Cloud run</button>}
       {row.state === 'unknown' && <button disabled={busy} onClick={() => act('/pardner/control/cloud/executions/reconcile', { executionId: row.executionId })}>Reconcile Cloud acceptance</button>}
       {row.reconciliation && <p>{row.reconciliation.reason}</p>}
       {(row.verdicts ?? []).map((verdict, index) => <p key={index}>{verdict.kind}: {verdict.verdict} by {verdict.actorId} · {verdict.evidence}</p>)}
