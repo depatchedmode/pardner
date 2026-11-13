@@ -445,12 +445,14 @@ for (const engine of [chromium, webkit]) it(`gives user-authored Markdown its ow
       const [long, short] = await target.locator('pre').all()
       assert.equal(await long.evaluate(pre => pre.scrollWidth > pre.clientWidth), true)
       assert.equal(await short.evaluate(pre => pre.scrollWidth > pre.clientWidth), false)
+      // Compare with the code background itself: a sampled pixel inside the block
+      // can land on glyph antialiasing, which varies with the platform's fonts.
+      const codeBackground = await short.evaluate(pre => getComputedStyle(pre).backgroundColor.match(/\d+/g).slice(0, 3).map(Number))
       const shortEdge = await pixelColumn(page, short, -3)
-      const shortMiddle = await pixelColumn(page, short, 40)
       const longEdge = await pixelColumn(page, long, -3)
-      assert.deepEqual(shortEdge, shortMiddle, 'a short code block shows no scroll shadow')
-      assert.ok(Math.max(...longEdge.map((channel, index) => Math.abs(channel - shortMiddle[index]))) >= 8,
-        `an overflowing code block shows a scroll shadow (${longEdge} vs ${shortMiddle})`)
+      assert.deepEqual(shortEdge, codeBackground, 'a short code block shows no scroll shadow')
+      assert.ok(Math.max(...longEdge.map((channel, index) => Math.abs(channel - codeBackground[index]))) >= 8,
+        `an overflowing code block shows a scroll shadow (${longEdge} vs ${codeBackground})`)
     }
     assert.equal(await panel.evaluate(aside => aside.scrollWidth <= aside.clientWidth), true, 'wide Markdown never widens the panel')
     const output = resolve('output/playwright')
