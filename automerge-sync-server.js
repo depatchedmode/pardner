@@ -1,12 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * Automerge Sync Server
- *
- * HTTP/WebSocket hub for the current Pardner deployment.
- * CLI, external harnesses, and UI clients talk to this process.
- */
-
 import { WebSocketServer } from 'ws'
 import { ValidatedWebSocketServerAdapter } from './lib/validated-websocket-server-adapter.js'
 import { WorkspaceRuntime } from './lib/workspace-runtime.js'
@@ -22,12 +15,10 @@ import { parseGithubRepo } from './lib/github-remote.js'
 import { LanAccess, canManageAccess, isLoopback } from './lib/lan-access.js'
 import { ControlPane } from './lib/control-pane.js'
 import { T3Busy, T3Rejected, T3Unknown } from './lib/t3-mcp-client.js'
-
-const DEFAULT_HTTP_PORT = 8004
-const DEFAULT_WS_PORT = 8005
-
-/** WebSocket path for Automerge Repo native (CBOR) sync — distinct from JSON UI subscriptions. */
-const NATIVE_AUTOMERGE_WS_PATH = '/automerge'
+import {
+  AUTOMERGE_PATHS, DEFAULT_HTTP_PORT, DEFAULT_WS_PORT, NATIVE_AUTOMERGE_WS_PATH,
+  REPLICA_TOKEN_HEADER, TICKET_PURPOSE,
+} from './lib/sync-protocol.js'
 
 function wsUpgradePathname(req) {
   try {
@@ -169,8 +160,7 @@ class AutomergeSyncServer {
     this.validateListenerHost(this.host)
     this.stopping = false
     this.logger.log?.('🚀 Starting Automerge Sync Server...')
-    
-    // Initialize backend store
+
     await this.store.init()
     const lanInterface = await this.access.load()
     this.onDocumentChange = () => this.broadcastDocumentUpdate()
@@ -184,15 +174,11 @@ class AutomergeSyncServer {
         doc: () => this.store.getDoc() }).open()
       this.control.start()
     }
-    
-    // Setup Express for HTTP API
+
     this.setupHTTPAPI()
-    
-    // Setup WebSocket for real-time sync
     this.setupWebSocketServer()
     this.store.repo.networkSubsystem.addNetworkAdapter(this.automergeWsAdapter)
 
-    // Start HTTP server
     this.httpServer = createServer(this.app)
     await this.listen(this.httpServer, this.httpPort, this.host)
     this.httpPort = this.getBoundPort(this.httpServer, this.httpPort)
@@ -231,8 +217,6 @@ class AutomergeSyncServer {
     this.logger.log?.(
       `🌍 Allowed CORS origins: ${this.allowedOrigins.size === 0 ? '(none)' : [...this.allowedOrigins].join(', ')}`
     )
-    
-    // Register default agents if not exists
   }
 
   getBoundPort(server, fallbackPort) {
@@ -570,8 +554,10 @@ class AutomergeSyncServer {
       }
     })
     this.setupControlAPI()
-    const commands = new Set(['/automerge/operations', '/automerge/sync-ack', '/automerge/ws-ticket',
-      '/automerge/deliveries/claim', '/automerge/deliveries/ack', '/automerge/deliveries/release'])
+    const commands = new Set([
+      AUTOMERGE_PATHS.operations, AUTOMERGE_PATHS.syncAck, AUTOMERGE_PATHS.wsTicket,
+      AUTOMERGE_PATHS.deliveriesClaim, AUTOMERGE_PATHS.deliveriesAck, AUTOMERGE_PATHS.deliveriesRelease,
+    ])
     this.app.use((req, res, next) => {
       const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
       if (mutation && !commands.has(req.path)) {
@@ -579,9 +565,8 @@ class AutomergeSyncServer {
       }
       next()
     })
-    
-    // Get current document state
-    this.app.get('/automerge/doc', async (req, res) => {
+
+    this.app.get(AUTOMERGE_PATHS.doc, async (req, res) => {
       try {
         const doc = this.store.getDoc()
         res.json({ success: true, doc })
@@ -589,9 +574,8 @@ class AutomergeSyncServer {
         res.status(500).json({ error: error.message })
       }
     })
-    
-    // Get document URL for frontend connection
-    this.app.get('/automerge/url', async (req, res) => {
+
+    this.app.get(AUTOMERGE_PATHS.url, async (req, res) => {
       try {
         const url = this.store.docHandle?.url
         const doc = this.store.docHandle?.doc()
@@ -610,24 +594,24 @@ class AutomergeSyncServer {
       })
     }
 
-    this.app.post('/automerge/operations', async (req, res) => {
+    this.app.post(AUTOMERGE_PATHS.operations, async (req, res) => {
       try {
         res.json({ success: true, ...await this.store.execute(req.body) })
       } catch (error) { operationFailure(res, error) }
     })
 
-    this.app.get('/automerge/status', (req, res) => {
+    this.app.get(AUTOMERGE_PATHS.status, (req, res) => {
       res.json(this.store.status())
     })
 
-    this.app.get('/automerge/deliveries', async (req, res) => {
+    this.app.get(AUTOMERGE_PATHS.deliveries, async (req, res) => {
       try {
         res.json(await this.store.pendingDeliveries(req.query.actor))
       } catch (error) { operationFailure(res, error) }
     })
 
     for (const [action, method] of [['claim', 'claimDelivery'], ['ack', 'acknowledgeDelivery'], ['release', 'releaseDelivery']]) {
-      this.app.post(`/automerge/deliveries/${action}`, async (req, res) => {
+      this.app.post(`${AUTOMERGE_PATHS.deliveries}/${action}`, async (req, res) => {
         try {
           res.json(await this.store[method](req.body))
         } catch (error) { operationFailure(res, error) }
@@ -648,24 +632,24 @@ class AutomergeSyncServer {
       })
     }
 
-    this.app.post('/automerge/sync-ack', async (req, res) => {
+    this.app.post(AUTOMERGE_PATHS.syncAck, async (req, res) => {
       try {
         res.json(await this.store.acknowledge(req.body?.workspaceId, req.body?.heads))
       } catch (error) { operationFailure(res, error) }
     })
 
-    this.app.post('/automerge/ws-ticket', async (req, res) => {
+    this.app.post(AUTOMERGE_PATHS.wsTicket, async (req, res) => {
       try {
         this.cleanupExpiredWsTickets()
-        const purpose = req.body?.purpose ?? 'ui'
-        if (!['ui', 'replica'].includes(purpose)) {
+        const purpose = req.body?.purpose ?? TICKET_PURPOSE.ui
+        if (![TICKET_PURPOSE.ui, TICKET_PURPOSE.replica].includes(purpose)) {
           return res.status(400).json({ code: 'INVALID_TICKET_PURPOSE', error: 'Unknown ticket purpose' })
         }
         let replicaId = null
-        if (purpose === 'replica') {
+        if (purpose === TICKET_PURPOSE.replica) {
           replicaId = req.body?.replicaId
           const expected = this.replicaCredentials.get(replicaId)
-          const supplied = req.headers['x-pardner-replica-token']
+          const supplied = req.headers[REPLICA_TOKEN_HEADER]
           if (!expected || typeof supplied !== 'string' ||
               !crypto.timingSafeEqual(crypto.createHash('sha256').update(expected).digest(),
                 crypto.createHash('sha256').update(supplied).digest())) {
@@ -679,23 +663,21 @@ class AutomergeSyncServer {
       }
     })
 
-    // Get agent trace for a specific commit
     this.app.get('/automerge/trace/:commitHash', async (req, res) => {
       try {
         const { commitHash } = req.params
         const repoPath = req.query.repoPath || process.cwd()
-        
+
         const gitRoot = findGitRoot(repoPath)
         if (!gitRoot) {
           return res.status(404).json({ error: 'Not a git repository' })
         }
-        
+
         const trace = getTraceByCommit(gitRoot, commitHash, { exact: true })
         if (!trace) {
           return res.status(404).json({ error: 'Trace not found for this commit' })
         }
-        
-        // Try to get GitHub remote URL
+
         let githubUrl = null
         try {
           const remote = execSync('git config --get remote.origin.url', {
@@ -708,20 +690,19 @@ class AutomergeSyncServer {
             githubUrl = `https://github.com/${repo}/commit/${commitHash}`
           }
         } catch {
-          // No remote or not GitHub, that's fine
+          // Missing remotes or non-GitHub remotes are normal for local-only checkouts.
         }
-        
-        res.json({ 
-          success: true, 
+
+        res.json({
+          success: true,
           trace,
-          githubUrl 
+          githubUrl
         })
       } catch (error) {
         res.status(500).json({ error: error.message })
       }
     })
-    
-    // Get GitHub remote URL for current repo
+
     this.app.get('/automerge/github-remote', async (req, res) => {
       try {
         const repoPath = req.query.repoPath || process.cwd()

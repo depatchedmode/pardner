@@ -1,15 +1,8 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
+import { canonical, plain, receiptKey } from '../../lib/workspace-schema.js'
+import { digest, recordId, storedOperationIdFromRequest, taskIdForRequest } from '../../lib/operation-identity.js'
 
-const canonical = value => JSON.stringify(sort(value))
-function sort(value) {
-  if (Array.isArray(value)) return value.map(sort)
-  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, sort(value[key])]))
-  return value
-}
-export const hash = value => createHash('sha256').update(canonical(value)).digest('hex')
-
-const storedId = request => `op-${hash([request.operationId, hash({ type: request.type, actorId: request.actorId, payload: request.payload })])}`
+export const hash = value => digest(canonical(value))
 
 /** Intents are recorded before execution; successful receipts never define expected effects. */
 export class ExpectedOperations {
@@ -33,7 +26,7 @@ export class ExpectedOperations {
     for (const [id, intent] of this.intents) {
       if (!this.receipts.has(id)) continue
       if (intent.type === 'task.create') {
-        const taskId = `task-${createHash('sha256').update(storedId(intent)).digest('hex').slice(0, 24)}`
+        const taskId = taskIdForRequest(intent)
         tasks.set(taskId, { description: '', status: 'backlog', assignee: null, priority: 'p2', tags: [], ...intent.payload })
       }
       if (intent.type === 'task.update') Object.assign(tasks.get(intent.payload.taskId), intent.payload.updates)
@@ -47,7 +40,7 @@ export class ExpectedOperations {
     }
     for (const [id, { receipt }] of this.receipts) {
       const intent = this.intents.get(id)
-      const operationId = storedId(intent)
+      const operationId = storedOperationIdFromRequest(intent)
       const event = snapshot.operations[operationId]
       assert.ok(event, `Acknowledged operation missing: ${id}`)
       assert.equal(event.operationId, operationId)
@@ -65,11 +58,12 @@ export class ExpectedOperations {
       }
       if (intent.type === 'task.create') {
         assert.ok(snapshot.tasks[receipt.result.taskId], `Created task missing: ${id}`)
+        assert.equal(receipt.result.taskId, recordId('task', operationId))
         assert.equal(snapshot.tasks[receipt.result.taskId].created_by, intent.actorId)
       }
       if (intent.type === 'read.mark') {
         for (const observed of intent.payload.comments) {
-          const key = createHash('sha256').update(JSON.stringify([intent.actorId, observed.commentId, observed.revisionId])).digest('hex')
+          const key = receiptKey(intent.actorId, observed.commentId, observed.revisionId)
           readReceipts.set(key, { actorId: intent.actorId, ...observed })
         }
       }
@@ -83,7 +77,7 @@ export class ExpectedOperations {
     }
     assert.equal(canonical(snapshot.readReceipts), canonical(Object.fromEntries(readReceipts)), 'Read receipts must equal the union of observed revisions for their Actors')
     assert.equal(Object.keys(snapshot.operations).length, this.receipts.size, 'Unexpected or unacknowledged operation exists')
-    return { operationCount: this.receipts.size, snapshotHash: hash(snapshot) }
+    return { operationCount: this.receipts.size, snapshotHash: hash(plain(snapshot)) }
   }
   report() { return { intents: [...this.intents.values()], expectedReplicas: Object.fromEntries(this.sources), receipts: Object.fromEntries(this.receipts) } }
 }
