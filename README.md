@@ -354,7 +354,11 @@ for such records too. Records are enforced only at
 the hub. A removed machine that synced after a hub's backup was taken, was removed
 while offline, and is the first to reach the restored hub can still be served
 until a member holding the removal connects. Peers do not sync directly, and hub
-routes rely on HTTPS for confidentiality. Because the hub answers every hello, any
+routes rely on HTTPS for confidentiality. After the handshake, sync frames are
+protected only by TLS, so whoever terminates TLS in front of the hub (a reverse
+proxy or tunnel) could relay a member's handshake and then inject its own sync
+traffic on that socket
+([#215](https://github.com/depatchedmode/pardner/issues/215)). Because the hub answers every hello, any
 party can hold one of its 256 pending HTTP sessions for up to 30 seconds without
 a member's key. The rest of the trust rollout remains a
 [plan](docs/PARDNER-TRUST-PLAN.md).
