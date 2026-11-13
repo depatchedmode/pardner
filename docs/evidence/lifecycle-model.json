@@ -7,12 +7,12 @@
     "externalTools": "none"
   },
   "mapping": {
-    "revision": "d849d26a51d27b2788092bdbae0c08a280ab1616",
+    "revision": "79aa91e0da3ee659178287e8e315d62b126ef514",
     "files": {
-      "automerge-sync-server.js": "64f8be84ccf00471ab519fbaea02d46277a22b658ee2cca24b571bb9b583e59c",
-      "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
-      "lib/workspace-runtime.js": "ecbedacaed6740499eda73451b692c4984ef24715569af1aa69c23656569f2f0",
-      "lib/workspace.js": "db8d3768446f04bdd3a75493b0f82ed1453adff8e941ce4f1aa2d70fdd9d48ca"
+      "automerge-sync-server.js": "0097dda2e05b7e615e96421b075752fc0ac89f80877fd29c47e1a3a5d5ac6aeb",
+      "lib/durable-repo.js": "2e439911ee0afb6039a4864886fd64b7838b0a3b8036f95a81bbdd1560d3d641",
+      "lib/workspace-runtime.js": "8967b66bfd66fe471edccafbe21b8daeed505705c6a196a6aa08c86e2f06a036",
+      "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
     }
   },
   "modelCheck": {
@@ -401,11 +401,11 @@
   "operationIntegrityMappingReview": {
     "recorded": "2026-11-04",
     "mapping": {
-      "revision": "bd55f246bacae5068b761c999e7b849501e7a5e3",
+      "revision": "79aa91e0da3ee659178287e8e315d62b126ef514",
       "files": {
-        "automerge-sync-server.js": "53492a21086f3d134470e37aa24bd82a6db36af1b688937a0b443ea8df813576",
-        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
-        "lib/workspace-runtime.js": "ecbedacaed6740499eda73451b692c4984ef24715569af1aa69c23656569f2f0",
+        "automerge-sync-server.js": "0097dda2e05b7e615e96421b075752fc0ac89f80877fd29c47e1a3a5d5ac6aeb",
+        "lib/durable-repo.js": "2e439911ee0afb6039a4864886fd64b7838b0a3b8036f95a81bbdd1560d3d641",
+        "lib/workspace-runtime.js": "8967b66bfd66fe471edccafbe21b8daeed505705c6a196a6aa08c86e2f06a036",
         "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
       }
     },
@@ -419,12 +419,12 @@
   "securityIntegrationReview": {
     "recorded": "2026-11-04",
     "mapping": {
-      "revision": "509a8357a4ef0197825eacf70a5d7a5504fb1795",
+      "revision": "79aa91e0da3ee659178287e8e315d62b126ef514",
       "files": {
-        "automerge-sync-server.js": "0b8d091ed66cab0cce2d4c0b3e5ecdd37dc0b70a7b5d9491f76dcab3df7cead4",
-        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
-        "lib/workspace-runtime.js": "db3eb7b8aaf0a3a2360c13e26439b193931e3e9e22ffc61712b9a1d4caae0a31",
-        "lib/workspace.js": "db8d3768446f04bdd3a75493b0f82ed1453adff8e941ce4f1aa2d70fdd9d48ca"
+        "automerge-sync-server.js": "0097dda2e05b7e615e96421b075752fc0ac89f80877fd29c47e1a3a5d5ac6aeb",
+        "lib/durable-repo.js": "2e439911ee0afb6039a4864886fd64b7838b0a3b8036f95a81bbdd1560d3d641",
+        "lib/workspace-runtime.js": "8967b66bfd66fe471edccafbe21b8daeed505705c6a196a6aa08c86e2f06a036",
+        "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
       }
     },
     "node": "v24.11.1",
@@ -439,11 +439,11 @@
   "reliabilityPostSecurityReview": {
     "base": "c636854cbf307bc67529e670c6658ff856267535",
     "mapping": {
-      "revision": "9e8d14b7510a532c5a9dbee503701f8e79e09e7b",
+      "revision": "79aa91e0da3ee659178287e8e315d62b126ef514",
       "files": {
-        "automerge-sync-server.js": "3f63aa976f995222cb7d23d65d9f85c6556664893860768bc0595c5fc928e259",
-        "lib/durable-repo.js": "643e91f843bd5396d7cb7c704ba80180093ec97ef773e488b2768bbe32358370",
-        "lib/workspace-runtime.js": "db3eb7b8aaf0a3a2360c13e26439b193931e3e9e22ffc61712b9a1d4caae0a31",
+        "automerge-sync-server.js": "0097dda2e05b7e615e96421b075752fc0ac89f80877fd29c47e1a3a5d5ac6aeb",
+        "lib/durable-repo.js": "2e439911ee0afb6039a4864886fd64b7838b0a3b8036f95a81bbdd1560d3d641",
+        "lib/workspace-runtime.js": "8967b66bfd66fe471edccafbe21b8daeed505705c6a196a6aa08c86e2f06a036",
         "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
       }
     },
