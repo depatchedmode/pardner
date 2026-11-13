@@ -1,27 +1,55 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ActorMarkdown from './ActorMarkdown.jsx'
 import './pardner.css'
 import { createOperationId } from './operation-id.js'
 import { createConnection, loadConfiguration, websocketUrl } from './connection.js'
-import PhoneAccess from './PhoneAccess.jsx'
 import ControlPane from './ControlPane.jsx'
 import ClientApp from './ClientApp.jsx'
 import { AvatarStack } from './Avatar.jsx'
+import RecordConflicts from './RecordConflicts.jsx'
+import { disputedStatusText } from './record-conflicts.js'
+import { hubNotice } from './client-api.js'
+import { isNewComment } from './comments.js'
+import { defaultHandoffStatus } from './handoff.js'
+import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js'
+import { quickStatusEditable } from './task-status.js'
+import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
+import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
-const LABELS = {
-  backlog: 'Backlog',
-  'up-next': 'Up next',
-  'in-progress': 'In progress',
-  review: 'Review',
-  completed: 'Completed',
-  'dead-end': 'Dead end',
-  abandoned: 'Abandoned',
-  open: 'Open',
-  proven: 'Proven',
-  achieved: 'Achieved',
+const StatusOptions = ({ values = STATUSES }) => values.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
+const ACTIVITY_SHOWS = [
+  ['changes', 'All changes'], ['status', 'Status changes and handoffs'], ['comments', 'Comments'],
+  ['commits', 'Commits and branches'], ['plans', 'Goals and veins'], ['actors', 'Actors registered'], ['reads', 'Read receipts'],
+]
+const ACTIVITY_PAGE = 100
+const dayStart = date => new Date(date.getFullYear(), date.getMonth(), date.getDate())
+function dayHeading(date, now = new Date()) {
+  const days = Math.round((dayStart(now) - dayStart(date)) / 86400000)
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  return date.toLocaleDateString(undefined, {
+    weekday: 'long', month: 'long', day: 'numeric', ...(date.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+  })
 }
-const GOAL_STATUSES = ['open', 'achieved', 'abandoned']
+// True when `event` sorts at or after `cutoff` in newest-first order.
+const atOrAfter = (event, cutoff) => {
+  const a = Date.parse(event.timestamp) || 0
+  const b = Date.parse(cutoff.timestamp) || 0
+  return a !== b ? a > b : String(event.operationId) >= String(cutoff.operationId)
+}
+// Escape closes a panel unless a dialog owns it or typed text would be lost.
+function escapeKeepsPanel(event) {
+  if (event.defaultPrevented) return true
+  const target = event.target
+  // An open dialog (profile, invite) closes first, not the panel beneath it.
+  if (target?.closest?.('dialog') || document.querySelector('dialog[open]')) return true
+  const typed = target?.tagName === 'TEXTAREA' ||
+    (target?.tagName === 'INPUT' && ['', 'text', 'search', 'url', 'email'].includes(target.getAttribute('type') ?? ''))
+  return Boolean(typed && target.value.trim() !== '')
+}
+// Task details operations whose errors render above that form's submit button.
+const FORM_SLOTS = ['task.update', 'task.handoff', 'comment.add']
 const labelActor = (actor) =>
   actor ? `${actor.displayName || actor.handle} · ${actor.kind}` : 'Unassigned'
 
@@ -32,6 +60,7 @@ function SelectActor({
   label = 'Actor',
   optional = false,
   emptyLabel,
+  disabled = false,
 }) {
   return (
     <label>
@@ -39,6 +68,7 @@ function SelectActor({
       <select
         aria-label={label}
         value={value || ''}
+        disabled={disabled || undefined}
         onChange={(event) => onChange(event.target.value)}
       >
         <option value="">{emptyLabel || (optional ? 'Unassigned' : 'Choose an Actor')}</option>
@@ -51,25 +81,62 @@ function SelectActor({
     </label>
   )
 }
-function ErrorNotice({ error, retry }) {
+function MarkdownBody({ children, extraPlugins = [] }) {
+  return (
+    <div className="markdown">
+      <ActorMarkdown extraPlugins={extraPlugins}>{children}</ActorMarkdown>
+    </div>
+  )
+}
+// Buttons are type="button": the notice can sit inside the form that failed.
+function ErrorNotice({ error, retry, onDismiss }) {
   if (!error) return null
   return (
     <div className="error" role="alert">
       <strong>{error.message}</strong>
-      <p>
+      {(error.code === 'STALE_UPDATE' || !error.preflight) && <p>
         {error.code === 'STALE_UPDATE'
           ? 'Your draft is preserved. Review the latest context before making a new edit.'
           : 'Your last confirmed data remains available.'}
-      </p>
-      {retry && <button onClick={retry}>Retry saved request</button>}
+      </p>}
+      {(retry || onDismiss) && <div className="actions">
+        {retry && <button type="button" onClick={retry}>Retry saved request</button>}
+        {onDismiss && <button type="button" onClick={onDismiss}>Dismiss</button>}
+      </div>}
     </div>
   )
+}
+// Focuses the returned ref's control once it is connected and enabled again,
+// after `request()` is called. Used to keep focus off <body> when a control
+// unmounts or disables itself while a request runs.
+function useRefocus() {
+  const ref = useRef(null)
+  const wanted = useRef(false)
+  useEffect(() => {
+    if (!wanted.current) return
+    const frame = requestAnimationFrame(() => {
+      const active = document.activeElement
+      // Only recover lost focus: never take it back from a control the user
+      // has moved to while the request was running.
+      if (active && active !== document.body) {
+        wanted.current = false
+        return
+      }
+      const element = ref.current
+      if (!element?.isConnected || element.disabled) return
+      wanted.current = false
+      element.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  })
+  return [ref, useCallback(() => { wanted.current = true }, [])]
 }
 function SaveStatus({ status, connected, busy, heads }) {
   let text = 'Connecting to local service'
   if (busy) text = 'Saving locally…'
   else if (!connected) text = 'Local service disconnected'
   else if (status?.storageError) text = 'Local save failed'
+  else if (hubNotice(status)) text = hubNotice(status)
   else if (!status?.savedLocally || status.heads?.join(',') !== heads) text = 'Saving locally…'
   else if (status.syncPending) text = 'Saved locally · waiting for hub'
   else text = 'Saved locally · synced'
@@ -81,6 +148,32 @@ function SaveStatus({ status, connected, busy, heads }) {
     >
       {text}
     </span>
+  )
+}
+
+// One event as a plain sentence. Activity passes handlers so subjects become
+// buttons; History passes none and stays plain text.
+function EventRow({ event, lookups, within, onTask, onVein, onGoal, formatTime, ...articleProps }) {
+  const description = describeEvent(event, lookups, { within })
+  const when = new Date(event.timestamp)
+  const handlers = { task: onTask, vein: onVein, goal: onGoal }
+  return (
+    <article className="event" {...articleProps}>
+      <p className="event-line">
+        <strong>{description.actor}</strong>
+        {description.parts.map((part, index) => {
+          if (typeof part === 'string') return part
+          if (part.status) return <span key={index} className="record-status" data-status={part.status}>{part.label}</span>
+          const open = handlers[part.subject]
+          if (!open || part.missing) return part.label
+          return <button key={index} type="button" className="subject" {...(part.subject === 'task' ? { 'data-task-id': part.id } : {})}
+            onClick={click => open(click.currentTarget, part.id)}>{part.label}</button>
+        })}
+      </p>
+      {description.detail && <p className="event-detail">{description.detail}</p>}
+      {description.excerpt && <p className="event-detail">{description.excerpt}</p>}
+      <time dateTime={when.toISOString()} title={when.toLocaleString()}>{formatTime(when)}</time>
+    </article>
   )
 }
 
@@ -97,52 +190,61 @@ export default function Pardner() {
   if (!config) return <main className="connection">
     <h1>Pardner</h1>
     <p role="status">{failure ? failure.message : 'Opening your workspace…'}</p>
-    {failure && <><p>Check that the service is running. If the address changed, open Pair another device on the desktop.</p>
+    {failure && <><p>Check that Pardner is running on your computer. Start it with <code>pardner open</code>, then retry.</p>
       <button onClick={() => reload().catch(setFailure)}>Retry connection</button></>}
   </main>
   if (config.mode === 'client') return <ClientApp config={config} />
-  return <Workspace key={config.workspaceId} config={config} reloadConfiguration={reload} />
+  // A standalone service has no human board: people use the local client, which keeps its own projects.
+  return <main className="connection">
+    <h1>Pardner</h1>
+    <p>This is the standalone agent and integration service, for agents and scripts on this computer. It serves no other machine.</p>
+    <p>People use the Pardner client: run <code>pardner open</code>. The client keeps its own projects, so this service’s tasks do not appear there.</p>
+  </main>
 }
 
 /**
- * The board. Standalone services authenticate with a token or pairing code; in
- * local client mode `session` is supplied, the cookie authenticates, and the
- * author is the signed-in Actor (there is no author picker).
+ * The board inside the local client. The session cookie authenticates and the
+ * author is the signed-in Actor; `session` carries the client's header, presence
+ * and callbacks.
  */
-export function Workspace({ config, reloadConfiguration, session = null }) {
+export function Workspace({ config, reloadConfiguration, session }) {
   const client = useMemo(() => createConnection(config), [config])
-  // The session prop changes every render (presence, header); effects depend only on the mode.
-  const sessionMode = Boolean(session)
+  // The session prop changes every render (presence, header); callbacks read it through this ref.
   const sessionRef = useRef(session)
+  // The project grants control to people on this computer.
+  const canControl = Boolean(session.canControl)
   sessionRef.current = session
   // Task panels open below the client header so people, Invite and the project stay reachable.
   const headerRef = useRef(null)
   const [headerHeight, setHeaderHeight] = useState(0)
   useEffect(() => {
     const element = headerRef.current
-    if (!sessionMode || !element || typeof ResizeObserver !== 'function') return
+    if (!element || typeof ResizeObserver !== 'function') return
     const observer = new ResizeObserver(() => setHeaderHeight(Math.ceil(element.getBoundingClientRect().height)))
     observer.observe(element)
     return () => observer.disconnect()
   })
-  // Let a scanned link validate stored authentication before normal requests begin.
-  const [token, setToken] = useState(() => !session && new URLSearchParams(window.location.hash.slice(1)).has('pair') ? '' : client.credential())
-  const [credential, setCredential] = useState('')
-  const [pairCode, setPairCode] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('pair') ?? '')
-  const [pairBusy, setPairBusy] = useState(false)
-  const [phoneSetup, setPhoneSetup] = useState(false)
   const [connectionError, setConnectionError] = useState(null)
+  const connectionAlert = useRef(null)
   const [doc, setDoc] = useState(null)
   const [status, setStatus] = useState(null)
   const [connected, setConnected] = useState(false)
-  const [actor, setActor] = useState(() => session ? config.actorId : client.preferences().actor || '')
-  const [selected, setSelected] = useState(() => session ? client.preferences().selected || null : null)
+  const actor = config.actorId
+  const [selected, setSelected] = useState(() => client.preferences().selected || null)
   const [creating, setCreating] = useState(false)
+  // In-memory New task draft ({ fields, tags }); null means the defaults. Never persisted.
+  const [newTaskDraft, setNewTaskDraft] = useState(null)
   const [view, setView] = useState(() => client.preferences().view || 'board')
   const [filter, setFilter] = useState(() => client.preferences().filter || '')
   const [statusFilter, setStatusFilter] = useState(() => client.preferences().statusFilter || '')
   const [veinFilter, setVeinFilter] = useState(() => client.preferences().veinFilter || '')
+  const [activityActor, setActivityActor] = useState('')
+  const [activityShow, setActivityShow] = useState('changes')
+  // { timestamp, operationId } of the oldest rendered row; rows at or after it always render.
+  const [activityCutoff, setActivityCutoff] = useState(null)
   const [error, setError] = useState(null)
+  // { type, taskId } of the operation that failed, so its message renders beside that form.
+  const [errorOrigin, setErrorOrigin] = useState(null)
   const [busy, setBusy] = useState(false)
   const [confirmedOperation, setConfirmedOperation] = useState(null)
   const [pending, setPending] = useState(() => client.pending())
@@ -151,55 +253,46 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
   const statusUpdates = useRef(0)
   const refreshGeneration = useRef(0)
   const [retryGeneration, setRetryGeneration] = useState(0)
-  const pairDevice = useCallback(async code => {
-    setPairBusy(true)
-    setConnectionError(null)
-    try {
-      if (client.credential()) {
-        try { await client.request('/automerge/status') }
-        catch (failure) { if (failure.code !== 'AUTH_REQUIRED') throw failure }
-      }
-      if (!client.credential()) await client.pair(code)
-      setPairCode('')
-      setToken(client.credential())
-    }
-    catch (failure) { setConnectionError(failure) }
-    finally { setPairBusy(false) }
-  }, [client])
-  useEffect(() => {
-    if (sessionMode) return
-    const pairFromUrl = () => {
-      const code = new URLSearchParams(window.location.hash.slice(1)).get('pair')
-      if (code === null) return
-      window.history.replaceState(null, '', window.location.pathname + window.location.search)
-      setPairCode(code)
-      void pairDevice(code)
-    }
-    window.addEventListener('hashchange', pairFromUrl)
-    pairFromUrl()
-    return () => window.removeEventListener('hashchange', pairFromUrl)
-  }, [pairDevice, sessionMode])
-
+  // Focus: the control that opened the current panel ({ taskId } for a card, else
+  // the element), and which open has already moved focus to its heading.
+  const opener = useRef(null)
+  const openCount = useRef(0)
+  const headingFocusedFor = useRef(0)
+  const newTaskButton = useRef(null)
+  const viewNav = useRef(null)
+  const panelWasOpen = useRef(false)
+  const openPanel = (from, open) => {
+    opener.current = from
+    openCount.current++
+    open()
+  }
+  const claimHeadingFocus = useCallback(() => {
+    if (headingFocusedFor.current === openCount.current) return false
+    headingFocusedFor.current = openCount.current
+    return true
+  }, [])
   useEffect(() => {
     try {
-      client.savePreferences(sessionMode ? { filter, statusFilter, veinFilter, view, selected }
-        : { actor, filter, statusFilter, veinFilter, view })
+      client.savePreferences({ filter, statusFilter, veinFilter, view, selected })
     } catch (failure) { setError(failure) }
-  }, [client, sessionMode, actor, filter, statusFilter, veinFilter, view, selected])
-  const onFocusChange = session?.onFocusChange
+  }, [client, filter, statusFilter, veinFilter, view, selected])
+  const onFocusChange = session.onFocusChange
   useEffect(() => { onFocusChange?.(selected ? [selected] : []) }, [onFocusChange, selected])
-  const requestedTask = session?.requestedTask
-  useEffect(() => { if (requestedTask) { setSelected(requestedTask.taskId); setCreating(false) } }, [requestedTask])
-  const onTasks = session?.onTasks
+  const requestedTask = session.requestedTask
+  // A task opened from a profile is a new open: focus its heading; closing falls back to New task.
+  useEffect(() => {
+    if (!requestedTask) return
+    opener.current = null
+    openCount.current++
+    setSelected(requestedTask.taskId)
+    setCreating(false)
+  }, [requestedTask])
+  const onTasks = session.onTasks
   useEffect(() => { if (doc) onTasks?.(doc.tasks) }, [onTasks, doc])
   const request = useCallback(async (path, body) => {
     try { return await client.request(path, body) } catch (failure) {
-      if (failure.code === 'AUTH_REQUIRED' && sessionRef.current) sessionRef.current.onAuthLost()
-      else if (failure.code === 'AUTH_REQUIRED' && !client.credential()) {
-        setToken('')
-        setDoc(null)
-        setConnectionError(new Error('The service credential changed. Pair again or enter the current local service token.'))
-      }
+      if (failure.code === 'AUTH_REQUIRED') sessionRef.current.onAuthLost()
+      if (failure.code === 'REVOKED') sessionRef.current.onRemoved?.()
       if (failure.code === 'WORKSPACE_MISMATCH') await reloadConfiguration()
       throw failure
     }
@@ -221,7 +314,6 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
     if (observedStatus === statusUpdates.current) setStatus(state)
   }, [request, config.workspaceId, reloadConfiguration])
   useEffect(() => {
-    if (!token || !config) return
     let stopped = false, socket, timer, openingTimer, attempt = 0, connecting = false
     const schedule = () => {
       clearTimeout(timer)
@@ -252,7 +344,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
             const message = JSON.parse(event.data)
             if (message.doc && message.doc.workspaceId !== config.workspaceId) {
               socket.close()
-              void reloadConfiguration().catch(setConnectionError)
+              void reloadConfiguration().catch(failure => { if (!stopped) setConnectionError(failure) })
               return
             }
             if (message.doc) { docUpdates.current++; setDoc(message.doc) }
@@ -267,7 +359,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           connecting = false
           if (stopped) return
           setConnected(false)
-          setConnectionError(new Error('Live updates disconnected. Reconnecting automatically. Check that both service ports are reachable.'))
+          setConnectionError(new Error('Live updates disconnected. Reconnecting automatically.'))
           schedule()
         }
         socket.onerror = () => socket.close()
@@ -297,19 +389,56 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
       window.removeEventListener('focus', resume)
       document.removeEventListener('visibilitychange', resume)
     }
-  }, [token, config, refresh, request, reloadConfiguration, retryGeneration])
+  }, [config, refresh, request, reloadConfiguration, retryGeneration])
   useEffect(() => {
-    if (!sessionMode && doc && actor && !doc.actors[actor]) setActor('')
-  }, [doc, actor, sessionMode])
+    connectionAlert.current?.scrollIntoView({ block: 'nearest' })
+  }, [connectionError])
+  // Once a panel unmounts, return focus to its opener, else New task, else the current view's button.
+  useEffect(() => {
+    const open = Boolean(selected || creating)
+    if (panelWasOpen.current && !open) {
+      const from = opener.current
+      const card = from?.taskId && document.querySelector(`.task-card[data-task-id="${CSS.escape(from.taskId)}"]`)
+      const usable = element => element?.isConnected && !element.disabled
+      ;[card || from, newTaskButton.current, viewNav.current?.querySelector('[aria-pressed="true"]')].find(usable)?.focus()
+    }
+    panelWasOpen.current = open
+  }, [selected, creating])
+  const activityEvents = useMemo(() => {
+    const actorId = doc?.actors?.[activityActor] ? activityActor : ''
+    return sortEvents(Object.values(doc?.operations ?? {}).filter(event => {
+      if (actorId && event.actorId !== actorId) return false
+      const group = eventGroup(event)
+      return activityShow === 'changes' ? group !== 'reads' : group === activityShow
+    }))
+  }, [doc?.operations, doc?.actors, activityActor, activityShow])
+  const activityFocus = useRef(null)
+  useEffect(() => {
+    if (!activityCutoff && activityEvents.length) {
+      const last = activityEvents[Math.min(ACTIVITY_PAGE, activityEvents.length) - 1]
+      setActivityCutoff({ timestamp: last.timestamp, operationId: last.operationId })
+    }
+  }, [activityCutoff, activityEvents])
+  useEffect(() => {
+    const id = activityFocus.current
+    activityFocus.current = null
+    if (id) document.querySelector(`.event[data-operation-id="${CSS.escape(id)}"]`)?.focus()
+  }, [activityCutoff])
+  // A subject that switches views asks for focus once the new view has rendered.
+  const focusAfterView = useRef(null)
+  useEffect(() => {
+    const focus = focusAfterView.current
+    focusAfterView.current = null
+    focus?.()
+  }, [view])
   const submit = async (type, payload, replay = null) => {
     if (inflight.current) return null
-    if (!actor && !replay) {
-      setError({ message: 'Choose the Actor making this change.' })
-      return null
-    }
+    const origin = replay?.payload ?? payload
+    setErrorOrigin({ type: replay?.type ?? type, taskId: origin?.taskId, recordId: origin?.veinId ?? origin?.goalId })
     if (pending && !replay) {
       setError({
         message: 'Resolve the saved request before starting another change.',
+        preflight: true,
       })
       return null
     }
@@ -325,10 +454,11 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
     try {
       const receipt = await request('/automerge/operations', operation)
       setConfirmedOperation(operation)
-      if (operation.type === 'task.create') {
+      if (operation.type === 'task.create') openPanel({ taskId: receipt.result.taskId }, () => {
         setCreating(false)
+        setNewTaskDraft(null)
         setSelected(receipt.result.taskId)
-      }
+      })
       client.savePending(null)
       setPending(null)
       await refresh()
@@ -354,70 +484,20 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
       setBusy(false)
     }
   }
-  const forget = () => {
-    try {
-      client.forget()
-      setToken('')
-      setActor('')
-      showBoard({})
-      setPending(null)
-      setDoc(null)
-      setCredential('')
-      setPairCode('')
-      setConnectionError(null)
-      setError(null)
-    } catch (failure) { setError(failure) }
+  // Each board preset sets every filter, so a stale one never hides its tasks.
+  const showBoard = ({ assignee = '', status = '', vein = '' }) => {
+    setFilter(assignee); setStatusFilter(status); setVeinFilter(vein); setView('board')
   }
-  const connectWithToken = event => {
-    event.preventDefault()
-    setConnectionError(null)
-    try {
-      client.remember(credential)
-      setToken(client.credential())
-      setCredential('')
-    } catch (failure) { setConnectionError(failure) }
-  }
-  const retryConnection = () => {
-    if (!token) void pairDevice(pairCode)
-    else setRetryGeneration(value => value + 1)
-  }
-  if (session && !doc) return <main className="connection">
+  const retryConnection = () => setRetryGeneration(value => value + 1)
+  if (!doc) return <main className="connection">
     <h1>Pardner</h1>
     <p role="status">{connectionError ? 'The project board isn’t reachable yet.' : 'Opening the project board…'}</p>
-    {connectionError && <div role="alert" className="error"><p>{connectionError.message}</p>
-      <button onClick={retryConnection}>Retry connection</button>
+    {connectionError && <div role="alert" className="error" ref={connectionAlert}><p>{connectionError.message}</p>
+      <button type="button" onClick={retryConnection}>Retry connection</button>
     </div>}
   </main>
-  if (!token || !doc) return <main className="connection">
-    <h1>Pardner</h1>
-    <p>One workspace for human and agent Actors.</p>
-    {!token && <>
-      <form onSubmit={async event => {
-        event.preventDefault()
-        await pairDevice(pairCode)
-      }}>
-        <label>Pairing code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{8}" maxLength={8} required disabled={pairBusy} value={pairCode} onChange={event => setPairCode(event.target.value)} /></label>
-        <p className="muted">Open Pair another device on the desktop to get a code. This browser will remember your workspace. Use a trusted network: HTTP traffic is unencrypted.</p>
-        <button className="primary" disabled={pairBusy}>{pairBusy ? 'Connecting…' : 'Pair this device'}</button>
-      </form>
-      <details open={config.canManageAccess}>
-        <summary>Connect with a local service token</summary>
-        <form onSubmit={connectWithToken}>
-          <label>Local service token<input type="password" autoComplete="off" required value={credential} onChange={event => setCredential(event.target.value)} /></label>
-          <p className="muted">Use the token from the service’s connection.json file. This browser remembers it until you forget the workspace or the secret changes.</p>
-          <button className="primary" disabled={pairBusy}>Connect</button>
-        </form>
-      </details>
-    </>}
-    {token && <p role="status">Opening your local workspace…</p>}
-    {connectionError && <div role="alert" className="error"><p>{connectionError.message}</p>
-      <p>Check that the service is running. For a changed address, reopen Pair another device on the desktop.</p>
-      <button disabled={pairBusy || (!token && !pairCode)} onClick={retryConnection}>Retry connection</button>
-    </div>}
-    <ErrorNotice error={error} />
-    {token && <button onClick={forget}>Forget this workspace</button>}
-  </main>
-  const actors = doc.actors
+  // The client's Actors carry each person's current profile name (and removal); the document keeps enrollment names.
+  const actors = session.actorsById ? { ...doc.actors, ...session.actorsById } : doc.actors
   const veins = doc.veins || {}
   const goals = doc.goals || {}
   const activeVeinFilter = veins[veinFilter] ? veinFilter : ''
@@ -425,42 +505,64 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
     (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter)
       && (!activeVeinFilter || task.veinIds?.includes(activeVeinFilter)),
   )
-  // Each board preset sets every filter, so a stale one never hides its tasks.
-  const showBoard = ({ assignee = '', status = '', vein = '' }) => {
-    setFilter(assignee); setStatusFilter(status); setVeinFilter(vein); setView('board')
-  }
   const showVein = (veinId) => showBoard({ vein: veinId })
+  const shownActivityActor = actors[activityActor] ? activityActor : ''
+  const visibleCount = activityCutoff
+    ? activityEvents.filter(event => atOrAfter(event, activityCutoff)).length
+    : Math.min(ACTIVITY_PAGE, activityEvents.length)
+  const visibleEvents = activityEvents.slice(0, visibleCount)
+  const showOlder = () => {
+    const next = activityEvents[Math.min(visibleCount + ACTIVITY_PAGE, activityEvents.length) - 1]
+    activityFocus.current = activityEvents[visibleCount].operationId
+    setActivityCutoff({ timestamp: next.timestamp, operationId: next.operationId })
+  }
+  const lookups = { actors, tasks: doc.tasks, veins, goals, comments: doc.comments }
+  const openVein = (_element, veinId) => {
+    focusAfterView.current = () => viewNav.current?.querySelector('[aria-pressed="true"]')?.focus()
+    showVein(veinId)
+  }
+  const openGoal = (_element, goalId) => {
+    focusAfterView.current = () => {
+      const goal = document.querySelector(`.goal[data-goal-id="${CSS.escape(goalId)}"]`)
+      goal?.scrollIntoView({ block: 'start' })
+      goal?.focus({ preventScroll: true })
+    }
+    setView('goals')
+  }
+  // One routed message: inside the open panel (beside the form that failed), else under the header.
+  // A pending request keeps Retry and cannot be dismissed, wherever the message sits.
+  const errorSlot = !error ? null : /^(goal|vein)\./.test(errorOrigin?.type ?? '') ? (view === 'goals' ? 'record' : 'page')
+    : creating ? 'create' : selected
+    ? (errorOrigin?.taskId === selected ? errorOrigin.type : 'panel') : 'page'
+  const errorNotice = <ErrorNotice
+    error={error}
+    retry={pending && !busy ? () => submit(null, null, pending) : null}
+    onDismiss={pending ? null : () => setError(null)}
+  />
+  // Closing a panel clears its message but never the pending request; the page notice then offers Retry.
+  const closeCreate = () => { setCreating(false); setError(null) }
+  const closeDetails = () => { setSelected(null); setError(null) }
   return (
-    <div className="app" data-client={sessionMode || undefined}
-      style={sessionMode ? { '--client-header-height': `${headerHeight}px` } : undefined}>
-      <header ref={headerRef} className={session ? 'client-header' : undefined}>
-        {session ? session.header : <div>
-          <h1>Pardner</h1>
-          <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
-        </div>}
+    <div className="app" data-client style={{ '--client-header-height': `${headerHeight}px` }}>
+      <header ref={headerRef} className="client-header">
+        {session.header}
         <div className="header-controls">
-          {session ? <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
-            : <SelectActor actors={actors} value={actor} onChange={setActor} />}
+          <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
           <button
+            ref={newTaskButton}
             className="primary"
-            disabled={!actor || busy || Boolean(pending)}
-            onClick={() => {
+            disabled={busy || Boolean(pending)}
+            onClick={event => openPanel(event.currentTarget, () => {
               setCreating(true)
               setSelected(null)
-            }}
+            })}
           >
             New task
           </button>
         </div>
       </header>
-      {phoneSetup && <PhoneAccess canManageAccess={config.canManageAccess} request={request} onClose={() => setPhoneSetup(false)} />}
-      {connectionError && <div className="notice" role="status"><p>{connectionError.message}</p>
-        <button onClick={retryConnection}>Retry connection</button>
-      </div>}
-      <ErrorNotice
-        error={error}
-        retry={pending && !busy ? () => submit(null, null, pending) : null}
-      />
+      {session.notice}
+      {errorSlot === 'page' && errorNotice}
       {pending && !error && (
         <div className="notice">
           A request is awaiting confirmation.{' '}
@@ -469,17 +571,10 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           </button>
         </div>
       )}
-      {!session && !Object.keys(actors).length && (
-        <div className="notice">
-          Register your first human or agent Actor with{' '}
-          <code>pardner actors register</code> to begin.
-        </div>
-      )}
-      {!session && <div className="workspace-actions">
-        <button onClick={() => setPhoneSetup(true)}>Pair another device</button>
-        <button disabled={busy} onClick={forget}>Forget this workspace</button>
+      {connectionError && <div className="notice" role="status"><p>{connectionError.message}</p>
+        <button onClick={retryConnection}>Retry connection</button>
       </div>}
-      <nav aria-label="Workspace views">
+      <nav aria-label="Workspace views" ref={viewNav}>
         <button
           aria-pressed={view === 'board'}
           onClick={() => setView('board')}
@@ -498,12 +593,13 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
         >
           Activity
         </button>
-        {!session && <button
+        {canControl && <button
           aria-pressed={view === 'control'}
           onClick={() => setView('control')}
         >
           Control
         </button>}
+        {view === 'board' && <>
         <SelectActor
           label="Assigned to"
           emptyLabel="All Actors"
@@ -514,15 +610,30 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
         />
         <label>Status filter<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
           <option value="">All statuses</option>
-          {STATUSES.map(value => <option key={value} value={value}>{LABELS[value]}</option>)}
+          <StatusOptions />
         </select></label>
-        <label>Vein<select aria-label="Vein" value={activeVeinFilter} onChange={event => setVeinFilter(event.target.value)}>
+        <label>Vein<select aria-label="Vein" title={veins[activeVeinFilter]?.title ?? 'All veins'} value={activeVeinFilter} onChange={event => setVeinFilter(event.target.value)}>
           <option value="">All veins</option>
           {Object.values(veins).sort((a, b) => a.title.localeCompare(b.title)).map(vein =>
             <option key={vein.id} value={vein.id}>{vein.title}</option>)}
         </select></label>
+        </>}
+        {view === 'activity' && <>
+        <SelectActor
+          label="Performed by"
+          emptyLabel="Any Actor"
+          actors={actors}
+          value={shownActivityActor}
+          onChange={value => { setActivityActor(value); setActivityCutoff(null) }}
+          optional
+        />
+        <label>Show<select aria-label="Show" value={activityShow} onChange={event => { setActivityShow(event.target.value); setActivityCutoff(null) }}>
+          {ACTIVITY_SHOWS.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+        </select></label>
+        </>}
       </nav>
-      <main>
+      {/* Keyed by view so a view switch never inherits a stale scroll position. */}
+      <main key={view}>
         {view === 'board' ? (
           <div className="board" data-filtered={Boolean(statusFilter)} style={{ '--columns': STATUSES.length }}>
             {STATUSES.filter(column => !statusFilter || column === statusFilter).map((column) => (
@@ -547,10 +658,12 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
                     <button
                       className="task-card"
                       key={task.id}
-                      onClick={() => {
+                      data-task-id={task.id}
+                      aria-current={selected === task.id ? 'true' : undefined}
+                      onClick={() => openPanel({ taskId: task.id }, () => {
                         setSelected(task.id)
                         setCreating(false)
-                      }}
+                      })}
                     >
                       <span className="priority">
                         {task.priority.toUpperCase()}
@@ -565,7 +678,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
                           Conflicting edits
                         </span>
                       )}
-                      {session?.focus[task.id]?.length > 0 && <FocusMarkers session={session} actorIds={session.focus[task.id]} />}
+                      {session.focus[task.id]?.length > 0 && <FocusMarkers session={session} actorIds={session.focus[task.id]} />}
                     </button>
                   ))}
                 {!tasks.some((task) => task.status === column) && (
@@ -575,42 +688,67 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
             ))}
           </div>
         ) : view === 'goals' ? (
-          <Goals goals={goals} veins={veins} showVein={showVein} />
-        ) : view === 'control' && !session ? (
-          <ControlPane request={request} actors={actors} tasks={doc.tasks} actor={actor} canManageAccess={config.canManageAccess} />
+          <Goals
+            goals={goals}
+            veins={veins}
+            showVein={showVein}
+            actor={actor}
+            actors={actors}
+            submit={submit}
+            busy={busy}
+            pending={pending}
+            errorNotice={errorSlot === 'record' && errorNotice}
+            errorOrigin={errorOrigin}
+          />
+        ) : view === 'control' && canControl ? (
+          <ControlPane request={request} actors={actors} tasks={doc.tasks} actor={actor} canManage={canControl} />
         ) : (
           <section className="activity">
-            <h2>Workspace activity</h2>
-            {Object.values(doc.operations)
-              .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-              .map((event) => (
-                <article key={event.operationId}>
-                  <p>
-                    <strong>{labelActor(actors[event.actorId])}</strong> ·{' '}
-                    {event.type}
-                  </p>
-                  {event.taskId && (
-                    <button onClick={() => setSelected(event.taskId)}>
-                      {doc.tasks[event.taskId]?.title || event.taskId}
-                    </button>
-                  )}
-                  <time>{new Date(event.timestamp).toLocaleString()}</time>
-                </article>
-              ))}
+            <div className="activity-heading">
+              <h2>Activity</h2>
+              <span className="muted">Showing {visibleCount.toLocaleString()} of {activityEvents.length.toLocaleString()}</span>
+            </div>
+            {!activityEvents.length && <p className="empty">
+              {Object.keys(doc.operations).length ? 'No activity matches these filters.' : 'No activity yet.'}
+            </p>}
+            {visibleEvents.map((event, index) => {
+              const when = new Date(event.timestamp)
+              const heading = dayHeading(when)
+              const newDay = index === 0 || heading !== dayHeading(new Date(visibleEvents[index - 1].timestamp))
+              return (
+                <Fragment key={event.operationId}>
+                  {newDay && <h3 className="day">{heading}</h3>}
+                  <EventRow
+                    event={event}
+                    lookups={lookups}
+                    data-operation-id={event.operationId}
+                    tabIndex={-1}
+                    formatTime={time => time.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                    onTask={(element, id) => openPanel(element, () => { setCreating(false); setSelected(id) })}
+                    onVein={openVein}
+                    onGoal={openGoal}
+                  />
+                </Fragment>
+              )
+            })}
+            {activityEvents.length > 0 && (visibleCount < activityEvents.length
+              ? <button type="button" onClick={showOlder}>Show older activity</button>
+              : <p className="muted">Start of activity</p>)}
           </section>
         )}
       </main>
       {creating && (
         <TaskForm
           actors={actors}
+          actor={actor}
           busy={busy}
-          onClose={() => setCreating(false)}
+          pending={Boolean(pending)}
+          draft={newTaskDraft}
+          onDraftChange={setNewTaskDraft}
+          notice={errorSlot === 'create' && errorNotice}
+          onClose={closeCreate}
           onSubmit={async (fields) => {
-            const receipt = await submit('task.create', fields)
-            if (receipt) {
-              setCreating(false)
-              setSelected(receipt.result.taskId)
-            }
+            return submit('task.create', fields)
           }}
         />
       )}
@@ -619,6 +757,7 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           key={`${selected}:${actor}`}
           taskId={selected}
           actors={actors}
+          lookups={lookups}
           actor={actor}
           heads={doc.heads.join(',')}
           request={request}
@@ -629,7 +768,11 @@ export function Workspace({ config, reloadConfiguration, session = null }) {
           connected={connected}
           session={session}
           client={client}
-          onClose={() => setSelected(null)}
+          errorSlot={errorSlot}
+          errorNotice={errorNotice}
+          clearError={() => setError(null)}
+          claimHeadingFocus={claimHeadingFocus}
+          onClose={closeDetails}
         />
       )}
     </div>
@@ -648,35 +791,113 @@ function FocusMarkers({ session, actorIds }) {
   </span>
 }
 
-function Goals({ goals, veins, showVein }) {
+// One goal or vein status control: a select for an Actor, else the read-only pill.
+function RecordStatusSelect({ kind, record, statuses, submit, disabled }) {
+  const [choice, setChoice] = useState(null)
+  const [select, refocus] = useRefocus()
+  return (
+    <select
+      ref={select}
+      aria-label={`Status of ${kind} ${record.title}`}
+      value={choice ?? record.status}
+      disabled={disabled}
+      onChange={async event => {
+        const next = event.target.value
+        if (next === record.status) return
+        setChoice(next)
+        await submit(`${kind}.update`, {
+          [`${kind}Id`]: record.id,
+          updates: { status: next },
+          expectedRevisions: { status: record.revisions.status },
+        })
+        setChoice(null)
+        refocus()
+      }}
+    >
+      <StatusOptions values={statuses} />
+    </select>
+  )
+}
+
+function Goals({ goals, veins, showVein, actor, actors, submit, busy, pending, errorNotice, errorOrigin }) {
   const list = Object.values(goals).sort((a, b) =>
     GOAL_STATUSES.indexOf(a.status) - GOAL_STATUSES.indexOf(b.status) || a.created_at.localeCompare(b.created_at))
   const veinsByGoal = {}
   for (const vein of Object.values(veins).sort((a, b) => a.created_at.localeCompare(b.created_at))) {
     for (const goalId of vein.goalIds) (veinsByGoal[goalId] ??= []).push(vein)
   }
+  const disabled = busy || Boolean(pending)
+  // A disputed status names every alternative instead of the merge's pick, and offers no select.
+  const statusControl = (kind, record, statuses) =>
+    record.conflicts.status
+      ? <span className="record-status" data-status="disputed">{disputedStatusText(record.conflicts.status, LABELS)}</span>
+      : quickStatusEditable({ actor, conflicts: record.conflicts })
+        ? <RecordStatusSelect kind={kind} record={record} statuses={statuses} submit={submit} disabled={disabled} />
+        : <span className="record-status" data-status={record.status}>{LABELS[record.status]}</span>
+  // After a Keep, focus goes to the record's status control (or the vein's button) once the snapshot shows it.
+  const focusAfter = useRef(null)
+  const [focusTick, setFocusTick] = useState(0)
+  const keptRecord = target => { focusAfter.current = target; setFocusTick(tick => tick + 1) }
+  useEffect(() => {
+    const target = focusAfter.current
+    if (!target) return
+    let element = target.element
+    if (!element) {
+      const root = target.kind === 'goal'
+        ? document.querySelector(`.goal[data-goal-id="${CSS.escape(target.record.id)}"]`)
+        : target.field === 'goalId'
+          ? document.querySelector(`.goal[data-goal-id="${CSS.escape(target.value)}"] li[data-vein-id="${CSS.escape(target.record.id)}"]`)
+          : document.querySelector(`li[data-vein-id="${CSS.escape(target.record.id)}"]`)
+      element = target.kind === 'goal' ? root?.querySelector('.goal-heading select') ?? root
+        : root?.querySelector('select') ?? root?.querySelector('.vein-title')
+    }
+    if (!element?.isConnected) return
+    if (element.disabled) return
+    focusAfter.current = null
+    element.focus()
+  }, [goals, veins, disabled, focusTick])
+  const conflicts = (kind, record) => Object.keys(record.conflicts).length > 0 && (
+    <RecordConflicts
+      kind={kind} record={record} actors={actors} goals={goals} labels={LABELS} labelActor={labelActor}
+      submit={submit} disabled={!actor || disabled} onDone={keptRecord}
+    />
+  )
+  // The notice sits by its record: under a goal's heading, or in the first row that lists a vein.
+  const recordId = errorNotice ? errorOrigin?.recordId : null
+  const noticeGoal = goals[recordId]
+    ? recordId
+    : list.find(goal => (veinsByGoal[goal.id] ?? []).some(vein => vein.id === recordId))?.id
+  const noticeFallback = errorNotice && !noticeGoal
   return (
     <section className="goals" aria-label="Goals">
       <h2>Goals</h2>
+      {noticeFallback && errorNotice}
       {!list.length && <p className="empty">
         No goals yet. Start a vein with <code>pardner vein create --title … --goal …</code>.
       </p>}
       {list.map(goal => {
         const goalVeins = veinsByGoal[goal.id] ?? []
         return (
-          <article className="goal" key={goal.id} aria-label={goal.title}>
-            <h3>{goal.title} <span className="record-status" data-status={goal.status}>{LABELS[goal.status]}</span></h3>
+          <article className="goal" key={goal.id} aria-label={goal.title} data-goal-id={goal.id} tabIndex={-1}>
+            <div className="goal-heading">
+              <h3>{goal.title}</h3>
+              {statusControl('goal', goal, GOAL_STATUSES)}
+            </div>
+            {recordId === goal.id && errorNotice}
             {goal.description && <p className="muted">{goal.description}</p>}
-            {Object.keys(goal.conflicts).length > 0 && <p className="conflict-label">Conflicting edits</p>}
+            {conflicts('goal', goal)}
             {!goalVeins.length && <p className="muted">No veins pursue this goal yet.</p>}
             <ul>
               {goalVeins.map(vein => (
-                <li key={vein.id}>
-                  <button onClick={() => showVein(vein.id)}>{vein.title}</button>
-                  <span className="record-status" data-status={vein.status}>{LABELS[vein.status]}</span>
-                  <span className="muted">{vein.taskIds.length} {vein.taskIds.length === 1 ? 'task' : 'tasks'}</span>
-                  {vein.readyForVerdict && <span className="verdict-label">Ready for a verdict</span>}
-                  {Object.keys(vein.conflicts).length > 0 && <span className="conflict-label">Conflicting edits</span>}
+                <li key={vein.id} data-vein-id={vein.id}>
+                  <button className="vein-title" onClick={() => showVein(vein.id)}>{vein.title}</button>
+                  <div className="vein-meta">
+                    {statusControl('vein', vein, VEIN_STATUSES)}
+                    <span className="muted">{vein.taskIds.length} {vein.taskIds.length === 1 ? 'task' : 'tasks'}</span>
+                    {vein.readyForVerdict && <span className="verdict-label">Ready for a verdict</span>}
+                  </div>
+                  {conflicts('vein', vein)}
+                  {recordId === vein.id && noticeGoal === goal.id && errorNotice}
                 </li>
               ))}
             </ul>
@@ -687,30 +908,55 @@ function Goals({ goals, veins, showVein }) {
   )
 }
 
+const EMPTY_TASK_DRAFT = {
+  fields: { title: '', description: '', priority: 'p2', status: 'backlog', assignee: null, tags: [] },
+  tags: '',
+}
+const draftIsDirty = ({ fields, tags }) =>
+  Boolean(fields.title.trim() || fields.description.trim() || tags.trim()) ||
+  fields.status !== 'backlog' || fields.priority !== 'p2' || fields.assignee !== null
+
 function TaskForm({
   actors,
+  actor,
   busy,
+  pending = false,
   onClose,
   onSubmit,
   initial,
   initialTags,
   onChange,
   editing = false,
+  notice,
+  draft,
+  onDraftChange,
 }) {
-  const [fields, setFields] = useState(
-    initial || {
-      title: '',
-      description: '',
-      priority: 'p2',
-      status: 'backlog',
-      assignee: null,
-      tags: [],
-    },
-  )
-  const set = (field, value) =>
-    setFields((current) => ({ ...current, [field]: value }))
-  const [tags, setTags] = useState(initialTags ?? fields.tags.join(', '))
+  // The create form is controlled by Workspace so its draft survives closing; edit keeps local state.
+  const controlled = Boolean(onDraftChange)
+  const [local, setLocal] = useState(() => ({
+    fields: initial || EMPTY_TASK_DRAFT.fields,
+    tags: initialTags ?? (initial || EMPTY_TASK_DRAFT.fields).tags.join(', '),
+  }))
+  const { fields, tags } = controlled ? draft ?? EMPTY_TASK_DRAFT : local
+  const update = (patch) => (controlled ? onDraftChange({ fields, tags, ...patch }) : setLocal((current) => ({ ...current, ...patch })))
+  const set = (field, value) => update({ fields: { ...fields, [field]: value } })
+  const setTags = (value) => update({ tags: value })
   useEffect(() => { onChange?.(fields, tags) }, [onChange, fields, tags])
+  // Per control, not <fieldset disabled>: Retry inside the form must stay enabled.
+  const locked = controlled && (busy || pending)
+  const [titleBlank, setTitleBlank] = useState(false)
+  const noActor = !editing && !actors[actor]
+  useEffect(() => {
+    if (editing) return undefined
+    const key = (event) => {
+      if (event.key !== 'Escape' || escapeKeepsPanel(event)) return
+      onClose()
+    }
+    document.addEventListener('keydown', key)
+    return () => document.removeEventListener('keydown', key)
+  }, [editing, onClose])
+  // A failed submit returns focus to its button once it re-enables; the error is announced, not focused.
+  const [submitButton, refocusSubmit] = useRefocus()
   return (
     <section
       className={editing ? 'editor' : 'side-panel'}
@@ -722,24 +968,48 @@ function TaskForm({
           <button onClick={onClose}>Close</button>
         </div>
       )}
+      {!editing && (
+        <p className="muted" id="new-task-actor">
+          {noActor
+            ? 'Your Actor isn’t on this board yet. Wait for the project to sync; your draft is kept.'
+            : `Creating as ${labelActor(actors[actor])}`}
+        </p>
+      )}
       <form
+        aria-busy={(controlled && busy) || undefined}
         onSubmit={(event) => {
           event.preventDefault()
-          void onSubmit({ ...fields, tags: tags.split(',').map(tag => tag.trim()).filter(Boolean) })
+          if (!fields.title.trim()) {
+            setTitleBlank(true)
+            event.currentTarget.elements.namedItem('title')?.focus()
+            return
+          }
+          void Promise.resolve(onSubmit({ ...fields, tags: tags.split(',').map(tag => tag.trim()).filter(Boolean) }))
+            .then(receipt => { if (!receipt) refocusSubmit() })
         }}
       >
         <label>
           Title
           <input
+            name="title"
             required
+            autoFocus
+            readOnly={locked}
+            aria-invalid={titleBlank || undefined}
+            aria-describedby={titleBlank ? `task-title-error-${editing ? 'edit' : 'new'}` : undefined}
             value={fields.title}
-            onChange={(event) => set('title', event.target.value)}
+            onChange={(event) => {
+              set('title', event.target.value)
+              setTitleBlank(false)
+            }}
           />
         </label>
+        {titleBlank && <p className="field-error" role="alert" id={`task-title-error-${editing ? 'edit' : 'new'}`}>Enter a title that is not only spaces.</p>}
         <label>
           Description
           <textarea
             rows={5}
+            readOnly={locked}
             value={fields.description}
             onChange={(event) => set('description', event.target.value)}
           />
@@ -749,25 +1019,23 @@ function TaskForm({
             Status
             <select
               aria-label="Status"
+              disabled={locked}
               value={fields.status}
               onChange={(event) => set('status', event.target.value)}
             >
-              {STATUSES.map((value) => (
-                <option key={value} value={value}>
-                  {LABELS[value]}
-                </option>
-              ))}
+              <StatusOptions />
             </select>
           </label>
           <label>
             Priority
             <select
               aria-label="Priority"
+              disabled={locked}
               value={fields.priority}
               onChange={(event) => set('priority', event.target.value)}
             >
               {['p0', 'p1', 'p2', 'p3'].map((value) => (
-                <option key={value}>{value}</option>
+                <option key={value} value={value}>{value.toUpperCase()}</option>
               ))}
             </select>
           </label>
@@ -778,18 +1046,35 @@ function TaskForm({
           value={fields.assignee}
           onChange={(value) => set('assignee', value || null)}
           optional
+          disabled={locked}
         />
         <label>
           Tags, separated by commas
           <input
+            readOnly={locked}
             value={tags}
             onChange={(event) => setTags(event.target.value)}
           />
         </label>
+        {notice}
         <div className="actions">
-          <button className="primary" disabled={busy}>
-            {editing ? 'Save changes' : 'Create task'}
+          <button className="primary" ref={submitButton} disabled={busy || noActor} aria-describedby={noActor ? 'new-task-actor' : undefined}>
+            {editing ? 'Save changes' : busy ? 'Creating…' : 'Create task'}
           </button>
+          {controlled && draftIsDirty({ fields, tags }) && (
+            <button
+              type="button"
+              disabled={busy || pending}
+              onClick={(event) => {
+                const form = event.currentTarget.form
+                onDraftChange(null)
+                setTitleBlank(false)
+                form?.elements.namedItem('title')?.focus()
+              }}
+            >
+              Discard draft
+            </button>
+          )}
           {editing && (
             <button type="button" onClick={onClose}>
               Cancel edit
@@ -812,7 +1097,7 @@ function IssueLinks({ taskId, issues, canWrite, submit }) {
           {issues.map(issue => (
             <li key={`${issue.repository}#${issue.number}`}>
               <a href={issue.url} target="_blank" rel="noreferrer">{issue.repository}#{issue.number}</a>{' '}
-              <button disabled={!canWrite} onClick={() => submit('task.unlink-issue', {
+              <button disabled={!canWrite} aria-label={`Unlink ${issue.repository}#${issue.number}`} onClick={() => submit('task.unlink-issue', {
                 taskId, repository: issue.repository, number: issue.number, expectedRevisions: issue.revisions,
               })}>Unlink</button>
             </li>
@@ -838,6 +1123,7 @@ function IssueLinks({ taskId, issues, canWrite, submit }) {
 function TaskDetail({
   taskId,
   actors,
+  lookups,
   actor,
   heads,
   request,
@@ -846,41 +1132,79 @@ function TaskDetail({
   busy,
   status,
   connected,
-  session = null,
-  client = null,
+  session,
+  client,
+  errorSlot,
+  errorNotice,
+  clearError,
+  claimHeadingFocus,
   onClose,
 }) {
   const [context, setContext] = useState(null)
-  // In client mode an edit draft survives closing the panel, reloading the tab and
-  // switching projects. It is stored per project, Actor and task, never sent until saved.
-  const [draft, setDraftState] = useState(() => session ? client.draft(taskId) : null)
+  const heading = useRef(null)
+  const [editButton, refocusEdit] = useRefocus()
+  const [handoffButton, refocusHandoff] = useRefocus()
+  const [handoffOpener, refocusHandoffOpener] = useRefocus()
+  const [commentButton, refocusComment] = useRefocus()
+  const [statusSelect, refocusStatus] = useRefocus()
+  const [statusChoice, setStatusChoice] = useState(null)
+  // Focus the heading once per open; a remount on Actor switch must not steal focus.
+  useEffect(() => {
+    if (context && heading.current && claimHeadingFocus()) heading.current.focus()
+  }, [context, claimHeadingFocus])
+  // An edit draft survives closing the panel, reloading the tab and switching
+  // projects. It is stored per project, Actor and task, never sent until saved.
+  const [draft, setDraftState] = useState(() => client.draft(taskId))
   const draftRef = useRef(draft)
   const setDraft = useCallback(value => {
     draftRef.current = value
     setDraftState(value)
-    if (session) try { client.saveDraft(taskId, value) } catch { /* the in-memory draft remains */ }
-  }, [session, client, taskId])
+    try { client.saveDraft(taskId, value) } catch { /* the in-memory draft remains */ }
+  }, [client, taskId])
   const persistDraftEdits = useCallback((edited, tagsText) => {
-    if (!session || !draftRef.current) return
+    if (!draftRef.current) return
     draftRef.current = { ...draftRef.current, edited, tagsText }
     try { client.saveDraft(taskId, draftRef.current) } catch { /* the in-memory draft remains */ }
-  }, [session, client, taskId])
+  }, [client, taskId])
   const [message, setMessage] = useState('')
+  const [commentFocused, setCommentFocused] = useState(false)
   const [to, setTo] = useState('')
   const [handoffStatus, setHandoffStatus] = useState('review')
+  const [handoffStatusTouched, setHandoffStatusTouched] = useState(false)
   const [handoffMessage, setHandoffMessage] = useState('')
   const [failure, setFailure] = useState(null)
   const [handoffBase, setHandoffBase] = useState(null)
+  const [handoffOpen, setHandoffOpen] = useState(false)
+  const [handoffDone, setHandoffDone] = useState(null)
+  const handoffForm = useRef(null)
+  const focusRecipient = useRef(false)
+  // Latest values for async completions, which must not act on a stale closure.
+  const handoffLive = useRef({})
+  handoffLive.current = { open: handoffOpen, message: handoffMessage }
+  useEffect(() => {
+    if (!handoffOpen || !focusRecipient.current) return
+    focusRecipient.current = false
+    handoffForm.current?.querySelector('select')?.focus()
+  }, [handoffOpen])
+  const finishHandoff = useCallback(({ to: sentTo, status }) => {
+    setHandoffOpen(false)
+    setTo('')
+    setHandoffMessage('')
+    setHandoffBase(null)
+    setHandoffStatusTouched(false)
+    setHandoffDone({ to: sentTo, status })
+    refocusHandoffOpener()
+  }, [refocusHandoffOpener])
   useEffect(() => {
     if (confirmedOperation?.payload.taskId !== taskId) return
     if (confirmedOperation.type === 'comment.add') {
       setMessage(current => current === confirmedOperation.payload.text ? '' : current)
     }
     if (confirmedOperation.type === 'task.handoff') {
-      setHandoffMessage(current => current === confirmedOperation.payload.message ? '' : current)
-      setHandoffBase(null)
+      const { open, message: current } = handoffLive.current
+      if (open && current === confirmedOperation.payload.message) finishHandoff(confirmedOperation.payload)
     }
-  }, [confirmedOperation, taskId])
+  }, [confirmedOperation, taskId, finishHandoff])
   useEffect(() => {
     let stale = false
     request(
@@ -901,8 +1225,8 @@ function TaskDetail({
   }, [taskId, actor, heads, request])
   useEffect(() => {
     const key = (event) => {
-      // Escape closes an open dialog (profile, invite) first, not the panel beneath it.
-      if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('dialog[open]')) onClose()
+      if (event.key !== 'Escape' || escapeKeepsPanel(event)) return
+      onClose()
     }
     document.addEventListener('keydown', key)
     return () => document.removeEventListener('keydown', key)
@@ -913,23 +1237,45 @@ function TaskDetail({
         <button onClick={onClose}>Close</button>
         <p role="status">Opening task…</p>
         <ErrorNotice error={failure} />
+        {errorNotice}
       </aside>
     )
   const { task, comments, history, conflicts, revisions } = context
   const canWrite = Boolean(actor) && !busy
+  const quickStatus = quickStatusEditable({ actor, editing: Boolean(draft), handingOff: handoffOpen, conflicts })
+  const newCount = actor ? comments.filter(comment => isNewComment(comment, actor)).length : 0
+  // Lowercase handle -> "Name · kind" for Actors a comment actually notified.
+  const deliveredFor = (commentId) => new Map(context.mentions
+    .filter(mention => mention.commentId === commentId && actors[mention.toActorId])
+    .map(mention => [String(actors[mention.toActorId].handle).toLowerCase(), labelActor(actors[mention.toActorId])]))
+  const hint = mentionHint(unmatchedHandles(message, actors, { focused: commentFocused }))
   const handoffRevisions = { assignee: revisions.assignee, status: revisions.status }
   const handoffStale = handoffBase && JSON.stringify(handoffBase) !== JSON.stringify(handoffRevisions)
-  const newerFields = session && draft
+  const newerFields = draft
     ? Object.keys(draft.fields).filter(field => JSON.stringify(revisions[field]) !== JSON.stringify(draft.revisions[field]))
     : []
-  const newerBy = newerFields.length
-    ? [...history].reverse().find(event => event.changes.some(change => newerFields.includes(change.field)))?.actorId
-    : null
-  const here = session?.focus[taskId] ? focusedActors(session, session.focus[taskId]) : []
+  // Credit each newer field to the Actor whose History event last changed it.
+  const newerGroups = []
+  for (const field of newerFields) {
+    const by = [...history].reverse().find(event => event.changes.some(change => change.field === field))?.actorId ?? null
+    const group = newerGroups.find(candidate => candidate.by === by)
+    if (group) group.fields.push(field)
+    else newerGroups.push({ by, fields: [field] })
+  }
+  const listFields = fields => fields.length < 2 ? fields.join('') : `${fields.slice(0, -1).join(', ')} and ${fields.at(-1)}`
+  const newerNotice = newerGroups.map(({ by, fields }) =>
+    `${by ? labelActor(actors[by]) : 'Someone'} saved ${fields.length === 1 && fields[0] === 'tags' ? '' : 'a '}newer ${listFields(fields)}`).join('; ')
+  const here = session.focus[taskId] ? focusedActors(session, session.focus[taskId]) : []
+  // An edit error falls back to the panel top once its form has closed.
+  // A handoff error does too while its form is closed, so Retry stays visible.
+  const formSlot = (errorSlot === 'task.update' && !draft) || (errorSlot === 'task.handoff' && !handoffOpen)
+    ? 'panel'
+    : errorSlot
+  const noticeFor = slot => formSlot === slot && errorNotice
   return (
     <aside className="side-panel" aria-label="Task details">
       <div className="panel-heading">
-        <h2>{task.title}</h2>
+        <h2 tabIndex={-1} ref={heading}>{task.title}</h2>
         <button onClick={onClose}>Close</button>
       </div>
       <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />
@@ -939,18 +1285,19 @@ function TaskDetail({
           onOpen={session.onOpenProfile} />
       </div>}
       <p className="muted">
-        {labelActor(actors[task.assignee])} · {LABELS[task.status]} ·{' '}
+        {labelActor(actors[task.assignee])} · {quickStatus ? '' : `${LABELS[task.status]} · `}
         {task.priority.toUpperCase()}
       </p>
       {context.veins?.length > 0 && (
         <p className="muted">Veins: {context.veins.map(vein => `${vein.title} (${LABELS[vein.status]})`).join(', ')}</p>
       )}
       <ErrorNotice error={failure} />
+      {!FORM_SLOTS.includes(formSlot) && errorNotice}
       <IssueLinks taskId={taskId} issues={context.issues ?? []} canWrite={canWrite} submit={submit} />
       {draft && newerFields.length > 0 && (
         <div className="notice draft-notice" role="status">
           <p>
-            {newerBy ? `${labelActor(actors[newerBy])} saved` : 'Someone saved'} a newer {newerFields.join(', ')} since
+            {newerNotice} since
             you started editing. Your draft is unchanged.
           </p>
           <p className="muted small">If you also changed {newerFields.length === 1 ? 'that field' : 'those fields'}, saving is
@@ -983,7 +1330,8 @@ function TaskDetail({
           initial={draft.edited ?? draft.fields}
           initialTags={draft.tagsText}
           onChange={persistDraftEdits}
-          onClose={() => setDraft(null)}
+          notice={noticeFor('task.update')}
+          onClose={() => { setDraft(null); clearError(); refocusEdit() }}
           onSubmit={async (fields) => {
             const updates = Object.fromEntries(
               Object.entries(fields).filter(
@@ -993,7 +1341,8 @@ function TaskDetail({
             )
             if (!Object.keys(updates).length) {
               setDraft(null)
-              return
+              refocusEdit()
+              return true
             }
             const receipt = await submit('task.update', {
               taskId,
@@ -1002,17 +1351,44 @@ function TaskDetail({
                 Object.keys(updates).map((key) => [key, draft.revisions[key]]),
               ),
             })
-            if (receipt) setDraft(null)
+            if (receipt) { setDraft(null); refocusEdit() }
+            return receipt
           }}
         />
       ) : (
         <>
-          <div className="markdown">
-            <ActorMarkdown>
-              {task.description || 'No description yet.'}
-            </ActorMarkdown>
-          </div>
+          <MarkdownBody>{task.description || 'No description yet.'}</MarkdownBody>
+        </>
+      )}
+      <div className="task-actions">
+        {quickStatus && (
+          <label className="status-field">
+            Status
+            <select
+              aria-label="Status"
+              ref={statusSelect}
+              disabled={!canWrite}
+              value={statusChoice ?? task.status}
+              onChange={async (event) => {
+                const next = event.target.value
+                if (next === task.status) return
+                setStatusChoice(next)
+                await submit('task.update', {
+                  taskId,
+                  updates: { status: next },
+                  expectedRevisions: { status: revisions.status },
+                })
+                setStatusChoice(null)
+                refocusStatus()
+              }}
+            >
+              <StatusOptions />
+            </select>
+          </label>
+        )}
+        {!draft && (
           <button
+            ref={editButton}
             disabled={!canWrite}
             onClick={() =>
               setDraft({
@@ -1032,8 +1408,29 @@ function TaskDetail({
           >
             Edit task
           </button>
-        </>
-      )}
+        )}
+        {!handoffOpen && (
+          <button
+            ref={handoffOpener}
+            disabled={!canWrite}
+            onClick={() => {
+              focusRecipient.current = true
+              setHandoffDone(null)
+              setHandoffStatus(defaultHandoffStatus(task.status))
+              setHandoffStatusTouched(false)
+              setHandoffBase(handoffRevisions)
+              setHandoffOpen(true)
+            }}
+          >
+            Hand off work
+          </button>
+        )}
+        {handoffDone && (
+          <p role="status" className="muted">
+            Handed off to {labelActor(actors[handoffDone.to])} · {LABELS[handoffDone.status]}.
+          </p>
+        )}
+      </div>
       {(context.integrityConflicts ?? []).map(group => (
         <section className="conflict integrity-conflict" key={group.requestId} aria-label="Operation integrity conflict">
           <h3>Unresolved operation ID conflict</h3>
@@ -1075,32 +1472,34 @@ function TaskDetail({
           ))}
         </section>
       ))}
+      {handoffOpen && (
       <section>
         <h3>Hand off work</h3>
         <form
+          ref={handoffForm}
           onFocusCapture={() => {
             setHandoffBase(current => current ?? handoffRevisions)
           }}
           onSubmit={async (event) => {
             event.preventDefault()
-            const receipt = await submit('task.handoff', {
-              taskId,
-              to,
-              status: handoffStatus,
-              message: handoffMessage,
-              expectedRevisions: handoffBase,
-            })
-            if (receipt) {
-              setHandoffMessage(current => current === handoffMessage ? '' : current)
-              setHandoffBase(null)
-            }
+            const sent = { taskId, to, status: handoffStatus, message: handoffMessage }
+            const receipt = await submit('task.handoff', { ...sent, expectedRevisions: handoffBase })
+            const { open, message: current } = handoffLive.current
+            if (!receipt) refocusHandoff()
+            else if (open && current === sent.message) finishHandoff(sent)
           }}
         >
           {handoffStale && (
             <div className="notice" role="status">
-              <p>Assignment or status changed while you were preparing this handoff. Your draft is preserved.</p>
-              <p>Current task: {labelActor(actors[task.assignee])} · {LABELS[task.status]}.</p>
-              <button type="button" disabled={!canWrite} onClick={() => setHandoffBase(handoffRevisions)}>
+              <p>This task changed while you were writing: now {labelActor(actors[task.assignee])} · {LABELS[task.status]}. Your draft is preserved.</p>
+              <button
+                type="button"
+                disabled={!canWrite}
+                onClick={() => {
+                  setHandoffBase(handoffRevisions)
+                  if (!handoffStatusTouched) setHandoffStatus(defaultHandoffStatus(task.status))
+                }}
+              >
                 Use latest task details
               </button>
             </div>
@@ -1115,13 +1514,12 @@ function TaskDetail({
             Handoff status
             <select
               value={handoffStatus}
-              onChange={(event) => setHandoffStatus(event.target.value)}
+              onChange={(event) => {
+                setHandoffStatus(event.target.value)
+                setHandoffStatusTouched(true)
+              }}
             >
-              {STATUSES.map((value) => (
-                <option key={value} value={value}>
-                  {LABELS[value]}
-                </option>
-              ))}
+              <StatusOptions />
             </select>
           </label>
           <label>
@@ -1133,48 +1531,69 @@ function TaskDetail({
               onChange={(event) => setHandoffMessage(event.target.value)}
             />
           </label>
-          <button disabled={!canWrite || !to || handoffStale}>Hand off</button>
+          {noticeFor('task.handoff')}
+          <div className="actions">
+            <button className="primary" ref={handoffButton} disabled={!canWrite || !to || handoffStale || !handoffMessage.trim()}>Hand off</button>
+            <button
+              type="button"
+              onClick={() => {
+                setHandoffOpen(false)
+                setTo('')
+                setHandoffMessage('')
+                setHandoffBase(null)
+                setHandoffStatusTouched(false)
+                clearError()
+                refocusHandoffOpener()
+              }}
+            >
+              Cancel handoff
+            </button>
+          </div>
         </form>
       </section>
+      )}
       <section>
         <div className="section-heading">
           <h3>
             Comments <span>{comments.length}</span>
+            {actor && newCount > 0 && <span className="comment-new-count"> · {newCount} new</span>}
           </h3>
-          <button
-            disabled={!canWrite || !context.unreadCount}
-            onClick={() =>
-              submit('read.mark', {
-                taskId,
-                comments: comments.flatMap((comment) =>
-                  comment.revisionIds.map((revisionId) => ({
-                    commentId: comment.id,
-                    revisionId,
-                  })),
-                ),
-              })
-            }
-          >
-            Mark displayed comments read
-          </button>
+          {actor && (
+            <button
+              disabled={!canWrite || !newCount}
+              onClick={() =>
+                submit('read.mark', {
+                  taskId,
+                  comments: comments.flatMap((comment) =>
+                    comment.revisionIds.map((revisionId) => ({
+                      commentId: comment.id,
+                      revisionId,
+                    })),
+                  ),
+                })
+              }
+            >
+              Mark all read
+            </button>
+          )}
         </div>
-        <p className="muted">
-          {context.unreadCount} unread for{' '}
-          {actors[actor]?.handle || 'this Actor'}
-        </p>
-        {comments.map((comment) => (
-          <article className="comment" key={comment.id}>
-            <strong>{labelActor(actors[comment.actorId])}</strong>
-            <time>{new Date(comment.timestamp).toLocaleString()}</time>
-            <div className="markdown">
-              <ActorMarkdown>{comment.content}</ActorMarkdown>
+        {comments.map((comment) => {
+          const isNew = isNewComment(comment, actor)
+          return (
+          <article className={isNew ? 'comment is-new' : 'comment'} key={comment.id}>
+            <div className="comment-head">
+              <strong>{labelActor(actors[comment.actorId])}</strong>
+              <time dateTime={comment.timestamp}>{new Date(comment.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
+              {isNew && <span className="comment-tag">New</span>}
             </div>
+            <MarkdownBody extraPlugins={[remarkMentionChips(deliveredFor(comment.id))]}>{comment.content}</MarkdownBody>
             {comment.conflicts.map((choice) => (
               <div className="conflict" key={choice.operationId}>
                 <strong>{labelActor(actors[choice.actorId])}</strong>
                 <p>{choice.value}</p>
                 <button
-                  disabled={!canWrite}
+                  disabled={!canWrite || comment.actorId !== actor}
+                  title={comment.actorId !== actor ? 'Only the comment author may resolve it' : undefined}
                   onClick={() =>
                     submit('comment.resolve', {
                       commentId: comment.id,
@@ -1188,7 +1607,8 @@ function TaskDetail({
               </div>
             ))}
           </article>
-        ))}
+          )
+        })}
         <form
           onSubmit={async (event) => {
             event.preventDefault()
@@ -1197,6 +1617,7 @@ function TaskDetail({
               text: message,
             })
             if (receipt) setMessage(current => current === message ? '' : current)
+            else refocusComment()
           }}
         >
           <label>
@@ -1206,10 +1627,15 @@ function TaskDetail({
               required
               value={message}
               onChange={(event) => setMessage(event.target.value)}
+              onFocus={() => setCommentFocused(true)}
+              onBlur={() => setCommentFocused(false)}
+              aria-describedby={hint ? 'comment-mention-hint' : undefined}
               placeholder="Share progress or mention an Actor with @handle"
             />
           </label>
-          <button className="primary" disabled={!canWrite}>
+          {hint && <p id="comment-mention-hint" className="muted mention-hint">{hint}</p>}
+          {noticeFor('comment.add')}
+          <button className="primary" ref={commentButton} disabled={!canWrite || !message.trim()}>
             Add comment
           </button>
         </form>
@@ -1229,17 +1655,14 @@ function TaskDetail({
       </section>
       <section>
         <h3>History</h3>
-        {history.map((event) => (
-          <article className="history" key={event.operationId}>
-            <strong>{labelActor(actors[event.actorId])}</strong> · {event.type}
-            <time>{new Date(event.timestamp).toLocaleString()}</time>
-            {event.changes.map((change) => (
-              <p key={change.field}>
-                {change.field}: {JSON.stringify(change.old)} →{' '}
-                {JSON.stringify(change.new)}
-              </p>
-            ))}
-          </article>
+        {sortEvents(history.filter(event => event.type !== 'comment.add')).map(event => (
+          <EventRow
+            key={event.operationId}
+            event={event}
+            lookups={lookups}
+            within={taskId}
+            formatTime={when => when.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+          />
         ))}
       </section>
     </aside>

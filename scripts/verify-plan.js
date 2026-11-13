@@ -9,15 +9,35 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 const names = text => text.trim().split(/\s+/)
 const groups = [
   {
+    name: 'trust-library', scripts: ['test:runtime'],
+    files: names('lib/machine-key.js lib/membership.js support/trust-records.js test/machine-key.test.js test/membership.test.js test/membership-rules.test.js'),
+    focused: [{ command: 'node --test test/machine-key.test.js test/membership.test.js test/membership-rules.test.js',
+      note: 'Machine keys and order-free signed records, as a library: consent, derived person IDs, no displacement, agents-only authority' }],
+  },
+  {
+    name: 'trust-records', scripts: ['test:runtime', 'test:cli'], qualification: 'Signed genesis, derived project ID and grow-only membership record persistence',
+    files: names('lib/record-store.js support/genesis.js support/record-store-process.js support/client-directory.js'),
+    focused: [{ command: 'node --test test/client-machine-key.test.js test/record-store.test.js test/trust-genesis-store.test.js test/membership-harvest.test.js',
+      note: 'Machine-key refusals, prior-install refusal, genesis and project ID, record admission, harvest, write-back, kill survival, and the membership rules for records synced as history' }],
+  },
+  {
+    name: 'trust-enrollment', scripts: ['test:runtime', 'test:cli', 'test:ui'],
+    qualification: 'Invitations, pairing, removal and hub admission derived from signed membership records',
+    files: names('lib/enrollment.js support/enrollment.js'),
+    focused: [{ command: 'node --test test/enrollment.test.js test/trust-enrollment.test.js',
+      note: 'Signed offers, join requests and codes; approval, expiry, single use, the request bound, pairing, roles, removal and re-admission' }],
+  },
+  {
     name: 'persistence', scripts: ['test:qualification', 'test:runtime'], qualification: 'Disk persistence and directory ownership',
     files: names(`lib/atomic-file.js lib/durable-repo.js lib/nodefs-storage-adapter.js lib/storage-key.js lib/storage-lease.js lib/private-state.js
       support/persistence-process.js`),
   },
   {
     name: 'transport', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'], qualification: 'Offline reopen, authenticated transport, or acknowledgement ordering',
-    files: names(`automerge-sync-server.js lib/local-service.js lib/workspace-runtime.js lib/native-peer-client.js
+    // Retired paths stay listed (lib/native-peer-client.js, support/replica-credentials.js) so the change removing them is classified.
+    files: names(`automerge-sync-server.js lib/local-service.js lib/workspace-runtime.js lib/machine-handshake.js lib/machine-session.js
       lib/sync-client.js lib/ticket-network-adapter.js lib/validated-websocket-server-adapter.js
-      support/resources.js support/workspace-service-process.js support/replica-credentials.js`),
+      support/resources.js support/workspace-service-process.js support/machines.js support/hub-state-process.js lib/native-peer-client.js support/replica-credentials.js`),
   },
   {
     name: 'delivery', scripts: ['test:runtime', 'test:cli'], qualification: 'Durable delivery, leases, or replay',
@@ -25,13 +45,16 @@ const groups = [
   },
   {
     name: 'domain', scripts: ['test:runtime', 'test:qualification', 'test:cli'],
-    files: names('lib/workspace.js lib/workspace-commands.js lib/workspace-schema.js support/workspace-test.js'),
+    files: names('lib/workspace.js lib/workspace-commands.js lib/workspace-schema.js lib/workspace-values.js support/plain-value-assertions.js support/workspace-test.js'),
   },
   {
     name: 'cli', scripts: ['test:cli'],
     files: names('bin/pardner.js lib/cli.js lib/cli-trace.js lib/agent-trace.js lib/github-remote.js support/cli-resources.js'),
   },
-  { name: 'lan', scripts: ['test:ui', 'test:runtime'], files: ['lib/lan-access.js'] },
+  {
+    name: 'loopback', scripts: ['test:runtime'], files: ['lib/loopback.js'],
+    focused: [{ command: 'node --test test/loopback.test.js', note: 'Loopback peer, listener, host and origin checks for local administration' }],
+  },
   {
     name: 'bridge', scripts: ['test:runtime', 'test:cli'],
     files: names(`lib/agent-bridge.js lib/codex-bridge-adapter.js lib/bridge-paths.js lib/bridge-retirement.js
@@ -43,13 +66,14 @@ const groups = [
     name: 'acceptance-harness', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'],
     qualification: 'Acceptance measurement or regression gate changed',
     files: names(`scripts/acceptance.js scripts/verify.js support/acceptance/agent-process.js
-      support/acceptance/agent-worker.js support/acceptance/candidate.js support/acceptance/expected-operations.js
+      support/acceptance/agent-worker.js support/acceptance/candidate.js support/acceptance/client-process.js support/acceptance/expected-operations.js
       support/acceptance/network-gate.js test/acceptance-components.test.js`),
   },
   {
     name: 'operator-harness', scripts: ['test:runtime', 'test:cli'],
-    files: names(`scripts/native-peer-smoke.js scripts/stress-native-peer.js scripts/remote/install-node.sh
-      scripts/remote/provision.sh scripts/remote/rehearse.py scripts/remote/verify-agent.py`),
+    // The native-peer tools and the remote rehearsal are retired with the hand-run roles; they stay listed for that change.
+    files: names(`scripts/remote/install-node.sh scripts/remote/provision.sh scripts/native-peer-smoke.js scripts/stress-native-peer.js
+      scripts/remote/rehearse.py scripts/remote/verify-agent.py`),
   },
   {
     name: 'verification-tooling', scripts: ['test:verification'],
@@ -72,9 +96,9 @@ const groups = [
     name: 'client-onboarding', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'],
     qualification: 'Private client persistence, authenticated admission and resumable project enrollment',
     files: names(`lib/client-identity.js lib/client-registry.js lib/client-runtime.js lib/client-runtime-child.js
-      lib/client-auth.js lib/client-invites.js lib/client-projects.js lib/client-proxy.js lib/client-service.js lib/client-cli.js`),
-    focused: [{ command: 'node --test test/client-registry.test.js test/client-onboarding.test.js test/client-cli.test.js test/client-recovery.test.js test/client-shutdown.test.js test/onboarding-flow.test.js',
-      note: 'Real client enrollment, authority boundaries, CLI privacy, cold restoration, revocation, offline restart and project isolation' }],
+      lib/client-auth.js lib/client-invites.js lib/client-people.js lib/client-projects.js lib/client-proxy.js lib/client-service.js lib/client-cli.js`),
+    focused: [{ command: 'node --test test/client-registry.test.js test/client-onboarding.test.js test/client-cli.test.js test/client-recovery.test.js test/client-shutdown.test.js test/client-control.test.js test/onboarding-flow.test.js test/client-local-admission.test.js test/trust-people.test.js',
+      note: 'Real client enrollment, authority boundaries, CLI privacy, cold restoration, revocation, offline restart, project isolation, the People view, leaving and the removed state' }],
   },
   {
     name: 'onboarding-invitation', scripts: ['test:cli', 'test:ui'], files: ['lib/onboarding-invitation.js'],
@@ -90,6 +114,8 @@ const groups = [
     files: names('scripts/selfhost79.py scripts/selfhost79-cloud.js support/selfhost79/checker.py support/selfhost79/probe.mjs support/selfhost79/fixture.json'),
     focused: [{ command: 'node --test test/selfhost79.test.js test/selfhost79-cloud.test.js', note: 'Offline artifact proof only; live attempts remain owner-gated' }],
   },
+  // Browser fixtures: the local client with one or more people's replicas behind the workspace UI.
+  { name: 'ui-fixtures', scripts: ['test:ui'], files: names('support/client-workspace.js') },
   { name: 'control-runtime', scripts: ['test:control-runtime'], files: names('scripts/control-runtime.py test/control_runtime_test.py') },
   {
     name: 'lifecycle-model', scripts: ['test:runtime'],
@@ -109,7 +135,7 @@ export function classifyPath(path) {
     return { name: 'ui', scripts: ['test:ui'] }
   }
   if (/^test\/[^/]+\.test\.js$/.test(path)) {
-    if (/pardner-(ui|phone|connection-ui|control-ui)|client-onboarding-ui|browser-connection|lan-/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
+    if (/pardner-(ui|control-ui)|client-onboarding-ui|browser-connection/.test(path)) return { name: 'ui-test', scripts: ['test:ui'] }
     if (/storage|conflict|ticket/.test(path)) return { name: 'qualification-test', scripts: ['test:qualification'], qualification: 'Persistence or conflict regression evidence changed' }
     if (/pardner-cli|pardner-brand/.test(path)) return { name: 'cli-test', scripts: ['test:cli'] }
     return { name: 'regression-test', scripts: ['test:runtime'] }

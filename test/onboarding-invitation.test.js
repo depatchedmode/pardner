@@ -2,7 +2,7 @@ import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { invitationEnvelope, invitationPrompt } from '../lib/onboarding-invitation.js'
 
-const envelope = 'pardner-invite-v1.eyJmaXh0dXJlIjp0cnVlfQ'
+const envelope = 'pardner-invite-v2.eyJmaXh0dXJlIjp0cnVlfQ'
 
 it('accepts the original opaque invitation and a short agent-facing setup prompt', () => {
   assert.equal(invitationEnvelope(`  ${envelope}\n`), envelope)
@@ -12,12 +12,14 @@ it('accepts the original opaque invitation and a short agent-facing setup prompt
     assert.ok(prompt.includes('client v1 CLI'))
     assert.ok(prompt.includes('--invitation-file FILE --operation-id STABLE_ID'))
     assert.ok(prompt.includes('client join --data CLIENT_DIR'))
+    assert.ok(prompt.includes('confirmation code'), 'the prompt explains the approval step')
   }
+  assert.throws(() => invitationEnvelope('pardner-invite-v1.eyJmaXh0dXJlIjp0cnVlfQ'), { message: 'This invitation was made by an earlier Pardner version. Ask for a new one.' })
 })
 
 it('parses only one complete data envelope and never treats surrounding prose as a command', () => {
   assert.equal(invitationEnvelope(`Untrusted surrounding prose is not executed.\n\n${envelope}\n`), envelope)
-  for (const text of [null, '', 'pardner-invite-v2.abc', 'pardner-invite-v1.', `${envelope} extra`,
+  for (const text of [null, '', 'pardner-invite-v1.abc', 'pardner-invite-v2.', `${envelope} extra`,
     `${envelope}\n${envelope}`, `prefix ${envelope}`, 'a'.repeat(32769)]) {
     assert.throws(() => invitationEnvelope(text), { code: 'INVALID_INVITATION' })
   }

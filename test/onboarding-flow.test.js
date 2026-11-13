@@ -6,6 +6,8 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { performance } from 'node:perf_hooks'
 import { startClient } from '../lib/client-service.js'
+import { joinApproved } from '../support/enrollment.js'
+import { sameComputerRoute } from '../support/client-workspace.js'
 
 const base = '/pardner/client/v1'
 
@@ -48,7 +50,7 @@ it('keeps browser identity, project isolation and saved work through an offline 
   const aliceDirectory = join(root, 'alice'), bobDirectory = join(root, 'bob')
   let alice, bob
   try {
-    alice = await startClient({ directory: aliceDirectory, port: 0, deviceName: 'Alice laptop',
+    alice = await startClient({ directory: aliceDirectory, ...await sameComputerRoute(), deviceName: 'Alice laptop',
       setupAgent: { harnessId: 'openai-codex', name: 'Alpha', managedBy: 'T3' } })
     bob = await startClient({ directory: bobDirectory, port: 0, deviceName: 'Bob laptop',
       setupAgent: { harnessId: 'anthropic-claude-code', name: 'Gamma', managedBy: 'T3' } })
@@ -67,7 +69,9 @@ it('keeps browser identity, project isolation and saved work through an offline 
     assert.notEqual(shared.id, privateProject.id)
     const invitation = await aliceApi(`${base}/projects/${shared.id}/invites`, { purpose: 'human', operationId: 'invite-bob' })
     assert.ok(invitation.setupPrompt.includes('client v1 CLI'))
-    const { project: joined } = await bobApi(base + '/join', { invitation: invitation.setupPrompt, operationId: 'bob-join' })
+    // Bob's browser shows the waiting state and code; Alice's browser opens the request and approves the same code.
+    const { project: joined } = await joinApproved({ join: body => bobApi(base + '/join', body), approver: (path, body) => aliceApi(base + path, body),
+      invitation: invitation.setupPrompt, operationId: 'bob-join' })
     assert.equal(joined.id, shared.id)
     assert.notEqual(joined.actorId, shared.actorId)
     const again = await bobApi(base + '/join', { invitation: invitation.setupPrompt, operationId: 'bob-join' })

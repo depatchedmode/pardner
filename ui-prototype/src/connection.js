@@ -21,40 +21,25 @@ async function readResponse(response) {
   return result
 }
 
-function isValidConfiguration({ workspaceId, apiBase, wsPath, wsPort }) {
-  const pathPattern = /^\/(?!\/)[^?#\\]*$/
-  if (typeof workspaceId !== 'string' || !workspaceId) return false
-  if (typeof apiBase !== 'string' || (apiBase !== '' && !pathPattern.test(apiBase))) return false
-  if (!pathPattern.test(wsPath)) return false
-  return wsPort === undefined || (Number.isInteger(wsPort) && wsPort >= 1 && wsPort <= 65535)
-}
+const pathPattern = /^\/(?!\/)[^?#\\]*$/
 
 export async function loadConfiguration(fetcher = fetch) {
   const response = await fetcher('/pardner/config', { cache: 'no-store', signal: AbortSignal.timeout(10000) })
   const config = await readResponse(response)
   // Local client mode chooses projects after sign-in; each project supplies its own board configuration.
-  if (config.mode === 'client') {
-    if (typeof config.clientApiBase !== 'string' || !/^\/(?!\/)[^?#\\]*$/.test(config.clientApiBase)) {
-      throw new Error('The local client configuration is incomplete. Restart Pardner and retry.')
-    }
-    return config
+  // The standalone agent and integration service says so and has no human board. Anything else is a broken setup.
+  if (config.mode === 'client' && (typeof config.clientApiBase !== 'string' || !pathPattern.test(config.clientApiBase))) {
+    throw new Error('The local client configuration is incomplete. Restart Pardner and retry.')
   }
-  if (!isValidConfiguration(config)) {
-    throw new Error('The service configuration is incomplete. Restart the service and retry.')
-  }
-  if (import.meta.env?.DEV) {
-    config.apiBase = '/pardner-api'
-    config.wsPath = '/pardner-ws/'
-    delete config.wsPort
-  }
+  if (config.mode !== 'client' && config.mode !== 'standalone') throw new Error('The service configuration is incomplete. Restart Pardner and retry.')
   return config
 }
 
+// One project board inside the local client. The browser's HttpOnly session
+// cookie authenticates; drafts and retries are bound to the project and the
+// signed-in Actor.
 export function createConnection(config, { storage = localStorage, drafts = sessionStorage, fetcher = fetch } = {}) {
-  // Session-authenticated projects use the browser's HttpOnly cookie and keep
-  // drafts and retries bound to both the project and the signed-in Actor.
-  const session = config.authentication === 'session'
-  const key = session ? `pardner:${config.workspaceId}:${config.actorId}` : `pardner:${config.workspaceId}`
+  const key = `pardner:${config.workspaceId}:${config.actorId}`
   const read = (store, suffix) => {
     const value = store.getItem(`${key}:${suffix}`)
     try { return JSON.parse(value) } catch { return null }
@@ -64,52 +49,32 @@ export function createConnection(config, { storage = localStorage, drafts = sess
       if (value === null) store.removeItem(`${key}:${suffix}`)
       else store.setItem(`${key}:${suffix}`, JSON.stringify(value))
     } catch {
-      throw new Error('Browser storage is unavailable. Allow site storage to remember this workspace and safely retry changes.')
+      throw new Error('Browser storage is unavailable. Allow site storage to keep drafts and safely retry changes.')
     }
   }
-  const credential = () => session ? 'session' : read(storage, 'credential') || ''
-  const forgetCredential = () => { if (!session) write(storage, 'credential', null) }
   return {
-    session,
-    credential,
-    remember: token => { if (!session) write(storage, 'credential', token.trim()) },
-    forgetCredential,
     preferences: () => read(storage, 'preferences') || {},
     savePreferences: value => write(storage, 'preferences', value),
     pending: () => read(drafts, 'pending'),
     savePending: value => write(drafts, 'pending', value),
     draft: taskId => read(drafts, `draft:${taskId}`),
     saveDraft: (taskId, value) => write(drafts, `draft:${taskId}`, value),
-    forget() {
-      forgetCredential()
-      write(storage, 'preferences', null)
-      write(drafts, 'pending', null)
-    },
-    async pair(code) {
-      const result = await readResponse(await fetcher(`${config.apiBase}/pardner/pair`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }), signal: AbortSignal.timeout(10000),
-      }))
-      if (result.workspaceId !== config.workspaceId) throw Object.assign(
-        new Error('The service workspace changed. Reload before pairing.'), { code: 'WORKSPACE_MISMATCH' })
-      if (typeof result.token !== 'string' || !result.token) throw new Error('The service did not return a credential. Generate a new pairing code and try again.')
-      write(storage, 'credential', result.token)
-    },
     async request(path, body) {
-      const token = credential()
+      let response
       try {
-        return await readResponse(await fetcher(`${config.apiBase}${path}`, {
+        response = await fetcher(`${config.apiBase}${path}`, {
           method: body === undefined ? 'GET' : 'POST',
-          headers: { ...(session ? {} : { Authorization: `Bearer ${token}` }), 'Content-Type': 'application/json',
-            'X-Pardner-Workspace': config.workspaceId },
-          ...(session ? { credentials: 'same-origin' } : {}),
+          headers: { 'Content-Type': 'application/json', 'X-Pardner-Workspace': config.workspaceId },
+          credentials: 'same-origin',
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
           signal: AbortSignal.timeout(10000),
-        }))
-      } catch (error) {
-        if (error.code === 'AUTH_REQUIRED' && !session && credential() === token) forgetCredential()
-        throw error
+        })
+      } catch (cause) {
+        // No answer is not a refusal: the caller keeps any pending operation for retry.
+        throw Object.assign(new Error('The local Pardner client did not respond. Check that it is still running, then retry.'),
+          { code: 'CLIENT_UNREACHABLE', cause })
       }
+      return readResponse(response)
     },
   }
 }

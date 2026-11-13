@@ -74,7 +74,10 @@ they do not authorize or establish real-thread cleanup.
 
 Schema5 integration coverage checks `receipt.requestId` versus the stored
 `operationId`/comment revision, combined cleanup-approval and context-timing
-status, and preserved native replica credentials (`bridge-integration`).
+status, and preserved native replica credentials (`bridge-integration`). The same
+file runs the bridge against a client project with an agent-grant credential:
+`--token-file` configuration checks, the ticketed client project socket and a
+mention dispatched to the granted Actor.
 `agent-bridge`, `bridge-retirement`, `three-agent-review` and
 `three-agent-coordinator` also reject unresolved operation-integrity contexts
 before dispatch, cleanup effects or accepting review evidence, while retaining

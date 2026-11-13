@@ -1,9 +1,12 @@
 # Two-machine rehearsal
 
-For the authenticated local client, use the
-[client onboarding rehearsal](PARDNER-CLIENT-REHEARSAL.md). The setup below is for
-the retained standalone service; its token entry and author picker do not apply
-to normal client mode.
+> **Superseded.** The standalone service no longer serves a human board: its
+> `/pardner/` page now points people to `pardner open`, and the token entry and
+> Actor selection in the browser steps below were removed. Use the
+> [client onboarding rehearsal](PARDNER-CLIENT-REHEARSAL.md). This page is kept as
+> the historical standalone procedure; its recorded evidence is unchanged. The
+> hand-run hub and replica roles and the shared hub token it uses are retired
+> too (#199): machines now join only through the client, with machine keys.
 
 This is a prepared human signoff exercise, separate from automated completion.
 Use two humans and two real agents after the automated acceptance gate passes.
@@ -41,7 +44,7 @@ pardner --data ./rehearsal-hub status --json
 Run an enrolled local replica on **each** machine, in a distinct directory. Point
 it to the hub's reachable HTTP/native-WebSocket addresses and supply the hub token.
 First enroll a distinct replica ID and secret for each machine using
-[the enrollment procedure](PARDNER-CLI.md#enroll-another-machine). Configure the hub's
+[the enrollment procedure](PARDNER-CLI.md#another-machine). Configure the hub's
 `PARDNER_REPLICA_CREDENTIALS` registry before startup, and set each machine's
 `PARDNER_REPLICA_ID` and `PARDNER_REPLICA_TOKEN` before running its service.
 These machines are trusted full document writers.

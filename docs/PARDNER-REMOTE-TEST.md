@@ -1,5 +1,12 @@
 # Remote VM rehearsal
 
+> **Retired (#199).** `scripts/remote/rehearse.py` and `verify-agent.py` started a
+> hand-run hub and token-enrolled replicas, which no longer exist: machines join
+> only through the client, with machine keys. The VM provisioning scripts remain.
+> A client-mode rehearsal on separate real machines is owed by the direct peer lane
+> (#200), which needs that evidence. The procedure and results below are a
+> historical record.
+
 The test uses two Ubuntu 24.04 ARM64 Lima VMs, each with its own kernel, disk,
 checkout, machine ID, and persisted Pardner replica. A dedicated hub runs on the
 Mac in a fresh test directory. The normal `.pardner` service is not restarted,

@@ -1,0 +1,67 @@
+[
+  {
+    "id": "F-042-01",
+    "story_id": "STORY-042",
+    "severity": "medium",
+    "category": "error-handling",
+    "criterion": "Network failure",
+    "score": "fail",
+    "description": "With the hub down, opening Invite → Human on the replica shows the HUB_UNAVAILABLE alert directly under Create invitation (before the person did anything) while the history stays at \"Loading…\" indefinitely. The alert says \"retry this attempt\" but there is no Retry button; Create invitation stays enabled and clicking it changes nothing visible.",
+    "expected": "The history area says it cannot load while the hub is unreachable, with a Retry; Create is disabled with the reason.",
+    "actual": "Contradictory Loading… plus an unrelated-looking create error.",
+    "screenshot": "screenshots/step-4-dialog-hub-down.png",
+    "suggested_fix": "Scope the error to the history section, replace Loading… with the error and a Retry, and disable Create when the hub is unreachable.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  },
+  {
+    "id": "F-042-02",
+    "story_id": "STORY-042",
+    "severity": "medium",
+    "category": "hierarchy",
+    "criterion": "Information completeness",
+    "score": "warn",
+    "description": "The creator's history includes invites sponsored by other members (Marcus's invite to Sofia appears as a plain \"Human · Waiting to be used\" row) with no sponsor column, and she can revoke it. Invite rows returned by the API have no sponsor field at all.",
+    "expected": "Rows show \"by Marcus Lee\" for invites the creator did not issue.",
+    "actual": "Priya cannot tell her invites from Marcus's.",
+    "screenshot": "screenshots/var-priya-sees-marcus-invite.png",
+    "suggested_fix": "Return and render the sponsor.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx",
+      "lib/client-invites.js"
+    ]
+  },
+  {
+    "id": "F-042-03",
+    "story_id": "STORY-042",
+    "severity": "low",
+    "category": "happy-path",
+    "criterion": "Labels / copy",
+    "score": "warn",
+    "description": "On a non-creator replica the heading \"Invitations for this project\" lists only the viewer's own invites (\"None yet.\" for Marcus, although Priya has many).",
+    "expected": "Heading reads \"Your invitations for this project\".",
+    "actual": "Heading implies the full project list.",
+    "screenshot": "screenshots/step-1-dialog.png",
+    "suggested_fix": "Change the heading for non-creators.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  },
+  {
+    "id": "F-042-04",
+    "story_id": "STORY-042",
+    "severity": "low",
+    "category": "error-handling",
+    "criterion": "Status accuracy",
+    "score": "warn",
+    "description": "With the hub down, the header shows \"Remote presence unavailable\" next to \"Saved locally · synced\".",
+    "expected": "Sync indicator says the hub is unreachable (e.g. \"Saved locally · hub unreachable\").",
+    "actual": "\"synced\" while the hub is down.",
+    "screenshot": "screenshots/step-4-board-hub-down.png",
+    "suggested_fix": "Use hubConnected in the status label.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  }
+]

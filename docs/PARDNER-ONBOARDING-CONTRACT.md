@@ -13,7 +13,8 @@ of completed features remains separate.
   metadata. Multiple sessions and devices share the corresponding Actor.
 - Project ID equals workspace ID. One local client owns a private registry and
   isolated per-project runtime/storage. Existing standalone service mode remains
-  available and existing installations are preserved.
+  available as an agent and integration service, and existing installations are
+  preserved. People open the board only through the local client.
 - New client sessions are Actor-bound. The supervisor derives authors before
   forwarding operations; ordinary API grants never allow impersonation. Keep
   replica admission separate and disclose the existing trusted full-document
@@ -21,11 +22,18 @@ of completed features remains separate.
   or an unrestricted remote proxy.
 - Existing project members can see Git profile names/emails and device labels in
   profiles, as requested. Avatars show only initials/image, kind and presence.
-- Humans may invite humans, their own agents, and their own devices. Agent grants
-  allow board editing and session reporting, never implicit human/admin powers.
-  Project creators may revoke membership; humans may revoke their owned devices
-  and agents. Disconnected replicas keep last-known authority and exportable work;
-  no global retroactive revocation or hostile-replica authorship claim.
+- Admission follows the [trust design](PARDNER-TRUST-DESIGN.md) (sections 2, 4
+  and 5), which supersedes the original rule here. The owner and admins invite
+  people, and only the owner offers the admin role. Every member pairs their own
+  devices and agents; the owner or an admin pairs a device for a person who lost
+  every one. Each new machine waits for an approval its approver's machine signs
+  after a confirmation code matches. The owner removes anyone but the owner, an
+  admin removes members, and a person's other machine removes one of their
+  machines; only the owner changes roles. Agent grants allow board editing and
+  session reporting, never implicit human/admin powers, and are revoked locally on
+  the machine that runs the agent. Disconnected replicas keep last-known authority
+  and exportable work; no global retroactive revocation or hostile-replica
+  authorship claim.
 - Presence is ephemeral and derived from explicit reports. Use session TTL 45 s,
   normal heartbeat 15 s, browser idle after 120 s, agent activity lease 90 s with
   a 300 s maximum. Registration starts idle. Unknown models remain unreported.
@@ -58,7 +66,8 @@ worker's checkout. Report source changes and limits, not invented evidence.
 
 New local client mode serves the same UI at `/pardner/`. Its public
 `GET /pardner/config` returns `{ mode: "client", clientApiBase: "/pardner/client/v1" }`.
-Standalone services keep their existing config contract.
+Standalone services keep their existing config contract, but their `/pardner/`
+page serves no board and points people to `pardner open`.
 
 Browser calls use a remembered HttpOnly SameSite session cookie. An agent-led
 `client open` creates a short-lived single-use browser grant, opens the URL with
@@ -82,21 +91,41 @@ responses or normal status output.
 
 | Route | Request / response |
 | --- | --- |
-| `GET /session` | `{ identity: null or {id,name,email}, device: {id,name}, suggestedIdentity: {name,email}, setupAgent: {harnessId,name,model,managedBy}, projects: Project[] }` |
+| `GET /session` | `{ identity: null or {id,name,email}, device: {id,name}, suggestedIdentity: {name,email}, setupAgent: {harnessId,name,model,managedBy}, projects: Project[], removedProjects: RemovedProject[] }`; once an identity exists, an unnamed setup agent's `name` is its default, such as “Maya’s Codex” |
 | `POST /identity` | `{name,email,operationId}` → session shape; initialize once, preserve stable identity |
 | `POST /projects` | `{name,operationId}` → `{project: Project}`; register human and configured setup agent before ready |
-| `GET /projects/:id` | `{project: Project, actors: Actor[], presence: PresenceSnapshot}` |
-| `GET /projects/:id/invites` | `{invites: InviteSummary[]}` without credential text |
-| `POST /projects/:id/invites` | `{purpose: "human"|"agent"|"device", operationId}` → `{invite: InviteSummary, invitation: string}`; invitation is private opaque setup data for explicit Copy/Reveal |
-| `POST /projects/:id/invites/:inviteId/revoke` | revokes grant; returns updated summary |
-| `POST /join` | `{invitation: string, operationId, agent?:{harnessId,name,model,managedBy}}` → `{project: Project}`; durable recipient-bound attempt and resume; optional metadata identifies another actual harness joining the existing client. The authority binds an invitation to its recipient only after validating the attempt, in the same transaction that reserves the admission, and re-checks revocation before activating |
+| `GET /projects/:id` | `{project: Project, actors: Actor[], presence: PresenceSnapshot, membership}`; `membership` is computed from this client's record store, read-only |
+| `GET /projects/:id/invites` | `?limit=1..50&offset=N` → `{invites: InviteSummary[], total, offset, nextOffset}` newest first (10 by default), without credential text |
+| `POST /projects/:id/invites` | `{purpose: "human"|"agent"|"device", operationId, role?: "admin"|"member", personId?}` → `{invite: InviteSummary, invitation: string, setupPrompt}`; the offer is signed by this machine; invitation is private opaque setup data for explicit Copy/Reveal. `human` and `device` fail with 409 `PUBLIC_URL_REQUIRED` (`details: {purpose, endpoint}`) when the issuing client (or, on a joined computer, the hub) has no `--public-url`, before anything is recorded |
+| `POST /projects/:id/invites/:inviteId/revoke` | revokes the invitation and rejects its waiting requests; refused once an approval is being recorded; returns updated summary |
+| `POST /join` | `{invitation: string, operationId, agent?:{harnessId,name,model,managedBy}}` → `{join: JoinState}` while the request waits for approval, then `{project: Project}`. A retry with the same operation ID resumes the same request and never takes another place on the invitation. An Agent invitation on a machine already in the project returns `{project}` at once. A `name` that differs from the person's agent already enrolled for that harness is refused with `AGENT_NAME_CONFLICT` before the request takes a place on the invitation. A loopback invitation endpoint that refuses or never accepts a connection fails with 409 `INVITATION_UNREACHABLE` (`details: {endpoint}`) |
+| `GET /projects/:id/join-requests` | `{requests: JoinRequest[]}` that this machine may approve |
+| `POST /projects/:id/join-requests/:requestId/code` | adds this approver's nonce if none is fixed; `{request: JoinRequest}` with its `code` |
+| `POST /projects/:id/join-requests/:requestId/approve` | `{code}`; refused with `CODE_MISMATCH` unless it matches; this machine signs the admission and the hub records it → `{request: {id, state, recordId}}` |
+| `POST /projects/:id/join-requests/:requestId/reject` | rejects a waiting request |
+| `POST /projects/:id/revoke` | `{kind: "member"|"machine"|"agent", id, operationId}`; signs `member.remove` or `machine.remove`, or revokes a local agent |
+| `POST /projects/:id/role` | `{personId, role: "admin"|"member", operationId}`; owner only; signs `member.role` |
+| `GET /projects/:id/people` | `PeopleView`, from this client's record store with live presence and, from the hub, last seen |
+| `POST /projects/:id/leave` | `{operationId}`; signs `member.remove` for this machine's own person; refused for the owner → `{removed, left: true, id, recordId}` |
+| `POST /projects/:id/profile` | `{name, email, operationId}`; signs a `profile` record and keeps the details as this client's identity → `{personId, name, email, recordId}` |
 | `GET /projects/:id/presence` | PresenceSnapshot |
 | `POST /projects/:id/sessions` | `{kind:"browser"|"agent", model?, managedBy?}` → `{sessionId, ttlMs}`; server supplies project/Actor/device binding |
 | `POST /projects/:id/sessions/:sessionId/report` | `{seq, active:boolean, focusTaskIds:string[], model?}` → session receipt |
 | `POST /projects/:id/sessions/:sessionId/end` | end only a session owned by this principal |
 
 `Project` contains `id`, `name`, `role`, `actorId` (the authenticated participant),
-`apiBase`, `wsPath`, and current save/sync `status`. It contains no service token.
+`memberRole` (`owner`, `admin`, `member`, or null until this machine's own
+admission record has synced), `apiBase`, `wsPath`, and current save/sync
+`status`. It contains no service token.
+
+`JoinState` contains `state` (`waiting` until the approver opens the request,
+then `confirm`), `requestId`, `projectId`, `projectName`, `purpose`, `role`,
+`expiresAt`, `machineId`, `code` (null while waiting) and, for a machine
+invitation, `linkingAs: {name, email}`. A rejected or expired request is an error
+(`JOIN_REJECTED`, `REQUEST_EXPIRED`). `JoinRequest` contains `id`, `offerId`,
+`purpose`, `role`, `createdAt`, `expiresAt`, `machineId`, `device`, `agent`,
+`person: {id, name, email}` (whose identity a machine joins), `code` and
+`possibleDuplicates` when a new person's name or email matches a member.
 Its `apiBase` is `/pardner/client/v1/projects/:id/api`. The board can reuse its
 existing operations against that prefix; project-specific config has
 `authentication: "session"`, `workspaceId: id`, and `actorId`. The UI must never
@@ -113,7 +142,32 @@ native replica traffic on a distinct admission path with separate credentials.
 must use actual records/reports; missing metadata is not guessed.
 
 `InviteSummary` contains `id`, `purpose`, `projectId`, `projectName`, `expiresAt`,
-and `state` (`issued`, `redeemed`, `revoked`, `expired`). The default UI presents
+`createdAt`, `role` or `personId` with `for: {personId, name}`, `pending` (requests
+waiting), `state` (`issued`, `redeemed`, `revoked`, `expired`), `issuedBy`, and
+`usedBy` with `usedAt` once used or `revokedBy` with `revokedAt` once revoked. Each
+person reference is `{personId, name, removed?}`.
+
+`PeopleView` contains `projectId`, `projectName`, `observedAt`, `you: {personId,
+machineId, role, agentsOnly}` (null with `syncing: true` until this machine holds
+its own admission record), `hubReachable`, `suggestPairing` (the owner has one
+machine), `counts: {people, machines, agents, removed}`, `actions: {invite: {allowed,
+reason, roles}, leave: {allowed, reason}}`, `people[]` and `removed: {people[],
+machines[]}`. Each person has `id`, `actorId`, `name`, `email`, `role`, `roleLabel`,
+`you`, `admittedBy` (null for the owner, who started the project), `machines[]`
+(`id`, `shortId`, `name`, `thisMachine`, `hostsProject`, `agentsOnly`, `paired`,
+`status`: `this`, `online`, `offline` or `unreachable`, `lastSeenAt`, `admittedBy`,
+`actions`), `agents[]` (`id`, `name`, `harness`, `machines[]`, `actions.stopHere` for
+the viewer's own agents on this machine, `stoppedHere` once stopped) and `actions`. An action
+is `{allowed, reason}`, present only where the viewer could take it; on the owner's
+entry a non-owner gets `{note}` instead. Removed people carry `left`, `removedBy[]`
+and their former `machines[]`; removed machines of current people carry
+`personName` and `removedBy[]`.
+
+`RemovedProject` is `{id, name, role, removal, message}`, where `removal` is
+`{kind: "person"|"machine", left, by: {personId, name}}` or null when unknown. A
+removed machine's requests to that project fail with `REVOKED` and `details:
+{removal}`. The browser shows the project as removed, never as signed out, and
+keeps it in the project switcher. The default UI presents
 purpose/project/expiry and Copy invite; credentials are absent from the DOM until
 explicit Reveal. Join can accept the copied private payload; short agent-facing
 prompt text points to a supported, versioned setup entry point. Never invent a
@@ -147,7 +201,9 @@ Extend the existing dark, quiet Pardner tool interface: clear typography, mint
 accent, compact controls and strong keyboard focus. No marketing layout or new
 visual identity. Welcome shows Start a project / Join a project with Git-derived
 identity confirmation when needed. The board header shows project switcher,
-current human, participants and Invite. Invite has Human / Agent / My device.
+current human, participants, People and Invite. Invite has Human / Agent / My device.
+People opens the panel for people, machines, agents, join requests, removed entries
+and invitation history.
 The Actor profile separates identity from session machine/harness/model details.
 
 Screenshots must come from the working implementation using real service APIs

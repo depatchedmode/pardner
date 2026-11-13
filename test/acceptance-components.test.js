@@ -7,37 +7,81 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { createServer } from 'node:http'
+import { WebSocket, WebSocketServer } from 'ws'
 import { cli, startCliService } from '../support/cli-resources.js'
+import AutomergeSyncServer from '../automerge-sync-server.js'
+import { requestJson } from '../lib/sync-client.js'
+import { admitMembers, advertiseRoutes, hubRuntime, replicaRuntime } from '../support/machines.js'
 import { NetworkGate } from '../support/acceptance/network-gate.js'
 import { ExpectedOperations, hash } from '../support/acceptance/expected-operations.js'
 
-it('blocks hub HTTP and native sockets while the public local service remains writable', { timeout: 20000 }, async () => {
+it('blocks hub HTTP and native sockets while the member replica remains writable, and recovers a lost acknowledgement', { timeout: 20000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'pardner-gate-'))
-  const hubDirectory = join(root, 'hub'), replicaDirectory = join(root, 'replica')
-  const hub = await startCliService(hubDirectory)
+  const token = 'gate-test-token', actors = [{ id: 'alice', handle: 'alice', kind: 'human' }]
+  const service = store => new AutomergeSyncServer({ store, env: {}, apiToken: token, httpPort: 0, wsPort: 0, logger: {} })
+  const hub = service(hubRuntime(join(root, 'hub'), { actors }))
   let gate, replica
   try {
-    await cli(hubDirectory, ['actors', 'register', 'alice', '--actor', 'alice', '--handle', 'alice', '--kind', 'human'])
-    const { token } = JSON.parse(await readFile(join(hubDirectory, 'connection.json'), 'utf8'))
-    gate = await new NetworkGate(hub).start()
-    replica = await startCliService(replicaDirectory, ['--role', 'replica', '--hub', gate.httpUrl, '--hub-ws', gate.wsUrl, '--hub-token', token])
+    await hub.start()
+    const project = await admitMembers(hub.store)
+    gate = await new NetworkGate({ httpUrl: `http://127.0.0.1:${hub.httpPort}`, wsUrl: `ws://127.0.0.1:${hub.wsPort}` }).start()
+    // The hub serves the member machine at the gate's address, which is the route the replica dials.
+    advertiseRoutes(hub, { http: [gate.httpUrl], ws: [gate.wsUrl] })
+    replica = service(replicaRuntime(join(root, 'replica'), project, 0, { hubUrl: gate.httpUrl, hubWsUrl: gate.wsUrl, actors, retryMs: 100 }))
+    await replica.start()
+    const api = (server, path, body) => requestJson(`http://127.0.0.1:${server.httpPort}`, path, { token,
+      ...(body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}) })
     gate.partition()
-    await assert.rejects(fetch(`${gate.httpUrl}/automerge/url`, { signal: AbortSignal.timeout(1000) }))
-    const offline = await cli(replicaDirectory, ['task', 'create', '--actor', 'alice', '--title', 'Offline task'])
-    assert.equal(offline.result.savedLocally, true)
-    assert.equal(offline.result.syncPending, true)
+    await assert.rejects(fetch(`${gate.httpUrl}/session`, { method: 'POST', signal: AbortSignal.timeout(1000) }))
+    const offline = await api(replica, '/automerge/operations', { operationId: randomUUID(), actorId: 'alice', type: 'task.create', payload: { title: 'Offline task' } })
+    assert.equal(offline.savedLocally, true)
+    assert.equal(offline.syncPending, true)
     gate.loseResponse('/automerge/sync-ack')
     gate.partition(false)
     const deadline = Date.now() + 10000
-    while ((await cli(replicaDirectory, ['status'])).result.syncPending) assert.ok(Date.now() < deadline, 'Convergence exceeded ten seconds')
+    while (replica.store.status().syncPending) { assert.ok(Date.now() < deadline, 'Convergence exceeded ten seconds'); await new Promise(resolve => setTimeout(resolve, 25)) }
     assert.ok(gate.events.some(event => event.type === 'response-lost'))
-    const snapshot = await cli(hubDirectory, ['show', offline.result.result.taskId])
-    assert.equal(snapshot.result.task.title, 'Offline task')
+    assert.equal(hub.store.workspace.taskContext(offline.result.taskId).task.title, 'Offline task')
   } finally {
     await replica?.stop()
     await gate?.close()
     await hub.stop()
     await rm(root, { recursive: true, force: true })
+  }
+})
+
+it('a client-mode gate relays upgrades on its HTTP origin as the target host and loses only body-matched responses', { timeout: 20000 }, async () => {
+  const seen = []
+  const target = createServer((req, res) => {
+    let body = ''
+    req.on('data', chunk => { body += chunk })
+    req.on('end', () => { seen.push({ host: req.headers.host, body }); res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true })) })
+  })
+  const sockets = new WebSocketServer({ server: target })
+  sockets.on('connection', (socket, req) => socket.send(`host ${req.headers.host}`))
+  await new Promise(resolve => target.listen(0, '127.0.0.1', resolve))
+  const targetUrl = `http://127.0.0.1:${target.address().port}`
+  const gate = await new NetworkGate({ httpUrl: 'http://127.0.0.1:9' }).start()
+  gate.retarget({ httpUrl: targetUrl })
+  try {
+    const socket = new WebSocket(`${gate.httpUrl.replace('http', 'ws')}/replica/p/native`)
+    const [greeting] = await once(socket, 'message')
+    assert.equal(greeting.toString(), `host ${new URL(targetUrl).host}`)
+    gate.loseResponse('/delivery', 1, body => body?.action === 'ack')
+    const post = action => fetch(`${gate.httpUrl}/replica/p/delivery`, { method: 'POST', body: JSON.stringify({ action }), signal: AbortSignal.timeout(2000) })
+    assert.equal((await post('claim')).status, 200)
+    await assert.rejects(post('ack'))
+    assert.equal((await post('ack')).status, 200)
+    assert.deepEqual(seen.map(entry => JSON.parse(entry.body).action), ['claim', 'ack', 'ack'], 'the lost response was still delivered to the target')
+    assert.deepEqual(gate.events.filter(event => event.type === 'response-lost').map(event => event.path), ['/replica/p/delivery'])
+    gate.partition()
+    await once(socket, 'close')
+    await assert.rejects(post('claim'))
+  } finally {
+    await gate.close()
+    sockets.close()
+    await new Promise(resolve => target.close(resolve))
   }
 })
 

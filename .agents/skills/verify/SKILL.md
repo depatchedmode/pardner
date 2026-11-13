@@ -151,10 +151,9 @@ npm run ui:build
 ```
 
 Use existing matching installs when available. A missing prerequisite is a setup
-problem to resolve or report; changing pins, skipping assertions, or substituting
-localhost for LAN does not resolve it. Browser launch must work, not merely an
-executable-path existence check. Read the [LAN guide](../../../docs/PARDNER-LAN.md)
-when companion/browser checks apply.
+problem to resolve or report; changing pins or skipping assertions does not
+resolve it. Browser launch must work, not merely an executable-path existence
+check.
 
 The reusable launch/doctor/drive/cleanup example is:
 
@@ -175,10 +174,17 @@ For another feature, reuse [cli-resources.js](../../../support/cli-resources.js)
 in an owned exercise: `startCliService(directory)` launches and waits for service
 readiness; `cli(directory, ['status'])` is the read-only doctor. Compare the
 returned `workspaceId` to the launch result and inspect `savedLocally` and
-`storageError`. Repeat the doctor whenever a drive looks wrong. For a browser,
-open the returned `httpUrl + '/pardner/'`; use the selectors in the feature map.
-Read only the disposable instance's connection file for authentication and keep
-its tokens out of artifacts. A fresh service has no Actors until registered.
+`storageError`. Repeat the doctor whenever a drive looks wrong. The standalone
+service's `/pardner/` page serves no board; it only points people to `pardner
+open`. For a browser, start a disposable local client with `pardner client open
+--data <scratch dir> --output-file <file>` (it starts the client if needed) and
+open the one-time grant URL from that file within a minute, or use
+`withClientWorkspace`/`withClientReplicas` from
+[client-workspace.js](../../../support/client-workspace.js) in an owned exercise;
+use the selectors in the feature map. The grant URL, the session cookie and the
+client's `client-connection.json` operator token are credentials: read only the
+disposable instance's files and keep them out of artifacts. A fresh service has
+no Actors until registered.
 Searching artifacts for a word such as `token` does not show they are free of
 credentials. Prefer never writing secrets: mask them in screenshots, record
 receipts rather than request headers, and inspect any artifact that captured
@@ -187,10 +193,11 @@ request or connection data. Report what was checked and how.
 ### Artifact privacy
 
 The acceptance runner (`npm run verify` and `test:acceptance`) starts browser
-tracing before credential entry. Its `browser-N.zip` traces therefore contain
-the disposable service tokens in `Authorization` headers, the credential fill
-action, DOM snapshots of the password field, and WebSocket tickets; the seed
-report carries delivery claim tokens. Treat everything under
+tracing before it opens each board. Its `browser-N.zip` traces therefore contain
+the one-time browser grant in the `/open` URL fragment, the client session
+cookie it is exchanged for, and WebSocket tickets; the seed report carries
+delivery claim tokens. Agent credentials and operator tokens stay in the seed's
+temporary directory, which is deleted afterwards. Treat everything under
 `output/acceptance/` as private. Never copy raw traces into a shared run
 directory, attach them to a PR, or describe them as safe.
 
@@ -221,7 +228,7 @@ one token per browser context and one ticket per WebSocket connection), and
 report a mismatch as unresolved rather than assuming the copy is clean.
 
 Failure watchdog records can capture descendant command lines, including
-`--hub-token` arguments. Keep those raw records private too: command-line
+`--token` arguments. Keep those raw records private too: command-line
 credentials are not a recognized sanitizer pattern unless their exact value
 was collected elsewhere. Inspect them independently before sharing a copy.
 
@@ -325,7 +332,7 @@ UI build. Never treat a matching fingerprint as evidence that a command ran.
 - Reproduce unrelated defects and report them separately. Stop for an unresolved
   product decision, inaccessible prerequisite, or unrelated blocker after
   independent work is done.
-- Record every skip and its relevance. A skipped applicable LAN/browser check
+- Record every skip and its relevance. A skipped applicable browser check
   leaves that behavior incomplete even if the command exits zero. A successful
   rerun without an explanation does not erase an intermittent failure: report
   the failing attempt alongside it.

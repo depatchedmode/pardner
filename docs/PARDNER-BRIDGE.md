@@ -77,6 +77,34 @@ and lease credentials; do not publish it. Credentials do not appear in prompts o
 WebSocket URLs. Both service and harness endpoints must be loopback URLs. Treat
 the Codex endpoint as a trusted local control interface; do not expose it publicly.
 
+### Attaching to a client project
+
+A bridge can also wake an agent Actor of a project opened through `pardner open`.
+Write the agent credential with
+`pardner client agent-grant --project PROJECT_ID --output-file /absolute/path/agent.json`
+(the [client guide](PARDNER-CLIENT.md) describes agent grants), then name it with
+`--token-file` on every bridge command, or as `credentialFile` in the configuration:
+
+```sh
+pardner bridge run --config /absolute/path/to/bridge.json --token-file /absolute/path/agent.json
+pardner bridge status --config /absolute/path/to/bridge.json --token-file /absolute/path/agent.json
+```
+
+In this mode the configuration needs no `dataDirectory`. `workspaceId` must equal
+the credential's `projectId`, and the mappings may name only the credential's
+`actorId`, so one credential wakes one Actor. `replicaId` is optional and names
+the inbox identity (default `client`); the client's per-project runtime replica
+is internal and not checked. The bridge calls the credential's `apiBase` with its
+bearer token. For document hints it requests a one-use WebSocket ticket from
+`/automerge/ws-ticket` and connects to the project's client socket
+(`…/projects/PROJECT_ID/ws`) with the same bearer header. Only the single-use
+ticket, which expires in 30 seconds, appears in that URL. The credential file is
+reread on every reconnect. Its path, not its token, appears in prompts so the
+agent can run coordination commands with `--token-file`.
+
+This is a minimal attach. The standalone `connection.json` mode above is
+unchanged, and moving the other integrations to client grants is later work.
+
 `status` reports persisted observations, not a process-liveness guarantee; use
 your terminal or supervisor to check whether the bridge process is still running.
 
@@ -202,7 +230,7 @@ the bridge cannot infer relationships in other applications.
 Branch discovery follows the public task projection's `branch_of` links through
 parents, siblings, and descendants, including branches added during cleanup.
 
-Keep `inboxDirectory` and `dataDirectory` outside every checkout scheduled for
+Keep `inboxDirectory` and `dataDirectory` (or `credentialFile`) outside every checkout scheduled for
 movement. Cleanup validates canonical containment, including symlinked ancestors
 and runtime directories that do not exist yet, before recording retirement or
 archiving a thread. Invalid layouts report the field and path to reconfigure;

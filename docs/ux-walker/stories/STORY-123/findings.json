@@ -1,0 +1,20 @@
+[
+  {"id": "F-123-01", "story_id": "STORY-123", "severity": "low", "category": "error-handling", "criterion": "Error messages name the fix", "score": "warn",
+   "description": "`client agent-grant --harness claude` fails with `INVALID_ARGUMENT: Unsupported execution harness` and does not say which harness IDs are valid.",
+   "expected": "The error lists the supported IDs (openai-codex, anthropic-claude-code, cursor), or the help line does.",
+   "actual": "Only 'Unsupported execution harness'; the help shows `[--harness ID]` with no values.",
+   "screenshot": "cli.log", "suggested_fix": "Include the allowed harness IDs in the error details and message, and in the help text for --harness.",
+   "files_likely_involved": ["lib/client-service.js", "lib/client-identity.js", "lib/cli.js"]},
+  {"id": "F-123-02", "story_id": "STORY-123", "severity": "low", "category": "happy-path", "criterion": "Labels are self-explanatory", "score": "warn",
+   "description": "`client list` shows each project's `actorId`, which is the person's own human Actor. The agent's Actor ID is not listed until a grant is made, so an agent reading the output can take the human ID as its own.",
+   "expected": "The project entry distinguishes the human Actor from enrolled agent Actors (for example `humanActorId` and `agents:[{harnessId, actorId}]`).",
+   "actual": "A single unlabeled `actorId`; `setupAgent` has a harness but no Actor ID.",
+   "screenshot": "cli.log", "suggested_fix": "Rename to humanActorId or add the enrolled agent Actors per project in client list.",
+   "files_likely_involved": ["lib/client-service.js"]},
+  {"id": "F-123-03", "story_id": "STORY-123", "severity": "suggestion", "category": "flow", "criterion": "Re-entry of known data", "score": "warn",
+   "description": "Granting a credential needs the project UUID copied out of JSON. `agent-grant` does not accept the project name, and the browser never shows the project ID or any agent-credential action.",
+   "expected": "`--project` accepts an unambiguous project name, or the agent profile in the browser offers the grant command with the ID filled in.",
+   "actual": "UUID only; the agent profile (screenshots/step-5-agent-profile.png) has no ID and no action.",
+   "screenshot": "screenshots/step-5-agent-profile.png", "suggested_fix": "Resolve --project by exact name when unique; optionally show a copyable grant command in the agent profile.",
+   "files_likely_involved": ["lib/client-cli.js", "ui-prototype/src/ClientApp.jsx"]}
+]

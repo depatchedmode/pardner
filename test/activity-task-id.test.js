@@ -1,3 +1,4 @@
+import { plain } from '../lib/workspace-schema.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { withWorkspaceServer } from '../support/workspace-test.js'
@@ -14,7 +15,7 @@ it('all task activity uses canonical taskId and task context excludes unrelated 
     await operation('comment.add', { taskId: unrelatedId, text: 'Other discussion' }, 'bob')
     const result = await context(taskId)
     assert.deepEqual(result.history.map(event => event.type).sort(), ['comment.add', 'task.branch', 'task.create', 'task.link-commit', 'task.merge', 'task.update'])
-    const stored = Object.values(server.store.workspace.handle.doc().operations)
+    const stored = Object.values(server.store.workspace.handle.doc().operations).map(plain)
     for (const event of result.history) {
       assert.equal(event.taskId, taskId)
       assert.equal(Object.hasOwn(event, 'task_id'), false)

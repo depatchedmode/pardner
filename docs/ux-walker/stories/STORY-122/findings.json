@@ -1,0 +1,3 @@
+[
+ {"id":"F-122-01","story_id":"STORY-122","severity":"low","category":"error-handling","criterion":"Error messages: specific","score":"warn","description":"A person's request to an unsupported query form ('/executions?actor=x') is refused with ACTOR_MISMATCH 'Actor must match authenticated participant' instead of 'Unsupported query parameter', because the actor check runs before the query check.","expected":"403 FORBIDDEN 'Unsupported query parameter: actor'.","actual":"403 ACTOR_MISMATCH 'Actor must match authenticated participant'.","screenshot":"","suggested_fix":"Validate the route and query shape before the actor-binding checks in the control proxy.","files_likely_involved":["lib/client-proxy.js"]}
+]

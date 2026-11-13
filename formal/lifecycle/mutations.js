@@ -99,7 +99,6 @@ export const MUTATIONS = [
     this.control = null
     this.wsHttpServer = null
     this.httpServer = null
-    this.lanServers = []
 
     await this.store.close()
 `,
@@ -109,7 +108,6 @@ export const MUTATIONS = [
     this.control = null
     this.wsHttpServer = null
     this.httpServer = null
-    this.lanServers = []
 
 `,
     check: { file: CONFORMANCE, pattern: 'keeps storage open until an acknowledgement admitted before stop' },
@@ -120,11 +118,15 @@ export const MUTATIONS = [
     find: `    this.adapter?.disconnect()
     try {
       await this.workspace?.queue
+      await this.harvests
+      // The hub's own state is written before the directory's lease is released.
+      await this.hubStateWrites?.catch(() => {})
       await this.repo?.shutdown()
     } finally {
       this.initialized = false
       this.closed = true
       this.deliveryLedger?.close()
+      this.records?.close()
       this.lease?.close()
       this.lease = null
     }`,
@@ -133,11 +135,15 @@ export const MUTATIONS = [
     this.lease = null
     try {
       await this.workspace?.queue
+      await this.harvests
+      // The hub's own state is written before the directory's lease is released.
+      await this.hubStateWrites?.catch(() => {})
       await this.repo?.shutdown()
     } finally {
       this.initialized = false
       this.closed = true
       this.deliveryLedger?.close()
+      this.records?.close()
     }`,
     check: { file: CONFORMANCE, pattern: 'drains queued persistence before releasing the storage lease' },
   },

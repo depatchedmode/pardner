@@ -6,7 +6,9 @@ export const NOT_REPORTED = 'Not reported'
 export const actorName = actor => actor?.displayName || actor?.handle || 'Unknown Actor'
 
 export function initials(name) {
-  const words = String(name || '?').trim().split(/[\s._-]+/).filter(Boolean)
+  // Punctuation such as "(ci)" is not an initial.
+  const words = String(name || '?').trim().split(/[\s._-]+/)
+    .map(word => word.replace(/[^\p{L}\p{N}]/gu, '')).filter(Boolean)
   if (words.length > 1) return (words[0][0] + words[1][0]).toUpperCase()
   // One capital for a single word: a mixed-case pair such as "Al" reads as "AI" on a shared screen.
   const [word = '?'] = words
@@ -100,7 +102,8 @@ export function ProfileDialog({ actor, actors, entry, tasks, currentActorId, ret
         <h2 id={titleId}>{actorName(actor)}{actor.id === currentActorId && <span className="you-tag"> (you)</span>}</h2>
         <p className="profile-kind">
           {actor.kind === 'agent' ? `Agent${human ? ` · ${actorName(human)}’s agent` : ''}` : 'Human'}
-          {' · '}<span className="presence-text" data-presence={state}>{PRESENCE_LABELS[state]}</span>
+          {' · '}{actor.removed ? <span className="tag removed-tag">Removed from the project</span>
+            : <span className="presence-text" data-presence={state}>{PRESENCE_LABELS[state]}</span>}
         </p>
       </div>
       <button type="button" className="close" onClick={onClose}>Close</button>
@@ -112,13 +115,16 @@ export function ProfileDialog({ actor, actors, entry, tasks, currentActorId, ret
           <dt>Works for</dt><dd>{value(human && actorName(human))}</dd>
           <dt>Harness</dt><dd>{value(harnessLabel(actor.harnessId))}</dd>
         </>}
-        <dt>Git name</dt><dd>{value(actor.gitIdentity?.name)}</dd>
-        <dt>Git email</dt><dd>{value(actor.gitIdentity?.email)}</dd>
+        {/* An agent's stored Git details are its human's; Works for already names that person. */}
+        {actor.kind !== 'agent' && <>
+          <dt>Name</dt><dd>{value(actor.gitIdentity?.name)}</dd>
+          <dt>Email</dt><dd>{value(actor.gitIdentity?.email)}</dd>
+        </>}
         <dt>Devices</dt>
         <dd>{devices.length ? <ul className="plain-list">{devices.map(device =>
           <li key={device.id ?? device.name}>{device.name || device.id}</li>)}</ul> : value(null)}</dd>
       </dl>
-      <p className="muted small">Git details are profile information. They do not sign anyone in.</p>
+      {actor.kind !== 'agent' && <p className="muted small">Name and email are profile information. They do not sign anyone in.</p>}
     </section>
     <section aria-labelledby={`${titleId}-sessions`}>
       <h3 id={`${titleId}-sessions`}>Live sessions <span className="count">{sessions.length}</span></h3>
@@ -151,11 +157,11 @@ export function ProfileDialog({ actor, actors, entry, tasks, currentActorId, ret
   </dialog>
 }
 
-export function PeopleDialog({ actors, index, returnFocus, onClose, onOpen }) {
+export function PeopleDialog({ actors, index, returnFocus, onClose, onOpen, onManage }) {
   const modal = useModal(onClose, returnFocus)
   return <dialog className="profile-dialog" aria-labelledby="people-title" {...modal}>
     <div className="profile-heading">
-      <h2 id="people-title">People in this project</h2>
+      <div><h2 id="people-title">People in this project</h2></div>
       <button type="button" className="close" onClick={onClose}>Close</button>
     </div>
     <ul className="people-list">
@@ -169,5 +175,6 @@ export function PeopleDialog({ actors, index, returnFocus, onClose, onOpen }) {
         </li>
       })}
     </ul>
+    {onManage && <p className="manage-people"><button type="button" className="link-button" onClick={onManage}>Machines, roles and removed people</button></p>}
   </dialog>
 }

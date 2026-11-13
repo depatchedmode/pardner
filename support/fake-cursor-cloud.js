@@ -30,3 +30,6 @@ export class FakeCursorCloud {
   async download(id, path) { return this.downloads.get(path) }
   async *stream(id, runId, options) { this.resume = options.lastEventId; for (const event of this.events) { this.eventTrace.push({ ...structuredClone(event), receivedAt: Date.now() }); yield event } }
 }
+
+// A project runtime runs in a child process, so client-mode tests name this module to build the transport there.
+export const createTransport = () => new FakeCursorCloud()

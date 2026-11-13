@@ -1,4 +1,3 @@
-import { replicaOptions } from '../support/replica-credentials.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
@@ -7,6 +6,8 @@ import { EventEmitter } from 'node:events'
 import { cbor } from '@automerge/automerge-repo'
 import { WebSocket } from 'ws'
 import { ValidatedWebSocketServerAdapter } from '../lib/validated-websocket-server-adapter.js'
+import { machineKeyFromPem } from '../lib/machine-key.js'
+import { handshakeSocket } from '../support/machines.js'
 
 const join = { type: 'join', senderId: 'test-peer' }
 const envelope = { senderId: 'test-peer', targetId: 'server', documentId: 'valid-document' }
@@ -27,8 +28,12 @@ const malformed = [
 it('malformed native CBOR closes only the offending socket and leaves the service alive', { timeout: 120000 }, async () => {
   const child = spawn(process.execPath, ['--input-type=module', '-e', `
     import { withWorkspaceServer } from './support/workspace-test.js'
+    import { admitMembers } from './support/machines.js'
+    import { machineKeyPem } from './lib/machine-key.js'
     await withWorkspaceServer(async ({ server }) => {
-      process.send({ httpPort: server.httpPort, wsPort: server.wsPort })
+      const project = await admitMembers(server.store)
+      process.send({ httpPort: server.httpPort, wsPort: server.wsPort,
+        member: { key: machineKeyPem(project.keys[0]), projectId: project.projectId, records: project.all } })
       await new Promise(resolve => process.once('message', resolve))
     })
     process.disconnect()
@@ -47,14 +52,9 @@ it('malformed native CBOR closes only the offending socket and leaves the servic
       assert.equal(response.status, 200, stderr)
       return response.json()
     }
-    const connect = async () => {
-      const { ticket } = await api('/automerge/ws-ticket', {
-        purpose: 'replica', replicaId: replicaOptions.replicaCredentialId,
-      }, { 'x-pardner-replica-token': replicaOptions.replicaToken })
-      const ws = new WebSocket(`ws://127.0.0.1:${server.wsPort}/automerge?ticket=${ticket}`)
-      await once(ws, 'open', { signal: AbortSignal.timeout(5000) })
-      return ws
-    }
+    // A member machine past the handshake still has every malformed frame refused.
+    const connect = () => handshakeSocket(`ws://127.0.0.1:${server.wsPort}/automerge`,
+      { key: machineKeyFromPem(server.member.key), projectId: server.member.projectId, records: server.member.records })
     const healthy = await connect()
     try {
       const greeting = once(healthy, 'message')

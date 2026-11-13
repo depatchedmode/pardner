@@ -4,6 +4,7 @@ import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { chromium } from 'playwright'
 import { withStartedServer, httpUrl, TEST_TOKEN } from '../support/resources.js'
+import { withClientWorkspace } from '../support/client-workspace.js'
 
 it('denies framing on UI documents, assets, redirects, cached responses and errors', async () => {
   await withStartedServer({}, async server => {
@@ -30,22 +31,17 @@ it('denies framing on UI documents, assets, redirects, cached responses and erro
   })
 })
 
-it('blocks cross-origin framing while allowing the authenticated top-level UI', { timeout: 60000 }, async () => {
-  await withStartedServer({ allowedOrigins: undefined }, async server => {
-    const target = httpUrl(server, '/pardner/')
+it('blocks cross-origin framing while allowing the signed-in top-level UI', { timeout: 60000 }, async () => {
+  await withClientWorkspace(chromium, {}, async ({ page, open, url }) => {
+    const target = `${url}/pardner/`
     const attacker = createServer((_req, res) => {
       res.setHeader('Content-Type', 'text/html')
       res.end(`<iframe src="${target}"></iframe>`)
     })
-    let browser
     try {
       attacker.listen(0, '127.0.0.1')
       await once(attacker, 'listening')
-      browser = await chromium.launch({ headless: true })
-      const page = await browser.newPage()
-      await page.goto(target)
-      await page.getByLabel('Local service token').fill(TEST_TOKEN)
-      await page.getByRole('button', { name: 'Connect', exact: true }).click()
+      await open()
       await page.getByRole('button', { name: 'New task', exact: true }).waitFor()
       const blocked = page.waitForEvent('console', { predicate: message => /frame-ancestors/.test(message.text()) })
       await page.goto(`http://127.0.0.1:${attacker.address().port}/`)
@@ -53,7 +49,6 @@ it('blocks cross-origin framing while allowing the authenticated top-level UI', 
       assert.equal(page.frames().some(frame => frame.url() === target), false)
       assert.equal(await page.frameLocator('iframe').getByRole('button', { name: 'New task', exact: true }).count(), 0)
     } finally {
-      await browser?.close()
       await new Promise(resolve => attacker.close(resolve))
     }
   })

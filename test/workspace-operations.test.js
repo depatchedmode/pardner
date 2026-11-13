@@ -1,3 +1,5 @@
+import { assertNoText } from '../support/plain-value-assertions.js'
+import { OPERATION_TYPES } from '../lib/workspace-commands.js'
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
@@ -8,7 +10,8 @@ import { getLastLocalChange, save } from '@automerge/automerge'
 import { DurableRepo } from '../lib/durable-repo.js'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
 import { Workspace, createWorkspaceData } from '../lib/workspace.js'
-import { resolveActor } from '../lib/workspace-schema.js'
+import { testGenesis } from '../support/genesis.js'
+import { resolveActor, plain } from '../lib/workspace-schema.js'
 
 const actors = [
   { id: 'alice', handle: 'alice', kind: 'human' },
@@ -22,7 +25,7 @@ async function withWorkspaces(run) {
   const create = async (source, storageOptions) => {
     const directory = await mkdtemp(join(tmpdir(), 'pardner-commands-'))
     const repo = new DurableRepo({ storage: new NodeFSStorageAdapter(directory, storageOptions) })
-    const handle = source ? repo.import(save(source.handle.doc())) : repo.create(createWorkspaceData({ actors }))
+    const handle = source ? repo.import(save(source.handle.doc())) : repo.create(createWorkspaceData({ actors, genesis: testGenesis() }))
     const workspace = new Workspace({ repo, handle, replicaId: `replica-${resources.length}` })
     resources.push({ directory, repo })
     return workspace
@@ -290,7 +293,7 @@ describe('shared workspace operations', () => {
         { id: 'other', handle: 'actor-carol', kind: 'agent' },
       ]) {
         await assert.rejects(command(workspace, 'actor.register', payload), { code: 'ALREADY_EXISTS' })
-        assert.throws(() => createWorkspaceData({ actors: [{ id: 'actor-carol', handle: 'carol', kind: 'human' }, payload] }), { code: 'ALREADY_EXISTS' })
+        assert.throws(() => createWorkspaceData({ actors: [{ id: 'actor-carol', handle: 'carol', kind: 'human' }, payload], genesis: testGenesis() }), { code: 'ALREADY_EXISTS' })
       }
       assert.equal(resolveActor(workspace.handle.doc(), 'carol').id, 'actor-carol')
     })
@@ -324,11 +327,41 @@ describe('shared workspace operations', () => {
       assert.equal(workspace.taskContext(taskId, 'builder').unreadCount, 1)
     })
   })
+  it('lists each comment\'s unread revisions for its reader without changing unreadCount', async () => {
+    await withWorkspaces(async (workspace, create) => {
+      const taskId = await createTask(workspace)
+      const original = await command(workspace, 'comment.add', { taskId, text: 'Original' })
+      const commentId = original.result.commentId
+      const doomed = (await command(workspace, 'comment.add', { taskId, text: 'Doomed' })).result.commentId
+      const peer = await create(workspace)
+      const first = await command(workspace, 'comment.edit', { commentId, text: 'Human revision', expectedRevisions: [original.operationId] })
+      // Only the author may edit a comment, so the concurrent revision is Alice's on another replica.
+      const second = await command(peer, 'comment.edit', { commentId, text: 'Peer revision', expectedRevisions: [original.operationId] }, 'alice')
+      workspace.handle.merge(peer.handle)
+      const unread = (observer) => Object.fromEntries(workspace.taskContext(taskId, observer).comments.map(comment => [comment.id, comment.unreadRevisionIds]))
+      const { revisionIds } = workspace.taskContext(taskId).comments.find(comment => comment.id === commentId)
+      assert.deepEqual(revisionIds.slice().sort(), [first.operationId, second.operationId].sort())
+      assert.deepEqual(unread('alice')[commentId], revisionIds, 'the author sees their own comment as raw unread')
+      assert.deepEqual(unread(null)[commentId], revisionIds)
+      await command(workspace, 'read.mark', { taskId, comments: [{ commentId, revisionId: first.operationId }] })
+      assert.deepEqual(unread('alice')[commentId], revisionIds.filter(id => id !== first.operationId))
+      assert.deepEqual(unread('bob')[commentId], revisionIds, 'receipts are per Actor')
+      await command(workspace, 'comment.delete', { commentId: doomed, expectedRevisions: workspace.taskContext(taskId).comments.find(comment => comment.id === doomed).revisionIds })
+      for (const observer of ['alice', 'bob', 'builder', null]) {
+        const context = workspace.taskContext(taskId, observer)
+        assert.ok(!context.comments.some(comment => comment.id === doomed), 'a deleted comment is absent')
+        assert.equal(context.unreadCount, context.comments.filter(comment => comment.unreadRevisionIds.length).length)
+      }
+    })
+  })
+
   it('rejects old schemas and supports explicit first-Actor registration', async () => {
     await withWorkspaces(async workspace => {
-      const old = workspace.repo.create({ tasks: {} })
+      const old = workspace.repo.create({ ...plain(createWorkspaceData({ genesis: testGenesis() })), schemaVersion: 6 })
+      const oldBytes = save(old.doc())
       assert.throws(() => new Workspace({ repo: workspace.repo, handle: old, replicaId: 'old' }), { code: 'INCOMPATIBLE_SCHEMA' })
-      const handle = workspace.repo.create(createWorkspaceData())
+      assert.deepEqual(save(old.doc()), oldBytes, 'refusing the text schema preserves its bytes')
+      const handle = workspace.repo.create(createWorkspaceData({ genesis: testGenesis() }))
       const fresh = new Workspace({ repo: workspace.repo, handle, replicaId: 'fresh' })
       await command(fresh, 'actor.register', { id: 'alice', handle: 'Alice', kind: 'human' })
       await command(fresh, 'actor.register', { id: 'builder', handle: 'builder', kind: 'agent' })
@@ -498,6 +531,76 @@ describe('shared workspace operations', () => {
       assert.equal(context.mentions.length, 0)
       assert.equal(context.history.length, 3)
       assert.equal(context.history.find(event => event.type === 'comment.add').payload.text, '@builder this has been superseded')
+    })
+  })
+})
+
+
+describe('plain string storage', () => {
+  it('never creates text through any operation, including conflicts, retries, merges and reopen', async () => {
+    await withWorkspaces(async (workspace, create) => {
+      const seen = new Set()
+      const run = async (type, payload, target = workspace) => {
+        seen.add(type)
+        const result = await command(target, type, payload)
+        assertNoText(target.handle.doc())
+        return result
+      }
+      await run('actor.register', { id: 'carol', handle: 'carol', kind: 'human', displayName: 'Carol' })
+      const taskId = (await run('task.create', { title: 'Unicode 🐴', description: '', tags: ['one', 'two'] })).result.taskId
+      const goalId = (await run('goal.create', { title: 'Goal' })).result.goalId
+      const veinId = (await run('vein.create', { title: 'Vein', goalId })).result.veinId
+      await run('vein.create', { title: 'Inline', goal: { title: 'Inline goal' } })
+      const added = await run('comment.add', { taskId, text: 'Hello @builder' })
+      const commentId = added.result.commentId
+      const peer = await create(workspace)
+      for (const [kind, id] of [['task', taskId], ['goal', goalId], ['vein', veinId]]) {
+        for (const target of [workspace, peer]) {
+          const context = target[`${kind}Context`](id)
+          await run(`${kind}.update`, { [`${kind}Id`]: id, updates: { title: target === workspace ? 'Left' : 'Right' }, expectedRevisions: context.revisions }, target)
+        }
+      }
+      for (const target of [workspace, peer]) {
+        await run('comment.edit', { commentId, text: target === workspace ? 'Left @builder' : 'Right @reviewer', expectedRevisions: [added.operationId] }, target)
+      }
+      workspace.handle.merge(peer.handle)
+      for (const [kind, id] of [['task', taskId], ['goal', goalId], ['vein', veinId]]) {
+        const context = workspace[`${kind}Context`](id)
+        assert.deepEqual(context.conflicts.title.map(choice => choice.value).sort(), ['Left', 'Right'])
+        await run(`${kind}.resolve`, { [`${kind}Id`]: id, field: 'title', value: 'Resolved', expectedRevisions: context.revisions.title })
+      }
+      await run('comment.resolve', { commentId, text: 'Resolved @builder', expectedRevisions: workspace.taskContext(taskId).comments[0].revisionIds })
+      await run('read.mark', { taskId, comments: [{ commentId, revisionId: workspace.taskContext(taskId).comments[0].revisionId }] })
+      await run('comment.delete', { commentId, expectedRevisions: workspace.taskContext(taskId).comments[0].revisionIds })
+      await run('task.link-vein', { taskId, veinId })
+      await run('task.unlink-vein', { taskId, veinId, expectedRevisions: workspace.veinContext(veinId).tasks[0].linkRevisions })
+      const issue = { taskId, repository: 'example/project', number: 208 }
+      await run('task.link-issue', issue)
+      await run('task.unlink-issue', { ...issue, expectedRevisions: workspace.taskContext(taskId).issues[0].revisions })
+      await run('task.link-commit', { taskId, commit: { hash: 'abcdef123', message: 'Example commit' } })
+      const branchId = (await run('task.branch', { taskId, name: 'Experiment' })).result.branchId
+      await run('task.update', updatePayload(workspace, branchId, { description: 'Branch description' }))
+      await run('task.merge', { branchId, expectedRevisions: workspace.taskContext(taskId).revisions })
+      await run('task.handoff', { taskId, to: 'builder', status: 'in-progress', message: 'Please review', expectedRevisions: workspace.taskContext(taskId).revisions })
+      assert.deepEqual([...seen].sort(), [...OPERATION_TYPES].sort(), 'exercise every registered operation')
+      const request = { operationId: 'plain-retry', type: 'comment.add', actorId: 'alice', payload: { taskId, text: 'Retry' } }
+      const retryPeer = await create(workspace)
+      await workspace.execute(request)
+      await retryPeer.execute(request)
+      workspace.handle.merge(retryPeer.handle)
+      assert.equal((await workspace.execute(request)).replayed, true)
+      const reopened = await create(workspace)
+      assertNoText(reopened.handle.doc())
+      assert.deepEqual(reopened.snapshot().tasks, workspace.snapshot().tasks)
+      assert.equal((await reopened.execute(request)).replayed, true)
+      const assertOrdinary = value => {
+        if (value && typeof value === 'object') {
+          assert.ok(Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype)
+          for (const entry of Object.values(value)) assertOrdinary(entry)
+        }
+      }
+      assertOrdinary(reopened.snapshot())
+      assertOrdinary(reopened.taskContext(taskId))
     })
   })
 })

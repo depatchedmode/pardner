@@ -1,0 +1,34 @@
+[
+  {
+    "id": "F-038-01",
+    "story_id": "STORY-038",
+    "severity": "medium",
+    "category": "happy-path",
+    "criterion": "Recovery / manual copy fallback",
+    "score": "fail",
+    "description": "In WebKit (Safari engine) clicking into the read-only Invite text textarea does not select its contents: after the click selectionStart=selectionEnd=0 (length 723). In Chromium the same click selects 0-723. The textarea is 5 rows (clientHeight ~95-100px) for ~16 lines of content (scrollHeight 290-308px), so the pardner-invite-v1 line is out of view and a manual drag-select easily misses it.",
+    "expected": "Clicking or focusing the textarea selects the whole invitation in every supported browser.",
+    "actual": "Safari users get a caret, not a selection; Cmd+C copies nothing.",
+    "screenshot": "screenshots/step-5-selected-masked-webkit.png",
+    "suggested_fix": "Select on mouseup/click as well as focus (or call select() in a requestAnimationFrame after focus) and size the textarea to its content.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  },
+  {
+    "id": "F-038-02",
+    "story_id": "STORY-038",
+    "severity": "low",
+    "category": "simplicity",
+    "criterion": "Decision complexity",
+    "score": "warn",
+    "description": "The \"Add one of your devices\" dialog lists every invitation of every purpose (Human rows first). Revoke buttons for Human invites sit in a dialog about devices.",
+    "expected": "The list is filtered to the opened purpose, or the purpose column is emphasised with a filter.",
+    "actual": "Mixed Human / My device rows in the device dialog.",
+    "screenshot": "screenshots/step-5-selected-masked-chromium.png",
+    "suggested_fix": "Filter by purpose with an \"All\" toggle, or move history to one \"Manage invitations\" view.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  }
+]

@@ -73,23 +73,19 @@ class FixtureTests(unittest.TestCase):
                 self.assertEqual((release / name / 'dependency.txt').read_text(), 'installed dependency')
 
 
-def ports():
-    sockets = [socket.socket(), socket.socket()]
-    try:
-        for sock in sockets:
-            sock.bind(('127.0.0.1', 0))
-        return [sock.getsockname()[1] for sock in sockets]
-    finally:
-        for sock in sockets:
-            sock.close()
+AGENT = 'openai-codex'
 
 
-def configure(home, release, identity, http_port=None, ws_port=None):
-    if http_port is None:
-        http_port, ws_port = ports()
+def free_port():
+    with socket.socket() as sock:
+        sock.bind(('127.0.0.1', 0))
+        return sock.getsockname()[1]
+
+
+def configure(home, release, http_port=None, **extra):
     config = {'sha': git(release, 'rev-parse', 'HEAD'), 'release': str(release), 'data': str(home / 'data'),
-              'node': NODE, 'role': 'hub', 'httpPort': http_port, 'wsPort': ws_port,
-              'workspaceId': identity['workspaceId'], 'replicaId': identity['replicaId'], 'actors': ['alice', 'builder']}
+              'node': NODE, 'httpPort': http_port or free_port(), 'agents': [AGENT],
+              'identity': {'name': 'Fixture Person', 'email': 'person@example.invalid'}, 'projectName': 'Control fixture', **extra}
     module.atomic_json(home / 'config.json', config)
     return module.Controller(home)
 
@@ -102,8 +98,9 @@ class ControllerTests(unittest.TestCase):
         self.release = self.home / 'releases/pinned'
         self.release.mkdir(parents=True)
         self.data = self.home / 'data'
-        self.data.mkdir()
-        (self.data / 'workspace.json').write_text(json.dumps({'workspaceId': 'workspace', 'replicaId': 'replica', 'role': 'hub', 'schemaVersion': 4}))
+        self.manifest = self.data / 'projects/fixture/workspace.json'
+        self.manifest.parent.mkdir(parents=True)
+        self.manifest.write_text(json.dumps({'workspaceId': 'workspace', 'replicaId': 'replica', 'role': 'hub', 'schemaVersion': 4}))
         shutil.copy2(SOURCE, self.home / 'control')
         (self.home / 'service.plist').write_text('fixture job')
         git(self.release, 'init', '-q')
@@ -122,7 +119,7 @@ class ControllerTests(unittest.TestCase):
         git(self.release, 'add', '.')
         git(self.release, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
             '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'fixture')
-        self.control = configure(self.home, self.release, {'workspaceId': 'workspace', 'replicaId': 'replica'})
+        self.control = configure(self.home, self.release)
         with patch.object(self.control, 'job', return_value={'loaded': False, 'owned': False, 'pid': None}):
             self.control.seal()
 
@@ -130,7 +127,7 @@ class ControllerTests(unittest.TestCase):
         env = {**module.environment(), 'HOME': self.scratch.name, 'PARDNER_CONTROL_HOME': str(self.home)}
         result = subprocess.run(['/usr/bin/python3', str(self.home / 'control'), 'entrypoints'], env=env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue((self.home / 'pardner-alice').exists())
+        self.assertTrue((self.home / f'pardner-{AGENT}').exists())
         env['PARDNER_CONTROL_HOME'] = str(self.home / 'nonexistent')
         result = subprocess.run(['/usr/bin/python3', str(self.home / 'control'), 'entrypoints', '--home', str(self.home)], env=env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -176,7 +173,7 @@ class ControllerTests(unittest.TestCase):
                 self.control.seal()
 
     def test_incompatible_schema_cannot_seal_start_or_stop_for_restart(self):
-        manifest = self.data / 'workspace.json'
+        manifest = self.manifest
         for version in [2, None, '4', True]:
             with self.subTest(version=version):
                 metadata = json.loads(manifest.read_text())
@@ -203,7 +200,7 @@ class ControllerTests(unittest.TestCase):
                 git(self.release, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
                     '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'selected release')
                 self.control.config['sha'] = git(self.release, 'rev-parse', 'HEAD')
-                manifest = self.data / 'workspace.json'
+                manifest = self.manifest
                 metadata = json.loads(manifest.read_text())
                 metadata['schemaVersion'] = version
                 manifest.write_text(json.dumps(metadata))
@@ -240,26 +237,80 @@ class ControllerTests(unittest.TestCase):
             command.assert_not_called()
 
     def test_actor_entrypoints_reject_lifecycle_and_connection_overrides(self):
-        for args in [['serve'], ['bridge', 'run'], ['--actor', 'alice', 'serve'], ['tasks', '--server', 'http://elsewhere']]:
+        for args, agent in [(['serve'], AGENT), (['bridge', 'run'], AGENT), (['client', 'open'], AGENT), (['open'], AGENT),
+                            (['--actor', 'alice', 'serve'], AGENT), (['tasks', '--server', 'http://elsewhere'], AGENT),
+                            (['tasks', '--token-file', '/tmp/other'], AGENT), (['comment', 'T', 'x', '--actor', 'someone'], AGENT),
+                            (['tasks'], None), (['tasks'], 'unlisted-harness')]:
+            with self.subTest(args=args, agent=agent), patch.object(self.control, 'status') as status:
+                with self.assertRaises(module.ControlError):
+                    self.control.cli(args, agent)
+                status.assert_not_called()
+
+    def test_open_accepts_only_an_output_file(self):
+        for args in [['--data', '/elsewhere'], ['--output-file'], ['--output-file', 'a', 'b']]:
             with self.subTest(args=args), patch.object(self.control, 'status') as status:
                 with self.assertRaises(module.ControlError):
-                    self.control.cli(args, 'alice')
+                    self.control.open(args)
                 status.assert_not_called()
+
+    def test_first_start_refuses_to_adopt_an_unnamed_existing_project(self):
+        with patch.object(self.control, 'request') as request:
+            with self.assertRaisesRegex(module.ControlError, 'config.projectId'):
+                self.control.provision({'identity': True, 'projectId': None, 'projects': ['someone-elses'], 'status': None})
+            request.assert_not_called()
+        self.assertFalse(self.control.project_file.exists())
+
+    def test_human_actor_options_are_not_entrypoint_options(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                module.main(['cli', '--home', str(self.home), '--actor', 'alice', '--', 'tasks'])
+            with self.assertRaises(SystemExit):
+                module.main(['status', '--home', str(self.home), '--agent', AGENT])
 
     def test_actor_guard_failures_preserve_the_json_error_envelope(self):
         stdout, stderr = io.StringIO(), io.StringIO()
         with patch.object(module, 'Controller', return_value=self.control), contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            code = module.main(['cli', '--home', str(self.home), '--actor', 'alice', '--', 'serve'])
+            code = module.main(['cli', '--home', str(self.home), '--agent', AGENT, '--', 'serve'])
         self.assertEqual(code, 1)
         result = json.loads(stdout.getvalue())
         self.assertFalse(result['success'])
-        self.assertEqual(result['error']['code'], 'CONTROL_RUNTIME_UNAVAILABLE')
+        self.assertEqual(result['error']['code'], 'INVALID_ARGUMENT')
         self.assertIn('Control runtime:', stderr.getvalue())
+
+    def test_usage_refusals_and_unavailable_service_have_distinct_codes(self):
+        def run(args):
+            stdout = io.StringIO()
+            with patch.object(module, 'Controller', return_value=self.control), contextlib.redirect_stdout(stdout), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(module.main(args), 1)
+            return json.loads(stdout.getvalue())['error']['code']
+        for args in [['cli', '--home', str(self.home), '--', 'tasks'],
+                     ['cli', '--home', str(self.home), '--agent', AGENT, '--', 'tasks', '--server', 'http://elsewhere']]:
+            with self.subTest(args=args):
+                self.assertEqual(run(args), 'INVALID_ARGUMENT')
+        unavailable = module.ControlError('The selected managed service cannot be verified; inspect control status')
+        with patch.object(self.control, 'require_service', side_effect=unavailable):
+            self.assertEqual(run(['cli', '--home', str(self.home), '--agent', AGENT, '--', 'tasks']), 'CONTROL_RUNTIME_UNAVAILABLE')
+
+    def test_a_directory_without_config_is_named_as_not_an_installation(self):
+        empty = Path(self.scratch.name) / 'not-an-installation'
+        empty.mkdir()
+        result = subprocess.run(['/usr/bin/python3', str(SOURCE), 'status', '--home', str(empty)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('is not a Pardner control installation (no config.json); pass --home or set PARDNER_CONTROL_HOME', result.stderr)
+        self.assertNotIn('Errno', result.stderr)
+
+    def test_open_options_before_the_separator_explain_the_separator(self):
+        result = subprocess.run(['/usr/bin/python3', str(SOURCE), 'open', '--home', str(self.home), '--output-file', 'launch.txt'],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('arguments for cli/open go after --, e.g. control open -- --output-file FILE', result.stderr)
 
     def test_bad_launch_record_and_dirty_release_still_allow_live_diagnostics(self):
         (self.home / 'running.json').write_text('{partial')
         (self.release / 'unexpected').write_text('drift')
-        live = {'role': 'hub', 'workspaceId': 'workspace', 'replicaId': 'replica', 'savedLocally': True, 'storageError': None}
+        live = {'identity': True, 'projectId': 'workspace', 'projects': ['workspace'],
+                'status': {'role': 'hub', 'workspaceId': 'workspace', 'savedLocally': True, 'storageError': None}}
         original_command = self.control.command
         def command(argv, **kwargs):
             if argv[0] == module.LSOF:
@@ -288,13 +339,13 @@ class ControllerTests(unittest.TestCase):
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
         self.control.url = f'http://127.0.0.1:{server.server_port}'
-        (self.data / 'connection.json').write_text(json.dumps({'httpUrl': 'http://127.0.0.1:1', 'token': 'fixture-only'}))
+        (self.data / 'client-connection.json').write_text(json.dumps({'url': 'http://127.0.0.1:1', 'token': 'fixture-only'}))
         with patch.dict(os.environ, {'HTTP_PROXY': 'http://127.0.0.1:1', 'NO_PROXY': ''}):
             responding, live, error = self.control.api_status()
         self.assertTrue(responding)
         self.assertIsNone(live)
         self.assertEqual(error['code'], 'HTTP_401')
-        self.assertEqual(requests, ['/automerge/status'])
+        self.assertEqual(requests, ['/pardner/client/v1/session'])
 
 
 @unittest.skipUnless(sys.platform == 'darwin', 'macOS controller integration uses macOS PID listener tools')
@@ -368,23 +419,27 @@ raise SystemExit(m.main())
                 control.job = lambda: lookup(control)
                 return control
 
-            def cli(control, args, actor='alice'):
+            def node(control, run):
                 results = []
                 def execute(argv, env):
-                    result = subprocess.run([control.config['node'], str(control.release / 'bin/pardner.js'), *argv], env=env, capture_output=True, text=True, timeout=15)
-                    self.assertEqual(result.returncode, 0, result.stderr)
+                    result = subprocess.run([control.config['node'], str(control.release / 'bin/pardner.js'), *argv], env=env, capture_output=True, text=True, timeout=30)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     results.append(json.loads(result.stdout))
                 with patch.object(control, 'exec_node', side_effect=execute):
-                    control.cli(args, actor)
+                    run()
                 return results[0]
 
-            def document(control):
-                connection = json.loads((control.data / 'connection.json').read_text())
-                request = module.urllib.request.Request(control.url + '/automerge/doc', headers={'Authorization': 'Bearer ' + connection['token']})
-                with module.urllib.request.build_opener(module.urllib.request.ProxyHandler({})).open(request, timeout=5) as response:
-                    return json.load(response)['doc']
+            def cli(control, args):
+                return node(control, lambda: control.cli(args, AGENT))
 
-            def ledger(path):
+            def operator(control, path, body=None):
+                return control.request(path, control.operator_token(), body)
+
+            def project_api(control, path, body=None):
+                return operator(control, f'/projects/{control.project_id()}/api{path}', body)
+
+            def ledger(data):
+                [path] = (data / 'projects').glob('*/deliveries.sqlite')
                 database = sqlite3.connect(f'file:{path}?mode=ro', uri=True)
                 try:
                     tables = [row[0] for row in database.execute("select name from sqlite_master where type='table'")]
@@ -395,35 +450,48 @@ raise SystemExit(m.main())
             try:
                 original_home, original_release = prepare('original', ROOT)
                 data = original_home / 'data'
-                script = "import {pathToFileURL} from 'node:url'; const {WorkspaceRuntime}=await import(pathToFileURL(process.argv[1])); const r=await new WorkspaceRuntime({directory:process.argv[2]}).init(); await r.close()"
-                subprocess.run([NODE, '--input-type=module', '-e', script, str(original_release / 'lib/workspace-runtime.js'), str(data)], env=module.environment(NODE), check=True, capture_output=True)
-                identity = json.loads((data / 'workspace.json').read_text())
-                original = attach(configure(original_home, original_release, identity))
+                original = attach(configure(original_home, original_release))
                 original.seal(); original.entrypoints()
+                self.assertFalse((original_home / 'pardner-alice').exists())
+                # The first start creates the client identity and this installation's project.
                 self.assertTrue(original.start()['healthy'])
-                for actor, kind in [('alice', 'human'), ('builder', 'agent')]:
-                    cli(original, ['actors', 'register', actor, '--handle', actor, '--kind', kind])
-                task = cli(original, ['task', 'create', '--title', 'Retained recovery task'])['result']['taskId']
-                cli(original, ['comment', task, 'Review this @builder'])
-                cli(original, ['mentions', 'pending'], actor='builder')
-                baseline = document(original)
-                activity = cli(original, ['activity', '--limit', '1000'], actor=None)['activity']
+                project_id = original.project_id()
+                self.assertEqual(json.loads((original_home / 'project.json').read_text()), {'projectId': project_id})
+                created = cli(original, ['task', 'create', '--title', 'Retained recovery task'])
+                task = created['result']['taskId']
+                credential = json.loads((original_home / f'credentials/{AGENT}.json').read_text())
+                self.assertEqual(created['actorId'], credential['actorId'])
+                self.assertEqual((original_home / f'credentials/{AGENT}.json').stat().st_mode & 0o777, 0o600)
+                self.assertEqual((original_home / 'credentials').stat().st_mode & 0o777, 0o700)
+                person = operator(original, f'/projects/{project_id}')
+                self.assertNotEqual(person['project']['actorId'], credential['actorId'])
+                handle = next(actor['handle'] for actor in person['actors'] if actor['id'] == credential['actorId'])
+                project_api(original, '/automerge/operations', {'type': 'comment.add', 'operationId': 'mention',
+                                                                'payload': {'taskId': task, 'text': f'Review this @{handle}'}})
+                self.assertEqual(len(cli(original, ['mentions', 'pending'])['mentions']), 1)
+                launch = root / 'launch.txt'
+                self.assertTrue(node(original, lambda: original.open(['--output-file', str(launch)]))['launchIssued'])
+                self.assertIn('/pardner/#grant=', launch.read_text())
+                baseline = project_api(original, '/automerge/doc')['doc']
+                activity = cli(original, ['activity', '--limit', '1000'])['activity']
                 self.assertEqual(len(activity), len(baseline['operations']))
                 original.stop()
                 backup = root / 'cold-backup'
                 shutil.copytree(data, backup)
-                expected_ledger = ledger(backup / 'deliveries.sqlite')
+                expected_ledger = ledger(backup)
                 self.assertGreater(len(expected_ledger['deliveries']), 0)
+                # The restored installation names the recovered project instead of creating one.
                 restored_home, restored_release = prepare('restored installation', original_release)
                 shutil.copytree(backup, restored_home / 'data')
-                restored = attach(configure(restored_home, restored_release, identity))
+                restored = attach(configure(restored_home, restored_release, projectId=project_id))
                 restored.seal(); restored.entrypoints()
                 self.assertTrue(restored.start()['healthy'])
-                self.assertEqual(document(restored), baseline)
-                self.assertEqual(cli(restored, ['activity', '--limit', '1000'], actor=None)['activity'], activity)
-                self.assertEqual(ledger(restored.data / 'deliveries.sqlite'), expected_ledger)
+                self.assertFalse((restored_home / 'project.json').exists())
+                self.assertEqual(project_api(restored, '/automerge/doc')['doc'], baseline)
+                self.assertEqual(cli(restored, ['activity', '--limit', '1000'])['activity'], activity)
+                self.assertEqual(ledger(restored.data), expected_ledger)
                 shutil.rmtree(original_home)
-                self.assertEqual(document(restored), baseline)
+                self.assertEqual(project_api(restored, '/automerge/doc')['doc'], baseline)
                 hostile = root / 'hostile-bin'; hostile.mkdir()
                 (root / 'wrong-home').mkdir()
                 (hostile / 'dirname').write_text('#!/bin/sh\necho ' + str(root / 'wrong-home') + '\n')
@@ -431,10 +499,13 @@ raise SystemExit(m.main())
                 env = {**module.environment(), 'PATH': str(hostile), 'PARDNER_CONTROL_HOME': str(root / 'wrong-home'),
                        'NODE_USE_ENV_PROXY': '1', 'HTTP_PROXY': 'http://127.0.0.1:1', 'NO_PROXY': '',
                        'NODE_OPTIONS': '--invalid-node-option', 'GIT_DIR': str(root / 'wrong-git')}
-                result = subprocess.run(['/bin/sh', str(restored_home / 'pardner-alice'), 'tasks', '--json'], env=env, capture_output=True, text=True, timeout=15)
+                wrapper = str(restored_home / f'pardner-{AGENT}')
+                result = subprocess.run(['/bin/sh', wrapper, 'tasks', '--json'], env=env, capture_output=True, text=True, timeout=30)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(json.loads(result.stdout)['tasks'][0]['id'], task)
-                result = subprocess.run(['/bin/sh', str(restored_home / 'pardner-alice'), 'serve'], env=env, capture_output=True, text=True, timeout=15)
+                restored_credential = (restored_home / f'credentials/{AGENT}.json').read_text()
+                self.assertNotIn(json.loads(restored_credential)['token'], result.stdout + result.stderr)
+                result = subprocess.run(['/bin/sh', wrapper, 'serve'], env=env, capture_output=True, text=True, timeout=15)
                 self.assertEqual(result.returncode, 1)
                 self.assertTrue(restored.status()['healthy'])
                 restored.stop()
