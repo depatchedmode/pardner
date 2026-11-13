@@ -188,12 +188,14 @@ nav label {
 nav > button + label {
   margin-left: auto;
 }
-/* overflow: hidden makes the ellipsis apply and stops WebKit spilling a long
-   selected title outside the select. */
+/* overflow: hidden makes the ellipsis apply. Linux WebKit ignores it and lays a
+   long selected title out past the select, widening the page; paint
+   containment keeps that text inside the select's box. */
 nav select {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  contain: paint;
 }
 nav button[aria-pressed='true'] {
   border-color: var(--accent);
