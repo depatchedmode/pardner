@@ -2,6 +2,7 @@ import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import * as A from '@automerge/automerge'
 import { CANDIDATES_PER_PASS, MAX_CANDIDATES, SHARDS, createSignaturesData, keptCandidates, machineActor, machinePrefix, shardOf, signChange, storedSignatures, verifyChange } from '../lib/change-signatures.js'
 import { VerificationDeferred, machineIndex } from '../lib/attribution.js'
@@ -10,7 +11,7 @@ import { generateMachineKey, personIdFor } from '../lib/machine-key.js'
 import { actorId as actorFor } from '../lib/client-identity.js'
 import { hubRuntime } from '../support/machines.js'
 import { prepareOperation } from '../lib/workspace-commands.js'
-import { plain } from '../lib/workspace-schema.js'
+import { plain, requireValue } from '../lib/workspace-schema.js'
 import { storageValue } from '../lib/workspace-values.js'
 import { actors, entryOf, eventually, execute, operationOf, signerOf, stateOf, withHub, writeTask } from '../support/signed-hub.js'
 
@@ -931,4 +932,128 @@ it('a change whose signature sits among hundreds of invalid candidates is examin
     assert.ok(examined.length >= Math.ceil(601 / CANDIDATES_PER_PASS), `the examination was not spread across slices: ${examined.length}`)
     assert.ok(attribution.verifications - start <= 601, `${attribution.verifications - start} verifications for 601 distinct values: some were verified again`)
   }, { hubOptions: { attribution: { quietMs: 400, pollMs: 100, checksKept: 40 } } })
+})
+
+// ---- What must always hold (docs/PARDNER-TRUST-DESIGN.md, section 3): views load, an honest signed change is
+// eventually shown as signed, no specific innocent machine is named, and "all signed" is said only when it is so. ----
+
+/** A task.create made on a copy of a bare member's board, not yet on it: its hash is known before anyone receives it. */
+function prepared(member, title, base = member.board.doc()) {
+  const { change } = prepareOperation(base, { operationId: randomUUID(), actorId: 'alice', type: 'task.create', payload: { title } },
+    { replicaId: 'replica-bare', timestamp: new Date().toISOString() })
+  const doc = A.change(A.clone(base, { actor: A.getActorId(base) }), change)
+  return { doc, hash: A.getHeads(doc)[0] }
+}
+
+it('an equivocation under an actor ID of any length is saved, and checking goes on; a report the cache refuses is not retried forever', { timeout: 120000 }, async () => {
+  await withHub(async ({ project, server, bare }) => {
+    const attribution = server.store.attribution
+    const [first, second] = [await bare(0), await bare(1)]
+    await eventually(() => A.getHeads(second.board.doc()).join() === A.getHeads(server.store.docHandle.doc()).join(), 'the second member never synced')
+    // 240 hex characters: a legal Automerge actor, longer than any key the signature cache would take.
+    const base = second.board.doc(), actor = 'ab'.repeat(120)
+    const one = A.change(A.clone(base, { actor }), doc => { doc.name = new A.ImmutableString('One story') })
+    const two = A.change(A.clone(base, { actor }), doc => { doc.name = new A.ImmutableString('Another story') })
+    first.board.update(doc => A.merge(doc, one))
+    second.board.update(doc => A.merge(doc, two))
+    await eventually(() => attribution.equivocations.size === 1, 'the conflict was never reported')
+    await eventually(() => server.store.signatureCache.equivocations(10).length === 1, 'the report was never saved')
+    assert.equal(attribution.unsavedReports.size, 0)
+    // An honest, signed change from another member is still checked.
+    const bob = await bare(2)
+    await eventually(() => bob.board.doc().operations && bob.signatures.doc().v, 'Bob never synced')
+    const { hash } = writeTask(bob, 'Honest after the report')
+    bob.signatures.change(draft => { draft[shardOf(hash)][hash] = signChange(bob.key, project.projectId, hash) })
+    await eventually(() => attribution.stateOf(hash).state === 'signed', 'the honest change was never checked', 10000)
+    // A report the cache refuses as invalid leaves the queue as a contained failure, and stays shown.
+    const cache = server.store.signatureCache
+    const save = cache.addEquivocation
+    cache.addEquivocation = () => requireValue(false, 'Invalid equivocation report')
+    const error = console.error
+    console.error = () => {}
+    try {
+      const report = { ...attribution.equivocations.values().next().value, seq: 99 }
+      attribution.equivocations.set('board:refused:99', report)
+      attribution.unsavedReports.add('board:refused:99')
+      const failures = attribution.failures.count
+      assert.doesNotThrow(() => attribution.saveEquivocations())
+      assert.equal(attribution.unsavedReports.size, 0, 'a report the cache refuses is retried forever')
+      assert.equal(attribution.failures.count, failures + 1)
+      assert.ok(server.store.getDoc().attribution.summary.equivocations.some(shown => shown.seq === 99), 'and it is still shown')
+    } finally {
+      cache.addEquivocation = save
+      console.error = error
+    }
+  })
+})
+
+it('any one step of a background slice may keep failing: an honest signed change is still verified within three slices, and a repeating failure redraws nothing', { timeout: 240000 }, async () => {
+  await withHub(async ({ project, server, bare }) => {
+    const attribution = server.store.attribution
+    const member = await bare(0)
+    await eventually(() => member.board.doc().operations && member.signatures.doc().v, 'the member never synced')
+    let slices = 0
+    const slice = attribution.slice.bind(attribution)
+    attribution.slice = () => { slices++; return slice() }
+    const fault = () => { throw new Error('injected fault') }
+    const placeholder = '0'.repeat(64)
+    // Each step made to throw at every slice, and given work, so it runs in every slice; then put back.
+    const steps = {
+      // The board's own immediate derivation throws too, so derivation stays incomplete.
+      derive: [() => { attribution.log.slice = fault }, () => { delete attribution.log.slice }],
+      'derive-save': [() => { attribution.log.save = fault }, () => { delete attribution.log.save }],
+      equivocation: [() => { attribution.saveEquivocations = fault }, () => { delete attribution.saveEquivocations }],
+      sign: [() => { attribution.confirmOwn = fault; attribution.uncached.set(placeholder, null) }, () => { attribution.uncached.delete(placeholder); delete attribution.confirmOwn }],
+      outbox: [() => { attribution.flushOutbox = fault; attribution.outboxRetry = true }, () => { delete attribution.flushOutbox }],
+      repair: [() => { attribution.restoreMissing = fault; attribution.repairs.add(placeholder) }, () => { attribution.repairs.delete(placeholder); delete attribution.restoreMissing }],
+      shards: [() => { attribution.resolveConflictedShards = fault; attribution.resolveShards.add(SHARDS[0]) }, () => { delete attribution.resolveConflictedShards }],
+    }
+    const error = console.error
+    console.error = () => {}
+    try {
+      for (const [step, [arm, disarm]] of Object.entries(steps)) {
+        arm()
+        try {
+          // The signature reaches the hub first, so the change is verified in the first check after it arrives.
+          const honest = prepared(member, `Honest while ${step} fails`)
+          member.signatures.change(draft => { draft[shardOf(honest.hash)][honest.hash] = signChange(member.key, project.projectId, honest.hash) })
+          await eventually(() => storedSignatures(server.store.workspace.signatures.doc(), honest.hash).length, `${step}: the signature never arrived`)
+          const failures = attribution.failures.count
+          member.board.update(doc => A.merge(doc, honest.doc))
+          await eventually(() => attribution.metas.has(honest.hash), `${step}: the change never arrived`)
+          const start = slices
+          await eventually(() => attribution.stateOf(honest.hash).state === 'signed', `${step}: the honest change was never verified`)
+          assert.ok(slices - start <= 3, `${step}: verified only after ${slices - start} slices`)
+          await eventually(() => attribution.failures.count > failures, `${step}: the step never ran`)
+          if (step === 'derive-save') {
+            // It keeps failing every second; only its first failure was announced.
+            let updates = 0
+            const count = () => updates++
+            attribution.on('update', count)
+            const before = attribution.failures.count
+            await delay(3500)
+            attribution.off('update', count)
+            assert.ok(attribution.failures.count >= before + 2, 'the step stopped failing')
+            assert.equal(updates, 0, 'a failure that repeats redraws the board every second')
+          }
+        } finally { disarm() }
+      }
+      // A change whose check throws is checked again later; the rest of its batch is checked at once.
+      const poison = prepared(member, 'Its check throws')
+      const honest = prepared(member, 'Checked beside it', poison.doc)
+      const check = attribution.check.bind(attribution)
+      attribution.check = hash => (hash === poison.hash ? fault() : check(hash))
+      try {
+        member.signatures.change(draft => { draft[shardOf(honest.hash)][honest.hash] = signChange(member.key, project.projectId, honest.hash) })
+        await eventually(() => storedSignatures(server.store.workspace.signatures.doc(), honest.hash).length, 'the signature never arrived')
+        member.board.update(doc => A.merge(doc, honest.doc))
+        await eventually(() => attribution.metas.has(honest.hash), 'the changes never arrived')
+        const start = slices
+        await eventually(() => attribution.stateOf(honest.hash).state === 'signed', 'a throwing check stopped the rest of its batch')
+        assert.ok(slices - start <= 3, `verified only after ${slices - start} slices`)
+        assert.ok(attribution.queue.includes(poison.hash), 'the change whose check threw is not checked again')
+      } finally { delete attribution.check }
+      await eventually(() => attribution.stateOf(poison.hash).state !== 'pending' || attribution.stateOf(poison.hash).reason !== 'checking', 'the throwing change was never checked once it could be')
+    } finally { console.error = error }
+  })
 })
