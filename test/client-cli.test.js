@@ -386,7 +386,15 @@ test('client review lists the changes whose signer could not be confirmed, in wo
     await alice.json(['invite', '--project', project.id, '--purpose', 'human', '--operation-id', 'invite-bob', '--output-file', output])
     await joinApproved({ join: body => bob.call('/join', body), approver: alice.call, invitation: await readFile(output, 'utf8'), operationId: 'join' })
     await bob.call(`/projects/${project.id}/api/automerge/operations`, { type: 'task.create', operationId: 'signed', payload: { title: 'Signed on the workshop' } })
-    assert.match(await alice.text(['review', '--project', project.id]), /^CLI review: 0 changes need review\n[\s\S]*Every change here is signed by a member machine\.\n$/)
+    // Said once nothing is still waiting for a signature or being checked, and only then.
+    let early
+    await eventually(async () => {
+      const text = await alice.text(['review', '--project', project.id])
+      if (/Every change here is signed/.test(text)) return /^CLI review: 0 changes need review\n[\s\S]*Every change here is signed by a member machine\.\n$/.test(text)
+      early ??= text
+      return false
+    }, 'the review never said every change is signed', 30000)
+    if (early) assert.match(early, /\nNothing needs review so far, but (1 change isn’t|\d+ changes aren’t) confirmed yet\.\n$/)
     // A modified client on Bob's machine writes a change it never signs.
     const bobActor = bob.client.project(project.id).actorId
     const { url: boardUrl } = await alice.call(`/projects/${project.id}/api/automerge/url`)

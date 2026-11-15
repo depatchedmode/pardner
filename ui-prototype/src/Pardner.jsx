@@ -17,7 +17,7 @@ import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
 import { boardData, dictionary } from './board-data.js'
 import { emptyFields, unreadableLines } from './unreadable.js'
-import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, needsReview, newerAuthors, reviewNotice, signerLine, taskRows } from './attribution.js'
+import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, emptyReview, needsReview, newerAuthors, reviewNotice, signerLine, taskRows, waitingLong } from './attribution.js'
 
 const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const StatusOptions = ({ values = STATUSES }) => values.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
@@ -438,7 +438,8 @@ export function Workspace({ config, reloadConfiguration, session }) {
     // Every entry is derived from one change; sorting, grouping and filtering use what that change signed.
     return sortEvents(activityRows(doc).filter(row => {
       if (actorId && row.actorId !== actorId) return false
-      if (activityShow === 'review') return needsReview(row)
+      // Changes that have waited long for a signature are listed too, as pending.
+      if (activityShow === 'review') return needsReview(row) || waitingLong(row)
       const group = row.entry.kind === 'record' ? 'members' : row.entry.kind === 'unrecognised' ? 'other' : eventGroup(row)
       return activityShow === 'changes' ? group !== 'reads' : group === activityShow
     }))
@@ -766,7 +767,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
             {activityEvents.length > 0 && <CurrentLegend />}
             {doc.attribution?.summary?.notDerived > 0 && <p className="muted" role="status">Reading {doc.attribution.summary.notDerived.toLocaleString()} more changes…</p>}
             {!activityEvents.length && <p className="empty">
-              {activityShow === 'review' ? 'Every change here is signed by a member machine.'
+              {activityShow === 'review' ? emptyReview(doc.attribution)
                 : (doc.activity ?? []).length ? 'No activity matches these filters.' : 'No activity yet.'}
             </p>}
             {visibleEvents.map((event, index) => {

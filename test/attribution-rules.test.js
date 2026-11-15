@@ -1116,3 +1116,65 @@ it('a change found in storage after a restart names no relayer, never the machin
     await rm(root, { recursive: true, force: true })
   }
 })
+
+it('a change whose machine goes offline stays pending, is listed for review as pending once it has waited, and nothing says every change is signed meanwhile', { timeout: 90000 }, async () => {
+  const waitingOptions = { attribution: { ...timing, pendingNoticeMs: 1500 } }
+  await withHub(async ({ server, replica, bare }) => {
+    const reader = await replica(1, waitingOptions)
+    const member = await bare(0)
+    const written = writeTask(member, 'Unsigned, then its machine goes offline')
+    await eventually(() => operationOf(server.store, written.taskId), 'the change never reached the hub')
+    await member.repo.shutdown()
+    const { emptyReview, reviewNotice, waitingLong } = await import('../ui-prototype/src/attribution.js')
+    for (const runtime of [server.store, reader]) {
+      await eventually(() => stateOf(runtime, written.operationId) === 'pending', `${runtime.role} never saw the change`)
+      // Pending, not yet listed: nothing claims every change is signed.
+      const early = runtime.getDoc().attribution
+      if (!early.waiting.length) {
+        assert.doesNotMatch(reviewView(runtime.getDoc(), 'Board').listing, /Every change here is signed/)
+        assert.notEqual(emptyReview(early), 'Every change here is signed by a member machine.')
+      }
+      const listed = await eventually(() => runtime.getDoc().attribution.waiting.find(item => item.change === written.hash), `${runtime.role} never listed the waiting change`)
+      assert.deepEqual([listed.state, listed.overdue], ['pending', true])
+      const doc = runtime.getDoc()
+      assert.ok(!doc.attribution.review.some(item => item.change === written.hash), 'a change waiting for its machine is not flagged')
+      assert.equal(stateOf(runtime, written.operationId), 'pending', 'it is never timed into unattributed while its machine is offline')
+      assert.ok(waitingLong({ entry: doc.activity.find(item => item.key === written.operationId) }), 'the browser lists it under review')
+      assert.match(reviewNotice(doc.attribution).join('\n'), /One change has waited a while for its signature, which may only mean the machine that sent it is offline\. It’s listed under review as pending\./)
+      const { listing, waiting } = reviewView(doc, 'Board')
+      assert.equal(waiting.length, 1)
+      assert.match(listing, /1 change has waited a while for a signature, which may only mean the machine that sent it is offline:\n\nSignature pending · waiting for /)
+      assert.doesNotMatch(listing, /Every change here is signed/)
+    }
+  }, { hubOptions: waitingOptions })
+  // Said only when nothing is outstanding.
+  const { emptyReview } = await import('../ui-prototype/src/attribution.js')
+  assert.equal(emptyReview({ summary: { pending: 0 } }), 'Every change here is signed by a member machine.')
+  assert.equal(emptyReview({ summary: { pending: 2, checking: 1 } }), 'Nothing needs review so far, but 2 changes are still waiting for a signature or being checked.')
+  assert.equal(emptyReview(null), 'This service checks no signatures.')
+})
+
+it('a connected machine that advertises signature heads it never sends cannot keep its own unsigned change pending past the catch-up limit', { timeout: 90000 }, async () => {
+  await withHub(async ({ project, server, bare }) => {
+    const attribution = server.store.attribution
+    const member = await bare(0)
+    await eventually(() => member.board.doc().operations, 'the member never synced')
+    // The hub always holds the member's advertised signature heads as ones it has not received.
+    const unknownHead = 'f'.repeat(64)
+    const isMember = peerId => server.store.peerMachine(peerId) === project.keys[0].machineId
+    const note = attribution.noteSyncState.bind(attribution)
+    attribution.noteSyncState = event => {
+      note(event)
+      const peer = attribution.peers.get(event.peerId)
+      if (peer && isMember(event.peerId)) peer.sigHeads = [unknownHead]
+    }
+    for (const [peerId, peer] of attribution.peers) if (isMember(peerId)) peer.sigHeads = [unknownHead]
+    const written = writeTask(member, 'Unsigned behind heads it never sends')
+    await eventually(() => stateOf(server.store, written.operationId) === 'pending', 'the change never reached the hub')
+    await delay(timing.quietMs * 2)
+    assert.equal(stateOf(server.store, written.operationId), 'pending', 'it is waited for while the limit lasts')
+    const verdict = await eventually(() => stateOf(server.store, written.operationId) === 'unattributed' && signerOf(server.store, written.operationId),
+      'a member kept its own change pending by advertising heads it never sends', 10000)
+    assert.equal(verdict.relayedBy, project.keys[0].machineId, 'named as the machine that delivered it')
+  }, { hubOptions: { attribution: { ...timing, catchUpMs: 2000 } } })
+})

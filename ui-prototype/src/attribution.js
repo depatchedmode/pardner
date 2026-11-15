@@ -138,6 +138,21 @@ function signerLineOf(attribution, entry) {
 /** Whether an Activity entry needs a person's review (lib/activity.js decides; this reads it). */
 export const needsReview = row => Boolean(row?.entry?.review)
 
+/**
+ * Whether an entry's change has waited long for its signature (the service marks it `overdue`): it is listed under
+ * review as pending, never flagged, since the machine that sent it may simply be offline.
+ */
+export const waitingLong = row => !needsReview(row) && (Array.isArray(row?.entry?.changes) ? row.entry.changes : []).some(change => change?.state === 'pending' && change.overdue === true)
+
+/** What an empty review list says: that every change is signed only when none is still waiting for a signature or being checked. */
+export function emptyReview(attribution) {
+  if (!attribution) return 'This service checks no signatures.'
+  // `pending` counts the changes still being checked as well.
+  const outstanding = attribution.summary?.pending ?? 0
+  if (!outstanding) return 'Every change here is signed by a member machine.'
+  return `Nothing needs review so far, but ${outstanding === 1 ? 'one change is' : `${outstanding.toLocaleString()} changes are`} still waiting for a signature or being checked.`
+}
+
 const ROLE = Object.freeze(Object.assign(Object.create(null), { admin: 'an admin', member: 'a member' }))
 
 /** One membership record entry as a plain sentence, in the shape describeEvent returns. Names are as they are now. */
@@ -194,12 +209,14 @@ function describeChangeOf(row, attribution) {
 /** The board's notice: how many changes need review, and any equivocation, in plain words; null when there is nothing. */
 export function reviewNotice(attribution) {
   const count = attribution?.summary?.review ?? 0
+  const waiting = attribution?.summary?.waiting ?? 0
   const equivocations = attribution?.summary?.equivocations ?? []
   const ownActor = attribution?.summary?.ownActor ?? 0
-  if (!count && !equivocations.length) return null
+  if (!count && !waiting && !equivocations.length) return null
   const lines = []
   if (count) lines.push(`${count === 1 ? 'One change needs' : `${count} changes need`} review: ${count === 1 ? 'its' : 'their'} signer couldn’t be confirmed, ${count === 1 ? 'it was' : 'they were'} made by a removed machine, ${count === 1 ? 'it claims' : 'they claim'} an Actor ${count === 1 ? 'its' : 'their'} machine isn’t allowed to act as, or ${count === 1 ? 'it wrote' : 'they wrote'} something other than one Activity entry of ${count === 1 ? 'its' : 'their'} own.`)
   if (ownActor) lines.push(`${ownActor === 1 ? 'One change carries' : `${ownActor} changes carry`} this computer’s actor but ${ownActor === 1 ? 'wasn’t' : 'weren’t'} made here: another machine used it.`)
+  if (waiting) lines.push(`${waiting === 1 ? 'One change has' : `${waiting} changes have`} waited a while for ${waiting === 1 ? 'its signature' : 'their signatures'}, which may only mean the machine that sent ${waiting === 1 ? 'it' : 'them'} is offline. ${waiting === 1 ? 'It’s' : 'They’re'} listed under review as pending.`)
   for (const report of equivocations) {
     const relayer = machineLabel(attribution, report.relayedBy)
     lines.push(report.proven
