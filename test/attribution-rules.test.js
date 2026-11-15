@@ -1,6 +1,8 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomBytes, randomUUID } from 'node:crypto'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import * as A from '@automerge/automerge'
@@ -9,11 +11,14 @@ import { VerificationDeferred, machineIndex } from '../lib/attribution.js'
 import { ChangeLog } from '../lib/change-log.js'
 import { generateMachineKey, personIdFor } from '../lib/machine-key.js'
 import { actorId as actorFor } from '../lib/client-identity.js'
-import { hubRuntime } from '../support/machines.js'
+import { admitMembers, hubRuntime, testProject } from '../support/machines.js'
 import { prepareOperation } from '../lib/workspace-commands.js'
 import { plain, requireValue } from '../lib/workspace-schema.js'
 import { storageValue } from '../lib/workspace-values.js'
-import { actors, entryOf, eventually, execute, operationOf, signerOf, stateOf, withHub, writeTask } from '../support/signed-hub.js'
+import { reviewView } from '../lib/client-review.js'
+import { activityItems } from '../lib/cli.js'
+import AutomergeSyncServer from '../automerge-sync-server.js'
+import { actors, bareMember, entryOf, eventually, execute, operationOf, signerOf, stateOf, timing, withHub, writeTask } from '../support/signed-hub.js'
 
 // The rules that make a signer line mean "this machine signed exactly this content" (docs/PARDNER-TRUST-DESIGN.md,
 // section 3), for every peer, even when another member's client writes unusual but well-formed data.
@@ -1056,4 +1061,58 @@ it('any one step of a background slice may keep failing: an honest signed change
       await eventually(() => attribution.stateOf(poison.hash).state !== 'pending' || attribution.stateOf(poison.hash).reason !== 'checking', 'the throwing change was never checked once it could be')
     } finally { console.error = error }
   })
+})
+
+it('a change found in storage after a restart names no relayer, never the machine its actor names; one whose actor names no machine is not left pending', { timeout: 120000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-relayer-'))
+  const project = testProject({ members: 2 })
+  const directory = join(root, 'hub')
+  const opened = []
+  const serve = async () => {
+    const server = new AutomergeSyncServer({ store: hubRuntime(directory, { actors, project, retryMs: 100, attribution: timing }), env: {}, apiToken: 'relayer-token',
+      httpPort: 0, wsPort: 0, logger: {} })
+    opened.push(server)
+    await server.start()
+    await admitMembers(server.store, project)
+    return server
+  }
+  const members = []
+  try {
+    let server = await serve()
+    // Member 0 writes one change under member 1's actor prefix, and one under an actor naming no machine.
+    const forger = await bareMember(server, project, 0)
+    members.push(forger)
+    forger.board.update(doc => A.clone(doc, { actor: machineActor(project.keys[1]) }))
+    const forged = writeTask(forger, 'Under another machine’s actor')
+    forger.board.update(doc => A.clone(doc, { actor: randomBytes(24).toString('hex') }))
+    const stranger = writeTask(forger, 'Under an actor naming no machine')
+    await eventually(() => operationOf(server.store, forged.taskId) && operationOf(server.store, stranger.taskId), 'the changes never reached the hub')
+    await forger.repo.shutdown()
+    await server.stop()
+    // Reopened, the hub finds both in its storage: nobody it knows delivered them.
+    server = await serve()
+    const unknown = await eventually(() => stateOf(server.store, stranger.operationId) === 'unattributed' && signerOf(server.store, stranger.operationId),
+      () => `the change naming no machine stayed ${JSON.stringify(signerOf(server.store, stranger.operationId))}`)
+    assert.deepEqual([unknown.reason, unknown.relayedBy], ['unknown-signer', null])
+    const waiting = await eventually(() => signerOf(server.store, forged.operationId)?.waitingFor && signerOf(server.store, forged.operationId), 'the forged change was never waited for')
+    assert.deepEqual([waiting.state, waiting.waitingFor], ['pending', project.keys[1].machineId], 'it waits for the machine its actor names')
+    // That machine connects and has nothing to send: the change is unattributed, and the machine is not named as its relayer.
+    const victim = await bareMember(server, project, 1)
+    members.push(victim)
+    const verdict = await eventually(() => stateOf(server.store, forged.operationId) === 'unattributed' && signerOf(server.store, forged.operationId), 'the forged change was never resolved')
+    assert.equal(verdict.claimed, project.keys[1].machineId)
+    assert.equal(verdict.relayedBy, null, 'the machine whose actor was used is named as the relayer')
+    // Every surface says so.
+    const doc = server.store.getDoc()
+    const { signerLine } = await import('../ui-prototype/src/attribution.js')
+    const entry = doc.activity.find(item => item.key === forged.operationId)
+    assert.match(signerLine(doc.attribution, entry).text, /^Unattributed: no signature arrived · relayer unknown/)
+    assert.match(activityItems(doc).find(item => item.entry === entry.id).signerLine, /^Unattributed: no signature arrived · relayer unknown/)
+    assert.match(reviewView(doc, 'Board').listing, /\nUnattributed: its signer isn’t a machine of this project · relayer unknown/)
+    assert.doesNotMatch(reviewView(doc, 'Board').listing, /relayed by/)
+  } finally {
+    await Promise.allSettled(members.map(member => member.repo.shutdown()))
+    for (const server of opened.reverse()) await server.stop().catch(() => {})
+    await rm(root, { recursive: true, force: true })
+  }
 })

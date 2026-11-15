@@ -37,10 +37,16 @@ export function machineLabel(attribution, machineId) {
   return machine.personName ? `${machine.personName} · ${name}` : name
 }
 
+/**
+ * The machine that relayed an unattributed change, as words: a change no machine is known to have delivered (found in
+ * storage after a restart) names none, since the machine its actor names may be the one impersonated.
+ */
+export const relayedByText = (attribution, change) => (change?.relayedBy ? `relayed by ${machineLabel(attribution, change.relayedBy)}` : 'relayer unknown')
+
 /** Who made a change, as briefly as a signer line allows. */
 function changeLabel(attribution, change) {
   if (change?.state === 'signed' || change?.state === 'removed') return machineLabel(attribution, change.machineId)
-  if (change?.state === 'unattributed') return `an unsigned change relayed by ${machineLabel(attribution, change.relayedBy)}`
+  if (change?.state === 'unattributed') return change.relayedBy ? `an unsigned change ${relayedByText(attribution, change)}` : 'an unsigned change whose relayer is unknown'
   return 'a change still being checked'
 }
 
@@ -88,7 +94,7 @@ function changeLine(attribution, change) {
     case 'removed':
       return { text: `Made by a removed machine: ${machineLabel(attribution, change.machineId)}${change.actorMismatch ? ' · as an Actor it isn’t allowed to act as' : ''}`, tone: 'flag' }
     case 'unattributed':
-      return { text: `Unattributed: ${REASONS[change.reason] ?? 'no valid signature'} · relayed by ${machineLabel(attribution, change.relayedBy)}${change.ownActor ? ' · it carries this computer’s actor, but this computer didn’t make it' : ''}`, tone: 'flag' }
+      return { text: `Unattributed: ${REASONS[change.reason] ?? 'no valid signature'} · ${relayedByText(attribution, change)}${change.ownActor ? ' · it carries this computer’s actor, but this computer didn’t make it' : ''}`, tone: 'flag' }
     default: {
       const waiting = change.waitingFor ? ` · waiting for ${machineLabel(attribution, change.waitingFor)}` : ''
       return { text: `Signature pending${waiting}`, tone: 'pending' }

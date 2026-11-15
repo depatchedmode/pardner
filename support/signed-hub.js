@@ -52,18 +52,29 @@ export async function withHub(run, { members = 3, hubOptions = {} } = {}) {
       return runtime
     }
     const bare = async index => {
-      const repo = new Repo({ network: [memberAdapter(project, index, `ws://127.0.0.1:${server.wsPort}/automerge`, { retryMs: 100 })], sharePolicy: async () => true })
-      opened.push({ close: () => repo.shutdown() })
-      const board = await repo.find(server.store.manifest.url)
-      const signatures = await repo.find(signaturesDocumentUrl(project.projectId))
-      board.update(doc => A.clone(doc, { actor: machineActor(project.keys[index]) }))
-      return { repo, board, signatures, key: project.keys[index] }
+      const member = await bareMember(server, project, index)
+      opened.push({ close: () => member.repo.shutdown() })
+      return member
     }
     await run({ root, project, server, replica, bare })
   } finally {
     await Promise.allSettled(opened.map(runtime => runtime.close()))
     await server.stop()
     await rm(root, { recursive: true, force: true })
+  }
+}
+
+/** A bare Automerge peer of member machine `index`, connected to `server`'s hub: a modified client could write anything through it. */
+export async function bareMember(server, project, index) {
+  const repo = new Repo({ network: [memberAdapter(project, index, `ws://127.0.0.1:${server.wsPort}/automerge`, { retryMs: 100 })], sharePolicy: async () => true })
+  try {
+    const board = await repo.find(server.store.manifest.url)
+    const signatures = await repo.find(signaturesDocumentUrl(project.projectId))
+    board.update(doc => A.clone(doc, { actor: machineActor(project.keys[index]) }))
+    return { repo, board, signatures, key: project.keys[index] }
+  } catch (error) {
+    await repo.shutdown()
+    throw error
   }
 }
 

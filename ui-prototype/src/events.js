@@ -122,7 +122,10 @@ function deletedNote(deletions, lookups) {
     if (deletion.review !== true && deletion.review !== false) return ['A change still being checked later marked this comment deleted. See Activity.']
     if (confirmed) return [`${DELETED_NOTE} by `, actorPart(lookups.actors, deletion.actorId), ', signed by ', machine(deletion.machineId), '.']
     if (deletion.state === 'signed' || deletion.state === 'removed') return ['A change that needs review, signed by ', machine(deletion.machineId), ', later marked this comment deleted. See Activity.']
-    if (deletion.state === 'unattributed') return ['An unsigned change relayed by ', machine(deletion.relayedBy), ' later marked this comment deleted. See Activity.']
+    if (deletion.state === 'unattributed') {
+      return deletion.relayedBy ? ['An unsigned change relayed by ', machine(deletion.relayedBy), ' later marked this comment deleted. See Activity.']
+        : ['An unsigned change whose relayer is unknown later marked this comment deleted. See Activity.']
+    }
     return ['A change still being checked later marked this comment deleted. See Activity.']
   })
   return notes.flatMap((note, index) => (index ? [' ', ...note] : note))
