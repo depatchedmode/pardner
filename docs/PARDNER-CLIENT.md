@@ -127,9 +127,10 @@ signature document is saved in the background at most once a second and synced
 like the board, off the acknowledgement path: a write is acknowledged once the
 board is on disk. When a project runtime starts, and whenever an entry it verified
 is deleted or overwritten, it writes back every signature in its cache that the
-shared document lacks, its own included. A received change that carries this
-machine's own actor but that it did not sign is unattributed, and the board and
-`client review` say another machine used this computer's actor.
+shared document lacks, its own included. A change that carries this machine's own
+actor but has no signature here is unattributed, and the board and `client review`
+say so: another machine may have used this computer's actor, or this computer lost
+power or stopped before saving the signature.
 
 **Checking.** Every change that arrives is applied first, as before, then
 checked: its signature must verify under the machine its actor names, and that
@@ -145,10 +146,15 @@ refused, dropped or hidden. Each one is in one of four states:
   on a live connection after the change arrived; a member machine asks the hub,
   and waits while the hub does or while the hub holds a signature that has not
   arrived yet. Pending lasts milliseconds normally, or the length of an outage.
-  The board shows nothing for the first moment and then "Signature pending".
+  The board shows nothing for the first moment and then "Signature pending". A
+  change pending for more than a minute is listed under review as pending, not
+  flagged, and the review never says every change is signed while one is pending.
+  A connected machine that has not caught up gets five minutes at most.
 - **Unattributed: relayed by** a named machine, once that wait is over and no
   valid signature exists, for example because the change was never signed or its
-  signature doesn't check out. It becomes signed if a valid signature arrives later.
+  signature doesn't check out. Only the machine that delivered the change is
+  named: for one found in storage after a restart it says "relayer unknown". It
+  becomes signed if a valid signature arrives later.
 - **Made by a removed machine**, for a signed change by a machine this computer
   holds as removed that does not come before the removal in the board's history.
   Its earlier work stays signed and attributed.

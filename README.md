@@ -146,9 +146,10 @@ that the document lacks. Every peer applies every change it receives, as before,
 then checks that the signature verifies under the machine the actor names and that
 this machine is or was a member, and keeps each signature it verified in its own
 cache, so deleting an entry from the shared document unattributes nothing it
-already checked. No change is refused, dropped or hidden. A received change that
-carries this machine's own actor but that it did not sign is unattributed, and the
-machine reports that another machine used its actor.
+already checked. No change is refused, dropped or hidden. A change that carries
+this machine's own actor but has no signature here is unattributed, and the machine
+says so: another machine may have used its actor, or this machine lost power or
+stopped before saving the signature.
 
 **A signer line means: this machine signed exactly this content.** That is what
 Pardner guarantees about every change, as a signed commit does in git: Activity
@@ -215,12 +216,16 @@ verified, and a flagged entry says its description does not match what the chang
 wrote.
 
 Activity names each entry's signer, the person and the machine; says "signature
-pending" while a signature may still be on its way; says "unattributed" and names
+pending" while a signature may still be on its way, and lists a change pending for
+more than a minute for review as pending, not flagged; says "unattributed" and names
 the machine that relayed it once the machine that delivered the change has had a
-second on a live connection to send one; and says "made by a removed machine" for a
-signed change that does not come before that machine's removal in the board's
-history. Work from before a removal stays attributed. An entry is flagged and listed
-for review when the key it was written at is not the operation ID inside it, its
+second on a live connection to send one (five minutes at most while it stays
+connected without catching up), or says "relayer unknown" for a change no machine
+is known to have delivered, such as one found in storage after a restart; and says
+"made by a removed machine" for a signed change that does not come before that
+machine's removal in the board's history. Work from before a removal stays
+attributed. An entry is flagged and listed for review when the key it was written
+at is not the operation ID inside it, its
 operation ID is not the one its request ID and content give, another change wrote
 the same key (each such change is its own entry), its signer is not certified for
 the Actor it names, its change also deleted content, wrote at the board's top
