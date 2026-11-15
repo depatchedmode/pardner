@@ -740,7 +740,10 @@ its diff before the mapping was recorded:
   the attribution view, takes a comment's author only when it is text. Later
   still, `attributionView` also lists the changes that have waited long for a
   signature (`waiting`), and a comment in `Workspace.apply()` no longer calls the
-  signature as durable as the change; neither touches a mapped action.
+  signature as durable as the change; neither touches a mapped action. After
+  that, `currentWriters` also reads a comment's author when it is stored as an
+  immutable string, as every comment's is; it is still a read used only by the
+  attribution view.
 - `lib/attribution.js` and `lib/change-signatures.js`, which are not mapped, now
   read every value stored for a change and verify candidates in bounded passes;
   `confirmOwn()` and the acknowledgement barrier are unchanged.
