@@ -94,7 +94,7 @@ function changeLine(attribution, change) {
     case 'removed':
       return { text: `Made by a removed machine: ${machineLabel(attribution, change.machineId)}${change.actorMismatch ? ' · as an Actor it isn’t allowed to act as' : ''}`, tone: 'flag' }
     case 'unattributed':
-      return { text: `Unattributed: ${REASONS[change.reason] ?? 'no valid signature'} · ${relayedByText(attribution, change)}${change.ownActor ? ' · it carries this computer’s actor, but this computer didn’t make it' : ''}`, tone: 'flag' }
+      return { text: `Unattributed: ${REASONS[change.reason] ?? 'no valid signature'} · ${relayedByText(attribution, change)}${change.ownActor ? ' · it carries this computer’s actor but has no signature here' : ''}`, tone: 'flag' }
     default: {
       const waiting = change.waitingFor ? ` · waiting for ${machineLabel(attribution, change.waitingFor)}` : ''
       return { text: `Signature pending${waiting}`, tone: 'pending' }
@@ -215,7 +215,8 @@ export function reviewNotice(attribution) {
   if (!count && !waiting && !equivocations.length) return null
   const lines = []
   if (count) lines.push(`${count === 1 ? 'One change needs' : `${count} changes need`} review: ${count === 1 ? 'its' : 'their'} signer couldn’t be confirmed, ${count === 1 ? 'it was' : 'they were'} made by a removed machine, ${count === 1 ? 'it claims' : 'they claim'} an Actor ${count === 1 ? 'its' : 'their'} machine isn’t allowed to act as, or ${count === 1 ? 'it wrote' : 'they wrote'} something other than one Activity entry of ${count === 1 ? 'its' : 'their'} own.`)
-  if (ownActor) lines.push(`${ownActor === 1 ? 'One change carries' : `${ownActor} changes carry`} this computer’s actor but ${ownActor === 1 ? 'wasn’t' : 'weren’t'} made here: another machine used it.`)
+  // Not proof that another machine used the actor: this computer may have stopped before its signature was saved.
+  if (ownActor) lines.push(`${ownActor === 1 ? 'One change carries' : `${ownActor} changes carry`} this computer’s actor but ${ownActor === 1 ? 'has' : 'have'} no signature here: this computer may have lost power or stopped before saving ${ownActor === 1 ? 'its signature' : 'their signatures'}, or another machine used its actor.`)
   if (waiting) lines.push(`${waiting === 1 ? 'One change has' : `${waiting} changes have`} waited a while for ${waiting === 1 ? 'its signature' : 'their signatures'}, which may only mean the machine that sent ${waiting === 1 ? 'it' : 'them'} is offline. ${waiting === 1 ? 'It’s' : 'They’re'} listed under review as pending.`)
   for (const report of equivocations) {
     const relayer = machineLabel(attribution, report.relayedBy)
