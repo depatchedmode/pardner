@@ -174,7 +174,8 @@ helper must never imply deleting its task, evidence or durable delivery history.
 ## Questions if this is revisited
 
 None of these is scheduled. The attention candidate also appears in the
-[Kortix assessment](PARDNER-KORTIX-LESSONS.md).
+[Kortix](PARDNER-KORTIX-LESSONS.md) and
+[Linear](PARDNER-LINEAR-LESSONS.md) assessments.
 
 1. Which attention items can existing records derive, and which need new harness
    observations? What action clears each item, and for which viewer or Actor?
