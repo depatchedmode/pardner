@@ -96,6 +96,13 @@ recordId = sha256(canonical(record) ‖ signature)
   - That comparison is best-effort. Five review rounds (#220, #222, #223, #225, #227) each found ways for a member to write a wrong description that is not flagged, so it is not offered as a guarantee. The known cases are in #228.
   - None of them lets a member change who signed a change. The UI and CLI call only the signature verified.
 - **Malformed content never stops a view.** A member may write any value. A record or field of the wrong kind is left out of what is read and named as unreadable; nothing is deleted or refused.
+- **What must always hold, and when a finding blocks merge.** Four invariants:
+  - Views always load.
+  - An honest signed change is eventually shown as signed.
+  - No specific innocent machine is ever named.
+  - The product never says "all signed" when it isn't.
+
+  A review finding blocks merge only if it breaks one of these, has a failing test, is triggered by a member machine or by an ordinary fault (a restart, a disconnect), and does not heal on its own. Every other finding is filed as an issue.
 - **Where signatures travel (decided by the spike).** A signature cannot sit inside the change it signs. Signatures live in a second Automerge document beside the board, sharded by the first byte of the change hash, and synced by automerge-repo as it is today.
   - Writers sign each change at once and save the entry with the next background save, off the acknowledgement path. Ed25519 signatures are deterministic, so at start-up a writer re-creates any of its own entries that are missing.
   - Each peer keeps the signatures it has verified in a local grow-only cache, so deleting an entry from the shared document does not unattribute a change for peers that saw it.
