@@ -181,6 +181,10 @@ it('every ordinary operation type and every record flow is shown on every peer a
       const records = activity.filter(entry => entry.kind === 'record')
       assert.ok(records.length >= project.all.length && records.every(entry => !entry.flags.invalidRecord))
       assert.equal(new Set(activity.flatMap(entry => entry.changes.map(change => change.hash))).size, attribution.summary.changes, 'every change is shown')
+      // Each comment and field value was written by its own author's signed operation, so none says someone else changed it.
+      const current = runtime.getDoc().attribution
+      assert.deepEqual(Object.keys(current.comments), [], `${runtime.role} says an honest comment was changed by someone else`)
+      assert.deepEqual(Object.keys(current.registers), [], `${runtime.role} says an honest field value was changed by someone else`)
     }
   }, { hubOptions: { actors: [] } })
 })
