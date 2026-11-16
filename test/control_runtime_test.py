@@ -106,7 +106,8 @@ class ControllerTests(unittest.TestCase):
         git(self.release, 'init', '-q')
         (self.release / '.gitignore').write_text('node_modules/\nui-prototype/dist/\nui-prototype/node_modules/\n')
         (self.release / 'lib').mkdir()
-        (self.release / 'lib/workspace-schema.js').write_text('export const SCHEMA_VERSION = 4\n')
+        (self.release / 'shared').mkdir()
+        (self.release / 'shared/domain-vocab.js').write_text('export const SCHEMA_VERSION = 4\n')
         (self.release / 'bin').mkdir()
         (self.release / 'bin/pardner.js').write_text('process.exit(17)\n')
         for name in module.LOCKFILES:
@@ -195,7 +196,7 @@ class ControllerTests(unittest.TestCase):
     def test_compatibility_follows_selected_release_including_historical_and_future_schema(self):
         for version in [2, 5]:
             with self.subTest(version=version):
-                (self.release / 'lib/workspace-schema.js').write_text(f'export const SCHEMA_VERSION = {version}\n')
+                (self.release / 'shared/domain-vocab.js').write_text(f'export const SCHEMA_VERSION = {version}\n')
                 git(self.release, 'add', '.')
                 git(self.release, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
                     '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'selected release')
@@ -210,7 +211,7 @@ class ControllerTests(unittest.TestCase):
                 self.assertFalse((self.data / 'runtime-lock.sqlite').exists())
 
     def test_unrecognized_schema_declaration_fails_closed(self):
-        path = self.release / 'lib/workspace-schema.js'
+        path = self.release / 'shared/domain-vocab.js'
         for declaration in ['', 'export const SCHEMA_VERSION = 4 + 1',
                             'export const SCHEMA_VERSION = 4\nexport const SCHEMA_VERSION = 5']:
             with self.subTest(declaration=declaration):

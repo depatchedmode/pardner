@@ -6,6 +6,8 @@ const allowedHosts = (process.env.PARDNER_UI_ALLOWED_HOSTS || 'localhost,127.0.0
   .split(',')
   .map(host => host.trim())
   .filter(Boolean)
+const uiRoot = fileURLToPath(new URL('.', import.meta.url))
+const sharedRoot = fileURLToPath(new URL('../shared', import.meta.url))
 
 // Development against a local client:
 //   pardner client open --data <dir> --output-file <file>   (starts the client if needed;
@@ -38,13 +40,18 @@ export function clientProxy(target) {
 export default defineConfig({
   plugins: [react()],
   base: '/pardner/',
+  resolve: {
+    alias: {
+      '@pardner/domain-vocab': fileURLToPath(new URL('../shared/domain-vocab.js', import.meta.url)),
+    },
+  },
   server: {
     host: '127.0.0.1',
     port: 5174,
     allowedHosts,
     fs: {
       strict: true,
-      allow: [fileURLToPath(new URL('.', import.meta.url))],
+      allow: [uiRoot, sharedRoot],
       deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.pardner/**', '**/.mission-control/**', '**/.agent-trace/**']
     },
     proxy: clientProxy(process.env.PARDNER_CLIENT_URL)

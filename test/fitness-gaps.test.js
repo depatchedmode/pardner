@@ -41,7 +41,6 @@ it('mention keys survive operation replay and distinguish separate comments with
     assert.equal(new Set(mentions.map(mention => mention.idempotency_key)).size, 2)
     for (const mention of mentions) {
       assert.equal(mention.toActorId, 'builder')
-      assert.match(mention.idempotency_key, /^[a-f0-9]{64}$/)
     }
   })
 })

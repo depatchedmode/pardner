@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { STATUSES } from '@pardner/domain-vocab'
 import ActorMarkdown from './ActorMarkdown.jsx'
 import './pardner.css'
 import { createOperationId } from './operation-id.js'
@@ -14,8 +15,8 @@ import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js
 import { quickStatusEditable } from './task-status.js'
 import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
 import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
+import { syncStatusText } from './sync-status.js'
 
-const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
 const StatusOptions = ({ values = STATUSES }) => values.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
 const ACTIVITY_SHOWS = [
   ['changes', 'All changes'], ['status', 'Status changes and handoffs'], ['comments', 'Comments'],
@@ -131,13 +132,9 @@ function useRefocus() {
   return [ref, useCallback(() => { wanted.current = true }, [])]
 }
 function SaveStatus({ status, connected, busy, heads }) {
-  let text = 'Connecting to local service'
-  if (busy) text = 'Saving locally…'
-  else if (!connected) text = 'Local service disconnected'
-  else if (status?.storageError) text = 'Local save failed'
-  else if (!status?.savedLocally || status.heads?.join(',') !== heads) text = 'Saving locally…'
-  else if (status.syncPending) text = 'Saved locally · waiting for hub'
-  else text = 'Saved locally · synced'
+  const text = !status && connected && !busy
+    ? 'Connecting to local service'
+    : syncStatusText(status, { connected, busy, heads })
   return (
     <span
       className="save-status"
