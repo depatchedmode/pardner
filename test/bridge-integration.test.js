@@ -118,8 +118,16 @@ it('dispatches a mention through a client project with an agent credential', { t
     const config = await bridgeConfig(path, { credentialFile })
     assert.equal(config.credentialFile, credentialFile)
     assert.equal(config.replicaId, 'client')
-    // Without the credential this is an incomplete standalone configuration.
-    await assert.rejects(bridgeConfig(path), /Bridge configuration requires/)
+    // Without the credential this is an incomplete standalone configuration; the refusal names the missing flag.
+    await assert.rejects(bridgeConfig(path), { code: 'INVALID_ARGUMENT',
+      message: 'Supply --token-file FILE for a client bridge, or set replicaId and dataDirectory for a standalone service bridge' })
+    // An unreadable configuration is a usage refusal that names the file, not an internal error.
+    const malformed = join(root, 'malformed.json')
+    await writeFile(malformed, '{ workspaceId: 1 }')
+    await assert.rejects(bridgeConfig(malformed, { credentialFile }), error => error.code === 'INVALID_ARGUMENT'
+      && error.message.startsWith(`The bridge configuration ${malformed} must be readable JSON (`))
+    await assert.rejects(bridgeConfig(join(root, 'missing.json')), error => error.code === 'INVALID_ARGUMENT'
+      && error.message.includes('missing.json must be readable JSON (ENOENT'))
     await writeFile(path, JSON.stringify({ workspaceId: 'another-project', inboxDirectory: join(root, 'bridge'), mappings: [mapping] }))
     await assert.rejects(bridgeConfig(path, { credentialFile }), { code: 'WORKSPACE_MISMATCH' })
     await writeFile(path, JSON.stringify({ workspaceId: project.id, inboxDirectory: join(root, 'bridge'), mappings: [{ ...mapping, actorId: project.actorId }] }))

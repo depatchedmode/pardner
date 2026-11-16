@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
 import { startClient } from '../lib/client-service.js'
-import { CLIENT_API } from '../lib/client-identity.js'
+import { CLIENT_API, setupAgent } from '../lib/client-identity.js'
 
 async function fixture(t, name) {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-client-'))
@@ -489,6 +489,37 @@ test('gateway error pages and hub 5xx responses are outages: replicas keep savin
   reply = { status: 401, type: 'application/json', body: JSON.stringify({ code: 'AUTH_REQUIRED', error: 'Device is not admitted to this project' }) }
   const { result: revoked, response } = await bob.api(path, { type: 'task.create', operationId: 'denied', payload: { title: 'denied' } }, { failure: true })
   assert.equal(response.status, 403); assert.equal(revoked.code, 'REVOKED')
+})
+
+test('identity, harness and revocation refusals name the actual problem', { timeout: 45000 }, async t => {
+  const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
+  const refusal = async (api, path, body, status, code, error) => {
+    const { result, response } = await api(path, body, { failure: true })
+    assert.equal(response.status, status, JSON.stringify(result)); assert.equal(result.code, code); assert.equal(result.error, error)
+    return result
+  }
+  await refusal(alice.api, '/identity', { name: '   ', email: 'alice@example.test', operationId: 'blank' }, 400, 'INVALID_ARGUMENT', 'Supply a name')
+  await refusal(alice.api, '/identity', { name: 'A'.repeat(201), email: 'alice@example.test', operationId: 'long' }, 400, 'INVALID_ARGUMENT',
+    'Use a name of at most 200 characters')
+  const exists = await refusal(alice.api, '/identity', { name: 'Alice', email: 'alice@elsewhere.test', operationId: 'fix-email' }, 409, 'IDENTITY_EXISTS',
+    "This client already has an identity (Alice <alice@example.test>); it can't be changed. To use a different identity, start a separate client directory.")
+  assert.deepEqual(exists.details, { identity: { name: 'Alice', email: 'alice@example.test' } })
+  const harness = 'Unsupported execution harness; use openai-codex, anthropic-claude-code or cursor'
+  assert.throws(() => setupAgent({ harnessId: 'claude' }), { code: 'INVALID_ARGUMENT', message: harness })
+  const { result: { project } } = await alice.api('/projects', { name: 'Refusals', operationId: 'create' })
+  await refusal(alice.api, `/projects/${project.id}/agent-grant`, { harnessId: 'claude' }, 400, 'INVALID_ARGUMENT', harness)
+  const aliceId = alice.client.registry.read().identity.id
+  await refusal(alice.api, `/projects/${project.id}/revoke`, { kind: 'member', id: aliceId, operationId: 'self' }, 403, 'FORBIDDEN',
+    "The project creator's own membership can't be revoked")
+  await refusal(alice.api, `/projects/${project.id}/revoke`, { kind: 'agent', id: 'actor-doesnotexist', operationId: 'missing-agent' }, 404, 'NOT_FOUND',
+    'No agent with that ID in this project')
+  const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
+  await bob.api('/join', { invitation: invitation.invitation, operationId: 'join' })
+  await refusal(bob.api, `/projects/${project.id}/revoke`, { kind: 'member', id: aliceId, operationId: 'not-creator' }, 403, 'FORBIDDEN',
+    'Only the project creator can remove other members')
+  const aliceAgent = Object.values(alice.client.project(project.id).people).find(person => person.kind === 'agent' && person.humanId === aliceId)
+  await refusal(bob.api, `/projects/${project.id}/revoke`, { kind: 'agent', id: aliceAgent.id, operationId: 'foreign-agent' }, 403, 'FORBIDDEN',
+    'Agent belongs to another human')
 })
 
 test('enrollment normalises agent and device metadata at the boundary and leaves a refused invitation usable', { timeout: 30000 }, async t => {

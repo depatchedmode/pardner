@@ -153,7 +153,7 @@ function EventRow({ event, lookups, within, onTask, onVein, onGoal, formatTime, 
   const when = new Date(event.timestamp)
   const handlers = { task: onTask, vein: onVein, goal: onGoal }
   return (
-    <article className="event" title={event.type} {...articleProps}>
+    <article className="event" {...articleProps}>
       <p className="event-line">
         <strong>{description.actor}</strong>
         {description.parts.map((part, index) => {
@@ -1088,7 +1088,7 @@ function IssueLinks({ taskId, issues, canWrite, submit }) {
           {issues.map(issue => (
             <li key={`${issue.repository}#${issue.number}`}>
               <a href={issue.url} target="_blank" rel="noreferrer">{issue.repository}#{issue.number}</a>{' '}
-              <button disabled={!canWrite} onClick={() => submit('task.unlink-issue', {
+              <button disabled={!canWrite} aria-label={`Unlink ${issue.repository}#${issue.number}`} onClick={() => submit('task.unlink-issue', {
                 taskId, repository: issue.repository, number: issue.number, expectedRevisions: issue.revisions,
               })}>Unlink</button>
             </li>
@@ -1245,9 +1245,17 @@ function TaskDetail({
   const newerFields = draft
     ? Object.keys(draft.fields).filter(field => JSON.stringify(revisions[field]) !== JSON.stringify(draft.revisions[field]))
     : []
-  const newerBy = newerFields.length
-    ? [...history].reverse().find(event => event.changes.some(change => newerFields.includes(change.field)))?.actorId
-    : null
+  // Credit each newer field to the Actor whose History event last changed it.
+  const newerGroups = []
+  for (const field of newerFields) {
+    const by = [...history].reverse().find(event => event.changes.some(change => change.field === field))?.actorId ?? null
+    const group = newerGroups.find(candidate => candidate.by === by)
+    if (group) group.fields.push(field)
+    else newerGroups.push({ by, fields: [field] })
+  }
+  const listFields = fields => fields.length < 2 ? fields.join('') : `${fields.slice(0, -1).join(', ')} and ${fields.at(-1)}`
+  const newerNotice = newerGroups.map(({ by, fields }) =>
+    `${by ? labelActor(actors[by]) : 'Someone'} saved ${fields.length === 1 && fields[0] === 'tags' ? '' : 'a '}newer ${listFields(fields)}`).join('; ')
   const here = session.focus[taskId] ? focusedActors(session, session.focus[taskId]) : []
   // An edit error falls back to the panel top once its form has closed.
   // A handoff error does too while its form is closed, so Retry stays visible.
@@ -1280,7 +1288,7 @@ function TaskDetail({
       {draft && newerFields.length > 0 && (
         <div className="notice draft-notice" role="status">
           <p>
-            {newerBy ? `${labelActor(actors[newerBy])} saved` : 'Someone saved'} a newer {newerFields.join(', ')} since
+            {newerNotice} since
             you started editing. Your draft is unchanged.
           </p>
           <p className="muted small">If you also changed {newerFields.length === 1 ? 'that field' : 'those fields'}, saving is
@@ -1566,7 +1574,7 @@ function TaskDetail({
           <article className={isNew ? 'comment is-new' : 'comment'} key={comment.id}>
             <div className="comment-head">
               <strong>{labelActor(actors[comment.actorId])}</strong>
-              <time>{new Date(comment.timestamp).toLocaleString()}</time>
+              <time dateTime={comment.timestamp}>{new Date(comment.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
               {isNew && <span className="comment-tag">New</span>}
             </div>
             <MarkdownBody extraPlugins={[remarkMentionChips(deliveredFor(comment.id))]}>{comment.content}</MarkdownBody>

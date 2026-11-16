@@ -59,13 +59,21 @@ export function createConnection(config, { storage = localStorage, drafts = sess
     draft: taskId => read(drafts, `draft:${taskId}`),
     saveDraft: (taskId, value) => write(drafts, `draft:${taskId}`, value),
     async request(path, body) {
-      return readResponse(await fetcher(`${config.apiBase}${path}`, {
-        method: body === undefined ? 'GET' : 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Pardner-Workspace': config.workspaceId },
-        credentials: 'same-origin',
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        signal: AbortSignal.timeout(10000),
-      }))
+      let response
+      try {
+        response = await fetcher(`${config.apiBase}${path}`, {
+          method: body === undefined ? 'GET' : 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Pardner-Workspace': config.workspaceId },
+          credentials: 'same-origin',
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+          signal: AbortSignal.timeout(10000),
+        })
+      } catch (cause) {
+        // No answer is not a refusal: the caller keeps any pending operation for retry.
+        throw Object.assign(new Error('The local Pardner client did not respond. Check that it is still running, then retry.'),
+          { code: 'CLIENT_UNREACHABLE', cause })
+      }
+      return readResponse(response)
     },
   }
 }

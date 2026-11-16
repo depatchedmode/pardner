@@ -427,7 +427,9 @@ nav button[aria-pressed='true'] {
   font-weight: 600;
   color: var(--muted);
 }
-.event:focus-visible {
+.event:focus-visible,
+.event:focus,
+.goal:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -559,6 +561,9 @@ input[aria-invalid='true'] {
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
 }
+.goals > .empty {
+  text-align: left;
+}
 .goal-heading {
   display: flex;
   flex-wrap: wrap;
@@ -658,6 +663,11 @@ input[aria-invalid='true'] {
 }
 code {
   overflow-wrap: anywhere;
+}
+/* Inline commands such as `pardner open`; Markdown code blocks keep their own sizing. */
+:not(pre) > code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
 }
 .actions {
   flex-wrap: wrap;
@@ -1132,6 +1142,7 @@ button.avatar:hover { background: hsl(var(--avatar-hue) 18% 30%); }
   border-radius: 16px;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 span.avatar-more { border: 1px solid var(--line); color: var(--muted); }
 .avatar-more.avatar-sm { min-width: 24px; height: 24px; font-size: 11px; }
@@ -1233,7 +1244,7 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
 .warning-text { color: var(--warning); font-size: 13px; margin: 0 0 8px; }
 .invite-list li {
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr) auto auto;
+  grid-template-columns: 80px max-content minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 8px 0;
@@ -1241,11 +1252,13 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
 }
 .invite-list li + li { border-top: 1px solid var(--line); }
 .invite-list li > .muted { font-size: 12px; }
+.invite-list .invite-state { white-space: nowrap; }
 
 .client-entry { max-width: 520px; }
 .client-entry h1 { font-size: 26px; }
 .client-entry .lead { color: #d6d6d6; margin: 0 0 26px; }
 .client-entry > p:not(.lead) { color: inherit; margin-bottom: 20px; }
+.client-entry form button { max-width: 100%; overflow-wrap: anywhere; }
 .inline-error,
 .inline-notice { border: 1px solid #825349; border-radius: 6px; padding: 12px 15px; }
 .inline-notice { border-color: #80643b; margin-bottom: 20px; }

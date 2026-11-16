@@ -169,6 +169,13 @@ export function describeEvent(event, lookups = {}, { within = null } = {}) {
     case 'task.unlink-vein':
       say(' removed ', task(event.taskId), ' from vein ', vein(result.veinId))
       break
+    case 'task.link-issue':
+    case 'task.unlink-issue': {
+      const reference = `${result.repository ?? payload.repository ?? ''}#${result.number ?? payload.number ?? ''}`
+      if (event.type === 'task.link-issue') say(` linked issue ${reference} to `, task(event.taskId))
+      else say(` unlinked issue ${reference} from `, task(event.taskId))
+      break
+    }
     case 'comment.add':
     case 'comment.edit':
     case 'comment.resolve': {
