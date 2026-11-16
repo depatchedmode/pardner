@@ -225,6 +225,30 @@ class ControllerTests(unittest.TestCase):
                 with self.assertRaisesRegex(module.ControlError, 'Cannot establish release schema'):
                     self.control.verify_code()
 
+    def commit_release(self, message):
+        git(self.release, 'add', '-A')
+        git(self.release, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+            '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', message)
+        self.control.config['sha'] = git(self.release, 'rev-parse', 'HEAD')
+
+    def test_schema_follows_shared_vocabulary_declaration(self):
+        (self.release / 'shared').mkdir()
+        (self.release / 'shared/domain-vocab.js').write_text('export const SCHEMA_VERSION = 4\n')
+        (self.release / 'lib/workspace-schema.js').write_text("export { SCHEMA_VERSION } from '../shared/domain-vocab.js'\n")
+        self.commit_release('shared vocabulary release')
+        self.control.verify_code()
+        (self.release / 'shared/domain-vocab.js').write_text('export const SCHEMA_VERSION = 5\n')
+        self.commit_release('future shared schema')
+        with self.assertRaisesRegex(module.ControlError, 'Storage schema is incompatible'):
+            self.control.verify_code()
+
+    def test_schema_declared_in_both_locations_fails_closed(self):
+        (self.release / 'shared').mkdir()
+        (self.release / 'shared/domain-vocab.js').write_text('export const SCHEMA_VERSION = 4\n')
+        self.commit_release('ambiguous schema')
+        with self.assertRaisesRegex(module.ControlError, 'Cannot establish release schema'):
+            self.control.verify_code()
+
     def test_direct_run_cannot_overwrite_launch_metadata(self):
         record = {'pid': 123, 'launch': {'sha': 'earlier'}}
         module.atomic_json(self.home / 'running.json', record)

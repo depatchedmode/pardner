@@ -93,7 +93,8 @@ IDs must be filename-safe; other existing IDs can use `control cli --actor ID`.
 
 `seal` refuses an active installation. It checks the exact Git SHA, tracked source
 and untracked additions, Node version, storage identity and role, and the manifest
-schema against the selected release's `lib/workspace-schema.js` declaration, then records UI
+schema against the selected release's single `SCHEMA_VERSION` declaration (in
+`shared/domain-vocab.js`, or `lib/workspace-schema.js` for older releases), then records UI
 and dependency-lock hashes. Start, run and Actor CLI calls verify that record.
 The schema preflight described here is in the repository controller; the preserved
 installed controller is unchanged until a separately approved tooling deployment.

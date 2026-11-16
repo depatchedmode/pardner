@@ -19,6 +19,7 @@ LABEL = 'app.pardner.control'
 LAUNCH_KEYS = ['sha', 'release', 'data', 'node', 'role', 'httpPort', 'wsPort']
 LOCKFILES = ['package-lock.json', 'ui-prototype/package-lock.json',
              'node_modules/.package-lock.json', 'ui-prototype/node_modules/.package-lock.json']
+SCHEMA_DECLARATION_FILES = ['shared/domain-vocab.js', 'lib/workspace-schema.js']
 LAUNCHCTL = '/bin/launchctl'
 LSOF = '/usr/sbin/lsof'
 
@@ -102,9 +103,11 @@ class Controller:
         manifest = json.loads((self.data / 'workspace.json').read_text())
         if not isinstance(manifest, dict) or any(manifest.get(key) != self.config[key] for key in ['workspaceId', 'replicaId', 'role']):
             raise ControlError('Control storage identity or role mismatch')
-        # Read the pinned declaration without importing app code or opening storage.
-        source = (self.release / 'lib/workspace-schema.js').read_text()
-        versions = re.findall(r'^export const SCHEMA_VERSION = ([1-9][0-9]*)\s*;?$', source, re.MULTILINE)
+        # Read the pinned declaration without importing app code or opening storage. Releases
+        # before shared/domain-vocab.js declare it in lib/workspace-schema.js; exactly one must.
+        versions = [version for name in SCHEMA_DECLARATION_FILES if (self.release / name).is_file()
+                    for version in re.findall(r'^export const SCHEMA_VERSION = ([1-9][0-9]*)\s*;?$',
+                                              (self.release / name).read_text(), re.MULTILINE)]
         if len(versions) != 1:
             raise ControlError('Cannot establish release schema; preserve storage and inspect the pinned source')
         version = manifest.get('schemaVersion')
