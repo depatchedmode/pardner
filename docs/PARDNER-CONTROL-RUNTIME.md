@@ -111,7 +111,7 @@ set `"projectId"`; a client that already has projects but no named one is refuse
 
 `seal` refuses an active installation. It checks the exact Git SHA, tracked source
 and untracked additions, Node version, and every client project's workspace
-manifest schema against the selected release's `lib/workspace-schema.js`
+manifest schema against the selected release's `shared/domain-vocab.js`
 declaration (a fresh client has none yet), then records UI
 and dependency-lock hashes. Start, run and Actor CLI calls verify that record.
 The schema preflight described here is in the repository controller; the preserved
