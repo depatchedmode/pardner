@@ -16,3 +16,6 @@ output/verification/
 .playwright-cli/
 __pycache__/
 *.pyc
+
+# Output of the UX skills (ux-paths, ux-walker, ux-visual, ux-flow, ux-auto-improve): kept out of the repo; findings go to GitHub issues.
+docs/ux-*/

@@ -10,6 +10,7 @@ import { WebSocketClientAdapter } from '@automerge/automerge-repo-network-websoc
 
 import AutomergeSyncServer from '../automerge-sync-server.js'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
+import { AUTOMERGE_PATHS, NATIVE_AUTOMERGE_WS_PATH, REPLICA_TOKEN_HEADER } from '../lib/sync-protocol.js'
 import { randomUUID } from 'node:crypto'
 
 export const noopLogger = {
@@ -207,8 +208,7 @@ export function nextWsMessage(ws, timeoutMs = 2000) {
   })
 }
 
-/** Path for Automerge Repo native (CBOR) WebSocket sync (see automerge-sync-server.js). */
-export const NATIVE_AUTOMERGE_WS_PATH = '/automerge'
+export { NATIVE_AUTOMERGE_WS_PATH }
 
 export function nativeAutomergeWsUrl(server, query = {}) {
   const q = new URLSearchParams(query)
@@ -217,8 +217,8 @@ export function nativeAutomergeWsUrl(server, query = {}) {
 }
 
 export async function mintReplicaTicket(server) {
-  const response = await authedFetch(server, '/automerge/ws-ticket', {
-    method: 'POST', headers: { 'x-pardner-replica-token': replicaOptions.replicaToken },
+  const response = await authedFetch(server, AUTOMERGE_PATHS.wsTicket, {
+    method: 'POST', headers: { [REPLICA_TOKEN_HEADER]: replicaOptions.replicaToken },
     body: JSON.stringify({ purpose: 'replica', replicaId: replicaOptions.replicaCredentialId }),
   })
   if (!response.ok) throw new Error(await response.text())
@@ -227,7 +227,7 @@ export async function mintReplicaTicket(server) {
 
 export async function openNativePeer(server, storagePath = createTempDir('pardner-peer-')) {
   const ticket = await mintReplicaTicket(server)
-  const { url: documentUrl } = await authedGet(server, '/automerge/url')
+  const { url: documentUrl } = await authedGet(server, AUTOMERGE_PATHS.url)
   const adapter = new WebSocketClientAdapter(
     nativeAutomergeWsUrl(server, { ticket }),
     NATIVE_AUTOMERGE_RETRY_MS

@@ -317,3 +317,26 @@ demonstration was rerun: all eight mutations were caught by their implementation
 check, reported as drift and reproduced as a model counterexample, with the
 working tree unchanged. Prior wider-bound evidence above is historical. See
 `standaloneLanRemovalReview` in `docs/evidence/lifecycle-model.json`.
+
+## Merge of main's shared-module refactor into the UX pass (2026-11-16)
+
+Merging `main` (#236) into the UX pass changed only how `automerge-sync-server.js`
+spells its ports and paths (`lib/sync-protocol.js`); the other mapped files are
+`main`'s. No guard, effect, anchor, atomicity assumption, invariant, witness or
+mutation text changed. The mutation runner now also copies `shared/`, which
+`lib/workspace-schema.js` imports since #236. Fresh default check: 174614 states,
+679456 transitions, all four invariants and `ShutdownCompletes` hold. All eight
+mutations were caught, reported as drift and reproduced by the model, with all
+eight controls passing. See `uxPassMainMerge` in the evidence JSON.
+
+## Merge of the updated UX pass into client mode (2026-11-16)
+
+Merging #189, which now carries `main`'s shared-module refactor (#236), into
+client mode combined the two existing changes to `automerge-sync-server.js`: the
+standalone LAN listeners stay removed, and ports and paths come from
+`lib/sync-protocol.js`. `lib/workspace-runtime.js` and `lib/durable-repo.js` are
+#236's. No guard, effect, anchor, atomicity assumption, invariant, witness or
+mutation text changed. Fresh default check: 174614 states, 679456 transitions,
+all four invariants and `ShutdownCompletes` hold. All eight mutations were
+caught, reported as drift and reproduced by the model, with all eight controls
+passing. See `clientModeUxPassMerge` in the evidence JSON.

@@ -63,9 +63,9 @@ export const MUTATIONS = [
     find: `      if (receipt.acknowledged) {
         const doc = this.workspace.handle.doc()
         requireValue(Array.isArray(receipt.hubHeads), 'Invalid hub persistence acknowledgement')
-        if (canonical(getHeads(doc)) === canonical(requestedHeads) && hasHeads(doc, receipt.hubHeads)) {
+        if (sameHeads(getHeads(doc), requestedHeads) && hasHeads(doc, receipt.hubHeads)) {
           await this.repo.flush([this.workspace.handle.documentId])
-          if (canonical(getHeads(this.workspace.handle.doc())) === canonical(requestedHeads)) {
+          if (sameHeads(getHeads(this.workspace.handle.doc()), requestedHeads)) {
             this.acknowledgedHeads = requestedHeads
             this.lastSyncedAt = new Date().toISOString()
           }
@@ -148,7 +148,7 @@ export const MUTATIONS = [
   },
 ]
 
-const COPIED = [SERVER, 'lib', 'support', 'package.json', 'formal', CONFORMANCE, RUNTIME_TESTS]
+const COPIED = [SERVER, 'lib', 'shared', 'support', 'package.json', 'formal', CONFORMANCE, RUNTIME_TESTS]
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 const mappedFiles = [...new Set(MUTATIONS.map(mutation => mutation.file))].sort()
 const fingerprint = base => Object.fromEntries(mappedFiles.map(file => [file, sha256(readFileSync(join(base, file)))]))
