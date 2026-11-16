@@ -9,6 +9,9 @@ import { join } from 'node:path'
 import { startClient } from '../lib/client-service.js'
 import { invitationData } from '../lib/client-invites.js'
 import { acquireStorageLease } from '../lib/storage-lease.js'
+import { joinApproved } from '../support/enrollment.js'
+import { eventually, sameComputerRoute } from '../support/client-workspace.js'
+import { unsignedWrite } from '../support/unsigned-peer.js'
 
 const execute = promisify(execFile)
 const pardner = async (args, env = {}) => {
@@ -63,8 +66,23 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
     assert.equal(grant.managedBy, 'T3')
     assert.ok(!grantOutput.stdout.includes(grant.token))
     assert.equal((await stat(grantFile)).mode & 0o777, 0o600)
+    // A name given at grant time selects the agent it names, or is refused; it is never ignored.
+    assert.equal((await run(['agent-grant', '--project', project.id, '--name', 'Alice’s Codex', '--output-file', grantFile])).value.actorId, grant.actorId)
+    const misnamed = await refused(['agent-grant', '--project', project.id, '--name', 'Overnight Codex', '--output-file', grantFile])
+    assert.equal(misnamed.code, 'AGENT_NAME_CONFLICT')
+    assert.match(misnamed.message, /^Alice already has a Codex agent in this project named “Alice’s Codex”\./)
+    assert.deepEqual(misnamed.details, { actorId: grant.actorId, name: 'Alice’s Codex' })
     const output = join(directory, 'invite.txt')
-    const { stdout } = await run(['invite', '--project', project.id, '--purpose', 'human', '--operation-id', 'invite', '--output-file', output])
+    // Without --public-url a Human or My device invitation would carry this client's loopback address.
+    for (const purpose of ['human', 'device']) {
+      const loopbackOnly = await refused(['invite', '--project', project.id, '--purpose', purpose, '--operation-id', `invite-${purpose}`, '--output-file', output])
+      assert.equal(loopbackOnly.code, 'PUBLIC_URL_REQUIRED')
+      assert.match(loopbackOnly.message, new RegExp(`would point to ${client.url.replaceAll('.', '\\.')}, which only this computer can reach`))
+      assert.match(loopbackOnly.message, /Restart this client with `pardner client serve --public-url <https origin>`/)
+      await assert.rejects(stat(output), { code: 'ENOENT' })
+    }
+    // An agent invitation is for an agent on this computer, so the loopback route is fine.
+    const { stdout } = await run(['invite', '--project', project.id, '--purpose', 'agent', '--operation-id', 'invite', '--output-file', output])
     const invitation = await readFile(output, 'utf8')
     assert.equal(invitationData(invitation).projectId, project.id)
     assert.ok(!stdout.includes(invitation)); assert.equal((await stat(output)).mode & 0o777, 0o600)
@@ -76,6 +94,16 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
     const status = await run(['status'])
     assert.ok(!status.stdout.includes(client.registry.read().operatorToken))
     assert.ok(!status.stdout.includes(client.project(project.id).internalToken))
+    // The machine ID is reported with the device; no key material is.
+    const machineId = client.registry.machineKey.machineId
+    assert.equal(status.value.device.machineId, machineId)
+    assert.ok(!status.stdout.includes(client.registry.machineKey.publicKey) && !status.stdout.includes('PRIVATE KEY'))
+    const { value: shown } = await run(['show', '--project', project.id])
+    assert.equal(shown.membership.projectId, project.id)
+    assert.deepEqual(shown.membership.machines.map(machine => machine.id), [machineId])
+    assert.equal(shown.membership.people[0].role, 'owner')
+    assert.deepEqual(shown.membership.notStored, [])
+    assert.match((await run(['create', '--name', 'Second', '--operation-id', 'second'])).value.suggestion, /Pair a second machine/)
   } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
 })
 
@@ -277,4 +305,117 @@ test('pardner open surfaces why a started client service exited', { timeout: 300
     const error = await pardnerFailure(['open', '--data', directory, '--output-file', join(directory, 'launch.txt')])
     assert.equal(error.code, 'STORAGE_IN_USE')
   } finally { lease.close(); await stopSpawned(directory); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('client people lists people, machines, agents and removed entries in words; leave and invites work from the CLI', { timeout: 90000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-cli-people-'))
+  const clients = []
+  try {
+    const start = async (name, deviceName) => {
+      const directory = join(root, name)
+      // An explicit loopback route: Alice's Human invitation is used by another client on this computer (#162).
+      const client = await startClient({ directory, ...await sameComputerRoute(), deviceName, gitDirectory: root })
+      clients.push(client)
+      const call = async (path, body) => {
+        const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
+          headers: { Authorization: `Bearer ${client.registry.read().operatorToken}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+        const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result)); return result
+      }
+      await call('/identity', { name, email: `${name.toLowerCase()}@example.test`, operationId: 'identity' })
+      const text = async args => (await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', directory], { cwd: process.cwd() })).stdout
+      const json = async args => { const value = JSON.parse(await text([...args, '--json'])); assert.equal(value.success, true); return value }
+      return { client, call, text, json }
+    }
+    const alice = await start('Alice', 'Studio'), bob = await start('Bob', 'Workshop')
+    const { project } = await alice.call('/projects', { name: 'CLI people', operationId: 'create' })
+    const output = join(root, 'invite.txt')
+    await alice.json(['invite', '--project', project.id, '--purpose', 'human', '--operation-id', 'invite-bob', '--output-file', output])
+    await joinApproved({ join: body => bob.call('/join', body), approver: alice.call, invitation: await readFile(output, 'utf8'), operationId: 'join' })
+    // The listing is plain text by default, and the same view as data with --json.
+    const listing = await alice.text(['people', '--project', project.id])
+    assert.match(listing, /^CLI people: 2 people, 2 machines, 2 agents\n/)
+    assert.match(listing, /\nAlice \(you\) · Owner · alice@example\.test\n {2}Started the project\n {2}Machines:\n {4}Studio \[[a-z2-7]{6}\] · this machine · hosts the project\n/)
+    assert.match(listing, /\nBob · Member · bob@example\.test\n {2}Let in by Alice\n {2}Machines:\n {4}Workshop \[[a-z2-7]{6}\] · /)
+    assert.ok(!listing.includes('machine-'), 'machine IDs appear only as their short form')
+    const data = await alice.json(['people', '--project', project.id])
+    assert.deepEqual(data.people.people.map(person => person.name), ['Alice', 'Bob'])
+    assert.equal(data.listing, undefined)
+    // Invitations are listed, newest first, with who issued and used each, and can be revoked.
+    await alice.json(['invite', '--project', project.id, '--purpose', 'device', '--operation-id', 'invite-device', '--output-file', join(root, 'device.txt')])
+    const { invites } = await alice.json(['invites', '--project', project.id])
+    assert.deepEqual(invites.map(entry => [entry.purpose, entry.state, entry.issuedBy.name]), [['device', 'issued', 'Alice'], ['human', 'redeemed', 'Alice']])
+    assert.equal(invites[1].usedBy.name, 'Bob')
+    const revoked = await alice.json(['revoke-invite', '--project', project.id, '--invite', invites[0].id])
+    assert.equal(revoked.invite.state, 'revoked')
+    // Bob leaves from the CLI; Alice's listing then shows him as having left, and Bob's client lists the project as removed.
+    const left = await bob.json(['leave', '--project', project.id, '--operation-id', 'leave'])
+    assert.equal(left.left, true)
+    assert.match(await alice.text(['people', '--project', project.id]), /\nRemoved\n {2}Bob · was member · left the project · machines: Workshop\n/)
+    const status = await bob.json(['list'])
+    assert.deepEqual(status.projects, [])
+    assert.deepEqual(status.removedProjects.map(entry => [entry.name, entry.removal.left, entry.message]),
+      [['CLI people', true, 'You left this project. Its copy on this computer stays saved here.']])
+  } finally {
+    for (const client of clients.reverse()) await client.stop()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('client review lists the changes whose signer could not be confirmed, in words, with who relayed them', { timeout: 90000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-cli-review-'))
+  const clients = []
+  let peer
+  try {
+    const start = async (name, deviceName) => {
+      const directory = join(root, name)
+      const client = await startClient({ directory, ...await sameComputerRoute(), deviceName, gitDirectory: root })
+      clients.push(client)
+      const call = async (path, body) => {
+        const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
+          headers: { Authorization: `Bearer ${client.registry.read().operatorToken}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+        const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result)); return result
+      }
+      await call('/identity', { name, email: `${name.toLowerCase()}@example.test`, operationId: 'identity' })
+      const text = async args => (await execute(process.execPath, ['bin/pardner.js', 'client', ...args, '--data', directory], { cwd: process.cwd() })).stdout
+      const json = async args => { const value = JSON.parse(await text([...args, '--json'])); assert.equal(value.success, true); return value }
+      return { client, call, text, json }
+    }
+    const alice = await start('Alice', 'Studio'), bob = await start('Bob', 'Workshop')
+    const { project } = await alice.call('/projects', { name: 'CLI review', operationId: 'create' })
+    const output = join(root, 'invite.txt')
+    await alice.json(['invite', '--project', project.id, '--purpose', 'human', '--operation-id', 'invite-bob', '--output-file', output])
+    await joinApproved({ join: body => bob.call('/join', body), approver: alice.call, invitation: await readFile(output, 'utf8'), operationId: 'join' })
+    await bob.call(`/projects/${project.id}/api/automerge/operations`, { type: 'task.create', operationId: 'signed', payload: { title: 'Signed on the workshop' } })
+    // Said once nothing is still waiting for a signature or being checked, and only then.
+    let early
+    await eventually(async () => {
+      const text = await alice.text(['review', '--project', project.id])
+      if (/Every change here is signed/.test(text)) return /^CLI review: 0 changes need review\n[\s\S]*Every change here is signed by a member machine\.\n$/.test(text)
+      early ??= text
+      return false
+    }, 'the review never said every change is signed', 30000)
+    if (early) assert.match(early, /\nNothing needs review so far, but (1 change isn’t|\d+ changes aren’t) confirmed yet\.\n$/)
+    // A modified client on Bob's machine writes a change it never signs.
+    const bobActor = bob.client.project(project.id).actorId
+    const { url: boardUrl } = await alice.call(`/projects/${project.id}/api/automerge/url`)
+    peer = await unsignedWrite({ key: bob.client.registry.machineKey, projectId: project.id, boardUrl, actorId: bobActor, title: 'Never signed',
+      nativeUrl: `${alice.client.url.replace(/^http/, 'ws')}/pardner/client/v1/replica/${project.id}/native` })
+    const listing = await eventually(async () => {
+      const text = await alice.text(['review', '--project', project.id])
+      return text.startsWith('CLI review: 1 change needs review') && text
+    }, 'the unsigned change was never listed', 30000)
+    assert.match(listing, /\nUnattributed: no signature arrived · relayed by Bob · Workshop \[[a-z2-7]{6}\]\n {2}Bob: task\.create “Never signed” at /)
+    assert.match(listing, /\n {2}Change [a-f0-9]{64}/, 'the change hash only as a detail')
+    const data = await alice.json(['review', '--project', project.id])
+    assert.equal(data.changes.length, 1)
+    assert.equal(data.changes[0].state, 'unattributed')
+    assert.deepEqual(data.changes[0].operations, [peer.operationId])
+    // As every CLI item: its entry's flags, its review state, and its signer as data.
+    assert.deepEqual([typeof data.changes[0].flags, data.changes[0].review, data.changes[0].signers.map(signer => [signer.hash, signer.state])], ['object', true, [[data.changes[0].change, 'unattributed']]])
+    assert.equal(data.listing, undefined)
+  } finally {
+    await peer?.repo.shutdown()
+    for (const client of clients.reverse()) await client.stop()
+    await rm(root, { recursive: true, force: true })
+  }
 })

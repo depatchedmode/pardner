@@ -11,8 +11,12 @@ const { runCommand } = await import('../lib/cli.js')
 
 try {
   const result = await runCommand(process.argv.slice(2))
-  if (result.help && !process.argv.includes('--json')) process.stdout.write(result.help)
-  else process.stdout.write(`${JSON.stringify({ success: true, ...result })}\n`)
+  // Help and listings are text for people; --json prints the result as data, without the listing text.
+  if ((result.help || result.listing) && !process.argv.includes('--json')) process.stdout.write(result.help ?? result.listing)
+  else {
+    const { listing, ...data } = result
+    process.stdout.write(`${JSON.stringify({ success: true, ...data })}\n`)
+  }
 } catch (error) {
   const result = { success: false, error: { code: error.code ?? 'INTERNAL_ERROR', message: error.message, details: error.details ?? null } }
   process.stdout.write(`${JSON.stringify(result)}\n`)

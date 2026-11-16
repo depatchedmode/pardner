@@ -1,6 +1,7 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createConnection, loadConfiguration, websocketUrl } from '../ui-prototype/src/connection.js'
+import { hubNotice, syncLabel } from '../ui-prototype/src/client-api.js'
 
 function storage() {
   const values = new Map()
@@ -72,8 +73,21 @@ it('reports malformed responses and configuration instead of silently spinning',
   await assert.rejects(loadConfiguration(async () => Response.json({ mode: 'client', clientApiBase: 'https://other.example' })), /incomplete/)
   assert.deepEqual(await loadConfiguration(async () => Response.json({ mode: 'client', clientApiBase: '/pardner/client' })),
     { mode: 'client', clientApiBase: '/pardner/client' })
-  // A standalone service has no human board; its configuration only selects the notice.
-  assert.equal((await loadConfiguration(async () => Response.json({ workspaceId: 'workspace-a' }))).workspaceId, 'workspace-a')
+  // A standalone service has no human board; its configuration only selects the notice. An empty one is broken (#187).
+  assert.equal((await loadConfiguration(async () => Response.json({ mode: 'standalone', workspaceId: 'workspace-a' }))).workspaceId, 'workspace-a')
+  await assert.rejects(loadConfiguration(async () => Response.json({})), /service configuration is incomplete/)
+  await assert.rejects(loadConfiguration(async () => Response.json({ workspaceId: 'workspace-a' })), /service configuration is incomplete/)
   const client = createConnection(config, { storage: { ...storage(), setItem() { throw new Error('blocked') } }, drafts: storage() })
   assert.throws(() => client.savePreferences({ view: 'board' }), /storage is unavailable/)
+})
+
+it('shows a restored hub that waits, two copies of one machine and a hub catching up before the save state', () => {
+  const synced = { savedLocally: true, syncPending: false, hubConnected: true }
+  assert.equal(syncLabel(synced), 'Saved locally · synced')
+  assert.equal(syncLabel({ ...synced, hub: { waiting: true, reason: 'restored' } }),
+    'Restored hub · waits for a member machine, or pardner client resume, before serving others')
+  assert.equal(syncLabel({ ...synced, duplicateMachines: [{ machineId: 'machine-x', sessions: 2 }] }),
+    'Two copies of one machine are connected · check for a running backup')
+  assert.equal(hubNotice({ ...synced, duplicateMachines: [{ machineId: 'machine-x', sessions: 1 }] }), null, 'a past report with one copy left is not shown')
+  assert.equal(syncLabel({ ...synced, hubRefusal: { code: 'HUB_WAITING' } }), 'Saved locally · the hub is catching up after a restore')
 })

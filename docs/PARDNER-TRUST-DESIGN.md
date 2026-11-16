@@ -96,13 +96,20 @@ recordId = sha256(canonical(record) ‖ signature)
   - That comparison is best-effort. Five review rounds (#220, #222, #223, #225, #227) each found ways for a member to write a wrong description that is not flagged, so it is not offered as a guarantee. The known cases are in #228.
   - None of them lets a member change who signed a change. The UI and CLI call only the signature verified.
 - **Malformed content never stops a view.** A member may write any value. A record or field of the wrong kind is left out of what is read and named as unreadable; nothing is deleted or refused.
+- **What must always hold, and when a finding blocks merge.** Four invariants:
+  - Views always load.
+  - An honest signed change is eventually shown as signed.
+  - No specific innocent machine is ever named.
+  - The product never says "all signed" when it isn't.
+
+  A review finding blocks merge only if it breaks one of these, has a failing test, is triggered by a member machine or by an ordinary fault (a restart, a disconnect), and does not heal on its own. Every other finding is filed as an issue.
 - **Where signatures travel (decided by the spike).** A signature cannot sit inside the change it signs. Signatures live in a second Automerge document beside the board, sharded by the first byte of the change hash, and synced by automerge-repo as it is today.
   - Writers sign each change at once and save the entry with the next background save, off the acknowledgement path. Ed25519 signatures are deterministic, so at start-up a writer re-creates any of its own entries that are missing.
   - Each peer keeps the signatures it has verified in a local grow-only cache, so deleting an entry from the shared document does not unattribute a change for peers that saw it.
   - The hub's persistence acknowledgement covers both documents.
 - **Unsigned or badly signed changes are never silent, and never refused.** Every change is applied, then checked. The board shows one of:
-  - "signature pending", while the signature document has not caught up with the peer that sent the change (milliseconds normally, or the length of an outage);
-  - "unattributed: relayed by <machine>", once it has caught up and there is still no valid signature;
+  - "signature pending", while the signature document has not caught up with the peer that sent the change (milliseconds normally, or the length of an outage). A change pending for more than a minute is listed for review as pending, not flagged: its machine may simply be offline. A connected machine gets five minutes to send the signature-document changes it advertises; reconnecting does not extend that;
+  - "unattributed: relayed by <machine>", once it has caught up and there is still no valid signature. Only the machine that delivered the change is named. A change no machine is known to have delivered, such as one found in storage after a restart, says "relayer unknown": the machine its actor names may be the one impersonated;
   - "made by a removed machine", when the peer holds the signer's removal.
 - **Why not verify before applying.** The spike built it. A refused change blocks every later change built on it, automerge-repo's sync loops, and peers that refuse by arrival order diverge for good.
 - **Equivocation (known limit).** A member machine can send two different changes with the same actor and sequence number to two peers. Each change verifies, but Automerge refuses the second on a merge. What automerge-repo does when one arrives by sync is unverified. Two signed changes for one actor and sequence number are proof, and the machine is reported. The remedy is `machine.remove` and rebuilding the minority replica.

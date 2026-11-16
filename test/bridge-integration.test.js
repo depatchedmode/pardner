@@ -1,4 +1,3 @@
-import { replicaOptions } from '../support/replica-credentials.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
@@ -12,6 +11,7 @@ import { acquireStorageLease } from '../lib/storage-lease.js'
 import { withWorkspaceServer } from '../support/workspace-test.js'
 import { startClient } from '../lib/client-service.js'
 import { projectPaths } from '../lib/client-proxy.js'
+import { admitMembers, replicaRuntime } from '../support/machines.js'
 
 async function eventually(check, timeout = 5000) {
   const deadline = Date.now() + timeout
@@ -21,19 +21,14 @@ async function eventually(check, timeout = 5000) {
   }
 }
 
-for (const mode of ['co-worktree', 'co-host', 'replica']) {
+// A bridge on a machine that joined a project runs through its client (the client project test below); its delivery
+// leases reach the hub as requests signed by that machine (test/pardner-cli-mentions.test.js).
+for (const mode of ['co-worktree', 'co-host']) {
   it(`dispatches a real handoff through the local subscription in ${mode} topology`, { timeout: 15000 }, () => withWorkspaceServer(async ({ server, directory, create, context, operation }) => {
     const root = await mkdtemp(join(tmpdir(), 'pardner-bridge-integration-'))
     let replica, bridge, inbox
     try {
-      let local = server, dataDirectory = directory
-      if (mode === 'replica') {
-        dataDirectory = join(root, 'replica')
-        replica = new AutomergeSyncServer({ ...replicaOptions, directory: dataDirectory, role: 'replica',
-          hubUrl: `http://127.0.0.1:${server.httpPort}`, hubWsUrl: `ws://127.0.0.1:${server.wsPort}/automerge`,
-          hubToken: 'test-token', apiToken: 'test-token', env: {}, httpPort: 0, wsPort: 0, logger: {} })
-        await replica.start(); local = replica
-      }
+      const local = server, dataDirectory = directory
       await writeFile(join(dataDirectory, 'connection.json'), JSON.stringify({ httpUrl: `http://127.0.0.1:${local.httpPort}`, token: 'test-token' }), { mode: 0o600 })
       const taskId = await create()
       const worktree = mode === 'co-worktree' ? root : join(root, 'agent-worktree')
@@ -216,9 +211,8 @@ it('a task missing from the local replica does not starve later context and disp
     await operation('comment.add', { taskId: second, text: '@builder complete local context' })
     const secondMention = (await context(second)).mentions[0]
     const dataDirectory = join(root, 'replica')
-    replica = new AutomergeSyncServer({ ...replicaOptions, directory: dataDirectory, role: 'replica',
-      hubUrl: `http://127.0.0.1:${server.httpPort}`, hubWsUrl: `ws://127.0.0.1:${server.wsPort}/automerge`,
-      hubToken: 'test-token', apiToken: 'test-token', env: {}, httpPort: 0, wsPort: 0, logger: {} })
+    replica = new AutomergeSyncServer({ store: replicaRuntime(dataDirectory, await admitMembers(server.store), 0, { hub: server }),
+      apiToken: 'test-token', env: {}, httpPort: 0, wsPort: 0, logger: {} })
     await replica.start()
     replica.store.adapter.disconnect()
     await writeFile(join(dataDirectory, 'connection.json'), JSON.stringify({ httpUrl: `http://127.0.0.1:${replica.httpPort}`, token: 'test-token' }))

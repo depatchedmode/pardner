@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createServer } from 'node:net'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { startClient } from '../lib/client-service.js'
+import { joinApproved } from './enrollment.js'
 
 const CLIENT_API = '/pardner/client/v1'
 
@@ -18,11 +20,25 @@ export async function eventually(read, message = 'Condition was not met within t
   }
 }
 
+/**
+ * A loopback `publicUrl` for a client whose Human or My device invitations are redeemed by another client on this
+ * same computer, as every multi-client fixture does. Without one, those invitations are refused at issue time.
+ * The port is reserved by binding and releasing it, so pass both values to `startClient`.
+ */
+export async function sameComputerRoute() {
+  const server = createServer()
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
+  const { port } = server.address()
+  await new Promise(resolve => server.close(resolve))
+  return { port, publicUrl: `http://127.0.0.1:${port}` }
+}
+
 const email = name => `${name.toLowerCase().replace(/[^a-z0-9]+/g, '.')}@example.test`
 
 // One person's local client service, driven over HTTP with its operator bearer.
 async function participant(directory, name, options = {}) {
-  const client = await startClient({ directory, port: 0, deviceName: `${name}’s laptop`, gitDirectory: directory, ...options })
+  const route = options.port === undefined ? await sameComputerRoute() : {}
+  const client = await startClient({ directory, ...route, deviceName: `${name}’s laptop`, gitDirectory: directory, ...options })
   const call = async (path, body, { token = client.registry.read().operatorToken, expected } = {}) => {
     const response = await fetch(`${client.url}${CLIENT_API}${path}`, { method: body === undefined ? 'GET' : 'POST',
       signal: AbortSignal.timeout(30000), headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -115,10 +131,12 @@ export async function withClientWorkspace(engine, options, body) {
 
 /**
  * Runs `body` against several people's clients sharing one project. `humans[0]` hosts the project (the hub);
- * every other human joins from a separate client with a `human` invitation, or with a `device` invitation
- * when given as { name, device: true } (the same identity on a second device, so the same Actor).
- * The body receives { people, hub, browser, newPage, partition, settled, eventually, project }; each person has
- * { name, client, call, actorId, open(page), operate, doc, task, show, status }.
+ * every other human joins from a separate client with a `human` invitation (as an admin when given as
+ * { name, role: 'admin' }), or with a `device` invitation when given as { name, device: true } (the hub person's
+ * identity on a second machine, so the same Actor). The hub approves each join after comparing its confirmation code.
+ * The body receives { people, hub, browser, newPage, partition, settled, eventually, project, newcomer }; each person
+ * has { name, client, call, actorId, open(page), operate, doc, task, show, status }. `newcomer(name, { identity })`
+ * starts another client that is not in the project yet ({ name, client, call, signIn(page) }), stopped afterwards.
  * `partition(writes, converged)` stops the hub, runs `writes` while every replica is disconnected, restarts
  * the hub on the same port and waits until all replicas have synced and `converged()` holds.
  */
@@ -138,10 +156,10 @@ export async function withClientReplicas(engine, options, body) {
     people.push(hubPerson)
     for (const [index, entry] of entries.slice(1).entries()) {
       const purpose = entry.device ? 'device' : 'human'
-      const invite = await hubPerson.call(`/projects/${project.id}/invites`, { purpose, operationId: `invite-${index}` })
+      const invite = await hubPerson.call(`/projects/${project.id}/invites`, { purpose, operationId: `invite-${index}`, ...(entry.role ? { role: entry.role } : {}) })
       const person = await participant(join(root, `replica-${index}`), entry.name)
       if (!entry.device) await person.call('/identity', { name: entry.name, email: email(entry.name), operationId: 'identity' })
-      await person.call('/join', { invitation: invite.invitation, operationId: 'join' })
+      await joinApproved({ join: body => person.call('/join', body), approver: hubPerson.call, invitation: invite.invitation, operationId: 'join' })
       people.push(person)
     }
     const replicas = () => people.slice(1)
@@ -172,7 +190,15 @@ export async function withClientReplicas(engine, options, body) {
         get actorId() { return projectOf(person).actorId }, open: page => openBoard(person, project, page) }
       return Object.assign(view, boardFor(person, project))
     })
-    await body({ people: views, hub: views[0], browser, newPage, partition, settled, eventually, project, errors })
+    const newcomers = []
+    const newcomer = async (name, { identity = true } = {}) => {
+      const person = await participant(join(root, `newcomer-${newcomers.length}`), name)
+      newcomers.push(person)
+      people.push(person)
+      if (identity) await person.call('/identity', { name, email: email(name), operationId: 'identity' })
+      return { name, client: person.client, call: person.call, signIn: async page => page.goto((await person.call('/open', {})).url) }
+    }
+    await body({ people: views, hub: views[0], browser, newPage, partition, settled, eventually, project, errors, newcomer })
     assert.deepEqual(errors, [])
   } finally {
     await browser?.close()

@@ -1,4 +1,3 @@
-import { replicaEnvironment } from './replica-credentials.js'
 import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { once } from 'node:events'
@@ -31,7 +30,7 @@ export async function cli(directory, args, options = {}) {
 export async function startCliService(directory, args = [], { reusePorts = false } = {}) {
   const ports = reusePorts ? [] : ['--http-port', '0', '--ws-port', '0']
   const child = spawn(process.execPath, [CLI_PATH, 'serve', '--data', directory, ...ports, ...args], {
-    env: cliEnvironment(replicaEnvironment), stdio: ['ignore', 'pipe', 'pipe'],
+    env: cliEnvironment(), stdio: ['ignore', 'pipe', 'pipe'],
   })
   let stdout = '', stderr = ''
   child.stderr.on('data', chunk => { stderr += chunk })

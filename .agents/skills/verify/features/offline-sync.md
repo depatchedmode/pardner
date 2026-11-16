@@ -8,13 +8,14 @@ distinguish locally saved heads from explicit hub persistence acknowledgement.
 
 ## How to get to it (user POV)
 
-Join a hub with `pardner serve --role replica --hub URL --hub-ws ws://host:port/automerge --hub-token TOKEN`
-after provisioning a separate replica ID/secret and the hub registry as described
-in [the CLI guide](../../../../docs/PARDNER-CLI.md#enroll-another-machine)
-(there is no `enroll` command; without the hub's token the replica fails with
-`AUTH_REQUIRED`), then use its CLI. Later restarts reuse the saved role, hub
-settings, and ports. Keep that local service reachable while disconnecting its hub
-path. The standalone service serves no board; for the browser, each person's local
+Join a project from a second client with an invitation (`pardner client join`,
+approved on the hub after comparing the confirmation code); its project runtime
+syncs with the hub over the machine handshake, with no shared secret
+([CLI guide](../../../../docs/PARDNER-CLI.md#another-machine)). Later restarts reuse
+the saved routes. Keep that client reachable while disconnecting its hub path.
+Library-level fixtures (`support/machines.js`) build a hub and member replicas
+with test-only machine keys. The standalone service serves no board and no other
+machine; for the browser, each person's local
 client joins the project (`withClientReplicas` in `support/client-workspace.js`
 does this with a hub client and a human invite) and opens through `pardner client
 open`, authoring as its signed-in Actor. After reconnect, inspect alternatives and
@@ -71,3 +72,11 @@ cannot open the raw native writer, even in insecure-local mode, and that enrolle
 tickets are scoped, single-use and expiring. Enrolled replicas remain trusted full
 writers. `test/private-state.test.js` checks private workspace/database/trace modes,
 existing sidecar repair and unsafe final-link rejection under permissive umasks.
+
+## Plain string storage
+
+`test/workspace-operations.test.js` exercises every registered operation and
+checks all decoded changes for `makeText`, including losing alternatives and
+retries, then reopens the document. It asserts ordinary JavaScript output and
+retains explicit resolution and duplicate retry behavior. Schema 6 documents
+are refused without changing their bytes.

@@ -14,6 +14,17 @@ already covered. Match the exact assertions to the task's expected result.
   receipt, acknowledgement loss, and effect replay.
 - [Control pane and issue links](control.md): T3 credential, registry, routes,
   queued intent, stale reads, approvals, cancellation, verdicts, and GitHub links.
+- [Machine keys and membership library](trust-library.md): signing,
+  fixed-point authority, removals and deterministic conflict choices.
+- [Signed genesis and record store](trust-records.md): per-directory machine key,
+  derived project ID, grow-only record store, write-back and prior-install refusal.
+- [Invitations, pairing and removal](trust-enrollment.md): signed offers, join
+  requests and codes, approval, bounds, pairing, roles, removal and re-admission.
+- [People panel](people-panel.md): people, machines and agents, each role's
+  actions, leaving, profiles, invitation history and the removed state.
+- [Signed changes and attribution](signed-changes.md): machine actors, signatures
+  and the signature cache, pending and unattributed changes, removed machines,
+  equivocation, the two-document hub acknowledgement, and the board and CLI.
 - [Client onboarding and presence](client-onboarding.md): authenticated Actor
   sessions, device aggregation, expiry and integration evidence boundaries.
 

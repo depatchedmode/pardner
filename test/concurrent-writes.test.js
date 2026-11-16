@@ -1,3 +1,4 @@
+import { plain } from '../lib/workspace-schema.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { withWorkspaceServer } from '../support/workspace-test.js'
@@ -96,7 +97,7 @@ it('mixed concurrent operations each appear once in the shared activity record',
     assert.ok(receipts.every(receipt => receipt.savedLocally))
     const result = await context(taskId)
     assert.deepEqual(result.history.map(event => event.type).sort(), ['comment.add', 'task.create', 'task.update'])
-    const activity = Object.values(server.store.workspace.handle.doc().operations).filter(event => event.taskId === taskId)
+    const activity = Object.values(server.store.workspace.handle.doc().operations).map(plain).filter(event => event.taskId === taskId)
     assert.deepEqual(activity.map(event => event.operationId).sort(), result.history.map(event => event.operationId).sort())
   })
 })

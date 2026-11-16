@@ -27,10 +27,11 @@ export async function loadConfiguration(fetcher = fetch) {
   const response = await fetcher('/pardner/config', { cache: 'no-store', signal: AbortSignal.timeout(10000) })
   const config = await readResponse(response)
   // Local client mode chooses projects after sign-in; each project supplies its own board configuration.
-  // Any other service is an agent and integration service with no human board.
+  // The standalone agent and integration service says so and has no human board. Anything else is a broken setup.
   if (config.mode === 'client' && (typeof config.clientApiBase !== 'string' || !pathPattern.test(config.clientApiBase))) {
     throw new Error('The local client configuration is incomplete. Restart Pardner and retry.')
   }
+  if (config.mode !== 'client' && config.mode !== 'standalone') throw new Error('The service configuration is incomplete. Restart Pardner and retry.')
   return config
 }
 

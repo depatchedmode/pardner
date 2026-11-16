@@ -73,21 +73,21 @@ and one WebSocket upgrade. Each request records its connection (`none`, `active`
 | `ReplicaSendAck` | no | `synchronizeAcknowledgement`: `requestedHeads = getHeads(doc)` then `POST /automerge/sync-ack` | the requested heads are snapshotted before the request; the request then arrives through `Arrive(ack)` |
 | `StopBegin` | no | `stop()`: `this.stopping = true`, `server.close()` on every listener, `client.terminate()` on WebSocket clients | all synchronous before the first `await`; `server.close()` closes connections that are idle at that moment |
 | `IdleConnectionEnds` | no | client closes a keep-alive socket, or Node's `keepAliveTimeout` fires | neither is assumed to happen (unfair), so the model cannot rely on the 5 s timeout |
-| `Handle(op)` | yes | `WorkspaceRuntime.execute` (refuses after `stopController.abort()`), `Workspace.apply`: `handle.change`, then `repo.flush` enqueued | the change and the flush enqueue are one step; `STORAGE_FAILED` is the failure outcome of the flush |
+| `Handle(op)` | yes | `WorkspaceRuntime.execute` (refuses after `stopController.abort()`), `Workspace.apply`: `handle.change`, then `repo.flush` enqueued. The hub's membership record gate (`WorkspaceRuntime.addRecords`, `POST /automerge/membership/records`) is the same kind of request: it joins the operation queue, saves the records to the record store, makes one `handle.change` and answers after `repo.flush` | the change and the flush enqueue are one step; `STORAGE_FAILED` is the failure outcome of the flush |
 | `Handle(ack)` | yes | `WorkspaceRuntime.acknowledge` (no readiness guard), `Workspace.acknowledge`: `hasHeads` check, then `repo.flush` | same |
 | `PersistRun` | yes | `DurableRepo.enqueue` chain runs one job at a time; `persistDocument` saves the current document and updates `persistedHeads`; a failing flush rethrows | a job's save is atomic and either persists the whole current document or nothing. `storageFailures` bounds how many jobs may fail |
 | `Respond` | yes | `res.json(...)` of the receipt or acknowledgement; `res.once('finish')` | writing the response and the socket becoming idle (keep-alive) or closed are one step |
 | `ReclaimIdle` | yes | `listen()` finish hook: `if (this.stopping) setImmediate(() => server.closeIdleConnections())` | the `setImmediate` callback eventually runs (fair); modeled for any idle connection while stopping, which also covers the idle connections `server.close()` closed itself |
 | `ListenerClosed` | yes | `server.close` callbacks settle (`listenersClosed`) | fires once no connection is active, idle or upgraded; one listener stands for the HTTP and WebSocket listeners, which `stop()` closes together with `Promise.allSettled` |
-| `StoreCloseBegin` | yes | `await this.store.close()` after `listenersClosed`; `closeResources`: `abort()`, `await workspace.queue`, `repo.shutdown()` sets `closing` | `workspace.queue` is already drained because every operation arrives through a drained listener. The upstream `Repo.shutdown()` flush is a no-op once `closing` is set, so the model does not persist anything here |
+| `StoreCloseBegin` | yes | `await this.store.close()` after `listenersClosed`; `closeResources`: `abort()`, `await workspace.queue`, a pending hub-state write settles, `repo.shutdown()` sets `closing` | `workspace.queue` is already drained because every operation arrives through a drained listener. The upstream `Repo.shutdown()` flush is a no-op once `closing` is set, so the model does not persist anything here |
 | `StoreCloseComplete` | yes | `await this.persistenceQueue`, then `lease.close()` and `closed = true` in `finally` | the queue drains before ownership is released |
 | `ReplicaReceive` | yes | `synchronizeAcknowledgement`: first guard `getHeads(doc) == requestedHeads && hasHeads(doc, hubHeads)`; errors only set `lastSyncError` | the response is consumed atomically up to the guard; the local flush that follows is a separate step |
 | `ReplicaAckCommit` | yes | second guard after the local flush; `acknowledgedHeads = requestedHeads` | the guard and the assignment are synchronous; the recorded value is the requested snapshot, never the current heads |
 
 What the model does not contain: Automerge merge semantics (heads are counters),
 the replica's own storage, the delivery ledger, ticket minting,
-origin and token checks, express body parsing, and the JSON UI subscription
-socket. Each of those is either orthogonal to the five properties or handled by
+origin and token checks, the machine handshake and signed-request checks, express
+body parsing, and the JSON UI subscription socket. Each of those is either orthogonal to the five properties or handled by
 other regression suites.
 
 ## Bounds, initial state, failures and assumptions
@@ -317,6 +317,468 @@ demonstration was rerun: all eight mutations were caught by their implementation
 check, reported as drift and reproduced as a model counterexample, with the
 working tree unchanged. Prior wider-bound evidence above is historical. See
 `standaloneLanRemovalReview` in `docs/evidence/lifecycle-model.json`.
+
+## Machine handshake mapping review (2026-11-11)
+
+The current mapping records source revision `ff19342b18c8847b6981a31e0bdeb71fa9b5d63d`.
+`automerge-sync-server.js` and `lib/workspace-runtime.js` changed (#199). The
+acknowledgement route is still reached only after the stopping middleware and
+admission; admission now accepts the local API token or a request signed by a
+member machine's key within a session, and a refused signature is a failed
+acknowledgement (`ReplicaReceive`). The new `/session` routes and
+`/automerge/hub/resume` sit behind the same middleware and listener drain and never
+touch the persistence queue. A native upgrade still becomes a WebSocket client at
+`handleUpgrade`, which `stop()` terminates; it reaches Automerge only after the
+machine handshake. On the replica, the socket opens with the handshake and the
+acknowledgement request is signed; `synchronizeAcknowledgement`'s guards and
+`closeResources` are unchanged. Records offered in a welcome or a membership
+exchange join the grow-only store and are written back by the existing harvest.
+No action guard, effect, atomicity, invariant, witness or mutation text changed;
+the notes on `Arrive(ack)` and `UpgradeArrive` describe the new admission.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught by their implementation
+check, reported as drift and reproduced as a model counterexample, with the
+working tree unchanged. Prior wider-bound evidence above is historical. See
+`machineHandshakeReview` in `docs/evidence/lifecycle-model.json`.
+
+## Plain string storage mapping review (2026-11-11)
+
+For #208, workspace reads unwrap immutable strings and membership write-back
+encodes string values. Re-reviewed `ReplicaEdit`, `SyncDown`, `ReplicaSendAck`,
+`Handle`, `Respond`, `StoreCloseBegin`, `StoreCloseComplete`, `ReplicaReceive`
+and `ReplicaAckCommit`: guards, effects, persistence barriers and atomicity are
+unchanged. Only the membership write-back source anchor changed; no model
+transition, invariant, witness or mutation needed changing.
+
+Fresh default check: 174,614 states, 679,456 transitions, all invariants,
+progress and witnesses pass. All eight mutation demonstrations were caught by
+implementation checks, reported as drift and reproduced by model counterexamples.
+See `plainStringStorageReview` in the evidence JSON. The model still excludes
+field merge semantics; those are covered by the operation and conflict tests.
+
+## Trust stage 1 integration mapping review (2026-11-11)
+
+The current mapping records source revision `925898299a680da92a8e49106388696455b90676`,
+the integration of #210, #211, #213 and #214. All three mapped runtime files had
+changed since the handshake review. In `lib/workspace.js` and
+`lib/workspace-runtime.js`, #211's reads unwrap immutable strings, and both
+membership writes (the harvest write-back and the hub's record gate) now encode
+records with `storageValue`. Each is still one `handle.change`. The write-back is
+a local edit without a request (`ReplicaEdit`); the gate joins the operation
+queue and answers after `repo.flush` (`Arrive(op)`, `Handle(op)`, `Respond(op)`).
+A hub's status also reports its live sync sessions (`syncPeers`), and a
+replica's `hubRefusal` keeps the refusal's details. Both are in-memory reporting
+that touch neither persistence nor acknowledgement. In `automerge-sync-server.js`,
+a removed machine that presents the key it held completes the handshake
+signatures. It is then refused in `admit`, before any welcome, so it never
+reaches `registerSyncSession` or the Automerge adapter. A native upgrade is still
+a WebSocket client at `handleUpgrade`, which `stop()` terminates (`UpgradeArrive`).
+The signed-session routes still never touch the persistence queue. No action
+guard, effect, atomicity note, invariant, witness or mutation text changed; only
+the gate anchor followed its line.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught by their implementation
+check, reported as drift and reproduced as a model counterexample, with the
+working tree unchanged. See `trustStageOneIntegrationReview` in
+`docs/evidence/lifecycle-model.json`.
+
+## Membership consent mapping review (2026-11-11)
+
+The mapping records source revision `0ee274a88ebedb53adef35879122593b6dcc9fd2`.
+Membership now counts a certification only with its machine's consent, and a
+person's ID is derived from the key they were admitted with. The only mapped
+change is in `lib/workspace-runtime.js`: the standalone service's throwaway
+genesis names the person ID derived from its one-time key. `standaloneGenesis`
+is a pure record builder called in `init` before the record store, the
+repository or any listener exists, so it touches no request, persistence
+barrier, acknowledgement or shutdown step. No action guard, effect, atomicity
+note, invariant, witness or mutation text changed, and no anchor moved.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught, reported as drift and
+reproduced as a model counterexample, with the working tree unchanged. See
+`membershipConsentReview` in `docs/evidence/lifecycle-model.json`.
+
+## Durable restored-hub state mapping review (2026-11-11)
+
+The mapping records source revision `d20c2a9086d821064481be320afde3a8fa395cb4`.
+A hub that waits after a restore now saves that state durably. In
+`lib/workspace-runtime.js`, `startHubState` writes the waiting state, its fixed
+comparison point and the newest checkpoint seen together with the new file
+identity, in one atomic write before the repository opens; `noteCheckpoint`
+saves a newly learned waiting state or a newer checkpoint before it answers,
+and does nothing once the runtime is stopping; `resumeHub` saves before it
+returns. These writes go through one serialized chain, and `closeResources`
+lets a pending write settle before `repo.shutdown()` and the lease release.
+That is a new anchor in `StoreCloseBegin`; it admits no request and touches no
+document persistence, so its guard and effect are unchanged. In
+`automerge-sync-server.js`, the handshake's screen awaits `noteCheckpoint`; it
+still runs before any welcome and never reaches the Automerge adapter
+(`UpgradeArrive`). The `lease-before-drain` mutation's text follows the new
+`closeResources` body; what it mutates is unchanged. No other action guard,
+effect, atomicity note, invariant or witness changed. The hub's own waiting
+state is outside the model's state; its kill and restart behaviour is checked
+by `test/hub-restore.test.js`.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught, reported as drift and
+reproduced as a model counterexample, with the working tree unchanged. See
+`durableHubStateReview` in `docs/evidence/lifecycle-model.json`.
+
+## Uniform handshake mapping review (2026-11-11)
+
+The mapping records source revision `3549af6a26652e22aac18a027b5e1849ce4cf307`.
+In `automerge-sync-server.js`, `acceptMachine` no longer judges a machine
+before it proves its key: every well-formed hello gets the same reply, and
+membership, the checkpoint comparison, a waiting hub's record exchange and the
+refusal all run in `admit`, after both signatures verify and before any
+welcome. A native upgrade therefore still reaches `registerSyncSession` and the
+Automerge adapter only as a current member (`UpgradeArrive`), and `stop()`
+still terminates it. No action guard, effect, atomicity note, invariant,
+witness or mutation text changed.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught, reported as drift and
+reproduced as a model counterexample, with the working tree unchanged. See
+`uniformHandshakeReview` in `docs/evidence/lifecycle-model.json`.
+
+## Signed changes mapping review (2026-11-11)
+
+The mapping was first recorded at source revision `f514d0b902d3bce17017d599b0511df5005ed045`
+and finally at `63cb8fc74c7939c1ad3407db1db92d0e47291ebe`.
+Every change is now signed by the machine that makes it (`lib/attribution.js`,
+not mapped), and the hub's persistence acknowledgement covers the board and its
+signature document (#197).
+
+- `lib/workspace.js`: `acknowledge(heads, signatureHeads)` refuses unless both
+  are held, then one flush job persists both documents before it answers
+  (`Handle(ack)`, `Respond`).
+- `lib/workspace-runtime.js`: the replica requests both heads. Its first guard
+  also requires the hub's reported signature heads to be held, and its second
+  guard records both requested snapshots, never the current heads
+  (`ReplicaReceive`, `ReplicaAckCommit`). `syncPending` stays true until both
+  are acknowledged, so the model's heads now stand for the pair of documents
+  (`ReplicaEdit`). Writing a signature into the signature document is a
+  deferred local change off the acknowledgement path, like a membership
+  write-back. `closeResources` stops asking the hub for signatures before
+  `abort()`, writes pending signatures into the signature document after the
+  operation queue drains and before `repo.shutdown()`, and closes the
+  signature cache in `finally`, before the lease (`StoreCloseBegin`).
+- `automerge-sync-server.js`: `sync-ack` passes the signature heads; a new
+  signed route answers a member's question about a change's signature.
+  `stop()` destroys connections that never carried a request: an aborted
+  `fetch` can leave one open for three seconds, and it holds no modeled request
+  (`StopBegin`).
+
+No action guard, effect, invariant or witness changed. The `ack-before-persist`,
+`stale-ack-accepted` and `lease-before-drain` mutation texts follow the new
+code; what each mutates is unchanged. A later commit in the same change adds
+people's names and each record signer's Actor to `attributionView`, which only
+reads the record store when the board is read; the mapping was re-reviewed and
+accepted again. A third commit paces the signature document's background saves
+to at most one a second, by wrapping `storage.saveDoc` for that document only:
+explicit flushes (`Workspace.apply` for the board, `acknowledge` and the
+replica's acknowledgement for both documents, and `DurableRepo.shutdown`, whose
+flush persists every document directly) never pass through it, and
+`closeResources` clears its timer before `abort()` returns, so a pending one is
+dropped like any background save once closing. It also starts background
+checking only after `initialized` is set. Neither touches the board's
+persistence, an acknowledgement guard or shutdown ordering; the mapping was
+re-reviewed and accepted again. A later commit passes each record's position to
+`recordEntry`, again only when the board is read, and the mapping was accepted
+once more. The last one changes `lib/durable-repo.js`: Repo 2.5.1 throttles
+sync-state saves per peer, not per document, so with a board and a signature
+document per peer only one document's state in each window was saved. DurableRepo
+now also saves each document's latest sync state, at most once a second per
+document and peer, through the same `background()` path, which drops it once closing. These
+are background jobs of a kind the model already has (`SyncUp`, `PersistRun`); no
+request waits on them, and no guard or effect changed. The mapping was accepted
+again.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses remain reachable. The mutation
+demonstration was rerun: all eight mutations were caught by their implementation
+check, reported as drift and reproduced as a model counterexample, with the
+working tree unchanged. See `signedChangesReview` in
+`docs/evidence/lifecycle-model.json`.
+
+## Trust review follow-up mapping (2026-11-11)
+
+The mapping records source revision `b6523dd53c4146037f6e70b914c47e30aa05bb37`.
+Re-reviewed every action named by drift for `automerge-sync-server.js` and
+`lib/workspace-runtime.js`. The missing-state growth check precedes welcome and
+Automerge admission (`UpgradeArrive`). Resume publishes state only after its
+serialized write; `StoreCloseBegin` still drains that queue before repository
+shutdown and lease release. Record limits run before canonicalization in the
+record gate and harvest; accepted writes retain their operation queue and disk
+barrier (`Handle`, `Respond`, `ReplicaEdit`). No guard, effect, atomicity assumption,
+anchor, invariant, witness or mutation changed. Restored-hub waiting and membership
+remain outside the model and are exercised by the focused regression tests.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses are reachable. All eight mutations
+were caught, reported as drift and reproduced by the model; the working tree was
+unchanged. See `trustReviewThree` in the evidence JSON. Full verification and
+qualification were deliberately deferred to keep the shared machine quiet.
+
+## Signed changes and trust review follow-up, integrated (2026-11-11)
+
+The two reviews above were made on sibling branches. Their integration
+(`integration/trust-stage1`) records the mapping at source revision
+`0254a245f23b572d83e68923e3cf19a1efdd236e`. Drift against the signed-changes
+mapping was exactly the follow-up's change to `automerge-sync-server.js` and
+`lib/workspace-runtime.js`, now beside the signed-changes code. Every action
+named by drift was re-reviewed. The missing-state growth check still runs after
+both signatures verify and before any welcome (`UpgradeArrive`). Hub-state
+writes still drain in `closeResources` after pending signatures are written and
+before `repo.shutdown()` and the lease (`StoreCloseBegin`). Record limits
+precede the gate's single document change, and the two-document acknowledgement
+is untouched (`Handle`, `Respond`, `ReplicaEdit`, `ReplicaReceive`,
+`ReplicaAckCommit`). No action guard, effect, atomicity assumption, anchor,
+invariant, witness or mutation text changed.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses are reachable. All eight mutations
+were caught, reported as drift and reproduced by the model; the working tree was
+unchanged. See `trustStageOneSignedIntegrationReview` in the evidence JSON.
+
+## Attribution review mapping review (2026-11-11)
+
+The attribution fixes (sign only what this machine's own write path made, bind
+each signer line to its content, harden the signature document) changed
+`lib/workspace.js` and `lib/workspace-runtime.js`. Drift named `ReplicaEdit`,
+`SyncDown`, `ReplicaSendAck`, `Handle`, `Respond`, `StoreCloseBegin`,
+`StoreCloseComplete`, `ReplicaReceive` and `ReplicaAckCommit`; each was
+re-reviewed against the diff:
+- `Handle`, `ReplicaEdit`: `Workspace.apply` makes its change through an
+  injected write path (`WorkspaceRuntime.boardChange`, which signs exactly that
+  change through `ChangeAttribution.change`), still synchronously before the
+  flush. The record gate and record write-back use the same path, each one
+  document change before its flush. The board's creation change is signed and
+  cached in `createDocument` before the board is imported; nothing waits on it.
+- `ReplicaSendAck`: `synchronizeAcknowledgement` first writes pending signatures
+  into the signature document (a local change that only advances its heads) and
+  sends no request while one is unwritten. That only withholds a request the
+  unfair action already need not send. The requested-snapshot reads are
+  unchanged.
+- `ReplicaReceive`, `ReplicaAckCommit`, `Respond`: the guards and the
+  two-document flush are unchanged. `attributionView` only adds read-only content.
+- `SyncDown`, `StoreCloseBegin`, `StoreCloseComplete`: the mapped code is
+  unchanged.
+
+Changed: the `Handle` anchor (now `this.change(prepared.change)`), a new
+`ReplicaSendAck` anchor for the unwritten-signature guard, and two mapping
+notes. No guard, effect, atomicity assumption, invariant, witness or mutation
+text changed.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses are reachable. All eight mutations
+were caught, reported as drift and reproduced by the model; the working tree was
+unchanged. See `attributionReviewOne` in the evidence JSON.
+
+## Acknowledgement pairing review (2026-11-11)
+
+The second attribution review changed how a replica asks for the hub's
+acknowledgement and what the local barrier covers, in `lib/workspace.js` and
+`lib/workspace-runtime.js`. Drift named `ReplicaEdit`, `SyncDown`,
+`ReplicaSendAck`, `Handle`, `Respond`, `StoreCloseBegin`, `StoreCloseComplete`,
+`ReplicaReceive` and `ReplicaAckCommit`; each was re-reviewed against the diff:
+- `ReplicaSendAck`: `synchronizeAcknowledgement` captures the board and
+  signature heads as one pair in the step that found the outbox empty, before
+  the local flush. A change made during that flush is in neither, so every
+  change this machine made in the requested board heads has its signature in
+  the requested signature heads. The request carries exactly that pair; the
+  unfair action already allows any older snapshot.
+- `Handle`: `Workspace.apply` and the record gate add this machine's signature
+  cache to the persistence barrier (`Workspace.confirm`,
+  `ChangeAttribution.confirmOwn`). A write whose own signature could not be saved
+  fails as a storage failure and is not acknowledged; a retry replays and asks
+  again. That is one more failure of the modeled flush job, which the
+  storage-failure bound already covers.
+- `ReplicaReceive`, `ReplicaAckCommit`, `Respond`: the requested-snapshot guards
+  and the two-document flush are unchanged.
+- `ReplicaEdit`, `SyncDown`, `StoreCloseBegin`, `StoreCloseComplete`: the mapped
+  code is unchanged.
+
+Changed: two new `Handle` anchors (`this.confirm()` and the gate's
+`confirmOwn`), notes on the `Handle` and `ReplicaSendAck` anchors, and the
+`receipt-before-persist` mutation's find text, which now ends at the flush line.
+No guard, effect, atomicity assumption, invariant or witness changed.
+
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses are reachable. All eight mutations
+were caught, reported as drift and reproduced by the model; the working tree was
+unchanged. See `attributionReviewTwoAcknowledgement` in the evidence JSON.
+
+## Activity derivation review (2026-11-11)
+
+Deriving every Activity entry from the change that wrote it changed
+`lib/workspace-runtime.js`. Drift named `ReplicaEdit`, `SyncDown`,
+`ReplicaSendAck`, `Handle`, `StoreCloseBegin`, `StoreCloseComplete`,
+`ReplicaReceive` and `ReplicaAckCommit`; each was re-reviewed against the diff:
+- `getDoc` adds Activity (`lib/change-log.js`, `lib/activity.js`) and
+  `attributionView` is rebuilt on it, with read-only views of current comment
+  authorship, deletions and the authorship of each alternative of a conflicted
+  field or comment (re-reviewed again when that last view was added). Nothing
+  there writes or waits.
+- The standalone service, which signs nothing, derives its Activity in memory: a
+  `heads-changed` listener notes new changes and derives a small batch in that
+  same synchronous step, and larger ones in `setImmediate` slices. Nothing waits
+  on the disk; `closeResources` clears the slice timer and the listener before it
+  drains the operation queue.
+- `ReplicaEdit`, `Handle`: a local change is still made through `boardChange`
+  before the flush; deriving its entry is synchronous work in the change step,
+  like signing.
+- `ReplicaSendAck`, `ReplicaReceive`, `ReplicaAckCommit`, `SyncDown`,
+  `StoreCloseBegin`, `StoreCloseComplete`: the mapped code is unchanged.
+
+No anchor, guard, effect, atomicity assumption, invariant, witness or mutation
+text changed. Fresh default check: 174614 states, 679456 transitions, all four
+invariants and `ShutdownCompletes` hold; all ten witnesses are reachable. All
+eight mutations were caught, reported as drift and reproduced by the model; the
+working tree was unchanged. See `attributionReviewTwoActivity` in the evidence
+JSON.
+
+## Attribution review three mapping review (2026-11-11)
+
+Reading each change's content through Automerge and binding its writes to its entry
+changed `lib/workspace.js` and `lib/workspace-runtime.js`. Each drift was reviewed
+against its diff before the mapping was recorded:
+- `lib/workspace.js` (`ReplicaEdit`, `Handle`, `Respond`): only `snapshot()`
+  changed. It reads each task, goal, vein, comment and index on its own and lists
+  any it cannot read in `unreadable`, instead of failing the whole view. It is
+  read-only, called by `getDoc`; `execute`, `apply`, the queue and the local-save
+  barrier are unchanged, and no mapped anchor moved.
+- `lib/workspace-runtime.js` (`ReplicaEdit`, `SyncDown`, `ReplicaSendAck`,
+  `Handle`, `StoreCloseBegin`, `StoreCloseComplete`, `ReplicaReceive`,
+  `ReplicaAckCommit`): only the read-only current-state views changed
+  (`currentWriters` and the new `holderOf`, and the `REGISTER_MAPS` constant):
+  each deletion's writer carries its review state, a write into an object counts
+  against the value holding it, and the listed values come from the changes in
+  review or not yet signed. Nothing there writes, waits or runs in a listener;
+  `boardChange`, the acknowledgement path, the attribution start, the receive path
+  and `closeResources` are unchanged.
+- `lib/attribution.js`, which is not mapped, gained a background queue that saves
+  equivocation reports and proofs until a save succeeds (drained in `work()` and on
+  `close()`); `confirmOwn()`, the signature barrier `Handle` relies on, is
+  unchanged.
+
+No anchor, guard, effect, atomicity assumption, invariant, witness or mutation
+text changed. Fresh default check: 174614 states, 679456 transitions, all four
+invariants and `ShutdownCompletes` hold; all ten witnesses are reachable. All
+eight mutations were caught, reported as drift and reproduced by the model; the
+working tree was unchanged. See `attributionReviewThree` in the evidence JSON.
+
+## Attribution review four mapping review (2026-11-12)
+
+Containing every top-level read of the board, and checking each entry against the
+board as of its change's dependencies, changed `lib/workspace.js` and
+`lib/workspace-runtime.js`. Each drift was reviewed against its diff before the
+mapping was recorded:
+- `lib/workspace.js` (`ReplicaEdit`, `Handle`, `Respond`): the new read-only
+  `readable()` gives every read the board's top-level maps whose value is a map
+  (Automerge's pick where several were written concurrently, which is listed; an
+  empty one in place of any other value) and lists the rest; `snapshot()` and
+  `context()` read through it, and `context()` refuses a record it cannot read as
+  `UNREADABLE` (a missing record only when a map it would be in cannot be read). The constructor takes the project ID from the replica's metadata and
+  accepts the schema version the board's creation wrote. In `apply()`, the write
+  path's preparation and its change are each wrapped so that an error from a
+  top-level map holding a value of the wrong kind is refused as `UNREADABLE`; the
+  change still goes through `boardChange` synchronously before the flush, a change
+  that throws is still refused before any flush, `confirm()` and the
+  `STORAGE_FAILED` path are unchanged. The `Handle` anchor for the change now names
+  the wrapped line; its note says so. No guard or effect changed.
+- `lib/workspace-runtime.js` (`ReplicaEdit`, `SyncDown`, `ReplicaSendAck`,
+  `Handle`, `StoreCloseBegin`, `StoreCloseComplete`, `ReplicaReceive`,
+  `ReplicaAckCommit`): opening accepts the project ID the board's creation wrote
+  and passes the metadata's project ID to the workspace; `isMap` requires an
+  Automerge map; `getDoc` adds, for each unreadable top-level key, the changes
+  that wrote it (`rootWriters`, `describeWriter`, `entriesByChange`, all
+  read-only, the index of entries built once per call); `getAgents` and `prepareDelivery` read the readable board
+  (`prepareDelivery` still flushes before it reconciles); the record gate's
+  comparison reads own properties only. The record gate's change, its flush and
+  barrier, the acknowledgement path, the attribution start, the receive path and
+  `closeResources` are unchanged.
+- `lib/attribution.js` and `lib/change-log.js`, which are not mapped, changed the
+  ranking of kept signature candidates and made a derivation slice's operation
+  budget a real bound; `confirmOwn()` is unchanged.
+
+Only the `Handle` anchor text and its note changed; no guard, effect, atomicity
+assumption, invariant, witness or mutation text changed. Fresh default check:
+174614 states, 679456 transitions, all four invariants and `ShutdownCompletes`
+hold; all ten witnesses are reachable. All eight mutations were caught, reported
+as drift and reproduced by the model; the working tree was unchanged. See
+`attributionReviewFour` in the evidence JSON.
+
+## Attribution close-out mapping review (2026-11-12)
+
+Reading every board record through one shape, so no record stops a view, changed
+`lib/workspace.js` and `lib/workspace-runtime.js`. Each drift was reviewed against
+its diff before the mapping was recorded:
+- `lib/workspace.js` (`ReplicaEdit`, `Handle`, `Respond`): `readable()` now hands
+  its view to `containReads` (lib/workspace-schema.js), so the records each read
+  takes from it are read through `SHAPES` and what cannot be read is added to the
+  same `unreadable` list; `snapshot()` reads Actors and read receipts through
+  `storedRecords` and lists a record it cannot read once; a new read-only
+  `actors()` returns the board's readable Actors. Two comments now say that a
+  top-level key holding concurrent values is read as Automerge's pick when that is
+  a map, and the item listing such a key carries `concurrent: true`. `apply()`,
+  its flush, `confirm()` and the `STORAGE_FAILED` path are unchanged.
+- `lib/workspace-runtime.js` (`ReplicaEdit`, `SyncDown`, `ReplicaSendAck`,
+  `Handle`, `StoreCloseBegin`, `StoreCloseComplete`, `ReplicaReceive`,
+  `ReplicaAckCommit`): `getAgents` returns `Workspace.actors()`, and
+  `prepareDelivery` reconciles with the mentions that can be read; it still flushes
+  before it reconciles. Nothing on the acknowledgement, receive or shutdown paths
+  changed. A later one-line change in `currentWriters`, a read used only by
+  the attribution view, takes a comment's author only when it is text. Later
+  still, `attributionView` also lists the changes that have waited long for a
+  signature (`waiting`), and a comment in `Workspace.apply()` no longer calls the
+  signature as durable as the change; neither touches a mapped action. After
+  that, `currentWriters` also reads a comment's author when it is stored as an
+  immutable string, as every comment's is; it is still a read used only by the
+  attribution view.
+- `lib/attribution.js` and `lib/change-signatures.js`, which are not mapped, now
+  read every value stored for a change and verify candidates in bounded passes;
+  `confirmOwn()` and the acknowledgement barrier are unchanged.
+
+No guard, effect, anchor, atomicity assumption, invariant, witness or mutation text
+changed. Fresh default check: 174614 states, 679456 transitions, all four
+invariants and `ShutdownCompletes` hold; all ten witnesses are reachable. All eight
+mutations were caught, reported as drift and reproduced by the model; the working
+tree was unchanged. See `attributionCloseOut` in the evidence JSON.
+
+## Merge of main's shared-module refactor (2026-11-16)
+
+Merging `main` (#236) into the trust gate moved paths, ports and head comparisons
+into shared modules. The mapped files changed only in how they spell the same
+thing:
+
+- `automerge-sync-server.js`: routes, ports, the native socket path and ticket
+  purposes come from `lib/sync-protocol.js` (`AUTOMERGE_PATHS`, `TICKET_PURPOSE`).
+  The gate's own routes keep their literals.
+- `lib/workspace-runtime.js`: head comparisons use `sameHeads` (`lib/heads.js`)
+  instead of comparing two `canonical()` strings; for the arrays of change hashes
+  compared there, both give the same answer. The storage-directory check and the
+  native socket path use the shared constants.
+- `lib/durable-repo.js`: the persisted-heads comparison uses `sameHeads`.
+
+The anchors of `Admit`, `ReplicaSendAck`, `ReplicaReceive`, `ReplicaAckCommit`
+and `syncPending`, and the `stale-ack-accepted` mutation's text, follow the new
+spelling. No guard, effect, atomicity assumption, invariant or witness changed.
+The mutation runner now also copies `shared/`, which `lib/workspace-schema.js`
+imports since #236; without it every control failed with a missing module.
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses are reachable. All eight mutations
+were caught, reported as drift and reproduced by the model, with all eight
+controls passing; the working tree was unchanged. See `mainRefactorMerge` in the
+evidence JSON.
 
 ## Merge of main's shared-module refactor into the UX pass (2026-11-16)
 

@@ -8,6 +8,7 @@ import { save } from '@automerge/automerge'
 import { DurableRepo } from '../lib/durable-repo.js'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
 import { Workspace, createWorkspaceData } from '../lib/workspace.js'
+import { testGenesis } from '../support/genesis.js'
 import { withWorkspaceServer } from '../support/workspace-test.js'
 
 const actors = [
@@ -21,7 +22,7 @@ async function withWorkspaces(run) {
   const create = async source => {
     const directory = await mkdtemp(join(tmpdir(), 'pardner-veins-'))
     const repo = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
-    const handle = source ? repo.import(save(source.handle.doc())) : repo.create(createWorkspaceData({ actors }))
+    const handle = source ? repo.import(save(source.handle.doc())) : repo.create(createWorkspaceData({ actors, genesis: testGenesis() }))
     resources.push({ directory, repo })
     return new Workspace({ repo, handle, replicaId: `replica-${resources.length}` })
   }
