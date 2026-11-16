@@ -8,6 +8,36 @@
   --muted: #b3b3b3;
   --accent: #76dfba;
   --warning: #ffce87;
+  /* Message tones: error (danger), warning and neutral notice (info). */
+  --danger-text: #ffcabf;
+  --danger-bg: #291b19;
+  --danger-line: #825349;
+  --warning-bg: #231d15;
+  --warning-line: #80643b;
+  --info-bg: #131a20;
+  --info-line: #3d5568;
+  --form-gap: 17px;
+  --field-error-gap: 4px;
+  /* User-authored Markdown scale; sits below the 20/17px chrome headings. */
+  --text-prose: 15px;
+  --text-prose-h1: 16px;
+  --text-prose-h2: 15px;
+  --text-prose-h3: 14px;
+  --code-bg: #090909;
+  --table-head-bg: #1c1c1c;
+  --scroll-shadow: #ffffff38;
+  --column-bg: #0a0a0a;
+  --filter-width: 190px;
+  --filter-min: 120px;
+  --panel-width: 680px;
+  /* The narrowest board strip worth showing beside an open panel. */
+  --panel-reveal-min: 160px;
+  --app-height: 100vh;
+}
+@supports (height: 100dvh) {
+  :root {
+    --app-height: 100dvh;
+  }
 }
 * {
   box-sizing: border-box;
@@ -86,7 +116,7 @@ label {
 }
 form {
   display: grid;
-  gap: 17px;
+  gap: var(--form-gap);
 }
 h1 {
   font-size: 22px;
@@ -148,9 +178,22 @@ nav {
   align-items: end;
   padding: 18px 28px;
 }
+/* Filters shrink before the row overflows; nowrap stays scoped to the nav so
+   form labels elsewhere still wrap on phones. */
 nav label {
+  flex: 0 1 var(--filter-width);
+  min-width: var(--filter-min);
+  white-space: nowrap;
+}
+nav > button + label {
   margin-left: auto;
-  min-width: 190px;
+}
+/* overflow: hidden makes the ellipsis apply and stops WebKit spilling a long
+   selected title outside the select. */
+nav select {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 nav button[aria-pressed='true'] {
   border-color: var(--accent);
@@ -162,11 +205,10 @@ nav button[aria-pressed='true'] {
   gap: 1px;
   background: var(--line);
   border-block: 1px solid var(--line);
-  min-height: 65vh;
   overflow-x: auto;
 }
 .column {
-  background: #0a0a0a;
+  background: var(--column-bg);
   padding: 18px 12px;
 }
 .column h2 {
@@ -190,6 +232,9 @@ nav button[aria-pressed='true'] {
   margin-bottom: 10px;
   background: var(--surface);
   overflow-wrap: anywhere;
+}
+.task-card[aria-current] {
+  border-color: var(--accent);
 }
 .task-card strong {
   font-size: 15px;
@@ -218,7 +263,7 @@ nav button[aria-pressed='true'] {
   right: 0;
   top: 0;
   bottom: 0;
-  width: min(680px, 100%);
+  width: min(var(--panel-width), 100%);
   overflow: auto;
   background: #111;
   border-left: 1px solid var(--line);
@@ -248,40 +293,181 @@ nav button[aria-pressed='true'] {
   align-items: center;
   flex-wrap: wrap;
 }
-.section-heading button {
-  font-size: 12px;
-}
 .form-row > * {
   flex: 1;
   min-width: 0;
 }
 .markdown {
+  font-size: var(--text-prose);
   line-height: 1.6;
   max-width: 70ch;
   overflow-wrap: anywhere;
 }
+.markdown :is(h1, h2, h3, h4) {
+  margin: 1em 0 0.4em;
+  line-height: 1.35;
+}
+.markdown h1 {
+  font-size: var(--text-prose-h1);
+  font-weight: 700;
+}
+.markdown h2 {
+  font-size: var(--text-prose-h2);
+  font-weight: 700;
+}
+.markdown :is(h3, h4) {
+  font-size: var(--text-prose-h3);
+  font-weight: 600;
+  color: var(--muted);
+}
+.markdown blockquote {
+  margin: 1em 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
+/* Hanging indent: the checkbox sits in its item's left padding, beside the first line. */
+.markdown .contains-task-list {
+  list-style: none;
+  padding-left: 0;
+}
+.markdown .contains-task-list > li {
+  padding-left: 1.6em;
+}
+/* Overrides the global form input sizing and the phone 44px/16px input rules;
+   the inherited font size keeps the -1.6em margin equal to the item indent. */
+.markdown input[type='checkbox'] {
+  font-size: inherit;
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  margin: 0 0.5em 0 -1.6em;
+  vertical-align: -2px;
+}
+.md-table {
+  overflow-x: auto;
+  margin: 1em 0;
+}
+.md-table table {
+  border-collapse: collapse;
+}
+.md-table :is(th, td) {
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  text-align: left;
+  overflow-wrap: normal;
+}
+.md-table th {
+  background: var(--table-head-bg);
+}
+/* Scroll shadows: the local covers hide the shadows unless the code overflows. */
 .markdown pre {
   overflow: auto;
-  background: #090909;
   padding: 12px;
+  background:
+    linear-gradient(to right, var(--code-bg) 30%, transparent) left / 40px 100% no-repeat local,
+    linear-gradient(to left, var(--code-bg) 30%, transparent) right / 40px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, var(--scroll-shadow), transparent) left / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, var(--scroll-shadow), transparent) right / 14px 100% no-repeat scroll,
+    var(--code-bg);
 }
 .markdown a {
   color: var(--accent);
   text-underline-offset: 3px;
 }
-.comment,
-.history,
-.activity article {
-  padding: 18px 0;
+.comment {
+  padding: 12px 0;
   border-bottom: 1px solid var(--line);
 }
-.history {
-  font-size: 13px;
+.comment.is-new {
+  border-left: 2px solid var(--accent);
+  padding-left: 10px;
 }
-.history p {
+.comment-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+.comment-head time {
+  font-size: 13px;
   color: var(--muted);
 }
-.comment strong {
+.comment-tag,
+.comment-new-count {
+  color: var(--accent);
+  font-weight: 600;
+}
+.comment-tag {
+  font-size: 12px;
+}
+.comment-new-count {
+  font-size: 0.85em;
+}
+.event {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.activity-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+}
+.activity-heading h2 {
+  margin-right: 0;
+}
+.day {
+  margin: 22px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.event:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.event > p {
+  grid-column: 1;
+  margin: 0;
+}
+.event-line {
+  font-size: 14px;
+  line-height: 1.45;
+}
+.event-detail {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.event > time {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.event .subject {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  min-height: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  font: inherit;
+  text-align: left;
+}
+.comment-head > strong {
   font-size: 14px;
 }
 .conflict {
@@ -298,19 +484,55 @@ nav button[aria-pressed='true'] {
 .conflict p {
   white-space: pre-wrap;
 }
+/* Messages are boxes where the work is; in the app chrome they are full-width bands. */
 .error,
 .notice {
-  padding: 15px 28px;
-  background: #291b19;
-  color: #ffcabf;
-  border-bottom: 1px solid #825349;
+  padding: 12px 15px;
+  border: 1px solid;
+  border-radius: 6px;
+}
+.error {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border-color: var(--danger-line);
 }
 .error p {
   margin: 7px 0;
 }
+.error .actions {
+  margin-top: 10px;
+}
 .notice {
-  background: #232018;
-  color: #ffddad;
+  background: var(--info-bg);
+  border-color: var(--info-line);
+}
+.notice.warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+  border-color: var(--warning-line);
+}
+.app > .error,
+.app > .notice {
+  padding: 15px 28px;
+  border-width: 0 0 1px;
+  border-radius: 0;
+}
+.app > .error {
+  max-height: 30vh;
+  overflow: auto;
+}
+.app > .error p {
+  max-width: 75ch;
+}
+/* Pulled up against its input: the form gap would otherwise separate them. */
+.field-error {
+  margin: calc(var(--field-error-gap) - var(--form-gap)) 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--danger-text);
+}
+input[aria-invalid='true'] {
+  border-color: var(--danger-line);
 }
 .connection {
   max-width: 480px;
@@ -324,9 +546,8 @@ nav button[aria-pressed='true'] {
   margin-bottom: 30px;
   color: var(--muted);
 }
-.connection .error {
+.connection > .error {
   margin-top: 20px;
-  padding: 15px;
 }
 .activity,
 .goals {
@@ -338,14 +559,17 @@ nav button[aria-pressed='true'] {
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
 }
-.goal h3 {
+.goal-heading {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  margin: 0 0 8px;
+}
+.goal h3 {
   font-size: 17px;
   font-weight: 500;
-  margin: 0 0 8px;
+  margin: 0;
 }
 .goal ul {
   list-style: none;
@@ -359,6 +583,61 @@ nav button[aria-pressed='true'] {
   gap: 10px;
   padding: 8px 0;
   font-size: 13px;
+}
+.goal li > .error {
+  flex-basis: 100%;
+}
+.goal-heading select,
+.vein-meta select {
+  width: auto;
+  /* Room for the longest label ("Abandoned") beside the arrow. */
+  min-width: 9.5em;
+  padding: 4px 28px 4px 8px;
+  font-size: 13px;
+}
+.goal li > .record-conflict,
+.goal > .record-conflict {
+  flex-basis: 100%;
+}
+.record-conflict {
+  font-size: 13px;
+  margin: 6px 0 0;
+}
+.record-conflict summary {
+  color: var(--warning);
+  cursor: pointer;
+  min-height: 24px;
+}
+.record-conflict-field {
+  margin: 8px 0 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--warning);
+}
+.record-conflict-field p {
+  margin: 0 0 6px;
+  color: var(--muted);
+}
+.record-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 6px 0;
+}
+.record-choice-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  flex: 1 1 8em;
+}
+.record-status[data-status='disputed'] {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+.vein-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
 .record-status {
   font-size: 12px;
@@ -383,6 +662,21 @@ code {
 .actions {
   flex-wrap: wrap;
 }
+.task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.status-field {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.task-actions p {
+  margin: 0;
+}
 .workspace-actions {
   display: flex;
   flex-wrap: wrap;
@@ -391,10 +685,12 @@ code {
 }
 .board[data-filtered='true'] {
   grid-template-columns: minmax(0, 1fr);
+  background: transparent;
 }
 .board[data-filtered='true'] .column {
   width: min(100%, 760px);
   margin-inline: auto;
+  border-inline: 1px solid var(--line);
 }
 .phone-dialog {
   width: min(440px, calc(100% - 32px));
@@ -470,7 +766,107 @@ code {
 .connection form + button {
   margin-top: 16px;
 }
+/* 839 = --panel-width + --panel-reveal-min - 1: below 840px the board beside a
+   680px panel would be a sliver under 160px, so the panel takes the full width. */
+@media (max-width: 839px) {
+  .side-panel {
+    width: 100%;
+  }
+}
+/* Desktop frame: the app fills the viewport and its regions scroll, so the
+   header, workspace actions and nav never leave view. Phones keep document scroll. */
+@media (min-width: 761px) and (min-height: 600px) {
+  .app {
+    height: var(--app-height);
+    display: flex;
+    flex-direction: column;
+  }
+  .app > * {
+    flex-shrink: 0;
+  }
+  .app > main {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .app > main:has(> .board) {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .board {
+    flex: 1 1 0;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    overflow: auto hidden;
+  }
+  .column {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+  /* The column's top padding moves into the sticky heading so its opaque band
+     covers the full column width and the gap above the first card; text and
+     card positions are unchanged (12px column inset + 4px heading margin = 16px). */
+  .column {
+    padding-top: 0;
+  }
+  .column h2 {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    margin: 0 -12px;
+    padding: 18px 16px;
+    background: var(--column-bg);
+  }
+}
 @media (max-width: 760px) {
+  .goal li {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .goal li > .error {
+    align-self: stretch;
+  }
+  .goal-heading select,
+  .vein-meta select {
+    min-height: 44px;
+    font-size: 16px;
+    min-width: 10em;
+    padding-right: 32px;
+  }
+  .record-conflict summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+  .record-choice button {
+    min-height: 44px;
+  }
+
+  .event {
+    grid-template-columns: 1fr;
+  }
+  .event > time {
+    grid-column: 1;
+    grid-row: auto;
+    margin-top: 2px;
+  }
+  /* 44px hit area without changing the line layout. */
+  .event .subject {
+    min-height: 0;
+    padding-block: 11px;
+    margin-block: -11px;
+  }
+  /* body too: WebKit scrolls body when only the root element is locked. */
+  html:has(.side-panel),
+  html:has(.side-panel) body {
+    overflow: hidden;
+  }
+  .side-panel {
+    overscroll-behavior: contain;
+  }
   button, input, select {
     min-height: 44px;
   }
@@ -506,8 +902,12 @@ code {
     flex-wrap: wrap;
   }
   nav label {
+    flex: 1 1 100%;
     min-width: 0;
     width: 100%;
+  }
+  /* Out-specifies the shared rule above, so the grouping margin is reset here. */
+  nav > button + label {
     margin-left: 0;
   }
   .board {
@@ -522,8 +922,8 @@ code {
   .save-status {
     font-size: 12px;
   }
-  .error,
-  .notice {
+  .app > .error,
+  .app > .notice {
     padding: 14px 16px;
   }
 }
@@ -533,19 +933,6 @@ code {
       background-color 0.12s ease,
       border-color 0.12s ease;
   }
-}
-.app > .error {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 20;
-  max-height: 30vh;
-  overflow: auto;
-  border-top: 1px solid #825349;
-}
-.app > .error p {
-  max-width: 75ch;
 }
 .control {
   max-width: 1000px;
@@ -972,4 +1359,16 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
     top: var(--client-header-height, 0px);
     border-top: 1px solid var(--line);
   }
+}
+
+.mention {
+  background: color-mix(in srgb, var(--accent, currentColor) 14%, transparent);
+  border-radius: 3px;
+  padding: 0 0.2em;
+  font-weight: 600;
+}
+
+.mention-hint {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
 }

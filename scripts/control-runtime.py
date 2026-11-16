@@ -103,7 +103,7 @@ class Controller:
         if not isinstance(manifest, dict) or any(manifest.get(key) != self.config[key] for key in ['workspaceId', 'replicaId', 'role']):
             raise ControlError('Control storage identity or role mismatch')
         # Read the pinned declaration without importing app code or opening storage.
-        source = (self.release / 'lib/workspace-schema.js').read_text()
+        source = (self.release / 'shared/domain-vocab.js').read_text()
         versions = re.findall(r'^export const SCHEMA_VERSION = ([1-9][0-9]*)\s*;?$', source, re.MULTILINE)
         if len(versions) != 1:
             raise ControlError('Cannot establish release schema; preserve storage and inspect the pinned source')

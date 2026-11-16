@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 import { chromium, webkit } from 'playwright'
 import { cli, startCliService } from '../support/cli-resources.js'
 import { lanInterfaces } from '../lib/lan-access.js'
+import { withWorkspace } from '../support/ui-workspace.js'
 
 for (const engine of [chromium, webkit]) it(`pairs and remembers a phone over actual LAN HTTP in ${engine.name()}`, { timeout: 90000 }, async t => {
   const candidate = lanInterfaces()[0]
@@ -47,6 +48,8 @@ for (const engine of [chromium, webkit]) it(`pairs and remembers a phone over ac
   await desktop.getByLabel('Network interface').selectOption(candidate.name)
   await desktop.getByRole('button', { name: 'Enable device access', exact: true }).click()
   await desktop.getByText(/Settings saved. Restart/).waitFor()
+  const focusInDialog = page => page.waitForFunction(() => Boolean(document.activeElement?.closest('dialog[open]')), null, { timeout: 5000 })
+  await focusInDialog(desktop)
   assert.equal(service.phoneAccess.active, null)
   await service.stop()
   service = await startCliService(directory, [], { reusePorts: true })
@@ -80,6 +83,7 @@ for (const engine of [chromium, webkit]) it(`pairs and remembers a phone over ac
   assert.ok(await qr.evaluate(async image => { await image.decode(); return image.naturalWidth > 0 }), 'pairing QR loads under the image policy')
   assert.equal(await phone.getByLabel('Network interface').count(), 0)
   await phone.getByRole('button', { name: 'Generate new code', exact: true }).click()
+  await focusInDialog(phone)
   await phone.getByText('Connect manually', { exact: true }).click()
   await phone.getByLabel('Pairing code', { exact: true }).waitFor()
   await phone.getByRole('button', { name: 'Close device pairing' }).click()
@@ -140,4 +144,25 @@ for (const engine of [chromium, webkit]) it(`pairs and remembers a phone over ac
   const logs = service.logs()
   assert.equal(JSON.stringify(logs).includes(token), false)
   assert.equal(JSON.stringify(logs).includes(code), false)
+})
+
+for (const engine of [chromium, webkit]) it(`keeps the page behind an open phone panel still in ${engine.name()}`, { timeout: 60000 }, async () => {
+  // Playwright cannot send wheel events to mobile WebKit, so WebKit runs the 375px layout without mobile emulation.
+  const mobile = engine !== webkit
+  await withWorkspace(engine, { viewport: { width: 375, height: 812 }, isMobile: mobile, hasTouch: mobile }, async ({ page, operate, open }) => {
+    for (let index = 0; index < 12; index++) await operate('task.create', { title: `Phone backlog task ${index + 1}` })
+    await open()
+    await page.getByRole('button', { name: /Phone backlog task 1\b/ }).click()
+    const panel = page.getByRole('complementary', { name: 'Task details' })
+    await panel.getByRole('heading', { name: 'Phone backlog task 1' }).waitFor()
+    // The collapsed panel fits the phone; open the handoff form so the panel has something to scroll.
+    await panel.getByRole('button', { name: 'Hand off work', exact: true }).click()
+    assert.ok(await page.evaluate(() => document.scrollingElement.scrollHeight > innerHeight + 100),
+      'the page behind the panel is taller than the viewport, so it could scroll')
+    await panel.getByRole('heading', { name: 'History' }).hover()
+    for (let step = 0; step < 6; step++) await page.mouse.wheel(0, 800)
+    await page.waitForFunction(() => document.querySelector('.side-panel').scrollTop > 0)
+    await page.waitForTimeout(300)
+    assert.equal(await page.evaluate(() => scrollY), 0, 'wheel over an open panel never scrolls the page behind it')
+  })
 })

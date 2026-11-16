@@ -103,3 +103,22 @@ it('empty-workspace queries return JSON and missing task context is explicit', a
     assert.equal((await api('/automerge/task/missing/context')).code, 'NOT_FOUND')
   })
 })
+
+it('explains an oversized request with 413 and keeps malformed JSON at 400', async () => {
+  await withWorkspaceServer(async ({ server, operation, create }) => {
+    const send = body => fetch(`http://127.0.0.1:${server.httpPort}/automerge/operations`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-token', 'Content-Type': 'application/json', Connection: 'close' },
+      body,
+    }).then(async response => ({ status: response.status, body: await response.json() }))
+    const big = await send(JSON.stringify({ type: 'task.create', payload: { title: 'Big', description: 'x'.repeat(110 * 1024) }, actorId: 'alice', operationId: 'big-1' }))
+    assert.equal(big.status, 413)
+    assert.equal(big.body.code, 'INVALID_ARGUMENT')
+    assert.equal(big.body.error, 'This change is larger than the 100 kB request limit. Shorten it and try again.')
+    const malformed = await send('{ not json')
+    assert.equal(malformed.status, 400)
+    assert.equal(malformed.body.code, 'INVALID_ARGUMENT')
+    assert.equal(malformed.body.error, 'Send a valid JSON request.')
+    assert.ok(await create())
+  })
+})

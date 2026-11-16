@@ -20,6 +20,8 @@ import {
   REPLICA_TOKEN_HEADER, TICKET_PURPOSE,
 } from './lib/sync-protocol.js'
 
+const REQUEST_LIMIT = '100kb'
+
 function wsUpgradePathname(req) {
   try {
     return new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`).pathname
@@ -505,8 +507,11 @@ class AutomergeSyncServer {
       next()
     })
     this.app.use((req, res, next) => this.originMiddleware(req, res, next))
-    this.app.use(express.json())
-    this.app.use((_error, _req, res, _next) => {
+    this.app.use(express.json({ limit: REQUEST_LIMIT }))
+    this.app.use((error, _req, res, _next) => {
+      if (error?.type === 'entity.too.large') {
+        return res.status(413).json({ code: 'INVALID_ARGUMENT', error: 'This change is larger than the 100 kB request limit. Shorten it and try again.' })
+      }
       res.status(400).json({ code: 'INVALID_ARGUMENT', error: 'Send a valid JSON request.' })
     })
     this.app.get('/pardner/config', (req, res) => res.set('Cache-Control', 'no-store').json({
