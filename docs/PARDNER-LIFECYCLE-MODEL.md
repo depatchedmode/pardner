@@ -297,3 +297,14 @@ Fresh default check: 174614 states, 679456 transitions, all four invariants and
 `ShutdownCompletes` hold; all ten witnesses remain reachable. Prior wider-bound
 and mutation evidence above is historical, not freshly rerun for this candidate.
 See `oversizeRequestMessageReview` in `docs/evidence/lifecycle-model.json`.
+
+## Merge of main's shared-module refactor into the UX pass (2026-11-16)
+
+Merging `main` (#236) into the UX pass changed only how `automerge-sync-server.js`
+spells its ports and paths (`lib/sync-protocol.js`); the other mapped files are
+`main`'s. No guard, effect, anchor, atomicity assumption, invariant, witness or
+mutation text changed. The mutation runner now also copies `shared/`, which
+`lib/workspace-schema.js` imports since #236. Fresh default check: 174614 states,
+679456 transitions, all four invariants and `ShutdownCompletes` hold. All eight
+mutations were caught, reported as drift and reproduced by the model, with all
+eight controls passing. See `uxPassMainMerge` in the evidence JSON.
