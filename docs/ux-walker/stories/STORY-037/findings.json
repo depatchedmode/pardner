@@ -1,0 +1,34 @@
+[
+  {
+    "id": "F-037-01",
+    "story_id": "STORY-037",
+    "severity": "medium",
+    "category": "disclosure",
+    "criterion": "Secondary features revealed at the right time",
+    "score": "warn",
+    "description": "Show invite text reveals the full setup prompt immediately. The warning \"Visible on screen. Stop sharing your screen before copying.\" appears in the same frame as the text, so a person who is screen-sharing has already exposed it when they read the warning.",
+    "expected": "A guard before reveal (e.g. \"Reveal on screen?\" confirmation or press-and-hold) with the warning shown first.",
+    "actual": "Warning and text appear together; no confirmation.",
+    "screenshot": "screenshots/var-shown-masked.png",
+    "suggested_fix": "Show the warning with a \"Reveal anyway\" button before rendering the textarea.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  },
+  {
+    "id": "F-037-02",
+    "story_id": "STORY-037",
+    "severity": "low",
+    "category": "happy-path",
+    "criterion": "Recovery",
+    "score": "warn",
+    "description": "After the text has been revealed nothing suggests that the safe recovery is to revoke it and create a new one.",
+    "expected": "Once revealed, the status line offers \"If others saw this, Revoke and create a new one.\"",
+    "actual": "Only the screen-sharing warning; no recovery hint.",
+    "screenshot": "screenshots/var-shown-masked.png",
+    "suggested_fix": "Add the recovery sentence to the revealed state.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  }
+]

@@ -1,0 +1,16 @@
+[
+ {"id":"F-091-01","story_id":"STORY-091","severity":"high","category":"consistency","criterion":"Labels self-explanatory","score":"fail",
+  "description":"The Recipient select lists 'Setup agent · agent' twice (Priya's and Marcus's built-in agents), with no way to tell which is which. Handing work to an agent can silently go to the wrong person's agent.",
+  "expected":"Distinct labels, e.g. 'Setup agent (Priya Raman) · agent'.",
+  "actual":"Two identical options.",
+  "screenshot":"screenshots/step-1-form-open.png",
+  "suggested_fix":"Qualify agent labels with the sponsoring human everywhere Actors are listed (shared fix with F-090-02).",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx","ui-prototype/src/handoff.js"]},
+ {"id":"F-091-02","story_id":"STORY-091","severity":"low","category":"hierarchy","criterion":"Feedback","score":"warn",
+  "description":"The handoff message appears in Comments as an ordinary comment, with no 'Handed off to Priya Raman · Review' caption and no notified chip, though the recipient was notified.",
+  "expected":"A handoff caption on the comment naming the recipient (who was notified).",
+  "actual":"A plain comment.",
+  "screenshot":"screenshots/step-6-comment.png",
+  "suggested_fix":"Tag comments created by task.handoff and render a caption plus recipient chip.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx"]}
+]

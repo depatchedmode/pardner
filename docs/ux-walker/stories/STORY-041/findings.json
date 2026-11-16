@@ -1,0 +1,37 @@
+[
+  {
+    "id": "F-041-01",
+    "story_id": "STORY-041",
+    "severity": "high",
+    "category": "error-handling",
+    "criterion": "Error messages are actionable",
+    "score": "fail",
+    "description": "Case A (invite issued without --public-url, so its endpoint is the issuer's loopback URL). Simulated the recipient's view on one machine by making that loopback address unreachable: Join project shows \"Project authority unavailable; retry this attempt / The project's hub is unreachable, so this can't finish yet. Retry when it is back; nothing was lost.\" Retrying can never succeed from another computer. The catalog-predicted INVALID_INVITATION \"Remote invitations require HTTPS\" never appears (a hub refuses a non-loopback http --public-url at start: INVALID_ARGUMENT \"Public gateway must be an explicit HTTPS origin, or an HTTP origin on loopback\").",
+    "expected": "The recipient is told the invitation points at a computer-local address and must be reissued from a client with a reachable --public-url; the sender is warned at creation (F-036-01).",
+    "actual": "A generic \"retry later\" message that leads Marcus and Priya to wait.",
+    "screenshot": "screenshots/step-6-result-caseA.png",
+    "suggested_fix": "Detect a loopback endpoint on a different client during join and return a distinct code (e.g. INVITATION_UNREACHABLE) with a hint for the sender.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx",
+      "lib/client-invites.js",
+      "lib/client-service.js"
+    ]
+  },
+  {
+    "id": "F-041-02",
+    "story_id": "STORY-041",
+    "severity": "medium",
+    "category": "consistency",
+    "criterion": "Distinguishable Actors",
+    "score": "warn",
+    "description": "After Marcus joins, the header shows two identical \"SA\" avatars and the Assigned to filter lists \"Setup agent · agent\" twice; accessible names are both \"Setup agent, agent, offline\". Nothing says whose agent is whose. With J. Doe it became three.",
+    "expected": "Agents show their owner (\"Marcus's Codex\") or harness in avatar title, filter and People list.",
+    "actual": "Indistinguishable agents.",
+    "screenshot": "screenshots/step-10-header.png",
+    "suggested_fix": "Include the sponsoring human in agent display labels.",
+    "files_likely_involved": [
+      "ui-prototype/src/Avatar.jsx",
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  }
+]

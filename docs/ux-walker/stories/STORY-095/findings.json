@@ -1,0 +1,23 @@
+[
+ {"id":"F-095-01","story_id":"STORY-095","severity":"medium","category":"consistency","criterion":"Feedback accuracy","score":"warn",
+  "description":"The handoff success line 'Handed off to Setup agent · agent · In progress.' stays under the Status row after the agent handed the task back and after Priya set it to Completed, contradicting the current state.",
+  "expected":"Success feedback is transient, or clears when the task's assignee or status changes.",
+  "actual":"The stale line is still shown beside 'Status: Completed'.",
+  "screenshot":"screenshots/step-17-completed.png",
+  "suggested_fix":"Clear the handoff status message on the next task change (or after a timeout), like other success toasts.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx"]},
+ {"id":"F-095-02","story_id":"STORY-095","severity":"high","category":"consistency","criterion":"Labels self-explanatory","score":"fail",
+  "description":"Delegating to 'my agent' means choosing between two identical 'Setup agent · agent' recipients (Priya's and Marcus's). The correct one could only be found by reading DOM option values.",
+  "expected":"Recipients are distinguishable, e.g. 'Setup agent (you)' or 'Setup agent · Priya Raman'.",
+  "actual":"Two identical options. Same root cause as F-090-02 / F-091-01.",
+  "screenshot":"screenshots/step-03-handoff-form.png",
+  "suggested_fix":"Qualify agent display names with their sponsoring human, and mark your own agent.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx"]},
+ {"id":"F-095-03","story_id":"STORY-095","severity":"low","category":"visual","criterion":"Wrap quality","score":"warn",
+  "description":"Evidence renders the commit message with subject and body joined on one line ('Add idempotency keys to POST /payments Reuse request_id header.').",
+  "expected":"The subject as a title line, and the body separate or collapsed behind 'more'.",
+  "actual":"Newlines collapsed into a single sentence.",
+  "screenshot":"screenshots/step-15b-evidence.png",
+  "suggested_fix":"Split commit messages on the first blank line and render the subject and body separately.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx"]}
+]

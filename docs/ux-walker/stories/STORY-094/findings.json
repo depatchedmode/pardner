@@ -1,0 +1,16 @@
+[
+ {"id":"F-094-01","story_id":"STORY-094","severity":"medium","category":"flow","criterion":"Data re-entry / Error messages actionable","score":"warn",
+  "description":"`handoff --to Priya` and `--to \"Priya Raman\"` fail with UNKNOWN_ACTOR and no hint. The agent must find a 70-character Actor ID (or UUID handle) elsewhere, and must hand-build the --revisions JSON from show output.",
+  "expected":"--to resolves an unambiguous display name, or the error lists candidates ('Did you mean Priya Raman (actor-3eac…)? See pardner actors list').",
+  "actual":"UNKNOWN_ACTOR: Unknown Actor: Priya.",
+  "screenshot":"screenshots/step-5d-activity.png",
+  "suggested_fix":"Resolve unique display names in --to; include close matches in UNKNOWN_ACTOR details and message.",
+  "files_likely_involved":["lib/workspace-schema.js","lib/cli.js"]},
+ {"id":"F-094-02","story_id":"STORY-094","severity":"medium","category":"hierarchy","criterion":"Importance encoding","score":"warn",
+  "description":"A handoff to Priya is invisible as such at the places she looks first: the board card shows no 'handed to you' or unread badge, and in the panel the handoff message 'Done' renders as an ordinary comment.",
+  "expected":"The card carries a 'New for you' badge, and the handoff comment is labelled 'Handed off to you · Review'.",
+  "actual":"Only the generic New tag inside the panel; the board is silent.",
+  "screenshot":"screenshots/step-5a-board.png",
+  "suggested_fix":"Mark handoff comments with a handoff caption; add an unread or mention badge on board cards.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx","ui-prototype/src/comments.js"]}
+]

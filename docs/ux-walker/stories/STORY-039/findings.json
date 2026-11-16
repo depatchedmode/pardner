@@ -1,0 +1,67 @@
+[
+  {
+    "id": "F-039-01",
+    "story_id": "STORY-039",
+    "severity": "medium",
+    "category": "flow",
+    "criterion": "Dead ends",
+    "score": "fail",
+    "description": "Revoke inside the New invitation block shows \"This invitation can no longer be used. Create a new one if you still need it.\" but the dialog offers no Create button; the person has to Close and go back through Invite → Human.",
+    "expected": "A Create new invitation button in that state (the copy already tells them to).",
+    "actual": "Only Close; Create invitation is gone.",
+    "screenshot": "screenshots/var-revoke-new-section.png",
+    "suggested_fix": "Show Create invitation (with a fresh operation ID) after revoke.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  },
+  {
+    "id": "F-039-02",
+    "story_id": "STORY-039",
+    "severity": "low",
+    "category": "consistency",
+    "criterion": "Labels / copy",
+    "score": "warn",
+    "description": "A just-revoked invite still reads \"Revoked · Expires in 24 h · Nov 10, 11:05 AM\" in the New invitation block, while the history row for the same invite shows \"Revoked\" with no expiry.",
+    "expected": "Revoked invites show no expiry (or \"Revoked at …\").",
+    "actual": "Contradictory \"Revoked · Expires in 24 h\".",
+    "screenshot": "screenshots/var-revoke-new-section.png",
+    "suggested_fix": "Drop the expiry text when state is not issued.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  },
+  {
+    "id": "F-039-03",
+    "story_id": "STORY-039",
+    "severity": "medium",
+    "category": "hierarchy",
+    "criterion": "Importance encoding",
+    "score": "warn",
+    "description": "History rows show only purpose, state and expiry: no created time, sponsor or recipient, and they are sorted oldest first so the newest invite is at the bottom. With five rows, two \"Human · Waiting to be used\" rows differ only by the expiry minute (11:02 vs 11:03), so identifying the leaked one is guesswork.",
+    "expected": "Rows show when (and by whom) each invite was created, newest first, with an optional note/label.",
+    "actual": "Indistinguishable rows; Priya revoked the first one by position.",
+    "screenshot": "screenshots/step-1-dialog.png",
+    "suggested_fix": "Add created-at and sponsor columns, sort newest first, allow a label at creation.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx",
+      "lib/client-invites.js"
+    ]
+  },
+  {
+    "id": "F-039-04",
+    "story_id": "STORY-039",
+    "severity": "suggestion",
+    "category": "flow",
+    "criterion": "One way per task",
+    "score": "warn",
+    "description": "There is no \"Manage invitations\" entry. To revoke, the person must pick a purpose from the Invite menu, and the dialog she lands in can create the wrong kind of invite (the My device dialog shows and revokes Human invites).",
+    "expected": "A purpose-neutral invitations view.",
+    "actual": "Revoke reachable only through a create dialog.",
+    "screenshot": "screenshots/var-wrong-item.png",
+    "suggested_fix": "Add \"Manage invitations\" to the Invite menu.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  }
+]

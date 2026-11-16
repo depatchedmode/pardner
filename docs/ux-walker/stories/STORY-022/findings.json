@@ -1,0 +1,16 @@
+[
+  {"id":"F-022-01","story_id":"STORY-022","severity":"low","category":"error-handling","criterion":"Error messages: actionable for the CLI caller","score":"warn",
+   "description":"CLI validation errors say \"Supply an email\" / \"Supply a name\" without naming the flag (--email / --name) the caller omitted, while other CLI errors do name flags (\"Supply --kind device|agent|member and --id\").",
+   "expected":"\"Supply --email\" (CLI) or \"Supply an email (--email)\".",
+   "actual":"\"INVALID_ARGUMENT: Supply an email\"",
+   "screenshot":"",
+   "suggested_fix":"Validate required flags in client-cli before calling the service, and name the flag.",
+   "files_likely_involved":["lib/client-cli.js","lib/client-identity.js"]},
+  {"id":"F-022-02","story_id":"STORY-022","severity":"medium","category":"error-handling","criterion":"Error messages: specific","score":"warn",
+   "description":"An agent that tries to correct the identity with a new operation ID gets IDENTITY_EXISTS \"Identity already initialized; linking requires My device\", which neither states the current identity nor that identities can't be changed. An agent will likely loop or misinterpret it as a device-linking requirement.",
+   "expected":"\"An identity already exists on this client (Aisha Rahman, aisha@quillstack.io). It can't be changed here.\" with details carrying the current identity.",
+   "actual":"IDENTITY_EXISTS with details:null.",
+   "screenshot":"",
+   "suggested_fix":"Include the current identity in error.details and reword the message (see F-014-03).",
+   "files_likely_involved":["lib/client-service.js"]}
+]

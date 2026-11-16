@@ -1,0 +1,23 @@
+[
+ {"id":"F-087-01","story_id":"STORY-087","severity":"medium","category":"flow","criterion":"Dead ends / Information scent","score":"warn",
+  "description":"Unread comments and handoffs are signalled only inside an opened task panel. Board cards carry no unread or mention badge, so catching up means opening every task.",
+  "expected":"Cards show an unread count (e.g. '3 new') or a dot; ideally a 'For you' filter.",
+  "actual":"The card shows title, priority and assignee only.",
+  "screenshot":"screenshots/step-1-new.png",
+  "suggested_fix":"Compute per-task unread counts for the viewer (as the panel does) and render a badge on the board card.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx","ui-prototype/src/comments.js"]},
+ {"id":"F-087-02","story_id":"STORY-087","severity":"low","category":"consistency","criterion":"Feedback accuracy","score":"warn",
+  "description":"Mark all read sends receipts for the reader's own comments too, so Activity reads 'Priya Raman read 5 comments' when only 3 were unread.",
+  "expected":"Receipts only for unread revisions; 'read 3 comments'.",
+  "actual":"'read 5 comments'.",
+  "screenshot":"screenshots/step-4-activity.png",
+  "suggested_fix":"Filter Mark all read to comments with unread revisions (exclude own).",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx"]},
+ {"id":"F-087-03","story_id":"STORY-087","severity":"low","category":"layout","criterion":"Scroll necessity","score":"warn",
+  "description":"The panel lists comments oldest-first below GitHub issues, Status and older comments, so new comments are off-screen with no jump link. The open panel also covers the Review column and clips the selected card.",
+  "expected":"The '3 new' suffix is a link that scrolls to the first new comment; the selected card stays visible.",
+  "actual":"Manual scrolling; the card is clipped under the panel.",
+  "screenshot":"screenshots/step-1-new.png",
+  "suggested_fix":"Make the new-count a button that scrolls to the first .is-new article; let the board scroll the selected card into view.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx","ui-prototype/src/styles.css"]}
+]

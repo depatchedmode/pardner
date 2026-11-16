@@ -1,0 +1,20 @@
+[
+  {"id": "F-132-01", "story_id": "STORY-132", "severity": "low", "category": "error-handling", "criterion": "Errors name the cause", "score": "warn",
+   "description": "A malformed bridge.json produces `INTERNAL_ERROR: Expected double-quoted property name in JSON at position 24 …`, which reads as a crash and does not name the file.",
+   "expected": "`INVALID_ARGUMENT: bridge.json is not valid JSON (line 1, column 25): /path/bridge.json`.",
+   "actual": "Raw SyntaxError under INTERNAL_ERROR.",
+   "screenshot": "cli.log", "suggested_fix": "Wrap JSON.parse of the config in a guarded helper that returns INVALID_ARGUMENT with the path.",
+   "files_likely_involved": ["lib/agent-bridge.js"]},
+  {"id": "F-132-02", "story_id": "STORY-132", "severity": "low", "category": "error-handling", "criterion": "Errors name the fix", "score": "warn",
+   "description": "Running a client bridge without --token-file gives `Bridge configuration requires replicaId`, which refers to the internal standalone mode rather than the missing flag. A missing credential file is reported as 'must hold the JSON written by client agent-grant' instead of 'file not found'.",
+   "expected": "'Supply --token-file with the credential from client agent-grant (or dataDirectory for standalone)'; 'Credential file not found: PATH'.",
+   "actual": "Internal-field wording; missing and malformed files share one message.",
+   "screenshot": "cli.log", "suggested_fix": "Check for the credential flag before standalone-only fields; distinguish ENOENT.",
+   "files_likely_involved": ["lib/agent-bridge.js"]},
+  {"id": "F-132-03", "story_id": "STORY-132", "severity": "low", "category": "error-handling", "criterion": "Safety of storage placement", "score": "warn",
+   "description": "`inboxDirectory` pointing at the directory that holds the private credential file is accepted; the bridge writes inbox.sqlite and lock files beside the 0600 credential. Only the exact credential path is refused.",
+   "expected": "The 'Keep bridge storage separate' rule also covers the credential's parent directory.",
+   "actual": "Bridge starts and writes into the credential directory.",
+   "screenshot": "cli.log", "suggested_fix": "Refuse an inboxDirectory equal to or containing the credential file.",
+   "files_likely_involved": ["lib/agent-bridge.js"]}
+]

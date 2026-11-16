@@ -1,0 +1,23 @@
+[
+ {"id":"F-090-01","story_id":"STORY-090","severity":"high","category":"error-handling","criterion":"Recovery / destructive action safety","score":"fail",
+  "description":"Any Actor can delete any comment: Priya's agent deleted Marcus's human comment with success, while edit and resolve are author-only. The comment vanished from Marcus's panel with no notice or undo.",
+  "expected":"Delete is restricted to the author (or explicitly to human project members), matching edit/resolve, and the author is told when a comment is removed.",
+  "actual":"comment-delete by a non-author agent succeeded.",
+  "screenshot":"screenshots/step-5-activity-deleted.png",
+  "suggested_fix":"Add the author check to comment delete (prepareCommentDelete) and a regression test; consider a tombstone line ('Comment deleted by …') in the panel.",
+  "files_likely_involved":["lib/workspace-commands.js","ui-prototype/src/Pardner.jsx"]},
+ {"id":"F-090-02","story_id":"STORY-090","severity":"high","category":"consistency","criterion":"Labels self-explanatory / attribution","score":"fail",
+  "description":"Every person's built-in agent is named 'Setup agent', so two different people's agents look identical in Activity, comments and the avatar stack (two 'SA' chips). The non-author delete reads 'Setup agent deleted a comment', indistinguishable from Marcus's own agent.",
+  "expected":"Agent names carry the owner, e.g. 'Priya's Setup agent' or 'Setup agent (Priya Raman)'.",
+  "actual":"'Setup agent' / 'Setup agent · agent' for both.",
+  "screenshot":"screenshots/step-5-activity-deleted.png",
+  "suggested_fix":"Include the sponsoring human's name in agent display names wherever an Actor is rendered.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx","lib/client-service.js"]},
+ {"id":"F-090-03","story_id":"STORY-090","severity":"medium","category":"flow","criterion":"One way per task / Dead ends","score":"warn",
+  "description":"A human cannot edit or delete their own comment: the browser has no affordance, and `client operation` runs as the person's 'Setup agent', which the author check refuses. CLI writes made that way appear under 'Setup agent' and show as New to the person who made them.",
+  "expected":"Edit/Delete on your own comments in the browser.",
+  "actual":"No route for a human author. Standalone `show`/`comment` with `--data` give LOCAL_SERVICE_UNAVAILABLE / ACTOR_REQUIRED.",
+  "screenshot":"screenshots/step-1-no-affordance.png",
+  "suggested_fix":"Add Edit/Delete to the comment header for the author; have the CLI errors point to `client operation` or `--token-file`.",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx","lib/cli.js"]}
+]

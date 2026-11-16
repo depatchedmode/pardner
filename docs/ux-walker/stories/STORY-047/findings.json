@@ -1,0 +1,53 @@
+[
+  {
+    "id": "F-047-01",
+    "story_id": "STORY-047",
+    "severity": "high",
+    "category": "happy-path",
+    "criterion": "Labels/copy are not misleading",
+    "score": "fail",
+    "description": "Pasting her own Human invitation into Link this device on the studio Mac shows the headline \"This is a Human invitation. Confirm your identity first, then join with it.\" Following it, the identity form accepts exactly the same name and email as an existing project member without a warning, and the join succeeds as a second person: both boards now show two \"Grace Liu\" avatars and two \"Grace Liu · human\" filter entries.",
+    "expected": "The refusal first asks \"Is this your own computer? Ask for a My device invitation instead\", and joining with a name/email that matches an existing member warns before creating a duplicate.",
+    "actual": "The UI steers her into a duplicate identity.",
+    "screenshot": "screenshots/step-3-refused.png",
+    "suggested_fix": "Reorder the refusal copy to lead with the My device route; warn on duplicate git identity at join.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx",
+      "lib/client-invites.js"
+    ]
+  },
+  {
+    "id": "F-047-02",
+    "story_id": "STORY-047",
+    "severity": "high",
+    "category": "flow",
+    "criterion": "Recovery",
+    "score": "fail",
+    "description": "Recovery is CLI-only and leaves permanent residue: the creator must find the duplicate humanId in `client show` and revoke the member; the studio client then cannot link with a My device invitation (IDENTITY_MISMATCH \"Destination already belongs to another identity\") and needs a fresh data directory, which nothing says. After relinking a fresh client, the revoked duplicate still appears as a second \"Grace Liu\" (avatar and Assigned to filter) on every board.",
+    "expected": "A UI path to remove the duplicate and relink, and revoked duplicates hidden or marked.",
+    "actual": "Fresh directory plus CLI; duplicate visible forever.",
+    "screenshot": "screenshots/step-7-studio2-linked.png",
+    "suggested_fix": "See F-043-01 and F-043-04; also hide revoked members from the avatar stack and filters.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx",
+      "ui-prototype/src/Avatar.jsx",
+      "lib/client-service.js"
+    ]
+  },
+  {
+    "id": "F-047-03",
+    "story_id": "STORY-047",
+    "severity": "medium",
+    "category": "disclosure",
+    "criterion": "Labels/copy",
+    "score": "warn",
+    "description": "The Invite menu tells Human and My device apart only by small detail text (\"A person and their agent\" vs \"Another computer you use\"); \"Human\" reads as \"me\" to a newcomer, and the explanatory dialog text appears only after choosing.",
+    "expected": "Menu labels that say whose computer it is, e.g. \"Someone else\" / \"Another of my computers\".",
+    "actual": "Easy to pick Human for one's own second machine.",
+    "screenshot": "../STORY-036/screenshots/step-1-menu.png",
+    "suggested_fix": "Rename the menu items or add a one-line explainer at the top of the menu.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  }
+]

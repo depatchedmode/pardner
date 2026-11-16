@@ -1,5 +1,7 @@
 # UX Visual Inventory — Pardner web UI
 
+> **Retired story IDs.** STORY numbers in this record refer to the retired 2026-11-07 catalog. The current [catalog](../ux-paths/catalog.md) was regenerated for client mode on 2026-11-09 and uses different numbering.
+
 > **Superseded browser entry.** This record describes the standalone browser
 > board (local service token screen, Actor picker, Pair another device, Forget this
 > workspace, `PhoneAccess`). People now open the board only through the local

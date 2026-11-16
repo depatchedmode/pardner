@@ -1,0 +1,35 @@
+[
+  {
+    "id": "F-040-01",
+    "story_id": "STORY-040",
+    "severity": "low",
+    "category": "consistency",
+    "criterion": "State and expiry agree",
+    "score": "warn",
+    "description": "In the last minute before expiry (simulated browser clock) a row reads \"Agent · Waiting to be used · Expired Nov 10, 11:10 AM\" and still shows Revoke; the state flips to Expired only on a later tick.",
+    "expected": "State, expiry text and Revoke button change together.",
+    "actual": "Expiry text says Expired while state says Waiting to be used.",
+    "screenshot": "screenshots/step-3-near-zero.png",
+    "suggested_fix": "Derive the expiry text from the same effectiveState call (or treat <60 s as \"Expires in <1 min\").",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx"
+    ]
+  },
+  {
+    "id": "F-040-02",
+    "story_id": "STORY-040",
+    "severity": "medium",
+    "category": "hierarchy",
+    "criterion": "Information completeness",
+    "score": "warn",
+    "description": "\"Used\" rows never say who used them or when, and revoked/expired rows show no date. To learn who joined, Tomás must close the dialog and inspect the avatar stack. \"Used\" also stays unchanged after the member is later revoked (observed in STORY-043).",
+    "expected": "Used rows name the Actor who redeemed it and when; a revoked member is shown as such.",
+    "actual": "\"Human · Used\" with no details.",
+    "screenshot": "screenshots/step-3-expired.png",
+    "suggested_fix": "Return redeemedBy/redeemedAt from the invites list and render them.",
+    "files_likely_involved": [
+      "ui-prototype/src/ClientApp.jsx",
+      "lib/client-invites.js"
+    ]
+  }
+]

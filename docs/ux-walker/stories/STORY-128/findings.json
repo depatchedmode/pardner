@@ -1,0 +1,14 @@
+[
+  {"id": "F-128-01", "story_id": "STORY-128", "severity": "medium", "category": "error-handling", "criterion": "Errors name the cause and fix", "score": "warn",
+   "description": "`client operation` with malformed --request JSON returns `INTERNAL_ERROR` carrying the raw SyntaxError text; with --request omitted it returns `FORBIDDEN: This operation is not available to board credentials`. The standalone `pardner operation` handles the same mistake with `INVALID_ARGUMENT: --request must be valid JSON`.",
+   "expected": "`INVALID_ARGUMENT: --request must be valid JSON` and `INVALID_ARGUMENT: Supply --request`.",
+   "actual": "INTERNAL_ERROR (looks like a crash) and a misleading permission error.",
+   "screenshot": "cli.log", "suggested_fix": "Parse --request with the same guarded helper cli.js uses and require it explicitly.",
+   "files_likely_involved": ["lib/client-cli.js"]},
+  {"id": "F-128-02", "story_id": "STORY-128", "severity": "low", "category": "consistency", "criterion": "Labels are human readable", "score": "warn",
+   "description": "History and Activity describe issue links as 'Setup agent recorded task.link-issue on this task', exposing the raw operation type and omitting which issue.",
+   "expected": "'Setup agent linked ledgerline/billing#412'.",
+   "actual": "'recorded task.link-issue'.",
+   "screenshot": "screenshots/step-2-panel-scrolled.png", "suggested_fix": "Add a sentence formatter for task.link-issue / task.unlink-issue events.",
+   "files_likely_involved": ["ui-prototype/src/activity-format.js", "ui-prototype/src/Activity.jsx"]}
+]

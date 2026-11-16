@@ -1,0 +1,68 @@
+[
+ {
+  "id": "F-002-01",
+  "story_id": "STORY-002",
+  "severity": "medium",
+  "category": "error-handling",
+  "criterion": "Feedback: clear success/error indication",
+  "score": "warn",
+  "description": "`pardner open --http-port 9000` (and `client open --http-port 9000`) on an already-running client succeeds silently and keeps the old port.",
+  "expected": "A warning such as \"Pardner is already running on 52178; --http-port takes effect after pardner client stop\", or a non-success result.",
+  "actual": "{\"success\":true,\"localUrl\":\"http://127.0.0.1:52178/pardner/\",\"launchIssued\":true}; nothing listens on 9000.",
+  "screenshot": "",
+  "suggested_fix": "In ensureRunning, when the probe is `running` and --http-port differs from the running port, include a `warning` field (or fail with a PORT_MISMATCH code).",
+  "files_likely_involved": [
+   "lib/client-cli.js"
+  ]
+ },
+ {
+  "id": "F-002-02",
+  "story_id": "STORY-002",
+  "severity": "medium",
+  "category": "error-handling",
+  "criterion": "Error messages: specific, actionable, non-technical",
+  "score": "warn",
+  "description": "Opening the client at http://localhost:PORT/pardner/ (instead of 127.0.0.1) shows raw JSON in the browser.",
+  "expected": "A short HTML page naming the configured address, e.g. \"Open Pardner at http://127.0.0.1:52178/pardner/\" with a link.",
+  "actual": "{\"code\":\"ORIGIN_REJECTED\",\"error\":\"Open the configured client address\"} as a 403 JSON document; the address is not named.",
+  "screenshot": "screenshots/edge-localhost.png",
+  "suggested_fix": "For HTML navigations (Accept: text/html) to /pardner/ with a rejected Host, return a minimal HTML page with the configured URL; include the URL in the JSON error too.",
+  "files_likely_involved": [
+   "lib/client-service.js"
+  ]
+ },
+ {
+  "id": "F-002-03",
+  "story_id": "STORY-002",
+  "severity": "low",
+  "category": "layout",
+  "criterion": "Scroll necessity: no unnecessary scrolling for primary task",
+  "score": "warn",
+  "description": "At 390x844 the header wraps to three rows and the three filter selects stack full width, pushing the first task card to ~490px.",
+  "expected": "Tasks visible in the first half of a phone-width viewport; filters collapsed behind one control.",
+  "actual": "Header + tabs + three stacked filters occupy the top ~490px.",
+  "screenshot": "screenshots/mobile-check.png",
+  "suggested_fix": "Collapse the filter row behind a single Filters button below a breakpoint.",
+  "files_likely_involved": [
+   "ui-prototype/src/Pardner.jsx",
+   "ui-prototype/src/styles.css"
+  ]
+ },
+ {
+  "id": "F-002-04",
+  "story_id": "STORY-002",
+  "severity": "low",
+  "category": "happy-path",
+  "criterion": "Labels/copy: self-explanatory",
+  "score": "warn",
+  "description": "With no --harness/--name flags, the client registers a default setup agent (client status shows setupAgent {harnessId:\"openai-codex\", name:\"Setup agent\"}); it appears on the board as avatar \"SA\" and filter option \"Setup agent · agent\", and the Welcome copy says \"Setup agent (Codex) is registered as your agent\" even if no Codex agent set anything up.",
+  "expected": "No setup agent unless one was named, or the default is explained and easy to rename/remove.",
+  "actual": "A generic \"Setup agent\" Codex Actor is present on every project.",
+  "screenshot": "screenshots/step-3-new-tab-board.png",
+  "suggested_fix": "Omit the setup-agent Actor when no setup agent metadata was given, or label it with its origin.",
+  "files_likely_involved": [
+   "lib/client-projects.js",
+   "lib/client-service.js"
+  ]
+ }
+]

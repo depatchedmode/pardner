@@ -1,0 +1,14 @@
+[
+  {"id": "F-134-01", "story_id": "STORY-134", "severity": "low", "category": "error-handling", "criterion": "Error codes distinguish usage from outage", "score": "warn",
+   "description": "Every control `cli` refusal, including usage mistakes such as a protected flag, an unknown harness or a lifecycle command, is coded `CONTROL_RUNTIME_UNAVAILABLE`, the same code an agent would see when the service is down.",
+   "expected": "Usage refusals use INVALID_ARGUMENT/FORBIDDEN; CONTROL_RUNTIME_UNAVAILABLE is reserved for an unverifiable or stopped service.",
+   "actual": "One code for all failures.",
+   "screenshot": "cli.log", "suggested_fix": "Give ControlError a code and map guard refusals to INVALID_ARGUMENT.",
+   "files_likely_involved": ["scripts/control-runtime.py"]},
+  {"id": "F-134-02", "story_id": "STORY-134", "severity": "low", "category": "error-handling", "criterion": "Errors name the cause", "score": "warn",
+   "description": "Running `control` in a directory that is not an installation (no config.json) prints `Control runtime: [Errno 2] No such file or directory: '…/config.json'` (and the same raw text inside the cli JSON envelope).",
+   "expected": "'This is not a Pardner control installation (no config.json in HOME); set PARDNER_CONTROL_HOME or run from the installation'.",
+   "actual": "Raw Python OSError text.",
+   "screenshot": "cli.log", "suggested_fix": "Catch FileNotFoundError for config.json in Controller.__init__ and raise a ControlError with guidance.",
+   "files_likely_involved": ["scripts/control-runtime.py"]}
+]

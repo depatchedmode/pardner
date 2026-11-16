@@ -1,5 +1,7 @@
 # UX Visual Problem Register — 2026-11-07
 
+> **Retired story IDs.** STORY numbers in this record refer to the retired 2026-11-07 catalog. The current [catalog](../ux-paths/catalog.md) was regenerated for client mode on 2026-11-09 and uses different numbering.
+
 > **Evidence archived.** Screenshots, per-story and per-page reports from this run were moved out of the repository; the findings below stand on their own text, and filed issues carry the details.
 
 Built from the six page audits (archived outside the repository) (121 findings: 0 P0, 27 P1, 64 P2, 30 P3). Single reviewer per page; second opinions skipped (no `OPENROUTER_API_KEY`).

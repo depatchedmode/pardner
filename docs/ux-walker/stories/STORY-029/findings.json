@@ -1,0 +1,3 @@
+[
+  {"id":"F-029-01","story_id":"STORY-029","severity":"low","category":"hierarchy","criterion":"Information stated once","score":"warn","description":"The current project's switcher entry repeats \"Saved locally · synced\", which the header already shows next to New task; the two can disagree because the switcher copy is captured at session refresh (see F-028-03, F-030-03).","expected":"The current project's row omits the sync detail or reads it live.","actual":"Same status shown twice, from two different sources.","screenshot":"screenshots/step-1-menu-open.png","suggested_fix":"Drop the sync line from the checked item, or feed all items from the live project poll.","files_likely_involved":["ui-prototype/src/ClientApp.jsx"]}
+]

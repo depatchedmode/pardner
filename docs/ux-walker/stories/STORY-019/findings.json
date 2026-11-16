@@ -1,0 +1,23 @@
+[
+  {"id":"F-019-01","story_id":"STORY-019","severity":"medium","category":"error-handling","criterion":"Error messages: specific, actionable","score":"fail",
+   "description":"When another tab (or the CLI) already confirmed an identity with different values, Continue shows the raw IDENTITY_EXISTS message \"Identity already initialized; linking requires My device\" with no hint. It points to device linking, which is irrelevant, and does not offer the real fix (reload/continue as the saved identity).",
+   "expected":"\"You already confirmed your identity as Owen B. in another tab.\" with a button to continue as that identity (re-reading /session).",
+   "actual":"Raw message; the identity form and Continue stay in place and fail again if clicked.",
+   "screenshot":"screenshots/step-2-tabB-identity-exists.png",
+   "suggested_fix":"On IDENTITY_EXISTS, refresh /session and move to Welcome, showing a notice naming the saved identity; add a JOIN_HINTS-style entry.",
+   "files_likely_involved":["ui-prototype/src/ClientApp.jsx","lib/client-service.js"]},
+  {"id":"F-019-02","story_id":"STORY-019","severity":"low","category":"flow","criterion":"Feedback / cross-tab state","score":"warn",
+   "description":"A second open tab does not notice that the identity was confirmed elsewhere; it keeps showing the identity form until it is reloaded.",
+   "expected":"Tabs re-read /session on focus or visibilitychange (or via a BroadcastChannel) and advance automatically.",
+   "actual":"Tab B stays on Welcome to Pardner until a manual reload.",
+   "screenshot":"screenshots/step-2a-tabB-before.png",
+   "suggested_fix":"Re-fetch the session on window focus while on the identity step.",
+   "files_likely_involved":["ui-prototype/src/ClientApp.jsx"]},
+  {"id":"F-019-03","story_id":"STORY-019","severity":"suggestion","category":"visual","criterion":"Copy polish","score":"warn",
+   "description":"The Start form sentence appends a period after the name, so a name ending in '.' renders as \"You join as Owen B..\"",
+   "expected":"\"You join as Owen B.\"",
+   "actual":"\"You join as Owen B..\"",
+   "screenshot":"screenshots/step-3-tabB-reloaded.png",
+   "suggested_fix":"Skip the trailing period when the name already ends with punctuation.",
+   "files_likely_involved":["ui-prototype/src/ClientApp.jsx"]}
+]

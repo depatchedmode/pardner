@@ -1,0 +1,20 @@
+[
+  {"id": "F-135-01", "story_id": "STORY-135", "severity": "low", "category": "error-handling", "criterion": "Error messages name the fix", "score": "warn",
+   "description": "On a standalone workspace that already has an Actor, `actors register tomas … --actor tomas` fails with `UNKNOWN_ACTOR: Unknown Actor: tomas`. Nothing says the author must be an existing Actor (only the first Actor may register itself).",
+   "expected": "'The author (--actor) must be a registered Actor; register tomas with --actor ci-bot'.",
+   "actual": "Bare UNKNOWN_ACTOR.",
+   "screenshot": "cli.log", "suggested_fix": "Special-case actor.register when the author is the Actor being registered and others exist; mention the bootstrap rule in help.",
+   "files_likely_involved": ["lib/workspace-schema.js", "lib/cli.js"]},
+  {"id": "F-135-02", "story_id": "STORY-135", "severity": "low", "category": "error-handling", "criterion": "Errors name the fix", "score": "warn",
+   "description": "Starting `pardner serve` while 8004 is taken returns a raw `EADDRINUSE: listen EADDRINUSE: address already in use 127.0.0.1:8004` after printing 'initialized' banner lines.",
+   "expected": "`PORT_IN_USE: 127.0.0.1:8004 is in use; pass --http-port or set PARDNER_HTTP_PORT`, before any 'ready' banner.",
+   "actual": "Raw Node error code.",
+   "screenshot": "cli.log", "suggested_fix": "Map EADDRINUSE to a PORT_IN_USE error with the override flag.",
+   "files_likely_involved": ["automerge-sync-server.js", "lib/cli.js"]},
+  {"id": "F-135-03", "story_id": "STORY-135", "severity": "suggestion", "category": "visual", "criterion": "Typography consistency", "score": "warn",
+   "description": "On the standalone service page the inline code `pardner open.` renders visibly smaller than the surrounding sentence and includes the full stop in the code style.",
+   "expected": "Inline code at a matching optical size; punctuation outside the code span.",
+   "actual": "Small mono text with the period inside.",
+   "screenshot": "screenshots/step-2-standalone-page.png", "suggested_fix": "Set code font-size to ~0.95em with matching line-height; move the period outside <code>.",
+   "files_likely_involved": ["ui-prototype/src/Pardner.jsx", "ui-prototype/src/styles.css"]}
+]

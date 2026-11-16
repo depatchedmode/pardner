@@ -1,0 +1,14 @@
+[
+  {"id": "F-133-01", "story_id": "STORY-133", "severity": "medium", "category": "happy-path", "criterion": "Documented command works as written", "score": "fail",
+   "description": "The help line `pardner bridge reconcile --config PATH --delivery ID --decision accepted|retry --evidence TEXT [--turn-id ID]` omits --token-file, but a client bridge's reconcile fails without it: `INVALID_ARGUMENT: Bridge configuration requires replicaId`. The story's own command (copied from the help) fails the same way.",
+   "expected": "Help lists `[--token-file FILE]` for reconcile, and the missing-flag error says to supply it.",
+   "actual": "Help omits it; error mentions an internal replicaId.",
+   "screenshot": "cli.log", "suggested_fix": "Add [--token-file FILE] to the reconcile help line and replace the replicaId message with a --token-file hint.",
+   "files_likely_involved": ["lib/cli.js", "lib/agent-bridge.js"]},
+  {"id": "F-133-02", "story_id": "STORY-133", "severity": "low", "category": "error-handling", "criterion": "Error accuracy", "score": "warn",
+   "description": "Reconciling a delivery ID that does not exist returns `INVALID_BRIDGE_STATE: Only uncertain dispatches can be reconciled`, implying the row exists in a different state.",
+   "expected": "`NOT_FOUND: No delivery dlv-nope in this bridge inbox`.",
+   "actual": "State error for a missing row.",
+   "screenshot": "cli.log", "suggested_fix": "Check existence before state in reconcile.",
+   "files_likely_involved": ["lib/agent-bridge.js"]}
+]

@@ -1,0 +1,20 @@
+[
+  {"id": "F-127-01", "story_id": "STORY-127", "severity": "low", "category": "error-handling", "criterion": "Error messages name the cause", "score": "warn",
+   "description": "A bare token file with no apiBase silently falls back to 127.0.0.1:8004. With nothing there the error is 'Could not reach sync server: fetch failed' (no URL). With a standalone service there the errors are 'AUTH_REQUIRED: Unauthorized' and 'ACTOR_REQUIRED', which blame the token or --actor instead of the missing --server.",
+   "expected": "'This token file has no apiBase; pass --server PROJECT_API_BASE or use the JSON from client agent-grant', or at least the URL tried in the error details.",
+   "actual": "Generic transport/auth errors with no URL.",
+   "screenshot": "cli.log", "suggested_fix": "When --token-file holds a bare token and --server is absent, refuse with a specific INVALID_ARGUMENT instead of falling back; otherwise include the resolved URL in errors.",
+   "files_likely_involved": ["lib/cli.js", "lib/sync-client.js"]},
+  {"id": "F-127-02", "story_id": "STORY-127", "severity": "low", "category": "error-handling", "criterion": "Copy fits the audience", "score": "warn",
+   "description": "An agent credential sent to the wrong client gets `AUTH_REQUIRED: Open Pardner through client open to authenticate`, copy written for people in a browser.",
+   "expected": "An agent-specific message: 'This credential is not valid on this client; request a fresh agent-grant'.",
+   "actual": "People-oriented advice that an agent cannot follow.",
+   "screenshot": "cli.log", "suggested_fix": "Distinguish bearer-token failures from browser-session failures in client-auth.",
+   "files_likely_involved": ["lib/client-auth.js"]},
+  {"id": "F-127-03", "story_id": "STORY-127", "severity": "suggestion", "category": "error-handling", "criterion": "Silent acceptance of meaningless input", "score": "warn",
+   "description": "`--project ID` on a coordination command such as `tasks` is accepted and ignored; the result comes from the credential's project, whatever ID was passed.",
+   "expected": "Unknown option error, or a PROJECT_MISMATCH when it disagrees with the credential.",
+   "actual": "Silently ignored.",
+   "screenshot": "cli.log", "suggested_fix": "Reject --project outside client commands or validate it against the credential.",
+   "files_likely_involved": ["lib/cli.js"]}
+]

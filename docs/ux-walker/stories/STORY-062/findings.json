@@ -1,0 +1,3 @@
+[
+ {"id":"F-062-01","story_id":"STORY-062","severity":"low","category":"happy-path","criterion":"Recovery","score":"warn","description":"Discard draft wipes every field in one click with no confirmation and no undo, and sits directly beside Create task with similar size.","expected":"An undo affordance ('Draft discarded. Undo') or visual separation from the primary action.","actual":"Immediate irreversible reset.","screenshot":"screenshots/step-0.png","suggested_fix":"Show a short-lived 'Undo' notice after discard, or move Discard draft away from Create task and style it as a quiet text button.","files_likely_involved":["ui-prototype/src/Pardner.jsx"]}
+]

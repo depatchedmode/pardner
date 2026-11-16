@@ -1,0 +1,16 @@
+[
+ {"id":"F-093-01","story_id":"STORY-093","severity":"medium","category":"happy-path","criterion":"Feedback","score":"warn",
+  "description":"After the agent claims and acknowledges a mention, the human who mentioned it sees no change: the chip and comment look the same, and nothing says 'Setup agent picked this up' or 'acknowledged'. The reply comment is the only evidence.",
+  "expected":"The mention chip or comment footer reflects delivery state (pending, claimed, acknowledged).",
+  "actual":"No delivery state anywhere in the browser.",
+  "screenshot":"screenshots/step-10-marcus-sees-reply.png",
+  "suggested_fix":"Show per-mention state from model.mentions next to the comment (e.g. 'Setup agent · acknowledged 11:45').",
+  "files_likely_involved":["ui-prototype/src/Pardner.jsx","ui-prototype/src/mentions.js"]},
+ {"id":"F-093-02","story_id":"STORY-093","severity":"low","category":"flow","criterion":"Data re-entry / Step count","score":"warn",
+  "description":"`mentions pending` and `claim-next` return IDs and a digest but no comment text or task title, so the agent must `show` each task to triage. claim-next is strictly FIFO and claimed an older, unrelated mention first, which needed an extra ack and claim.",
+  "expected":"Pending items include the comment excerpt and task title; claim-next can optionally take a mention ID.",
+  "actual":"8 commands instead of the ideal 5.",
+  "screenshot":"screenshots/step-10-activity-comments.png",
+  "suggested_fix":"Include taskTitle and comment text in pending/claim output; add `mentions claim <id>`.",
+  "files_likely_involved":["lib/cli.js","lib/workspace-commands.js"]}
+]
