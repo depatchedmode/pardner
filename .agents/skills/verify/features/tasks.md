@@ -8,9 +8,9 @@ Reopen locally saved state after a service restart.
 
 ## How to get to it (user POV)
 
-Open `/pardner/`, expand **Connect with a local service token** (open by default
-on loopback), enter the token from the disposable instance's `connection.json`,
-press **Connect**, choose an **Actor**, then use **New task** or open a task. The
+Run `pardner client open --data <scratch dir> --output-file <file>` and open the
+one-time grant URL from that file (the signed-in person is the author; there is no
+Actor picker), start or join a project, then use **New task** or open a task. The
 CLI exposes `task create`, `show`, `update`, and `comment`; mutations need
 `--actor` (or `PARDNER_ACTOR`), `update` also needs the `--revisions` read from
 `show`, and retries reuse `--operation-id` and payload. The same ID with a
@@ -31,8 +31,8 @@ Run `node --test test/pardner-cli-workflow.test.js` for the fuller CLI workflow.
 `test/workspace-operations.test.js` (in `npm run test:runtime`) holds the
 in-process replay, stale-revision, and storage-failure cases.
 Run `node --test test/pardner-ui.test.js` after building UI for browser operations.
-The browser uses `getByLabel('Actor', { exact: true })`, **New task**, **Title**,
-**Create task**, **Comment**, **Add comment**, and **Retry saved request**. Its
+The browser opens through `withClientWorkspace` (`support/client-workspace.js`) and
+uses **New task**, **Title**, **Create task**, **Comment**, **Add comment**, and **Retry saved request**. Its
 lost-response case checks identical operation attempts and exactly one comment
 through CLI readback. Its stale-write case checks a preserved draft and an
 unchanged newer task value. Inspect the resulting UI for presentation changes.

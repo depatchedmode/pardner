@@ -24,7 +24,7 @@ browser JavaScript.
 | Shape | One local service, browser board, CLI | One local service, browser board, CLI |
 | Agent access | MCP over stdio or `/mcp` HTTP in the same process | Local service HTTP, CLI, opt-in Codex bridge; MCP is consumed for T3, not exposed |
 | Multi-machine | Live sharing from one host, or turn-taking through a private git repo | Automerge replicas relayed through a hub |
-| LAN | `kanzo share on` opens the board; `kanzo join <ip>` proxies a second machine to it | Companion LAN browsers against the host service |
+| LAN | `kanzo share on` opens the board; `kanzo join <ip>` proxies a second machine to it | No LAN browser; phone access is planned through the hub over HTTPS |
 | Identity | Comment author string, no actor model | Actor identity separate from replica identity |
 | Conflicts | SQLite file cannot merge; user picks `--keep-local` or `--keep-remote` | Different-field merges; authored same-field alternatives need explicit resolution |
 | Delivery | None; agents pull `next_task` | Delivery leases, durable receipt, hub ledger |
@@ -137,8 +137,8 @@ What to take:
 - **Change counter for polling.** Every write bumps one integer in a `meta`
   table through triggers. The board polls one tiny endpoint and only reloads
   when it changes. Pardner's browser gets live updates another way, but the
-  idea of one cheap "has anything changed" value is useful for companion
-  devices and for agents that want to wait without reading the document.
+  idea of one cheap "has anything changed" value is useful for phone
+  browsers and for agents that want to wait without reading the document.
 - **One lock file across sync.** Git sync takes an exclusive lock only while
   reading or replacing the database, never across the network or a commit.
   Pardner's persistence barrier already draws this boundary; it is worth
@@ -148,7 +148,7 @@ What to take:
   Pardner's conflict alternatives are stronger, but the wording is a model.
 - **Join state checked on every call.** A machine that joined another board
   forwards every MCP call to the host, and checks that state per call so
-  running agents switch without restarting. Pardner's companion browsers could
+  running agents switch without restarting. Pardner's planned phone access could
   use the same per-request check.
 - **Migrations never rewrite the shipped schema.** The first schema is frozen
   and later changes are numbered migrations; a failed migration after a pull

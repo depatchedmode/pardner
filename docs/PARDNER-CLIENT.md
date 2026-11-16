@@ -18,25 +18,36 @@ npm ci --prefix ui-prototype
 npm run ui:build
 ```
 
-An existing agent starts the service with its actual harness and name:
+Open Pardner with its setup agent's actual harness and name:
 
 ```sh
-node bin/pardner.js client serve --data .pardner-client \
-  --harness openai-codex --name Alpha --managed-by T3
+node bin/pardner.js open --harness openai-codex --name Alpha --managed-by T3
+```
+
+`pardner open` (or a bare `pardner`) reuses the client service already running for
+its data directory. If none answers, it starts a detached `client serve` with the
+same setup flags, waits up to 15 s, and logs to `client.log` (mode 0600) in that
+directory. The directory is the per-user `~/.pardner/client` unless you pass
+`--data DIR`; every client command accepts the same `--data`. A port that answers
+but is not this client reports `PORT_IN_USE`; nothing is stopped. Stop the
+service with `pardner client stop`, which uses the operator-only shutdown route on
+the loopback surface and waits until the directory is released. An agent or
+supervisor can still run the service in the foreground:
+
+```sh
+node bin/pardner.js client serve --harness openai-codex --name Alpha --managed-by T3
 ```
 
 Supported harness IDs are `openai-codex`, `anthropic-claude-code` and `cursor`.
 Supply `--model` when the agent knows its active model. T3 is management metadata,
-not an execution harness. In another terminal, open the remembered client:
+not an execution harness.
 
-```sh
-node bin/pardner.js client open --data .pardner-client
-```
-
-The command launches a short-lived, one-time browser link without printing its
+`open` launches a short-lived, one-time browser link without printing its
 credential. The UI clears the fragment and remembers an HttpOnly session cookie.
 If a platform has no supported browser launcher, `--output-file FILE` writes the
 private launch URL for the local operator. Normal command output has no grant.
+The local client is the only way people open the board; the standalone
+`pardner serve` is an agent and integration service and serves no board.
 
 Confirm the profile suggested by the local Git configuration. Git name and email
 are profile defaults, not proof of identity; Pardner generates the identity and
@@ -67,7 +78,7 @@ For an agent-managed join, save the invitation in a private file and use a stabl
 operation ID:
 
 ```sh
-node bin/pardner.js client join --data .pardner-client \
+node bin/pardner.js client join \
   --invitation-file /path/to/private-invitation --operation-id join-shared-board
 ```
 
@@ -113,7 +124,11 @@ The authenticated session determines the author. Assignment and board filters
 do not change who is acting. An agent can obtain a project-bound API credential
 through the local operator's `client agent-grant --project ID --output-file FILE`.
 Keep that file private; it is distinct from the operator credential and native
-replica admission. The [API contract](PARDNER-ONBOARDING-CONTRACT.md#browserserver-contract)
+replica admission. Coordination commands use it with `pardner --token-file FILE
+task create …` (or `mentions pending`, `show`, …): the token stays out of
+arguments, `--server` defaults to the file's `apiBase`, and the agent is the
+author without `--actor`. A file holding only the token works with an explicit
+`--server PROJECT_API_BASE`. The [API contract](PARDNER-ONBOARDING-CONTRACT.md#browserserver-contract)
 documents operation, session, report and end routes.
 
 An avatar shows identity, human/agent kind and active, idle or offline presence.
@@ -130,10 +145,15 @@ agent remains the responsibility of its external app or harness.
 
 Local client HTTP listens on numeric loopback. Other machines need an explicitly
 configured reachable HTTPS gateway, supplied with `client serve --public-url`.
-An invitation containing a loopback address works only on the originating
-machine. The option does not provision a relay, publish the client or establish
+Plain HTTP is accepted there only for a loopback origin (`http://127.0.0.1:<port>`
+or `http://localhost:<port>`), such as a relay on the same machine or the
+acceptance network gate; any other origin must be HTTPS. An invitation
+containing a loopback address works only on the originating machine. The option does not provision a relay, publish the client or establish
 network reachability. Keep the browser/operator surface private and route only
 the intended enrollment and authenticated replica endpoints.
+
+Phone access is not currently offered: the board is served only on this
+computer's loopback. It is planned through the hub over HTTPS.
 
 A reachable private network can provide a direct route to the project authority;
 an HTTPS relay can connect unrelated networks. Automatic discovery, NAT
@@ -147,9 +167,25 @@ save acknowledgement follows the existing disk barrier; synchronization requires
 the hub's acknowledgement. An outage is any failure that is not an explicit hub
 decision: an unreachable address, a gateway error page, a non-JSON body or a hub
 5xx (including `SERVICE_STOPPING`) all count. Only an explicit `AUTH_REQUIRED` or
-`REVOKED` answer revokes local membership. Each local save on a replica still
-waits for one admission check against the hub, bounded by a 3 s timeout; moving
-that check off the write path is follow-up work. A project runtime that fails
+`REVOKED` answer revokes local membership.
+
+Before a local save on a replica, the client confirms with the hub that the
+writing Actor is still admitted (`/policy`, bounded by a 3 s timeout). A positive
+answer is reused for 10 s per project and Actor; each reuse starts at most one
+background check, so a slow hub does not hold up the save. Once that answer is
+older than 10 s the save waits for a fresh check, except while the project
+runtime reports the hub disconnected: then the last positive answer stands and
+the save is not delayed. With no earlier positive answer the hub is asked as
+before, and an outage still allows the local save. The window this opens is
+bounded: a revocation is enforced from the first check that observes it, which
+for an Actor writing continuously is the next background check, and otherwise is
+at most 10 s after the last positive answer while the hub is reachable. A write
+accepted in that window is saved locally but its Actor's synchronization still
+depends on the hub, which checks the device credential on every sync and
+delivery call. Revoking from this computer clears the cached answers for that
+project, and issuing an agent credential (`agent-grant`) always checks the hub.
+
+A project runtime that fails
 to start is reported as `LOCAL_SERVICE_UNAVAILABLE` and is not restarted again
 for 5 s, so polling cannot fork it repeatedly; a runtime that crashes after
 starting is restarted on the next authenticated request. Native replicas remain

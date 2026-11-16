@@ -53,7 +53,7 @@ These are live links, not an archived Vespin source snapshot.
 | Concurrent edits | Server merges plan edits and prompts on conflicting lines | Different-field merges and authored same-field alternatives across replicas |
 | Agent integration | Built-in orchestration, agent messaging, Claude Code and Codex | Shared CLI/HTTP operation API; opt-in dedicated Codex App Server bridge |
 | Review | In-app PR diffs, chapters, and comments on agent-created pages | Task history, commit evidence, comments, and review handoffs |
-| Phone use | Web inbox and decisions in place | Companion LAN browser against a running host service |
+| Phone use | Web inbox and decisions in place | None currently; planned through the hub over HTTPS |
 
 ## Lessons worth adopting
 
@@ -139,8 +139,9 @@ What to take:
   screen, including after a lost response or reconnect.
 - Validate the whole journey on the supported browsers and a physical phone.
 
-This would build on the existing LAN companion. It would not make the phone an
-offline replica or establish access from outside the supported host network.
+Pardner currently offers no phone access; this would build on the planned phone
+access through the hub over HTTPS. It would not make the phone an offline
+replica.
 
 ### 6. Make interaction rules concrete and reviewable
 
@@ -153,7 +154,7 @@ What to take:
 - Define consistent wording and behavior for local save, pending sync,
   delivery, conflicts, handoffs, and failed operations.
 - Use shared controls and semantic styles so a request behaves consistently
-  in a task, an inbox, and a companion browser.
+  in a task, an inbox, and a phone browser.
 - Preserve drafts, focus, and useful context through failures and navigation.
 - Verify keyboard and narrow-screen behavior as part of each complete flow.
 
@@ -168,9 +169,9 @@ documented workspace storage is hosted, and its plan-conflict handling does
 not establish equivalent disconnected-replica operation.
 
 The boundary matters: Pardner needs the hub for enrollment and new delivery
-leases. Accepted work can continue through a reachable local service. A
-companion browser has no separate Automerge database. See the
-[service guide](PARDNER-CLI.md) and [LAN guide](PARDNER-LAN.md).
+leases. Accepted work can continue through a reachable local service. The
+browser has no separate Automerge database. See the
+[service guide](PARDNER-CLI.md).
 
 ### Goals, competing approaches, and meaningful negative outcomes
 
@@ -236,7 +237,7 @@ exactly-once external effects.
    handoffs, comments, and evidence, preserving the current operation contract.
 4. Exercise disconnect/restart, lost answer responses, duplicate retries, and
    a busy or unavailable requesting agent. Confirm saved, delivered, and acted-on
-   states cannot be confused. Include companion-browser and physical-phone checks.
+   states cannot be confused. Include phone-browser and physical-phone checks.
 5. Make goals and veins easier to understand at handoff: what outcome is sought,
    which approach is being tried, and what evidence supports its current verdict.
 

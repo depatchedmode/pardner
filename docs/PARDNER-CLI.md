@@ -6,11 +6,22 @@ agent Actors author through the same local HTTP operations. See the
 
 ## Open the local UI
 
-For the new Start/Join flow and session-bound authorship, use the
-[local client preview](PARDNER-CLIENT.md): `pardner client serve` followed by
-`pardner client open`. It opens without manually entering an API key and keeps
-each project in a separate local runtime. The standalone instructions below
-remain available for existing workspaces.
+People open Pardner with `pardner` (or `pardner open`). It uses the
+[local client](PARDNER-CLIENT.md) in the per-user directory `~/.pardner/client`
+(override with `--data`). If no client service answers there, it starts
+`pardner client serve` in the background, logging to `client.log` (mode 0600) in
+that directory, waits up to 15 seconds for it, and then signs the browser in
+through a one-time link. `--output-file FILE` writes the private launch URL
+instead of launching a browser. Serve flags such as `--http-port` and `--harness`
+are passed to a service it starts. If the recorded port answers but rejects the
+client's operator token, it reports `PORT_IN_USE` and stops nothing. If a started
+service exits, it reports the service's error, such as `STORAGE_IN_USE`.
+
+`pardner client status` reports the running client. `pardner client stop` asks it
+to shut down with the local operator token (browser sessions cannot) and waits
+until it releases its data directory. Each project runs in a separate local
+runtime. The standalone `pardner serve` instructions below are for agents and
+integrations.
 
 The client also supports `show --project ID`, `revoke --project ID --kind
 device|agent|member --id ID --operation-id ID`, and `export --project ID
@@ -18,30 +29,24 @@ device|agent|member --id ID --operation-id ID`, and `export --project ID
 cold backups, fresh-install restoration and authority replacement. A content
 export does not replace the private registry and replica backup.
 
-Build the browser client with `npm ci --prefix ui-prototype` and `npm run ui:build`.
-Start the local service, then open its HTTP address at `/pardner/` (normally
-`http://127.0.0.1:8004/pardner/`). Enter the token from the local connection file
-and select the human or agent Actor making changes. The token is remembered in
-browser local storage without application expiry; no token is compiled into the
-application. Actor selection and filters are remembered by workspace.
+Build the browser client with `npm ci --prefix ui-prototype` and `npm run ui:build`
+before opening it. The board is signed in by the client session: the signed-in
+Actor authors every change, and filters are remembered per project and Actor. No
+token is entered in or compiled into the browser. The standalone service's
+`/pardner/` page serves no board; it points people to `pardner open`.
 
-For a companion device on the same trusted network, use **Pair another device**
-on the desktop. Enable LAN access, restart with the same data directory, then scan the displayed
-QR code to pair automatically, or use the address and code to connect manually.
-See [companion device and LAN access](PARDNER-LAN.md)
-for HTTP transport limitations, secret rotation, disabling access, and recovery.
+Phone access is not currently offered; it is planned through the hub over HTTPS.
 
 The board, task editor, handoff form, comments, conflict alternatives, explicit
 read receipts, history, and commit evidence use the same operation API as the CLI.
-The browser owns no Automerge database; the local service persists and synchronizes
-its workspace. Keep that service running for local authoring.
+The browser owns no Automerge database; the client's project runtime persists and
+synchronizes its workspace. Keep the client running for local authoring.
 
-`npm run test:ui` builds the UI and tests independent Chromium contexts, mobile
-Chromium/WebKit over LAN HTTP, connection failures, and a local WebSocket proxy.
-Install pinned engines with `npx playwright install chromium webkit` after
-installing root dependencies. LAN cases explicitly skip when no suitable IPv4
-interface exists. Physical phones and the full multi-replica gate are separate
-qualification steps.
+`npm run test:ui` builds the UI and tests client-mode boards in independent
+Chromium and WebKit contexts, connection failures and the session-bound
+connection. Install pinned engines with `npx playwright install chromium webkit`
+after installing root dependencies. The full multi-replica gate is a separate
+qualification step.
 
 ## Start a workspace
 

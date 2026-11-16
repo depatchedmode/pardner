@@ -12,8 +12,11 @@ now has a separate [Cloud adapter](PARDNER-CURSOR-CLOUD.md) with live dispatch d
 
 ## Use it
 
-Open the board on the service computer through its loopback address, choose an
-Actor, then choose **Control**. Control settings need that loopback page.
+On the computer running your Pardner client, run `pardner open` (or
+`control open` for the [pinned control runtime](PARDNER-CONTROL-RUNTIME.md)), then
+choose **Control**. You act as yourself; there is no Actor to choose. Control is
+offered only to people on this computer's loopback page; agent credentials and
+other devices are refused.
 
 1. **Pair T3.** Run `t3 auth pairing create`, then enter the T3 address and code.
    Pardner pairs one `approval-required` credential and keeps it in
@@ -117,24 +120,30 @@ the evidence is stored with the review.
 
 | Action | Needs |
 | --- | --- |
-| Pair T3, register projects, map threads, change authorization, release holds, resolve unknown outcomes | The local loopback page (`LOCAL_ADMIN_REQUIRED` otherwise) |
-| Queue follow-ups, cancel, look up an unknown request, record artifacts and verdicts | The workspace token, plus the route's Actor, task and sender check for dispatch |
+| Every control action | A person signed in to the local client on this computer's loopback page (browser session or the local operator). Agent credentials get `FORBIDDEN` |
+| Pair T3, register projects, map threads, change authorization, release holds, resolve unknown outcomes | The same; the client's project runtime treats a proxied call as local administration |
+| Queue follow-ups, cancel, look up an unknown request, record artifacts and verdicts | The same, plus the route's Actor, task and sender check for dispatch |
 
 Dispatch is authorized before anything is saved, so a wrong Actor, task, sender or
 thread leaves no record and makes no T3 call. Revoking a task leaves its queued work
 queued rather than sending it.
 
-These checks rest on the Actor the request names, like every workspace operation
-under shared-secret admission. Anyone holding the workspace token, including a
-paired companion device, can queue work as an authorized sender, cancel runs, and
-record a verdict as any human Actor. The human-Actor and independent-checker rules
-keep the records consistent. They do not authenticate the person.
+The client decides who reaches control and binds the caller: a route's caller
+field (`fromActorId`, or `actorId` for artifacts and verdicts) is filled in with
+the signed-in person's Actor, and a request naming someone else is refused with
+`ACTOR_MISMATCH`, never rewritten. On the mapping and dispatch routes `actorId`
+names the agent being mapped or dispatched to, not the caller. The human-Actor and
+independent-checker rules keep the records consistent; anyone signed in to this
+computer's client acts as its person.
 
 ## API
 
-All paths need the workspace token. `GET /pardner/control` returns the full view. Each
+The client serves these routes under
+`/pardner/client/v1/projects/PROJECT_ID/api`, and only to that signed-in person.
+`GET /pardner/control` returns the full view. Each
 `POST` below returns `{ success, result }` or `{ success: false, code, error }`.
 T3 failures use `T3_REJECTED` (502, with `t3Code`), `T3_BUSY` (503) or `T3_UNKNOWN` (504).
+Unlisted control paths are refused with `FORBIDDEN`.
 
 | Path | Body |
 | --- | --- |
@@ -155,7 +164,7 @@ T3 failures use `T3_REJECTED` (502, with `t3Code`), `T3_BUSY` (503) or `T3_UNKNO
 
 | Dependency | Required for | When unavailable |
 | --- | --- | --- |
-| Local Pardner service | Everything here | The browser shows nothing new; records are kept on disk |
+| Local Pardner client | Everything here | The browser shows nothing new; records are kept on disk |
 | T3 | Submission, reads, cancellation, approvals | Intent stays queued, reads are labeled stale with the error, and nothing is resubmitted. After T3 restarts, the existing holds and reconciliation rules apply |
 | GitHub | Nothing | Issue links are references only and keep working |
 | Hub | Synchronizing issue links to other replicas | Links save locally and sync later; control records never sync |

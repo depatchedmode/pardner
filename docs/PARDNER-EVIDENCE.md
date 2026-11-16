@@ -1,5 +1,11 @@
 # Pardner implementation evidence
 
+> **Superseded browser entry.** The standalone browser connection screen (local
+> service token, pairing code, Actor picker, Pair another device and Forget this
+> workspace) described or exercised here was removed; people open the board with
+> `pardner open` ([client guide](PARDNER-CLIENT.md)); phone access is not
+> currently offered and is planned through the hub over HTTPS. The evidence below is unchanged.
+
 This records completed checks, not milestone completion. The accepted goal remains
 the full local-first human/agent workflow, public UI/CLI acceptance, 20 seeded
 acceptance runs, and a prepared two-machine rehearsal. No acceptance gate may be
@@ -60,7 +66,7 @@ operations still use tab storage, scoped to workspace identity.
   delivery/host-contention explanation, but does not establish the phone's cause.
   Device/browser identity and physical restart/reconnect confirmation remain
   outstanding. The procedure
-  is in [companion device and LAN access](PARDNER-LAN.md#verification-and-physical-phone-rehearsal).
+  was in the companion device and LAN access guide, since removed.
 
 ## Persistence and CRDT qualification — 2026-09-04
 

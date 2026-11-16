@@ -40,13 +40,19 @@ Plans in agent-assisted work are hypotheses, not blueprints. Pardner's vocabular
 
 The [local client onboarding preview](docs/PARDNER-CLIENT.md) adds a private
 identity and project registry, isolated project runtimes, Start/Join, purpose-specific
-invitations and authenticated Actor sessions. `pardner client open` signs the local
-browser in through a one-time link. Git supplies profile defaults; the session
+invitations and authenticated Actor sessions. `pardner open` (or a bare `pardner`)
+starts the client service when it is not running and signs the local browser in
+through a one-time link, with no token screen or Actor picker. Git supplies profile defaults; the session
 determines authorship. The browser can switch projects and show reported Actor
 presence. This preview does not migrate existing standalone installations.
+The local client is the only way people open the board, and it listens on this
+computer's loopback only. Phone access is not currently offered; it is planned
+through the hub over HTTPS.
 
-In standalone mode, Pardner runs one local service per machine. Human and agent Actors use the same
-workspace and attributed operation API, through the browser or `pardner` CLI.
+The standalone service (`pardner serve`) is an agent and integration service: one
+local service per machine whose attributed operation API agents and integrations use
+through the `pardner` CLI. Its `/pardner/` page serves no board; it points people to
+`pardner open`.
 Each service owns a persisted Automerge replica; a hub relays changes and owns a
 transactional SQLite delivery ledger. Actor identity is separate from replica
 identity, so the same Actor can work from more than one machine.
@@ -62,14 +68,14 @@ Different-field edits merge; same-field alternatives retain their authors and
 require explicit resolution. A synced indicator requires an explicit hub
 persistence acknowledgement covering the displayed document heads.
 
-The task board is served locally at `/pardner/`. Standalone mode supports explicit Actor
-selection, full task context, revision-aware edits, atomic handoffs, comments,
-read receipts, conflict alternatives, history, and commit evidence. Credentials
-are entered at runtime and remembered in browser local storage without application expiry. The browser owns
-no separate Automerge database. Task descriptions and comments support Markdown,
+The local client serves the task board at `/pardner/`: full task context,
+revision-aware edits, atomic handoffs, comments, read receipts, conflict
+alternatives, history, and commit evidence, authored by the signed-in Actor. The
+browser authenticates with an HttpOnly session cookie and owns no separate
+Automerge database. Task descriptions and comments support Markdown,
 but images are displayed as alt text to prevent automatic tracking requests.
-The browser image policy permits only same-origin assets and data images (including
-pairing QR codes), and outgoing links do not send a referrer.
+The browser image policy permits only same-origin assets and data images, and
+outgoing links do not send a referrer.
 
 Agent harnesses claim mentions through their local service, which forwards lease
 requests to the hub. They must durably receive a message before acknowledging it.
@@ -80,11 +86,13 @@ side effects still require harness-level idempotency.
 An opt-in [local agent bridge](docs/PARDNER-BRIDGE.md) can receive deliveries
 durably and wake explicitly authorized, dedicated Codex App Server sessions.
 It queues busy work and reconciles uncertain dispatch without model polling.
+It attaches to a standalone service or, with an agent credential from
+`client agent-grant`, to one agent Actor of a client project.
 Real co-host rehearsals cover handoff and archive recovery; other adapters and
 separate-machine qualification remain follow-up work.
 
 The board's **Control** view is a [project control pane](docs/PARDNER-CONTROL-PANE.md)
-for development through T3 Code. It maps existing T3 threads to agent Actors with
+for development through T3 Code, available to people on this computer. It maps existing T3 threads to agent Actors with
 explicit task and sender authorization, saves follow-ups before sending them one at
 a time, and keeps intent, run identity, holds, output and verdicts on this host across
 restarts. Execution completion, an independent check and human acceptance are
@@ -105,14 +113,12 @@ Use Node **24.11.1**. From this checkout:
 npm ci
 npm ci --prefix ui-prototype
 npm run ui:build
-node bin/pardner.js client serve --data .pardner-client --harness openai-codex --name Alpha
+node bin/pardner.js open --harness openai-codex --name Alpha
 ```
 
-In another terminal, open the client:
-
-```sh
-node bin/pardner.js client open --data .pardner-client
-```
+`pardner open` (or a bare `pardner`) starts your local client service in the
+background if it is not already running, using `~/.pardner/client` unless you pass
+`--data`, and opens the board in your browser. `pardner client stop` stops it.
 
 Confirm your Git-derived profile, then start or join a project. Use the actual
 setup agent's harness and name; the example registers Alpha as a Codex Actor.
@@ -125,7 +131,8 @@ real-human/real-agent acceptance flow.
 
 ### Standalone service
 
-The existing service and explicit Actor-selection workflow remain available:
+The standalone service is for agents and integrations; people use `pardner open`.
+Agents and scripts name their Actor explicitly on each command:
 
 ```sh
 node bin/pardner.js serve --data .pardner
@@ -140,17 +147,9 @@ node bin/pardner.js task create --title 'Coordinate our first task' --assignee b
 node bin/pardner.js tasks --assignee builder --json
 ```
 
-Open `http://127.0.0.1:8004/pardner/`, enter the token from
-`.pardner/connection.json`, and choose an Actor. The service generates that file
-with mode 0600. Install the package to expose `pardner` directly on PATH; `npm run
-sync` also starts the local service.
-
-For a companion device on the same trusted network, choose **Pair another device**
-on the desktop, enable LAN access, restart the service, then scan the QR code to pair
-automatically. You can also use the address and one-time code to connect manually.
-Use the assignee and status filters to find review tasks.
-See [companion device and LAN access](docs/PARDNER-LAN.md) for setup, transport,
-credential lifecycle, and recovery. Loopback-only defaults remain unchanged.
+The service writes its credentials to `.pardner/connection.json` (mode 0600) for the
+CLI and integrations. Install the package to expose `pardner` directly on PATH; `npm
+run sync` also starts the local service.
 
 For another machine, enroll a fresh replica with `pardner serve --role replica
 --hub URL --hub-ws URL --hub-token TOKEN`. The hub must be reachable for enrollment;
@@ -160,13 +159,17 @@ See the [service and CLI guide](docs/PARDNER-CLI.md) for complete examples.
 
 ## UI development
 
-Run `npm run dev --prefix ui-prototype` and open
-`http://127.0.0.1:5174/pardner/`. The development server is loopback-only and
+Run `pardner client open --data DIR --output-file FILE` to start a local client
+(its URL is in `DIR/client-connection.json`), then
+`PARDNER_CLIENT_URL=<that URL> npm run dev --prefix ui-prototype`. Open the one-time
+grant from `FILE` with its origin replaced by `http://127.0.0.1:5174` within a
+minute. The dev server proxies `/pardner/config` and `/pardner/client/` to the
+client and presents the client's Origin and Host only for its own page, so the
+origin-bound grant, session cookie and socket tickets work. It is loopback-only and
 serves files only from `ui-prototype`; workspace state in `.pardner` is denied.
 Keep runtime data outside `ui-prototype`, including its `public` directory.
-Do not expose this development server with `--host`: its API and WebSocket
-proxies reach the local service. For companion devices, use the built UI and
-the service's explicit LAN access flow described above.
+Do not expose this development server with `--host`: its proxy reaches your
+client session.
 
 ## Coordination commands
 
@@ -186,6 +189,9 @@ the service's explicit LAN access flow described above.
 | Record a vein's verdict | `pardner vein update VEIN --status proven --revisions JSON --actor alice` |
 | Goals and their veins | `pardner goals --json`, `pardner goal show GOAL --json` |
 
+An agent Actor of a client project runs the same commands with
+`--token-file FILE` (the credential from `client agent-grant`) instead of `--actor`;
+see the [client guide](docs/PARDNER-CLIENT.md#actors-and-presence).
 Writes require an Actor and field edits require the revisions returned by `show`.
 Use the same request operation ID and identical payload to retry an uncertain write.
 Receipts expose this retry key as `requestId` and a derived `operationId` for history

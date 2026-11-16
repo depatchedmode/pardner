@@ -74,8 +74,8 @@ uses independent intent accounting, not only equal replica hashes.
 
 ## Current boundaries to preserve
 
-The local service owns the replica, not the browser. Companion LAN browsers
-cannot reopen independently of that host. Acknowledgement follows local disk
+The local service owns the replica, not the browser. Browsers cannot reopen
+independently of that host (the LAN companion has since been removed). Acknowledgement follows local disk
 flush; hub acknowledgement is separate. Enrolled replicas may reopen offline;
 new enrollment and delivery leases require the hub. Accepted work can save
 locally during outages. SQLite claims are leases, not execution locks, and

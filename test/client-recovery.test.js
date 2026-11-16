@@ -140,6 +140,13 @@ test('a surviving owned device revokes a lost device while its retained work rem
     assert.equal(revoked.revoked, true)
     const again = await spare.cli(['revoke', '--project', project.id, '--kind', 'device', '--id', bobIdentity.device.id, '--operation-id', 'lost-device'])
     assert.deepEqual(again, revoked)
+    // The lost laptop learns of a revocation made elsewhere from its next hub check. A write inside the 10 s admission
+    // cache window may still save locally (the hub no longer synchronizes it); the background check it starts revokes.
+    const windowed = await fetch(bob.client.url + base + path + '/operations', { method: 'POST',
+      headers: { Authorization: `Bearer ${bob.connection.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'task.create', operationId: 'inside-cache-window', payload: { title: 'Saved only locally' } }) })
+    assert.ok([200, 403].includes(windowed.status), `${windowed.status}`)
+    await Promise.allSettled([...bob.client.admissionRefreshes.values()])
     const denied = await bob.api(path + '/operations', { type: 'task.create', operationId: 'after-loss', payload: { title: 'Must not save' } }, { expected: 403 })
     assert.equal(denied.code, 'REVOKED')
     const exportFile = join(root, 'revoked-content.json')

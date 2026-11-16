@@ -12,8 +12,9 @@ Use `pardner vein create --title ... --goal ...`, `vein add`, `vein remove`,
 `vein show`, `goal show`, and their `update`/`resolve` commands. `tasks --vein`,
 `veins --goal`, and `goals --status` expose membership and outcomes. Read current
 revisions before a mutation requiring them; register an Actor first (the first
-registration bootstraps itself; later ones need an existing `--actor`). The
-browser has a read-only **Goals** view (one article per goal with its veins,
+registration bootstraps itself; later ones need an existing `--actor`). Open the
+browser through `pardner client open --output-file` (the board authors as the
+signed-in Actor). It has a read-only **Goals** view (one article per goal with its veins,
 **Ready for a verdict** and **Conflicting edits** labels; a vein button filters
 the board and clears the status filter) and a **Vein** filter. Resolution has no
 browser control.

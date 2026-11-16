@@ -6,7 +6,9 @@ export const hash = value => digest(canonical(value))
 
 /** Intents are recorded before execution; successful receipts never define expected effects. */
 export class ExpectedOperations {
-  constructor() { this.intents = new Map(); this.receipts = new Map(); this.sources = new Map() }
+  constructor() { this.intents = new Map(); this.receipts = new Map(); this.sources = new Map(); this.baseline = new Set() }
+  /** Operations already in the document before the measured workload (such as enrollment registrations). */
+  ignore(operationIds) { for (const id of operationIds) this.baseline.add(id) }
   intend(request, replicaId) {
     const prior = this.intents.get(request.operationId)
     if (prior) assert.equal(canonical(prior), canonical(request), 'Reused expected operation ID')
@@ -76,7 +78,7 @@ export class ExpectedOperations {
       }
     }
     assert.equal(canonical(snapshot.readReceipts), canonical(Object.fromEntries(readReceipts)), 'Read receipts must equal the union of observed revisions for their Actors')
-    assert.equal(Object.keys(snapshot.operations).length, this.receipts.size, 'Unexpected or unacknowledged operation exists')
+    assert.equal(Object.keys(snapshot.operations).filter(id => !this.baseline.has(id)).length, this.receipts.size, 'Unexpected or unacknowledged operation exists')
     return { operationCount: this.receipts.size, snapshotHash: hash(plain(snapshot)) }
   }
   report() { return { intents: [...this.intents.values()], expectedReplicas: Object.fromEntries(this.sources), receipts: Object.fromEntries(this.receipts) } }

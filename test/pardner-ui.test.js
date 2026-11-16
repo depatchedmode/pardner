@@ -1,56 +1,30 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium, webkit } from 'playwright'
-import { cli, startCliService } from '../support/cli-resources.js'
-import { withWorkspace } from '../support/ui-workspace.js'
-import { operationHttp } from '../lib/native-peer-client.js'
+import { withClientReplicas, withClientWorkspace } from '../support/client-workspace.js'
+import { startCliService } from '../support/cli-resources.js'
 
 for (const uuidAvailable of [true, false]) it(
   `uses shared browser operations with crypto.randomUUID ${uuidAvailable ? 'available' : 'unavailable'}`,
-  { timeout: 60000 },
-  async t => {
-    const directory = await mkdtemp(join(tmpdir(), 'pardner-ui-'))
-    const service = await startCliService(directory)
-    let browser
-    const errors = []
-    const run = async (args, actor = 'alice') => {
-      const output = await cli(directory, [...args, '--actor', actor])
-      assert.equal(output.code, 0, output.stdout + output.stderr)
-      return output.result
-    }
-    t.after(async () => {
-      await browser?.close()
-      await service.stop()
-      await rm(directory, { recursive: true, force: true })
-    }, { timeout: 60000 })
+  { timeout: 120000 },
+  async () => {
+    // Alice's client hosts the board; Bob joins it from his own client. Builder is a seeded agent.
+    await withClientReplicas(chromium, { humans: ['Alice', 'Bob'], actors: [{ id: 'builder', handle: 'builder', kind: 'agent' }] },
+      async ({ people: [host, guest], browser, errors }) => {
+    const tasks = async () => Object.values((await host.doc()).tasks)
     try {
-      for (const [id, kind] of [
-        ['alice', 'human'],
-        ['bob', 'human'],
-        ['builder', 'agent'],
-      ])
-        await run(['actors', 'register', id, '--handle', id, '--kind', kind])
-      const { token } = JSON.parse(
-        await readFile(join(directory, 'connection.json'), 'utf8'),
-      )
-      browser = await chromium.launch({ headless: true })
       const pages = []
-      for (const actor of ['alice', 'bob']) {
-        const context = await browser.newContext({
-          viewport: { width: 1440, height: 1000 },
-        })
+      for (const person of [host, guest]) {
+        const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
         if (!uuidAvailable) await context.addInitScript(() => {
           Object.defineProperty(crypto, 'randomUUID', { value: undefined })
         })
         const page = await context.newPage()
         page.on('pageerror', (error) => errors.push(error.message))
-        await page.goto(`${service.httpUrl}/pardner/`)
-        await page.getByLabel('Local service token').fill(token)
-        await page.getByRole('button', { name: 'Connect', exact: true }).click()
-        await page.getByLabel('Actor', { exact: true }).selectOption(actor)
+        await person.open(page)
         pages.push(page)
       }
       const [alice, bob] = pages
@@ -61,7 +35,7 @@ for (const uuidAvailable of [true, false]) it(
       await alice.getByLabel('Title', { exact: true }).fill('   ')
       await alice.getByRole('button', { name: 'Create task', exact: true }).click()
       await alice.getByRole('alert').getByText('Enter a title that is not only spaces.', { exact: true }).waitFor()
-      assert.equal((await run(['tasks'])).tasks.length, 0, 'a blank title never reaches the service')
+      assert.equal((await tasks()).length, 0, 'a blank title never reaches the service')
       await alice
         .getByLabel('Title', { exact: true })
         .fill('Coordinate the first release')
@@ -133,19 +107,9 @@ for (const uuidAvailable of [true, false]) it(
       await alice
         .getByLabel('Title', { exact: true })
         .fill('A stale local draft')
-      const taskId = (await run(['tasks'])).tasks[0].id
-      const original = await run(['show', taskId])
-      await run(
-        [
-          'update',
-          taskId,
-          '--title',
-          'A newer agent title',
-          '--revisions',
-          JSON.stringify({ title: original.revisions.title }),
-        ],
-        'builder',
-      )
+      const taskId = (await tasks())[0].id
+      const original = await host.task(taskId)
+      await host.operate('task.update', { taskId, updates: { title: 'A newer agent title' }, expectedRevisions: { title: original.revisions.title } }, 'builder')
       await alice
         .getByRole('heading', { name: 'A newer agent title', exact: true })
         .waitFor()
@@ -161,7 +125,7 @@ for (const uuidAvailable of [true, false]) it(
         .getByText(/draft is preserved/)
         .waitFor()
       assert.equal(
-        (await run(['show', taskId])).task.title,
+        (await host.task(taskId)).task.title,
         'A newer agent title',
       )
       await alice
@@ -173,7 +137,7 @@ for (const uuidAvailable of [true, false]) it(
       await alice.getByLabel('Status', { exact: true }).selectOption('in-progress')
       await alice.getByRole('button', { name: 'Save changes', exact: true }).click()
       await alice.getByRole('button', { name: 'Edit task', exact: true }).waitFor()
-      assert.equal((await run(['show', taskId])).task.status, 'in-progress')
+      assert.equal((await host.task(taskId)).task.status, 'in-progress')
       await alice.getByRole('button', { name: 'Use latest task details', exact: true }).waitFor()
       assert.equal(await alice.getByRole('button', { name: 'Hand off', exact: true }).isDisabled(), true)
       assert.equal(await alice.getByLabel('Handoff message', { exact: true }).inputValue(), 'Please implement and record the evidence.')
@@ -182,7 +146,7 @@ for (const uuidAvailable of [true, false]) it(
       await bob
         .getByText('Please implement and record the evidence.', { exact: true })
         .waitFor()
-      assert.equal((await run(['show', taskId])).task.assignee, 'builder')
+      assert.equal((await host.task(taskId)).task.assignee, 'builder')
       let lost = false
       const attempts = []
       await alice.route('**/automerge/operations', async route => {
@@ -199,7 +163,7 @@ for (const uuidAvailable of [true, false]) it(
       await alice.getByRole('button', { name: 'Retry saved request', exact: true }).click()
       await alice.getByRole('button', { name: 'Retry saved request', exact: true }).waitFor({ state: 'hidden' })
       assert.equal(await alice.getByLabel('Comment', { exact: true }).inputValue(), '')
-      assert.equal((await run(['show', taskId])).comments.filter(comment => comment.content === 'Confirm exactly once after a lost response').length, 1)
+      assert.equal((await host.task(taskId)).comments.filter(comment => comment.content === 'Confirm exactly once after a lost response').length, 1)
       assert.equal(attempts.length, 2)
       assert.deepEqual(attempts[0], attempts[1])
       await alice.unroute('**/automerge/operations')
@@ -214,12 +178,6 @@ for (const uuidAvailable of [true, false]) it(
       assert.equal(await alice.getByRole('button', { name: 'Retry saved request', exact: true }).count(), 0)
       assert.equal(await alice.getByLabel('Comment', { exact: true }).inputValue(), 'Preserve this draft after Actor rejection')
       await alice.unroute('**/automerge/operations')
-      await alice.getByLabel('Actor', { exact: true }).selectOption('bob')
-      await alice.getByLabel('Comment', { exact: true }).fill('New request after correcting the Actor')
-      await alice.getByRole('button', { name: 'Add comment', exact: true }).click()
-      await alice.locator('article.comment').getByText('New request after correcting the Actor', { exact: true }).waitFor()
-      assert.equal((await run(['show', taskId])).comments.find(comment => comment.content === 'New request after correcting the Actor').actorId, 'bob')
-      await alice.getByLabel('Actor', { exact: true }).selectOption('alice')
 
       let releaseSnapshot, captureSnapshot
       const released = new Promise(resolve => { releaseSnapshot = resolve })
@@ -234,7 +192,7 @@ for (const uuidAvailable of [true, false]) it(
         await alice.getByLabel('Comment', { exact: true }).fill('Save while another Actor creates work')
         await alice.getByRole('button', { name: 'Add comment', exact: true }).click()
         const oldSnapshot = await captured
-        const created = await run(['task', 'create', '--title', 'Arrived during an HTTP refresh'], 'builder')
+        const created = await host.operate('task.create', { title: 'Arrived during an HTTP refresh' }, 'builder')
         const newCard = alice.getByRole('button', { name: /Arrived during an HTTP refresh/ })
         await newCard.waitFor()
         assert.equal(oldSnapshot.doc.tasks[created.result.taskId], undefined)
@@ -250,24 +208,15 @@ for (const uuidAvailable of [true, false]) it(
       const output = resolve('output/playwright')
       await mkdir(output, { recursive: true })
       await alice.getByRole('button', { name: 'Close', exact: true }).click()
-      await run([
-        'task',
-        'create',
-        '--title',
-        'Review the handoff evidence',
-        '--status',
-        'up-next',
-        '--assignee',
-        'bob',
-      ])
+      await host.operate('task.create', { title: 'Review the handoff evidence', status: 'up-next', assignee: guest.actorId })
       await alice
         .getByRole('button', { name: /Review the handoff evidence/ })
         .waitFor()
-      const vein = (await run(['vein', 'create', '--title', 'Evidence-first reviews', '--goal', 'Ship the first release'])).result
-      const reviewTask = (await run(['tasks'])).tasks.find(task => task.title === 'Review the handoff evidence')
-      await run(['vein', 'add', vein.veinId, reviewTask.id])
-      await run(['update', reviewTask.id, '--status', 'dead-end', '--revisions',
-        JSON.stringify({ status: (await run(['show', reviewTask.id])).revisions.status })])
+      const vein = (await host.operate('vein.create', { title: 'Evidence-first reviews', goal: { title: 'Ship the first release' } })).result
+      const reviewTask = (await tasks()).find(task => task.title === 'Review the handoff evidence')
+      await host.operate('task.link-vein', { veinId: vein.veinId, taskId: reviewTask.id })
+      await host.operate('task.update', { taskId: reviewTask.id, updates: { status: 'dead-end' },
+        expectedRevisions: { status: (await host.task(reviewTask.id)).revisions.status } })
       await alice.getByRole('region', { name: 'Dead end' })
         .getByRole('button', { name: /Review the handoff evidence/ }).waitFor()
       await alice.getByLabel('Status filter').selectOption('review')
@@ -296,7 +245,7 @@ for (const uuidAvailable of [true, false]) it(
       await alice.getByRole('button', { name: 'Retry saved request', exact: true }).first().click()
       await goal.getByText('Ready for a verdict', { exact: true }).waitFor({ state: 'hidden' })
       await alice.unroute('**/automerge/operations')
-      assert.equal((await run(['vein', 'show', vein.veinId])).vein.status, 'proven')
+      assert.equal((await host.show('vein', vein.veinId)).vein.status, 'proven')
       assert.equal(await veinStatus.inputValue(), 'proven')
       await veinStatus.selectOption('open')
       await goal.getByText('Ready for a verdict', { exact: true }).waitFor()
@@ -309,8 +258,8 @@ for (const uuidAvailable of [true, false]) it(
       await alice.route('**/automerge/operations', async route => {
         if (raced) return route.continue()
         raced = true
-        const current = (await run(['vein', 'show', vein.veinId])).revisions.status
-        await run(['vein', 'update', vein.veinId, '--status', 'dead-end', '--revisions', JSON.stringify({ status: current })], 'builder')
+        const current = (await host.show('vein', vein.veinId)).revisions.status
+        await host.operate('vein.update', { veinId: vein.veinId, updates: { status: 'dead-end' }, expectedRevisions: { status: current } }, 'builder')
         await route.continue()
       })
       await veinStatus.selectOption('abandoned')
@@ -321,7 +270,7 @@ for (const uuidAvailable of [true, false]) it(
       await veinStatus.selectOption('proven')
       await veinRow.getByRole('alert').waitFor({ state: 'hidden' })
       await alice.unroute('**/automerge/operations')
-      assert.equal((await run(['vein', 'show', vein.veinId])).vein.status, 'proven')
+      assert.equal((await host.show('vein', vein.veinId)).vein.status, 'proven')
 
       // A task panel open over Goals must not make "Status" ambiguous.
       await alice.getByRole('button', { name: 'Tasks', exact: true }).click()
@@ -338,17 +287,12 @@ for (const uuidAvailable of [true, false]) it(
       await goalStatus.focus()
       await goalStatus.selectOption('achieved')
       await alice.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Status of goal Ship the first release')
-      const [goalId] = (await run(['vein', 'show', vein.veinId])).vein.goalIds
-      assert.equal((await run(['goal', 'show', goalId])).goal.status, 'achieved')
-      assert.equal((await run(['vein', 'show', vein.veinId])).vein.status, 'proven', 'achieving a goal leaves its veins alone')
+      const [goalId] = (await host.show('vein', vein.veinId)).vein.goalIds
+      assert.equal((await host.show('goal', goalId)).goal.status, 'achieved')
+      assert.equal((await host.show('vein', vein.veinId)).vein.status, 'proven', 'achieving a goal leaves its veins alone')
       assert.equal(await veinStatus.inputValue(), 'proven')
       await alice.screenshot({ path: join(output, 'pardner-goals-achieved.png'), fullPage: true })
 
-      // Without an Actor the Goals view is read-only: pills, no selects.
-      await alice.getByLabel('Actor', { exact: true }).selectOption('')
-      assert.equal(await alice.locator('.goals select').count(), 0)
-      assert.equal(await alice.locator('.goals .record-status').count(), 2)
-      await alice.getByLabel('Actor', { exact: true }).selectOption('alice')
       await goalStatus.selectOption('open')
       await goalStatus.evaluate(element => element.value === 'open')
       await veinStatus.selectOption('open')
@@ -384,6 +328,7 @@ for (const uuidAvailable of [true, false]) it(
       console.error(errors)
       throw error
     }
+    })
   },
 )
 
@@ -431,7 +376,7 @@ const MARKDOWN_FIXTURE = [
 ].join('\n')
 
 for (const engine of [chromium, webkit]) it(`gives user-authored Markdown its own subordinate scale in ${engine.name()}`, { timeout: 60000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, operate, open }) => {
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } } }, async ({ page, operate, open }) => {
     const { result: { taskId } } = await operate('task.create', { title: 'Render the Markdown fixture', description: MARKDOWN_FIXTURE })
     await operate('comment.add', { taskId, text: MARKDOWN_FIXTURE })
     await open()
@@ -531,7 +476,7 @@ async function seed(count, operation, batch = 25) {
 }
 
 for (const engine of [chromium, webkit]) it(`keeps the app frame in the viewport and scrolls its regions in ${engine.name()}`, { timeout: 120000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1024, height: 700 } }, async ({ page, operate, open }) => {
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1024, height: 700 } } }, async ({ page, operate, open }) => {
     const created = []
     await seed(40, async index => created.push((await operate('task.create', {
       title: `Backlog task ${index + 1}`, description: 'Seeded to overflow one column.',
@@ -624,7 +569,7 @@ for (const engine of [chromium, webkit]) it(`keeps the app frame in the viewport
 })
 
 for (const engine of [chromium, webkit]) it(`never overflows sideways at mid widths and never leaves a panel sliver in ${engine.name()}`, { timeout: 120000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, operate, open }) => {
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } } }, async ({ page, operate, open }) => {
     const longTitle = `Evidence-first reviews for the companion devices ${'and their long-running agent handoffs '.repeat(3)}`.slice(0, 120)
     assert.equal(longTitle.length, 120)
     const { result: { veinId } } = await operate('vein.create', { title: longTitle, goal: { title: 'Ship the first release' } })
@@ -695,7 +640,7 @@ const box = locator => locator.evaluate(element => {
 })
 
 for (const engine of [chromium, webkit]) it(`shows errors where the work is in ${engine.name()}`, { timeout: 120000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open }) => {
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } } }, async ({ page, task, operate, open }) => {
     const { result: { taskId } } = await operate('task.create', { title: 'Route errors to the work' })
     await open()
     const panel = page.getByRole('complementary', { name: 'Task details' })
@@ -743,8 +688,8 @@ for (const engine of [chromium, webkit]) it(`shows errors where the work is in $
       await openTask()
       await panel.getByRole('button', { name: 'Edit task', exact: true }).click()
       await panel.getByLabel('Title', { exact: true }).fill(`A stale local draft at ${width}`)
-      const { revisions } = await run(['show', taskId])
-      await run(['update', taskId, '--title', `A newer agent title ${width}`, '--revisions', JSON.stringify({ title: revisions.title })])
+      const { revisions } = await task(taskId)
+      await operate('task.update', { taskId: taskId, updates: { title: `A newer agent title ${width}` }, expectedRevisions: { title: revisions.title } })
       await panel.getByRole('heading', { name: `A newer agent title ${width}`, exact: true }).waitFor()
       await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
       await alert.getByText(/draft is preserved/).waitFor()
@@ -799,7 +744,7 @@ for (const engine of [chromium, webkit]) it(`shows errors where the work is in $
     assert.equal(await page.getByRole('button', { name: 'Dismiss', exact: true }).count(), 0)
     await page.getByRole('button', { name: 'Retry saved request', exact: true }).click()
     await page.getByRole('button', { name: 'Retry saved request', exact: true }).waitFor({ state: 'hidden' })
-    assert.equal((await run(['show', taskId])).comments.filter(comment => comment.content === 'Replay this comment once').length, 1)
+    assert.equal((await task(taskId)).comments.filter(comment => comment.content === 'Replay this comment once').length, 1)
     assert.equal(attempts.length, 3)
     assert.deepEqual(attempts[0], attempts[2])
     await page.unroute('**/automerge/operations')
@@ -820,46 +765,10 @@ for (const engine of [chromium, webkit]) it(`shows errors where the work is in $
   })
 })
 
-for (const engine of [chromium, webkit]) it(`shows a connection error inside the failed form in ${engine.name()}`, { timeout: 60000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 375, height: 640 } }, async ({ page, service, open }) => {
-    await page.goto(`${service.httpUrl}/pardner/`)
-    const token = page.getByLabel('Local service token')
-    await token.fill('incorrect')
-    await page.getByRole('button', { name: 'Connect', exact: true }).click()
-    const alert = page.getByRole('alert')
-    await alert.waitFor()
-    assert.equal(await alert.evaluate(element => Boolean(element.closest('form')?.querySelector('input[type=password]'))), true,
-      'the token error renders inside the token form')
-    const where = await alert.evaluate(element => {
-      const { top, bottom } = element.getBoundingClientRect()
-      return { top, bottom, innerHeight }
-    })
-    assert.ok(where.top >= 0 && where.bottom <= where.innerHeight + 1, `the token error is in the viewport: ${JSON.stringify(where)}`)
-    await token.fill('another attempt')
-    assert.equal(await alert.count(), 0, 'editing the token clears its error')
-
-    // Failures still in flight when the user forgets the workspace never reach the fresh form (P1-05).
-    await open()
-    await page.route('**/automerge/**', route => route.abort('failed'))
-    await page.reload()
-    await alert.getByRole('button', { name: 'Retry connection', exact: true }).waitFor()
-    await page.getByRole('button', { name: 'Forget this workspace', exact: true }).click()
-    await page.getByLabel('Local service token').waitFor()
-    await page.waitForTimeout(1500)
-    assert.equal(await alert.count(), 0, 'no stale error after Forget')
-  })
-})
-
 for (const engine of [chromium, webkit]) it(`moves focus into panels and back to their opener in ${engine.name()}`, { timeout: 120000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open, service }) => {
-    await run(['actors', 'register', 'bob', '--handle', 'bob', '--kind', 'human'])
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } } }, async ({ page, doc, task, operate, open }) => {
     const { result: { taskId } } = await operate('task.create', { title: 'Keep focus where the work is' })
     await operate('task.create', { title: 'A neighbouring card' })
-
-    // On loopback the token field is focused on arrival.
-    await page.goto(`${service.httpUrl}/pardner/`)
-    await page.getByLabel('Local service token').waitFor()
-    await page.waitForFunction(() => document.activeElement?.type === 'password')
     await open()
 
     const panel = page.getByRole('complementary', { name: 'Task details' })
@@ -914,22 +823,13 @@ for (const engine of [chromium, webkit]) it(`moves focus into panels and back to
     await waitForFocus(() => document.activeElement?.textContent === 'Edit task')
     await editTask.click()
     await panel.getByLabel('Title', { exact: true }).fill('A stale draft')
-    const { revisions } = await run(['show', taskId])
-    await run(['update', taskId, '--title', 'A newer title', '--revisions', JSON.stringify({ title: revisions.title })])
+    const { revisions } = await task(taskId)
+    await operate('task.update', { taskId, updates: { title: 'A newer title' }, expectedRevisions: { title: revisions.title } })
     await heading.getByText('A newer title', { exact: true }).waitFor()
     await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
     await page.getByRole('alert').getByText(/draft is preserved/).waitFor()
     await waitForFocus(() => document.activeElement?.textContent === 'Save changes')
     await panel.getByRole('button', { name: 'Cancel edit', exact: true }).click()
-
-    // Switching Actor with details open leaves focus on the Actor select.
-    const actor = page.getByLabel('Actor', { exact: true })
-    await actor.focus()
-    await actor.selectOption('bob')
-    await panel.getByRole('button', { name: 'Edit task', exact: true }).waitFor()
-    await page.waitForTimeout(300)
-    assert.equal(await actor.evaluate(select => select === document.activeElement), true, `focus stays on the Actor select: ${JSON.stringify(await focused())}`)
-    await actor.selectOption('alice')
     await page.keyboard.press('Escape')
 
     // An Activity button is an opener too.
@@ -948,19 +848,17 @@ for (const engine of [chromium, webkit]) it(`moves focus into panels and back to
     await page.getByRole('button', { name: 'Create task', exact: true }).click()
     await heading.getByText('Created with focus kept', { exact: true }).waitFor()
     await waitForFocus(() => document.activeElement?.matches('.side-panel h2'))
-    const createdId = (await run(['tasks'])).tasks.find(task => task.title === 'Created with focus kept').id
+    const createdId = Object.values((await doc()).tasks).find(task => task.title === 'Created with focus kept').id
     await page.keyboard.press('Escape')
     await waitForFocus(id => document.activeElement?.dataset.taskId === id, createdId)
   })
 })
 
 it('describes Activity and task History as plain sentences', { timeout: 120000 }, async () => {
-  await withWorkspace(chromium, { viewport: { width: 1440, height: 900 } }, async ({ page, run, open, token, service }) => {
-    const as = (actor, type, payload) => operationHttp(service.httpUrl, token, type, payload, actor)
-    await run(['actors', 'register', 'carol', '--handle', 'carol', '--kind', 'human', '--display-name', 'Carol Moreno'])
-    await run(['actors', 'register', 'builder', '--handle', 'builder', '--kind', 'agent', '--display-name', 'Builder'])
+  await withClientWorkspace(chromium, { contextOptions: { viewport: { width: 1440, height: 900 } }, actors: [{ id: 'carol', kind: 'human', displayName: 'Carol Moreno' }, { id: 'builder', kind: 'agent', displayName: 'Builder' }] }, async ({ page, task, operate, open }) => {
+    const as = (actor, type, payload) => operate(type, payload, actor)
     const { taskId } = (await as('carol', 'task.create', { title: 'Ship the release', assignee: 'carol' })).result
-    const revisions = async fields => Object.fromEntries(Object.entries((await run(['show', taskId])).revisions).filter(([field]) => fields.includes(field)))
+    const revisions = async fields => Object.fromEntries(Object.entries((await task(taskId)).revisions).filter(([field]) => fields.includes(field)))
     await as('carol', 'task.update', { taskId, updates: { status: 'review' }, expectedRevisions: await revisions(['status']) })
     await as('carol', 'comment.add', { taskId, text: 'Looks fine to me' })
     await as('carol', 'task.handoff', { taskId, to: 'builder', status: 'completed', message: 'Over to you', expectedRevisions: await revisions(['assignee', 'status']) })
@@ -999,18 +897,17 @@ it('describes Activity and task History as plain sentences', { timeout: 120000 }
 })
 
 it('filters, groups and pages the Activity feed', { timeout: 120000 }, async () => {
-  await withWorkspace(chromium, { viewport: { width: 1440, height: 900 } }, async ({ page, run, open, token, service }) => {
-    const as = (actor, type, payload) => operationHttp(service.httpUrl, token, type, payload, actor)
-    await run(['actors', 'register', 'reviewer', '--handle', 'reviewer', '--kind', 'agent', '--display-name', 'Reviewer'])
+  await withClientWorkspace(chromium, { contextOptions: { viewport: { width: 1440, height: 900 } }, actors: [{ id: 'reviewer', kind: 'agent', displayName: 'Reviewer' }] }, async ({ page, task, operate, open, actorId }) => {
+    const as = (actor, type, payload) => operate(type, payload, actor === 'alice' ? undefined : actor)
     const { taskId } = (await as('alice', 'task.create', { title: 'Page this feed', status: 'review' })).result
-    const revisions = async () => (await run(['show', taskId])).revisions
+    const revisions = async () => (await task(taskId)).revisions
     const { assignee, status } = await revisions()
-    await as('reviewer', 'task.handoff', { taskId, to: 'alice', status: 'completed', message: 'Approved', expectedRevisions: { assignee, status } })
+    await as('reviewer', 'task.handoff', { taskId, to: actorId, status: 'completed', message: 'Approved', expectedRevisions: { assignee, status } })
     for (let start = 0; start < 150; start += 25)
       await Promise.all(Array.from({ length: 25 }, (_, offset) => as('reviewer', 'comment.add', { taskId, text: `Review note ${start + offset + 1}` })))
     for (let index = 0; index < 30; index++) {
       const { result } = await as('alice', 'comment.add', { taskId, text: `Alice note ${index + 1}` })
-      const comment = (await run(['show', taskId])).comments.find(candidate => candidate.id === result.commentId)
+      const comment = (await task(taskId)).comments.find(candidate => candidate.id === result.commentId)
       await as('reviewer', 'read.mark', { taskId, comments: [{ commentId: comment.id, revisionId: comment.revisionIds[0] }] })
     }
     await open()
@@ -1061,8 +958,7 @@ it('filters, groups and pages the Activity feed', { timeout: 120000 }, async () 
 })
 
 for (const engine of [chromium, webkit]) it(`keeps Hand off work collapsed until asked in ${engine.name()}`, { timeout: 120000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open }) => {
-    await run(['actors', 'register', 'builder', '--handle', 'builder', '--kind', 'agent', '--display-name', 'Builder'])
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } }, actors: [{ id: 'builder', handle: 'builder', kind: 'agent', displayName: 'Builder' }] }, async ({ page, task, operate, open, actorId }) => {
     const { result: { taskId } } = await operate('task.create', { title: 'Hand off on request' })
     await open()
     const panel = page.getByRole('complementary', { name: 'Task details' })
@@ -1108,7 +1004,7 @@ for (const engine of [chromium, webkit]) it(`keeps Hand off work collapsed until
       } else await route.continue()
     })
     await opener.click()
-    await panel.getByLabel('Recipient', { exact: true }).selectOption('alice')
+    await panel.getByLabel('Recipient', { exact: true }).selectOption(actorId)
     await panel.getByLabel('Handoff message', { exact: true }).fill('Back to you, once.')
     await panel.getByRole('button', { name: 'Hand off', exact: true }).click()
     const retry = panel.getByRole('button', { name: 'Retry saved request', exact: true })
@@ -1118,14 +1014,13 @@ for (const engine of [chromium, webkit]) it(`keeps Hand off work collapsed until
     await pageRetry.waitFor()
     await pageRetry.click()
     await pageRetry.waitFor({ state: 'hidden' })
-    const comments = (await run(['show', taskId])).comments.filter(comment => comment.content.includes('Back to you, once.'))
+    const comments = (await task(taskId)).comments.filter(comment => comment.content.includes('Back to you, once.'))
     assert.equal(comments.length, 1)
   })
 })
 
 for (const engine of [chromium, webkit]) it(`defaults the handoff status from the task and re-derives it on Use latest in ${engine.name()}`, { timeout: 120000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open }) => {
-    await run(['actors', 'register', 'builder', '--handle', 'builder', '--kind', 'agent', '--display-name', 'Builder'])
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } }, actors: [{ id: 'builder', handle: 'builder', kind: 'agent', displayName: 'Builder' }] }, async ({ page, task, operate, open }) => {
     const { result: { taskId: backlogId } } = await operate('task.create', { title: 'Backlog handoff' })
     await operate('task.create', { title: 'Moving handoff' , status: 'in-progress' })
     await open()
@@ -1142,8 +1037,8 @@ for (const engine of [chromium, webkit]) it(`defaults the handoff status from th
     await opener.click()
     assert.equal(await status.inputValue(), 'backlog', 'Backlog stays Backlog')
     await panel.getByLabel('Handoff message').fill('Draft kept')
-    const shown = await run(['show', backlogId])
-    await run(['update', backlogId, '--status', 'in-progress', '--revisions', JSON.stringify({ status: shown.revisions.status })])
+    const shown = await task(backlogId)
+    await operate('task.update', { taskId: backlogId, updates: { status: 'in-progress' }, expectedRevisions: { status: shown.revisions.status } })
     const notice = panel.getByRole('status').filter({ hasText: 'This task changed while you were writing' })
     await notice.getByText(/^This task changed while you were writing: now .* · In progress\. Your draft is preserved\.$/).waitFor()
     assert.equal(await panel.getByRole('button', { name: 'Hand off', exact: true }).isDisabled(), true)
@@ -1156,18 +1051,16 @@ for (const engine of [chromium, webkit]) it(`defaults the handoff status from th
     await opener.click()
     await status.selectOption('completed')
     await panel.getByLabel('Handoff message').fill('Chosen')
-    const again = await run(['show', backlogId])
-    await run(['update', backlogId, '--status', 'up-next', '--revisions', JSON.stringify({ status: again.revisions.status })])
+    const again = await task(backlogId)
+    await operate('task.update', { taskId: backlogId, updates: { status: 'up-next' }, expectedRevisions: { status: again.revisions.status } })
     await panel.getByRole('button', { name: 'Use latest task details', exact: true }).click()
     assert.equal(await status.inputValue(), 'completed')
   })
 })
 
-for (const engine of [chromium, webkit]) it(`keeps typed drafts and the pairing dialog safe from Escape in ${engine.name()}`, { timeout: 120000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, operate, open, service }) => {
+for (const engine of [chromium, webkit]) it(`keeps typed drafts safe from Escape in ${engine.name()}`, { timeout: 120000 }, async () => {
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } } }, async ({ page, operate, open }) => {
     const { result: { taskId } } = await operate('task.create', { title: 'Do not lose the draft', description: 'Original description' })
-    await page.goto(`${service.httpUrl}/pardner/`)
-    await page.getByLabel('Local service token').waitFor()
     await open()
     const panel = page.getByRole('complementary', { name: 'Task details' })
     const card = page.locator(`.task-card[data-task-id="${taskId}"]`)
@@ -1190,20 +1083,11 @@ for (const engine of [chromium, webkit]) it(`keeps typed drafts and the pairing 
     await comment.press('Escape')
     await panel.waitFor({ state: 'detached' })
     await page.waitForFunction(id => document.activeElement?.dataset.taskId === id, taskId)
-
-    await card.click()
-    await panel.waitFor()
-    await page.getByRole('button', { name: 'Pair another device', exact: true }).click()
-    const dialog = page.getByRole('dialog', { name: 'Pair another device' })
-    await dialog.waitFor()
-    await page.keyboard.press('Escape')
-    await dialog.waitFor({ state: 'hidden' })
-    assert.equal(await panel.count(), 1, 'Escape in the pairing dialog leaves the task panel open')
   })
 })
 
 for (const engine of [chromium, webkit]) it(`changes a task's status in place from Task details in ${engine.name()}`, { timeout: 180000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open }) => {
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } } }, async ({ page, task, operate, open }) => {
     const { result: { taskId } } = await operate('task.create', { title: 'Approve release notes', status: 'review' })
     await open()
     const panel = page.getByRole('complementary', { name: 'Task details' })
@@ -1221,7 +1105,7 @@ for (const engine of [chromium, webkit]) it(`changes a task's status in place fr
 
     for (const width of [1440, 375]) {
       await page.setViewportSize({ width, height: width === 375 ? 812 : 900 })
-      await run(['update', taskId, '--status', 'review', '--revisions', JSON.stringify({ status: (await run(['show', taskId])).revisions.status })])
+      await operate('task.update', { taskId, updates: { status: 'review' }, expectedRevisions: { status: (await task(taskId)).revisions.status } })
       posts.length = 0
       await openTask()
       assert.equal(await select.inputValue(), 'review')
@@ -1237,7 +1121,7 @@ for (const engine of [chromium, webkit]) it(`changes a task's status in place fr
       await select.focus()
       await select.selectOption('completed')
       await page.waitForFunction(() => document.querySelector('.column[aria-label="Completed"] .task-card'))
-      assert.equal((await run(['show', taskId])).task.status, 'completed')
+      assert.equal((await task(taskId)).task.status, 'completed')
       assert.equal(await select.inputValue(), 'completed')
       await panel.getByText(/to Completed/).first().waitFor()
       assert.equal(await page.locator('.column[aria-label="Completed"] .task-card', { hasText: 'Approve release notes' }).count(), 1)
@@ -1248,7 +1132,7 @@ for (const engine of [chromium, webkit]) it(`changes a task's status in place fr
     }
 
     // Mutual exclusion with Edit and Hand off.
-    await run(['update', taskId, '--status', 'review', '--revisions', JSON.stringify({ status: (await run(['show', taskId])).revisions.status })])
+    await operate('task.update', { taskId, updates: { status: 'review' }, expectedRevisions: { status: (await task(taskId)).revisions.status } })
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.getByRole('button', { name: /Approve release notes/ }).click()
     await select.waitFor()
@@ -1265,7 +1149,7 @@ for (const engine of [chromium, webkit]) it(`changes a task's status in place fr
 })
 
 for (const engine of [chromium, webkit]) it(`recovers the inline Status select from a stale change and a lost response in ${engine.name()}`, { timeout: 180000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open }) => {
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } } }, async ({ page, task, operate, open }) => {
     const { result: { taskId } } = await operate('task.create', { title: 'Approve release notes', status: 'review' })
     await open()
     const panel = page.getByRole('complementary', { name: 'Task details' })
@@ -1281,15 +1165,15 @@ for (const engine of [chromium, webkit]) it(`recovers the inline Status select f
       await route.continue()
     })
     const change = select.selectOption('completed')
-    const { revisions } = await run(['show', taskId])
-    await run(['update', taskId, '--status', 'in-progress', '--revisions', JSON.stringify({ status: revisions.status })])
+    const { revisions } = await task(taskId)
+    await operate('task.update', { taskId: taskId, updates: { status: 'in-progress' }, expectedRevisions: { status: revisions.status } })
     release()
     await change
     const alert = panel.getByRole('alert')
     await alert.getByRole('button', { name: 'Dismiss', exact: true }).waitFor()
     await page.waitForFunction(() => document.querySelector('.side-panel select')?.value === 'in-progress')
     assert.equal(await select.inputValue(), 'in-progress')
-    assert.equal((await run(['show', taskId])).task.status, 'in-progress')
+    assert.equal((await task(taskId)).task.status, 'in-progress')
     await alert.getByRole('button', { name: 'Dismiss', exact: true }).click()
     await page.unroute('**/automerge/operations')
 
@@ -1314,12 +1198,12 @@ for (const engine of [chromium, webkit]) it(`recovers the inline Status select f
     await page.waitForFunction(() => document.querySelector('.side-panel select')?.value === 'completed')
     assert.equal(attempts.length, 2)
     assert.deepEqual(attempts[0], attempts[1])
-    assert.equal((await run(['show', taskId])).task.status, 'completed')
+    assert.equal((await task(taskId)).task.status, 'completed')
   })
 })
 
 for (const engine of [chromium, webkit]) it(`keeps the New task draft until it is created or discarded in ${engine.name()}`, { timeout: 180000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open }) => {
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } } }, async ({ page, doc, operate, open }) => {
     await operate('task.create', { title: 'Existing card' })
     await open()
     const panel = page.getByRole('region', { name: 'New task' })
@@ -1333,7 +1217,7 @@ for (const engine of [chromium, webkit]) it(`keeps the New task draft until it i
     const close = () => panel.getByRole('button', { name: 'Close', exact: true }).click()
     const titleFocused = () => page.waitForFunction(() => document.activeElement?.getAttribute('name') === 'title')
     const retry = page.getByRole('button', { name: 'Retry saved request', exact: true })
-    const taskCount = async title => (await run(['tasks'])).tasks.filter(task => task.title === title).length
+    const taskCount = async title => Object.values((await doc()).tasks).filter(task => task.title === title).length
 
     // 1. Close and reopen restores the draft and focuses Title.
     await newTask.click()
@@ -1420,26 +1304,16 @@ for (const engine of [chromium, webkit]) it(`keeps the New task draft until it i
     await newTask.click()
     assert.equal(await title.inputValue(), '')
     assert.equal(await discard.count(), 0)
-
-    // 8. Forget this workspace drops the draft.
-    await title.fill('Secret draft')
-    await close()
-    await page.getByRole('button', { name: 'Forget this workspace', exact: true }).click()
-    await open()
-    await newTask.click()
-    assert.equal(await title.inputValue(), '')
   })
 })
 for (const engine of [chromium, webkit]) it(`closes New task with Escape without losing work and names who is creating in ${engine.name()}`, { timeout: 180000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, run, operate, open }) => {
-    await run(['actors', 'register', 'bob', '--handle', 'bob', '--kind', 'human', '--display-name', 'Bob Okafor'])
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } } }, async ({ page, operate, open }) => {
     await operate('task.create', { title: 'Existing card' })
     await open()
     const panel = page.getByRole('region', { name: 'New task' })
     const title = panel.getByLabel('Title', { exact: true })
     const priority = panel.getByLabel('Priority', { exact: true })
     const newTask = page.getByRole('button', { name: 'New task', exact: true })
-    const actorSelect = page.getByLabel('Actor', { exact: true })
     const line = panel.locator('#new-task-actor')
     const create = panel.getByRole('button', { name: 'Create task', exact: true })
     const details = page.getByRole('complementary', { name: 'Task details' })
@@ -1466,34 +1340,8 @@ for (const engine of [chromium, webkit]) it(`closes New task with Escape without
     assert.equal(await title.inputValue(), 'x')
     await title.fill('')
 
-    // 5. The Actor line names who is creating and follows the header Actor.
-    assert.equal((await line.textContent()).trim(), 'Creating as alice · human')
-    await actorSelect.selectOption('bob')
-    assert.equal((await line.textContent()).trim(), 'Creating as Bob Okafor · human')
-    await title.fill('Made by Bob')
-    await create.click()
-    await details.waitFor()
-    await details.getByRole('button', { name: 'Close', exact: true }).click()
-    const made = (await run(['tasks'])).tasks.find(task => task.title === 'Made by Bob')
-    const shown = await run(['show', made.id])
-    assert.ok(JSON.stringify(shown).includes('bob'), 'the task was created by bob')
-    await page.locator('.task-card', { hasText: 'Made by Bob' }).click()
-    await details.getByText(/Bob Okafor/).first().waitFor()
-    await details.getByRole('button', { name: 'Close', exact: true }).click()
-
-    // 6. No Actor: the recovery sentence shows and Create is disabled and described by it.
-    await actorSelect.selectOption('')
-    await newTask.click({ force: true }).catch(() => {})
-    if (await panel.count() === 0) {
-      // The header New task is disabled without an Actor; pick one, open, then clear.
-      await actorSelect.selectOption('alice')
-      await newTask.click()
-      await actorSelect.selectOption('')
-    }
-    assert.equal((await line.textContent()).trim(), 'No Actor chosen. Close this panel and choose one in the header; your draft is kept.')
-    assert.equal(await create.isDisabled(), true)
-    assert.equal(await create.getAttribute('aria-describedby'), 'new-task-actor')
-    await actorSelect.selectOption('alice')
+    // 5. The Actor line names who is creating: the signed-in person.
+    assert.equal((await line.textContent()).trim(), 'Creating as Alice · human')
     await page.keyboard.press('Escape')
     await panel.waitFor({ state: 'detached' })
 
@@ -1519,7 +1367,7 @@ for (const engine of [chromium, webkit]) it(`closes New task with Escape without
   })
 })
 for (const engine of [chromium, webkit]) it(`closes New task when an Activity task opens in ${engine.name()}`, { timeout: 120000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, operate, open }) => {
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } } }, async ({ page, operate, open }) => {
     await operate('task.create', { title: 'Activity subject' })
     await open()
     await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('button', { name: 'Activity', exact: true }).click()
@@ -1531,7 +1379,7 @@ for (const engine of [chromium, webkit]) it(`closes New task when an Activity ta
   })
 })
 for (const engine of [chromium, webkit]) it(`explains an oversized description in the create slot in ${engine.name()}`, { timeout: 120000 }, async () => {
-  await withWorkspace(engine, { viewport: { width: 1440, height: 900 } }, async ({ page, open }) => {
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } } }, async ({ page, open }) => {
     await open()
     await page.getByRole('button', { name: 'New task', exact: true }).click()
     const panel = page.getByRole('region', { name: 'New task' })
@@ -1543,4 +1391,24 @@ for (const engine of [chromium, webkit]) it(`explains an oversized description i
     assert.equal(await panel.getByLabel('Title', { exact: true }).getAttribute('readonly'), null)
     assert.equal(await panel.locator('textarea').getAttribute('readonly'), null, 'the draft stays editable')
   })
+})
+
+for (const engine of [chromium, webkit]) it(`shows the standalone service page as an agent service with no board in ${engine.name()}`, { timeout: 60000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-standalone-page-'))
+  const service = await startCliService(directory)
+  const browser = await engine.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    const errors = []
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(`${service.httpUrl}/pardner/`)
+    await page.getByText('This is an agent and integration service. Open Pardner with pardner open.', { exact: true }).waitFor()
+    assert.equal(await page.locator('input, select, textarea, button').count(), 0, 'no token, pairing or Actor controls')
+    assert.equal(await page.getByRole('region', { name: /Backlog/ }).count(), 0, 'no board')
+    assert.deepEqual(errors, [])
+  } finally {
+    await browser.close()
+    await service.stop()
+    await rm(directory, { recursive: true, force: true })
+  }
 })
