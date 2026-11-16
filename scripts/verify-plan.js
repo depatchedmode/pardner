@@ -10,13 +10,13 @@ const names = text => text.trim().split(/\s+/)
 const groups = [
   {
     name: 'persistence', scripts: ['test:qualification', 'test:runtime'], qualification: 'Disk persistence and directory ownership',
-    files: names(`lib/atomic-file.js lib/durable-repo.js lib/nodefs-storage-adapter.js lib/storage-key.js lib/storage-lease.js lib/private-state.js
+    files: names(`lib/atomic-file.js lib/durable-repo.js lib/heads.js lib/nodefs-storage-adapter.js lib/storage-key.js lib/storage-lease.js lib/private-state.js
       support/persistence-process.js`),
   },
   {
     name: 'transport', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'], qualification: 'Offline reopen, authenticated transport, or acknowledgement ordering',
     files: names(`automerge-sync-server.js lib/local-service.js lib/workspace-runtime.js lib/native-peer-client.js
-      lib/sync-client.js lib/ticket-network-adapter.js lib/validated-websocket-server-adapter.js
+      lib/sync-client.js lib/sync-protocol.js lib/ticket-network-adapter.js lib/validated-websocket-server-adapter.js
       support/resources.js support/workspace-service-process.js support/replica-credentials.js`),
   },
   {
@@ -25,16 +25,16 @@ const groups = [
   },
   {
     name: 'domain', scripts: ['test:runtime', 'test:qualification', 'test:cli'],
-    files: names('lib/workspace.js lib/workspace-commands.js lib/workspace-schema.js support/workspace-test.js'),
+    files: names('lib/workspace.js lib/workspace-commands.js lib/workspace-schema.js lib/operation-identity.js shared/domain-vocab.js support/workspace-test.js'),
   },
   {
     name: 'cli', scripts: ['test:cli'],
-    files: names('bin/pardner.js lib/cli.js lib/cli-trace.js lib/agent-trace.js lib/github-remote.js support/cli-resources.js'),
+    files: names('bin/pardner.js lib/cli.js lib/cli-trace.js lib/agent-trace.js lib/github-remote.js lib/local-connection.js support/cli-resources.js'),
   },
   { name: 'lan', scripts: ['test:ui', 'test:runtime'], files: ['lib/lan-access.js'] },
   {
     name: 'bridge', scripts: ['test:runtime', 'test:cli'],
-    files: names(`lib/agent-bridge.js lib/codex-bridge-adapter.js lib/bridge-paths.js lib/bridge-retirement.js
+    files: names(`lib/agent-bridge.js lib/codex-bridge-adapter.js lib/local-endpoint.js lib/bridge-paths.js lib/bridge-retirement.js
       scripts/bridge-approval-rehearsal.js scripts/bridge-codex-smoke.js scripts/bridge-real-rehearsal.js
       scripts/bridge-three-agent-rehearsal.js support/bridge-rehearsal.js support/bridge-completion-rehearsal.js
       support/coordinator-process.js support/three-agent-coordinator.js support/three-agent-review.js`),

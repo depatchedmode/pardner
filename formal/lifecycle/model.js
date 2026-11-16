@@ -74,7 +74,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: false,
     maps: [
       { file: SERVER, anchor: "return res.set('Connection', 'close').status(503).json({", note: 'first middleware; stopping is read synchronously' },
-      { file: SERVER, anchor: "this.app.post('/automerge/operations'", note: 'route reached only after admission' },
+      { file: SERVER, anchor: 'this.app.post(AUTOMERGE_PATHS.operations', note: 'route reached only after admission' },
     ],
     apply: state => arrive(state, index, 'new'),
   }))
@@ -82,7 +82,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: false,
     maps: [
       { file: SERVER, anchor: "return res.set('Connection', 'close').status(503).json({", note: 'first middleware; stopping is read synchronously' },
-      { file: SERVER, anchor: "this.app.post('/automerge/sync-ack'", note: 'route reached only after admission' },
+      { file: SERVER, anchor: 'this.app.post(AUTOMERGE_PATHS.syncAck', note: 'route reached only after admission' },
     ],
     apply: state => arrive(state, index, 'sent'),
   }))
@@ -131,7 +131,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: false,
     maps: [
       { file: WORKSPACE, anchor: 'this.queue = result.catch(() => {})', note: 'replica-local execute; its own local-save barrier is the same apply() path modeled by Handle(op)' },
-      { file: RUNTIME, anchor: "syncPending: !savedLocally || (this.role === 'replica' && canonical(heads) !== canonical(this.acknowledgedHeads))" },
+      { file: RUNTIME, anchor: 'syncPending: !savedLocally || (this.role === \'replica\' && !sameHeads(heads, this.acknowledgedHeads)),' },
     ],
     apply: state => (state.done || state.replica.r >= bounds.replicaEdits ? [] : [{ next: { ...state, replica: { ...state.replica, r: state.replica.r + 1 } } }]),
   })
@@ -159,7 +159,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: false,
     maps: [
       { file: RUNTIME, anchor: 'const requestedHeads = getHeads(this.workspace.handle.doc())' },
-      { file: RUNTIME, anchor: "const receipt = await this.requestHub('/automerge/sync-ack', {" },
+      { file: RUNTIME, anchor: 'const receipt = await this.requestHub(AUTOMERGE_PATHS.syncAck, {' },
     ],
     apply: state => {
       if (state.done || state.inflight) return []
@@ -325,7 +325,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
   each('ack', (request, index) => action(`ReplicaReceive(${request.id})`, {
     fair: true,
     maps: [
-      { file: RUNTIME, anchor: 'if (canonical(getHeads(doc)) === canonical(requestedHeads) && hasHeads(doc, receipt.hubHeads)) {', note: 'first guard, before the local flush' },
+      { file: RUNTIME, anchor: 'if (sameHeads(getHeads(doc), requestedHeads) && hasHeads(doc, receipt.hubHeads)) {', note: 'first guard, before the local flush' },
       { file: RUNTIME, anchor: 'if (!this.stopController.signal.aborted) this.lastSyncError = error.message', note: 'rejected or failed acknowledgements only record an error' },
     ],
     apply: state => {
@@ -342,7 +342,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
 
   each('ack', (request, index) => action(`ReplicaAckCommit(${request.id})`, {
     fair: true,
-    maps: [{ file: RUNTIME, anchor: 'if (canonical(getHeads(this.workspace.handle.doc())) === canonical(requestedHeads)) {\n            this.acknowledgedHeads = requestedHeads', note: 'second guard after the local flush; records the requested snapshot, not the current heads' }],
+    maps: [{ file: RUNTIME, anchor: 'if (sameHeads(getHeads(this.workspace.handle.doc()), requestedHeads)) {\n            this.acknowledgedHeads = requestedHeads', note: 'second guard after the local flush; records the requested snapshot, not the current heads' }],
     apply: state => {
       if (state.done || state.inflight?.req !== index || state.inflight.phase !== 'flushing') return []
       const current = state.requests[index]

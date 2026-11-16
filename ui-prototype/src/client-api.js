@@ -1,6 +1,8 @@
 // Browser helpers for local client mode (docs/PARDNER-ONBOARDING-CONTRACT.md).
 // Authentication is an HttpOnly session cookie; nothing here stores a credential.
 
+import { syncStatusText } from './sync-status.js'
+
 const GRANT_KEY = 'grant'
 let capturedGrant = null
 
@@ -114,10 +116,5 @@ export const harnessLabel = harnessId => harnessId ? HARNESSES[harnessId] ?? har
 export const managerLabel = managedBy => managedBy ? MANAGERS[String(managedBy).toLowerCase()] ?? managedBy : null
 
 export function syncLabel(status) {
-  if (!status) return 'Status not reported'
-  if (status.available === false) return 'Project service unavailable'
-  if (status.storageError) return 'Local save failed'
-  if (!status.savedLocally) return 'Saving locally…'
-  if (status.syncPending || status.hubConnected === false) return 'Saved locally · waiting for hub'
-  return 'Saved locally · synced'
+  return syncStatusText(status)
 }

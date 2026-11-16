@@ -1,12 +1,12 @@
 import CloudControl from './CloudControl.jsx'
 import { useCallback, useEffect, useState } from 'react'
+import { CANCELLABLE_EXECUTION_STATES as CANCELLABLE } from '@pardner/domain-vocab'
 import { createOperationId } from './operation-id.js'
 
 const STATE_LABELS = {
   queued: 'Queued in Pardner', submitting: 'Submitting', running: 'Running', blocked: 'Waiting for approval or input',
   cancel_requested: 'Cancellation requested', terminal: 'Ended', unknown: 'Unknown outcome',
 }
-const CANCELLABLE = ['queued', 'running', 'blocked', 'cancel_requested']
 
 const actorName = (actors, id) => actors[id] ? actors[id].displayName || actors[id].handle : id
 const age = (now, at) => {

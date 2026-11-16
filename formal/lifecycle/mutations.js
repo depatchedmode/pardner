@@ -63,9 +63,9 @@ export const MUTATIONS = [
     find: `      if (receipt.acknowledged) {
         const doc = this.workspace.handle.doc()
         requireValue(Array.isArray(receipt.hubHeads), 'Invalid hub persistence acknowledgement')
-        if (canonical(getHeads(doc)) === canonical(requestedHeads) && hasHeads(doc, receipt.hubHeads)) {
+        if (sameHeads(getHeads(doc), requestedHeads) && hasHeads(doc, receipt.hubHeads)) {
           await this.repo.flush([this.workspace.handle.documentId])
-          if (canonical(getHeads(this.workspace.handle.doc())) === canonical(requestedHeads)) {
+          if (sameHeads(getHeads(this.workspace.handle.doc()), requestedHeads)) {
             this.acknowledgedHeads = requestedHeads
             this.lastSyncedAt = new Date().toISOString()
           }
