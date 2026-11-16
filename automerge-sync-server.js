@@ -29,15 +29,11 @@ import { T3Busy, T3Rejected, T3Unknown } from './lib/t3-mcp-client.js'
 import { HandshakeError, respondHandshake } from './lib/machine-handshake.js'
 import { SessionServer, signedBody, signedHeaders } from './lib/machine-session.js'
 import { removalFor } from './lib/membership.js'
+import { AUTOMERGE_PATHS, DEFAULT_HTTP_PORT, DEFAULT_WS_PORT, NATIVE_AUTOMERGE_WS_PATH, TICKET_PURPOSE } from './lib/sync-protocol.js'
 
-const DEFAULT_HTTP_PORT = 8004
-const DEFAULT_WS_PORT = 8005
-
-/** WebSocket path for Automerge Repo native (CBOR) sync — distinct from JSON UI subscriptions. */
-const NATIVE_AUTOMERGE_WS_PATH = '/automerge'
 const REQUEST_LIMIT = '100kb'
 /** Routes another machine may call with a signed request instead of the local API token. */
-const MACHINE_ROUTES = new Set(['/automerge/sync-ack', '/automerge/attribution'])
+const MACHINE_ROUTES = new Set([AUTOMERGE_PATHS.syncAck, '/automerge/attribution'])
 /** How long a second sync session for one machine waits for the first to answer a ping before the first is presumed gone. */
 const DUPLICATE_PROBE_MS = 3000
 const HUB_WAITING_MESSAGE = 'This hub was restored or fell behind, and waits to catch up with a current member machine before it serves another machine. '
@@ -180,8 +176,7 @@ class AutomergeSyncServer {
     this.validateListenerHost(this.host)
     this.stopping = false
     this.logger.log?.('🚀 Starting Automerge Sync Server...')
-    
-    // Initialize backend store
+
     await this.store.init()
     this.onDocumentChange = () => this.broadcastDocumentUpdate()
     this.onRuntimeStatus = status => this.broadcastMessage({ type: 'sync-status', status })
@@ -206,15 +201,11 @@ class AutomergeSyncServer {
         doc: () => this.store.getDoc() }).open()
       this.control.start()
     }
-    
-    // Setup Express for HTTP API
+
     this.setupHTTPAPI()
-    
-    // Setup WebSocket for real-time sync
     this.setupWebSocketServer()
     this.store.repo.networkSubsystem.addNetworkAdapter(this.automergeWsAdapter)
 
-    // Start HTTP server
     this.httpServer = createServer(this.app)
     await this.listen(this.httpServer, this.httpPort, this.host)
     this.httpPort = this.getBoundPort(this.httpServer, this.httpPort)
@@ -234,8 +225,6 @@ class AutomergeSyncServer {
     this.logger.log?.(
       `🌍 Allowed CORS origins: ${this.allowedOrigins.size === 0 ? '(none)' : [...this.allowedOrigins].join(', ')}`
     )
-    
-    // Register default agents if not exists
   }
 
   getBoundPort(server, fallbackPort) {
@@ -720,8 +709,10 @@ class AutomergeSyncServer {
     }))
     this.app.use((req, res, next) => this.authMiddleware(req, res, next))
     this.setupControlAPI()
-    const commands = new Set(['/automerge/operations', '/automerge/sync-ack', '/automerge/attribution', '/automerge/ws-ticket', '/automerge/membership/records',
-      '/automerge/deliveries/claim', '/automerge/deliveries/ack', '/automerge/deliveries/release', '/automerge/machine/verify', '/automerge/hub/resume'])
+    const commands = new Set([
+      AUTOMERGE_PATHS.operations, AUTOMERGE_PATHS.syncAck, '/automerge/attribution', AUTOMERGE_PATHS.wsTicket, '/automerge/membership/records',
+      AUTOMERGE_PATHS.deliveriesClaim, AUTOMERGE_PATHS.deliveriesAck, AUTOMERGE_PATHS.deliveriesRelease, '/automerge/machine/verify', '/automerge/hub/resume',
+    ])
     this.app.use((req, res, next) => {
       const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
       if (mutation && !commands.has(req.path)) {
@@ -729,9 +720,8 @@ class AutomergeSyncServer {
       }
       next()
     })
-    
-    // Get current document state
-    this.app.get('/automerge/doc', async (req, res) => {
+
+    this.app.get(AUTOMERGE_PATHS.doc, async (req, res) => {
       try {
         const doc = this.store.getDoc()
         res.json({ success: true, doc })
@@ -739,9 +729,8 @@ class AutomergeSyncServer {
         res.status(500).json({ error: error.message })
       }
     })
-    
-    // Get document URL for frontend connection
-    this.app.get('/automerge/url', async (req, res) => {
+
+    this.app.get(AUTOMERGE_PATHS.url, async (req, res) => {
       try {
         const url = this.store.docHandle?.url
         const doc = this.store.docHandle?.doc()
@@ -760,13 +749,13 @@ class AutomergeSyncServer {
       })
     }
 
-    this.app.post('/automerge/operations', async (req, res) => {
+    this.app.post(AUTOMERGE_PATHS.operations, async (req, res) => {
       try {
         res.json({ success: true, ...await this.store.execute(req.body) })
       } catch (error) { operationFailure(res, error) }
     })
 
-    this.app.get('/automerge/status', (req, res) => {
+    this.app.get(AUTOMERGE_PATHS.status, (req, res) => {
       res.json(this.store.status())
     })
 
@@ -808,14 +797,14 @@ class AutomergeSyncServer {
       } catch (error) { operationFailure(res, error) }
     })
 
-    this.app.get('/automerge/deliveries', async (req, res) => {
+    this.app.get(AUTOMERGE_PATHS.deliveries, async (req, res) => {
       try {
         res.json(await this.store.pendingDeliveries(req.query.actor))
       } catch (error) { operationFailure(res, error) }
     })
 
     for (const [action, method] of [['claim', 'claimDelivery'], ['ack', 'acknowledgeDelivery'], ['release', 'releaseDelivery']]) {
-      this.app.post(`/automerge/deliveries/${action}`, async (req, res) => {
+      this.app.post(`${AUTOMERGE_PATHS.deliveries}/${action}`, async (req, res) => {
         try {
           res.json(await this.store[method](req.body))
         } catch (error) { operationFailure(res, error) }
@@ -836,7 +825,7 @@ class AutomergeSyncServer {
       })
     }
 
-    this.app.post('/automerge/sync-ack', async (req, res) => {
+    this.app.post(AUTOMERGE_PATHS.syncAck, async (req, res) => {
       try {
         res.json(await this.store.acknowledge(req.body?.workspaceId, req.body?.heads, req.body?.signatureHeads ?? null))
       } catch (error) { operationFailure(res, error) }
@@ -849,14 +838,14 @@ class AutomergeSyncServer {
       } catch (error) { operationFailure(res, error) }
     })
 
-    this.app.post('/automerge/ws-ticket', async (req, res) => {
+    this.app.post(AUTOMERGE_PATHS.wsTicket, async (req, res) => {
       try {
         this.cleanupExpiredWsTickets()
-        const purpose = req.body?.purpose ?? 'ui'
-        if (!['ui', 'replica'].includes(purpose)) {
+        const purpose = req.body?.purpose ?? TICKET_PURPOSE.ui
+        if (![TICKET_PURPOSE.ui, TICKET_PURPOSE.replica].includes(purpose)) {
           return res.status(400).json({ code: 'INVALID_TICKET_PURPOSE', error: 'Unknown ticket purpose' })
         }
-        if (purpose === 'replica') {
+        if (purpose === TICKET_PURPOSE.replica) {
           // Only the client's own loopback hop holds this token; other machines reach the socket through it.
           const supplied = req.headers['x-pardner-native-token']
           if (this.nativeToken === null || typeof supplied !== 'string' ||
@@ -872,23 +861,21 @@ class AutomergeSyncServer {
       }
     })
 
-    // Get agent trace for a specific commit
     this.app.get('/automerge/trace/:commitHash', async (req, res) => {
       try {
         const { commitHash } = req.params
         const repoPath = req.query.repoPath || process.cwd()
-        
+
         const gitRoot = findGitRoot(repoPath)
         if (!gitRoot) {
           return res.status(404).json({ error: 'Not a git repository' })
         }
-        
+
         const trace = getTraceByCommit(gitRoot, commitHash, { exact: true })
         if (!trace) {
           return res.status(404).json({ error: 'Trace not found for this commit' })
         }
-        
-        // Try to get GitHub remote URL
+
         let githubUrl = null
         try {
           const remote = execSync('git config --get remote.origin.url', {
@@ -901,20 +888,19 @@ class AutomergeSyncServer {
             githubUrl = `https://github.com/${repo}/commit/${commitHash}`
           }
         } catch {
-          // No remote or not GitHub, that's fine
+          // Missing remotes or non-GitHub remotes are normal for local-only checkouts.
         }
-        
-        res.json({ 
-          success: true, 
+
+        res.json({
+          success: true,
           trace,
-          githubUrl 
+          githubUrl
         })
       } catch (error) {
         res.status(500).json({ error: error.message })
       }
     })
-    
-    // Get GitHub remote URL for current repo
+
     this.app.get('/automerge/github-remote', async (req, res) => {
       try {
         const repoPath = req.query.repoPath || process.cwd()

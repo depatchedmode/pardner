@@ -74,7 +74,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: false,
     maps: [
       { file: SERVER, anchor: "return res.set('Connection', 'close').status(503).json({", note: 'first middleware; stopping is read synchronously' },
-      { file: SERVER, anchor: "this.app.post('/automerge/operations'", note: 'route reached only after admission' },
+      { file: SERVER, anchor: 'this.app.post(AUTOMERGE_PATHS.operations', note: 'route reached only after admission' },
       { file: SERVER, anchor: "this.app.post('/automerge/membership/records'", note: 'the record gate is a hub operation behind the same admission' },
     ],
     apply: state => arrive(state, index, 'new'),
@@ -83,7 +83,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: false,
     maps: [
       { file: SERVER, anchor: "return res.set('Connection', 'close').status(503).json({", note: 'first middleware; stopping is read synchronously' },
-      { file: SERVER, anchor: "this.app.post('/automerge/sync-ack'", note: 'route reached only after admission: the local API token, or a request signed by a member machine; a refused signature is a failed acknowledgement (ReplicaReceive)' },
+      { file: SERVER, anchor: 'this.app.post(AUTOMERGE_PATHS.syncAck', note: 'route reached only after admission: the local API token, or a request signed by a member machine; a refused signature is a failed acknowledgement (ReplicaReceive)' },
     ],
     apply: state => arrive(state, index, 'sent'),
   }))
@@ -132,7 +132,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: false,
     maps: [
       { file: WORKSPACE, anchor: 'this.queue = result.catch(() => {})', note: 'replica-local execute; its own local-save barrier is the same apply() path modeled by Handle(op)' },
-      { file: RUNTIME, anchor: "syncPending: !savedLocally || (this.role === 'replica' && (canonical(heads) !== canonical(this.acknowledgedHeads) || signaturesUnacknowledged))", note: 'heads stand for the board and its signature document together; a replica edit is pending until the hub acknowledges both' },
+      { file: RUNTIME, anchor: "syncPending: !savedLocally || (this.role === 'replica' && (!sameHeads(heads, this.acknowledgedHeads) || signaturesUnacknowledged))", note: 'heads stand for the board and its signature document together; a replica edit is pending until the hub acknowledges both' },
       { file: RUNTIME, anchor: 'for (const record of missing) doc.membership[record.recordId] = storageValue(record)', note: 'a membership write-back is a local change without a request, on a replica or the hub; it only advances heads, and every acknowledgement still flushes first' },
       { file: RUNTIME, anchor: 'if (signatures) this.startAttribution(handle, signatures)', note: 'every local change goes through boardChange, which signs exactly that change as it is made (lib/attribution.js); its signature is written to the signature document by a deferred local change that only advances the signature heads, off the acknowledgement path' },
     ],
@@ -163,7 +163,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     maps: [
       { file: RUNTIME, anchor: "requireValue(!this.attribution.unwritten, 'This machine’s newest signatures are not yet in the signature document', 'SIGNATURES_UNWRITTEN')", note: 'pending signatures are first written into the signature document (a local change that only advances its heads); while one is unwritten no request is sent, which this unfair action already allows' },
       { file: RUNTIME, anchor: 'const requestedHeads = getHeads(this.workspace.handle.doc())', note: 'the board and signature heads are captured as one pair in the step that found the outbox empty, before the local flush; a change made during that flush is in neither' },
-      { file: RUNTIME, anchor: "const receipt = await this.requestHub('/automerge/sync-ack', {" },
+      { file: RUNTIME, anchor: 'const receipt = await this.requestHub(AUTOMERGE_PATHS.syncAck, {' },
     ],
     apply: state => {
       if (state.done || state.inflight) return []
@@ -341,7 +341,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
   each('ack', (request, index) => action(`ReplicaReceive(${request.id})`, {
     fair: true,
     maps: [
-      { file: RUNTIME, anchor: 'if (canonical(getHeads(doc)) === canonical(requestedHeads) && hasHeads(doc, receipt.hubHeads) && signaturesHeld) {', note: 'first guard, before the local flush; the hub’s reported heads must be held for both documents' },
+      { file: RUNTIME, anchor: 'if (sameHeads(getHeads(doc), requestedHeads) && hasHeads(doc, receipt.hubHeads) && signaturesHeld) {', note: 'first guard, before the local flush; the hub’s reported heads must be held for both documents' },
       { file: RUNTIME, anchor: 'if (!this.stopController.signal.aborted) this.lastSyncError = error.message', note: 'rejected or failed acknowledgements only record an error' },
     ],
     apply: state => {
@@ -359,7 +359,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
   each('ack', (request, index) => action(`ReplicaAckCommit(${request.id})`, {
     fair: true,
     maps: [
-      { file: RUNTIME, anchor: 'if (canonical(getHeads(this.workspace.handle.doc())) === canonical(requestedHeads)) {\n            this.acknowledgedHeads = requestedHeads', note: 'second guard after the local flush; records the requested snapshot, not the current heads' },
+      { file: RUNTIME, anchor: 'if (sameHeads(getHeads(this.workspace.handle.doc()), requestedHeads)) {\n            this.acknowledgedHeads = requestedHeads', note: 'second guard after the local flush; records the requested snapshot, not the current heads' },
       { file: RUNTIME, anchor: 'if (signatures) this.acknowledgedSignatureHeads = requestedSignatureHeads', note: 'the signature document’s requested snapshot likewise, never its current heads' },
     ],
     apply: state => {

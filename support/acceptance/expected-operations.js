@@ -1,16 +1,10 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
+import { canonical, plain, receiptKey } from '../../lib/workspace-schema.js'
+import { digest, recordId, storedOperationIdFromRequest, taskIdForRequest } from '../../lib/operation-identity.js'
 
-const canonical = value => JSON.stringify(sort(value))
-function sort(value) {
-  if (Array.isArray(value)) return value.map(sort)
-  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, sort(value[key])]))
-  return value
-}
-export const hash = value => createHash('sha256').update(canonical(value)).digest('hex')
+export const hash = value => digest(canonical(value))
 
 const MACHINE_ID = /^machine-[a-z2-7]{26}$/
-const storedId = request => `op-${hash([request.operationId, hash({ type: request.type, actorId: request.actorId, payload: request.payload })])}`
 
 /** Intents are recorded before execution; successful receipts never define expected effects. */
 export class ExpectedOperations {
@@ -36,7 +30,7 @@ export class ExpectedOperations {
     for (const [id, intent] of this.intents) {
       if (!this.receipts.has(id)) continue
       if (intent.type === 'task.create') {
-        const taskId = `task-${createHash('sha256').update(storedId(intent)).digest('hex').slice(0, 24)}`
+        const taskId = taskIdForRequest(intent)
         tasks.set(taskId, { description: '', status: 'backlog', assignee: null, priority: 'p2', tags: [], ...intent.payload })
       }
       if (intent.type === 'task.update') Object.assign(tasks.get(intent.payload.taskId), intent.payload.updates)
@@ -50,7 +44,7 @@ export class ExpectedOperations {
     }
     for (const [id, { receipt }] of this.receipts) {
       const intent = this.intents.get(id)
-      const operationId = storedId(intent)
+      const operationId = storedOperationIdFromRequest(intent)
       const event = snapshot.operations[operationId]
       assert.ok(event, `Acknowledged operation missing: ${id}`)
       assert.equal(event.operationId, operationId)
@@ -68,11 +62,12 @@ export class ExpectedOperations {
       }
       if (intent.type === 'task.create') {
         assert.ok(snapshot.tasks[receipt.result.taskId], `Created task missing: ${id}`)
+        assert.equal(receipt.result.taskId, recordId('task', operationId))
         assert.equal(snapshot.tasks[receipt.result.taskId].created_by, intent.actorId)
       }
       if (intent.type === 'read.mark') {
         for (const observed of intent.payload.comments) {
-          const key = createHash('sha256').update(JSON.stringify([intent.actorId, observed.commentId, observed.revisionId])).digest('hex')
+          const key = receiptKey(intent.actorId, observed.commentId, observed.revisionId)
           readReceipts.set(key, { actorId: intent.actorId, ...observed })
         }
       }
@@ -89,7 +84,7 @@ export class ExpectedOperations {
     // Each replica's Activity and attribution are its own view (they name that replica's machine as "this computer");
     // the shared document is what must be identical. attributed() and verifyAttribution() check the views themselves.
     const { attribution, activity, ...shared } = snapshot
-    return { operationCount: this.receipts.size, snapshotHash: hash(shared) }
+    return { operationCount: this.receipts.size, snapshotHash: hash(plain(shared)) }
   }
 
   /**
@@ -191,7 +186,7 @@ export class ExpectedOperations {
       const intent = this.intents.get(id)
       const machineId = machineOfReplica[receipt.replicaId]
       assert.ok(machineId, `No machine is known for replica ${receipt.replicaId}`)
-      expectEntry(storedId(intent), machineId, intent.actorId, entry => {
+      expectEntry(storedOperationIdFromRequest(intent), machineId, intent.actorId, entry => {
         assert.equal(entry.event.requestId, id)
         assert.equal(entry.event.type, intent.type)
         assert.equal(canonical(entry.event.payload), canonical(intent.payload), `Operation ${id}'s signed payload is not what was intended`)
@@ -212,7 +207,7 @@ export class ExpectedOperations {
         registered.add(intended.id)
       })
     }
-    const known = new Set([...[...this.receipts.keys()].map(id => storedId(this.intents.get(id))), ...this.baseline])
+    const known = new Set([...[...this.receipts.keys()].map(id => storedOperationIdFromRequest(this.intents.get(id))), ...this.baseline])
     const unexpected = operationEntries.filter(entry => !known.has(entry.key))
     assert.deepEqual(unexpected.map(entry => entry.key), [], 'Activity shows operations the harness never performed')
     // Membership records: exactly the expected ones, each by its expected signer.

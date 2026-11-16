@@ -8,6 +8,7 @@ import { Repo } from '@automerge/automerge-repo'
 
 import AutomergeSyncServer from '../automerge-sync-server.js'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
+import { AUTOMERGE_PATHS, NATIVE_AUTOMERGE_WS_PATH } from '../lib/sync-protocol.js'
 import { randomUUID } from 'node:crypto'
 import { admitMembers, handshakeSocket, hubRuntime, memberAdapter, projectFor } from './machines.js'
 
@@ -209,8 +210,7 @@ export function nextWsMessage(ws, timeoutMs = 2000) {
   })
 }
 
-/** Path for Automerge Repo native (CBOR) WebSocket sync (see automerge-sync-server.js). */
-export const NATIVE_AUTOMERGE_WS_PATH = '/automerge'
+export { NATIVE_AUTOMERGE_WS_PATH }
 
 export function nativeAutomergeWsUrl(server, query = {}) {
   const q = new URLSearchParams(query)
@@ -230,7 +230,7 @@ export async function memberSocket(server, { member = 0 } = {}) {
  */
 export async function openNativePeer(server, storagePath = createTempDir('pardner-peer-'), { member = 0 } = {}) {
   const project = await admitMembers(server.store, projectFor(server.store.directory))
-  const { url: documentUrl } = await authedGet(server, '/automerge/url')
+  const { url: documentUrl } = await authedGet(server, AUTOMERGE_PATHS.url)
   const adapter = memberAdapter(project, member, nativeAutomergeWsUrl(server), { retryMs: NATIVE_AUTOMERGE_RETRY_MS })
   const repo = new Repo({
     storage: new NodeFSStorageAdapter(storagePath),

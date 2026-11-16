@@ -64,9 +64,9 @@ export const MUTATIONS = [
         const doc = this.workspace.handle.doc()
         requireValue(Array.isArray(receipt.hubHeads) && (!signatures || Array.isArray(receipt.hubSignatureHeads)), 'Invalid hub persistence acknowledgement')
         const signaturesHeld = !signatures || hasHeads(signatures.doc(), receipt.hubSignatureHeads)
-        if (canonical(getHeads(doc)) === canonical(requestedHeads) && hasHeads(doc, receipt.hubHeads) && signaturesHeld) {
+        if (sameHeads(getHeads(doc), requestedHeads) && hasHeads(doc, receipt.hubHeads) && signaturesHeld) {
           await this.repo.flush(this.workspace.documents())
-          if (canonical(getHeads(this.workspace.handle.doc())) === canonical(requestedHeads)) {
+          if (sameHeads(getHeads(this.workspace.handle.doc()), requestedHeads)) {
             this.acknowledgedHeads = requestedHeads
             // The requested snapshot, never the current heads: a signature written since stays unacknowledged.
             if (signatures) this.acknowledgedSignatureHeads = requestedSignatureHeads
