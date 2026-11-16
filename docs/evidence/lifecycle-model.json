@@ -1853,5 +1853,156 @@
       ]
     },
     "review": "Merging main (#236) changed only how the mapped files spell paths, ports and head comparisons (lib/sync-protocol.js, sameHeads). Anchors and the stale-ack-accepted mutation text follow; no guard, effect, atomicity assumption, invariant or witness changed. The three review entries #236 rewrote to its own revision keep their recorded mappings here."
+  },
+  "uxPassMainMerge": {
+    "recorded": "2026-11-16",
+    "mapping": {
+      "revision": "81faf8e6ab83f38c96b7baa04efd30bca189e1b4",
+      "files": {
+        "automerge-sync-server.js": "8f04e7305eccf7a87752f68927aa2242410370c551f89a282473d4cb2ce8cc0f",
+        "lib/durable-repo.js": "2e439911ee0afb6039a4864886fd64b7838b0a3b8036f95a81bbdd1560d3d641",
+        "lib/workspace-runtime.js": "8967b66bfd66fe471edccafbe21b8daeed505705c6a196a6aa08c86e2f06a036",
+        "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-16T08:47:13.341Z",
+      "finished": "2026-11-16T08:47:35.816Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ]
+    },
+    "review": "Merging main (#236) into the UX pass: the sync server's ports and paths come from lib/sync-protocol.js; no modelled action changed. The three review entries #236 rewrote to its own revision keep their recorded mappings here."
+  },
+  "clientModeUxPassMerge": {
+    "recorded": "2026-11-16",
+    "mapping": {
+      "revision": "a7752a62a7ba9866398da28b14700bfd9ad2bcf0",
+      "files": {
+        "automerge-sync-server.js": "9ccea6eb239ae68d8643712c6ce71b780d4fa0c6392f87a7904e453e15b86655",
+        "lib/durable-repo.js": "2e439911ee0afb6039a4864886fd64b7838b0a3b8036f95a81bbdd1560d3d641",
+        "lib/workspace-runtime.js": "8967b66bfd66fe471edccafbe21b8daeed505705c6a196a6aa08c86e2f06a036",
+        "lib/workspace.js": "441b29286611ac6fea45cdeb9ce55cbae7ba6f6850ec1b2e73831df1b2f78003"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "result": "passed",
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations -- --json output/verification/lifecycle-mutations.json",
+      "started": "2026-11-16T16:59:54.018Z",
+      "finished": "2026-11-16T17:00:15.588Z",
+      "workingTreeUnchanged": true,
+      "ok": true,
+      "mutations": [
+        {
+          "name": "receipt-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "ack-before-persist",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "hub-acks-unknown-heads",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "stale-ack-accepted",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "admit-while-stopping",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "close-store-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "lease-before-drain",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        },
+        {
+          "name": "no-idle-reclaim",
+          "implementation": "caught",
+          "drift": "reported",
+          "model": "counterexample"
+        }
+      ],
+      "controls": "all eight passed"
+    },
+    "review": "Merging the updated UX pass (#189, now carrying main's #236) into client mode: automerge-sync-server.js keeps client mode's removal of the standalone LAN listeners and takes the ports and paths from lib/sync-protocol.js; lib/workspace-runtime.js and lib/durable-repo.js are #236's. No guard, effect, anchor, atomicity assumption, invariant, witness or mutation text changed."
   }
 }
