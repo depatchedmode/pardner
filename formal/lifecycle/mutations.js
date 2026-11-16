@@ -166,7 +166,7 @@ export const MUTATIONS = [
   },
 ]
 
-const COPIED = [SERVER, 'lib', 'support', 'package.json', 'formal', CONFORMANCE, RUNTIME_TESTS]
+const COPIED = [SERVER, 'lib', 'shared', 'support', 'package.json', 'formal', CONFORMANCE, RUNTIME_TESTS]
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 const mappedFiles = [...new Set(MUTATIONS.map(mutation => mutation.file))].sort()
 const fingerprint = base => Object.fromEntries(mappedFiles.map(file => [file, sha256(readFileSync(join(base, file)))]))

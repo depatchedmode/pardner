@@ -753,3 +753,29 @@ changed. Fresh default check: 174614 states, 679456 transitions, all four
 invariants and `ShutdownCompletes` hold; all ten witnesses are reachable. All eight
 mutations were caught, reported as drift and reproduced by the model; the working
 tree was unchanged. See `attributionCloseOut` in the evidence JSON.
+
+## Merge of main's shared-module refactor (2026-11-16)
+
+Merging `main` (#236) into the trust gate moved paths, ports and head comparisons
+into shared modules. The mapped files changed only in how they spell the same
+thing:
+
+- `automerge-sync-server.js`: routes, ports, the native socket path and ticket
+  purposes come from `lib/sync-protocol.js` (`AUTOMERGE_PATHS`, `TICKET_PURPOSE`).
+  The gate's own routes keep their literals.
+- `lib/workspace-runtime.js`: head comparisons use `sameHeads` (`lib/heads.js`)
+  instead of comparing two `canonical()` strings; for the arrays of change hashes
+  compared there, both give the same answer. The storage-directory check and the
+  native socket path use the shared constants.
+- `lib/durable-repo.js`: the persisted-heads comparison uses `sameHeads`.
+
+The anchors of `Admit`, `ReplicaSendAck`, `ReplicaReceive`, `ReplicaAckCommit`
+and `syncPending`, and the `stale-ack-accepted` mutation's text, follow the new
+spelling. No guard, effect, atomicity assumption, invariant or witness changed.
+The mutation runner now also copies `shared/`, which `lib/workspace-schema.js`
+imports since #236; without it every control failed with a missing module.
+Fresh default check: 174614 states, 679456 transitions, all four invariants and
+`ShutdownCompletes` hold; all ten witnesses are reachable. All eight mutations
+were caught, reported as drift and reproduced by the model, with all eight
+controls passing; the working tree was unchanged. See `mainRefactorMerge` in the
+evidence JSON.
