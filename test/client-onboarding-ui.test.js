@@ -528,13 +528,18 @@ for (const engine of [chromium, webkit]) it(`refuses a loopback-only invitation 
 
     // When the hub is back, Retry loads the list and the same Create invitation succeeds.
     const hub = await startClient({ directory: alice.directory })
-    t.after(() => hub.stop())
-    await history.getByRole('button', { name: 'Retry' }).click()
-    await history.getByText('None yet.').waitFor({ timeout: 20000 })
-    await dialog.getByRole('button', { name: 'Create invitation' }).click()
-    await dialog.getByRole('button', { name: 'Copy invite' }).waitFor({ timeout: 20000 })
-    assert.equal(await dialog.getByRole('alert').count(), 0)
-    assert.deepEqual(errors, [])
+    // Stopped before the fixture removes this directory: after hooks run in the order they were added, so a hook here
+    // would run after the removal, which then races the running client and can leave it running.
+    try {
+      await history.getByRole('button', { name: 'Retry' }).click()
+      await history.getByText('None yet.').waitFor({ timeout: 20000 })
+      await dialog.getByRole('button', { name: 'Create invitation' }).click()
+      await dialog.getByRole('button', { name: 'Copy invite' }).waitFor({ timeout: 20000 })
+      assert.equal(await dialog.getByRole('alert').count(), 0)
+      assert.deepEqual(errors, [])
+    } finally {
+      await hub.stop()
+    }
   })
 
 // A Git profile with only user.name; global and system config are hidden so the email cannot leak in.

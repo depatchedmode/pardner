@@ -56,6 +56,10 @@ Chromium contexts, and two separate deterministic agent worker subprocesses:
   a short session. No bearer token passes between machines; a gate that relays
   them sees only signed messages. The local operator token, browser sessions and
   agent credentials authenticate to a laptop's own client only.
+- **Changes:** every Automerge change a client makes is signed by its machine key
+  in the project's signature document, and every client checks the changes it
+  receives. The hub's persistence acknowledgement a laptop waits for covers the
+  heads of both the board and the signature document.
 
 All task mutations go through a client's project API proxy
 (`…/projects/:id/api/automerge/operations`), using the local operator bearer for
@@ -133,7 +137,61 @@ document after enrollment (the hub's Actor registrations) are recorded as the
 baseline and excluded from the acknowledged-operation count. At the end, each replica is
 checked independently for operation ID, Actor, type, full payload, originating
 replica, created task count, final task fields, comment contents/cardinality, and
-handoff comment/mention effects. Only then are snapshot hashes compared.
+handoff comment/mention effects.
+
+As it enrolls, pairs and names agents, the runner also records the membership
+records each action must produce: creating the project, the genesis and the
+creator's setup-agent label, by Alice's desktop; pairing Alice's laptop, its
+certification by the desktop and the laptop's own setup-agent label; admitting Bob,
+his certification by the desktop and his laptop's setup-agent label; and Builder's
+and Reviewer's labels, each by the laptop it runs on.
+
+Within ten seconds of convergence (`attribution` in the timings), every replica
+must have derived and checked every board change, show every one in an Activity
+entry, and show every entry signed by a named machine with a person, with no flag,
+no unusual write, no write that differs from its entry, a time a date can show,
+and nothing listed for review; and all three replicas must report the same stable
+attribution, keyed by board change hash. For each change it holds:
+- the Activity entry it is shown in: its kind, its key, the group of changes the
+  entry lists, its flags with their values (for example which other changes wrote
+  the same key), and the changes that later altered its stored copy;
+- the content that change wrote: its operation event with that change's own
+  replica and time, or the membership record, or what an unrecognised change wrote;
+- what else that change wrote: its unusual writes in detail, the entries it
+  replaced, each difference between its writes and the writes its event implies
+  (`lib/operation-writes.js`), and the Actors a board's creation registered;
+- that change's verdict: its state, the signing machine, that machine's person,
+  whether the event names an Actor that machine may not act as, and whether its time
+  can be shown.
+It also holds the changes listed for review.
+
+Left out of that comparison, because they name a replica or what it happened to
+observe: which machine is this computer, machine names, who relayed a verdict to
+it, what a pending change waits for, and the reason recorded for an unsigned one.
+The runner then checks the shared view against what it knows performed each act:
+- each acknowledged operation is exactly one entry of exactly one change, which
+  wrote the intended operation ID, request ID, type, Actor and payload, on the
+  replica that acknowledged it, and was signed by that replica's machine, whose
+  person is the Actor's person;
+- each baseline operation likewise, by Alice's desktop as Alice (the hub registers
+  every Actor it enrolls), and with the payload enrollment intends for the Actor it
+  registers: `actor.register` with request ID `enroll-<Actor>`, and the Actor's ID,
+  handle, kind and display name as `lib/client-service.js` builds them from the
+  person and, for an agent, its harness; no Actor is registered twice;
+- on every replica, every operation entry matches its change's writes exactly,
+  and its change wrote nothing unusual;
+- no other operation entry exists;
+- the membership records shown are exactly the ones recorded above, each written by
+  a signed change, valid, and signed by the expected machine.
+
+Only then are snapshot hashes compared; they leave out each replica's own Activity
+and attribution views, so the board convergence check is exactly what it was. The
+report records the comparison's counts (changes, operations, records) and the hash
+of the shared attribution. What this does not establish: that the replicas' current
+board state is the one each signer intended beyond the effects the manifest checks
+and the writes each operation's entry implies (with the exemptions
+`lib/operation-writes.js` lists), or anything about a member's client that writes
+unusual data, which the runtime and property tests cover instead.
 
 Each agent has a durable SQLite inbox and effect ledger outside the workspace.
 The runner kills workers before acknowledgement and after effects have been saved,

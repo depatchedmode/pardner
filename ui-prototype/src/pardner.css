@@ -188,12 +188,14 @@ nav label {
 nav > button + label {
   margin-left: auto;
 }
-/* overflow: hidden makes the ellipsis apply and stops WebKit spilling a long
-   selected title outside the select. */
+/* overflow: hidden makes the ellipsis apply. Linux WebKit ignores it and lays a
+   long selected title out past the select, widening the page; paint
+   containment keeps that text inside the select's box. */
 nav select {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  contain: paint;
 }
 nav button[aria-pressed='true'] {
   border-color: var(--accent);
@@ -450,6 +452,40 @@ nav button[aria-pressed='true'] {
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
+}
+.event-signer {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.event-signer[data-tone="flag"] {
+  color: var(--warning);
+}
+/* A name or title looked up now, inside an entry whose other details are as its signer wrote them. */
+.current-label {
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.current-legend {
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+.comment-changed {
+  font-size: 12px;
+  color: var(--warning);
+  margin: 4px 0;
+}
+/* A signature normally arrives milliseconds after its change: say "pending" only once the wait is noticeable. */
+.event-signer[data-tone="pending"] {
+  animation: pardner-reveal 0s linear 1.5s both;
+}
+@keyframes pardner-reveal {
+  from { visibility: hidden; }
+  to { visibility: visible; }
+}
+.review-notice p {
+  margin: 0 0 8px;
 }
 .event > time {
   grid-column: 2;

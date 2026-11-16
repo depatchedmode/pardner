@@ -474,7 +474,10 @@ raise SystemExit(m.main())
                 self.assertIn('/pardner/#grant=', launch.read_text())
                 baseline = project_api(original, '/automerge/doc')['doc']
                 activity = cli(original, ['activity', '--limit', '1000'])['activity']
-                self.assertEqual(len(activity), len(baseline['operations']))
+                # Activity lists each operation once, from the change that wrote it, beside the membership records, and
+                # every entry carries its signer line.
+                self.assertEqual(len([item for item in activity if item['kind'] == 'operation']), len(baseline['operations']))
+                self.assertTrue(all(item['signerLine'] for item in activity))
                 original.stop()
                 backup = root / 'cold-backup'
                 shutil.copytree(data, backup)

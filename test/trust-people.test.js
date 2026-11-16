@@ -153,9 +153,14 @@ test('removal is shown as removed, with who removed it, to everyone and to the r
   const directory = carol.client.registry.directory, carolId = carol.personId
   await carol.client.stop()
   const reopened = await startClient({ directory, port: 0 })
-  t.after(() => reopened.stop())
-  const again = await fetch(`${reopened.url}${CLIENT_API}/session`, { headers: { Authorization: `Bearer ${reopened.registry.read().operatorToken}` } }).then(response => response.json())
-  assert.equal(again.removedProjects[0].removal.by.name, 'Alice')
+  // Stopped before the fixture removes this directory: after hooks run in the order they were added, so a hook here
+  // would run after the removal, which then races the running client and can leave it running.
+  try {
+    const again = await fetch(`${reopened.url}${CLIENT_API}/session`, { headers: { Authorization: `Bearer ${reopened.registry.read().operatorToken}` } }).then(response => response.json())
+    assert.equal(again.removedProjects[0].removal.by.name, 'Alice')
+  } finally {
+    await reopened.stop()
+  }
   // Everyone else's board marks removed people instead of listing them as offline (#175).
   const actors = (await alice.call(`/projects/${project.id}`)).actors
   const carolActors = actors.filter(actor => actor.humanId === carolId)

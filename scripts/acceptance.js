@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -11,6 +12,7 @@ import { ExpectedOperations, hash } from '../support/acceptance/expected-operati
 import { candidateFingerprint } from '../support/acceptance/candidate.js'
 import { AgentProcess } from '../support/acceptance/agent-process.js'
 import { joinApproved } from '../support/enrollment.js'
+import { actorId as actorFor } from '../lib/client-identity.js'
 
 const args = process.argv.slice(2)
 const option = (key, fallback) => { const index = args.indexOf(`--${key}`); return index < 0 ? fallback : args[index + 1] }
@@ -30,6 +32,8 @@ const childPids = pid => { try { return execFileSync('pgrep', ['-P', String(pid)
 const alive = pid => { try { process.kill(pid, 0); return true } catch { return false } }
 const email = name => `${name.toLowerCase()}@example.test`
 const AGENT_HARNESS = 'anthropic-claude-code'
+// The harness every client in this run reports for its setup agent (it starts no client with --harness).
+const SETUP_HARNESS = 'openai-codex'
 
 /**
  * Client topology: side 0 is Alice's always-on desktop client, the project authority (hub), with no browser. Side 1
@@ -77,6 +81,49 @@ async function runSeed(seed) {
   const show = (side, id) => services[side].call(api(`/task/${encodeURIComponent(id)}/context`), undefined, { timeout: 5000 })
   const snapshot = async side => (await services[side].call(api('/doc'), undefined, { timeout: 5000 })).doc
   const status = side => services[side].call(api('/status'), undefined, { timeout: 5000 })
+  // Every operation and record shown as signed by a machine, with no flag and nothing to review, and the same
+  // stable attribution on every replica, within ten seconds of convergence (verifyAttribution checks who signed).
+  const attributed = async () => {
+    const started = performance.now()
+    for (;;) {
+      const docs = await Promise.all([0, 1, 2].map(snapshot))
+      const views = docs.map(doc => JSON.stringify(expected.stableAttribution(doc)))
+      if (docs.every(doc => expected.attributed(doc)) && views.every(view => view === views[0])) {
+        timings.push({ kind: 'attribution', elapsed: performance.now() - started })
+        return docs
+      }
+      assert.ok(performance.now() - started <= 10000, 'Operations and records were not all shown as signed, alike, on every replica within ten seconds')
+      await delay(40)
+    }
+  }
+  /**
+   * What the harness knows about who did what: side 0 is Alice's desktop (the hub, which enrolled everyone), side 1
+   * Alice's laptop with Builder, side 2 Bob's laptop with Reviewer. Each replica names its own machine.
+   */
+  const knownSigners = docs => {
+    const machine = docs.map(doc => doc.attribution.machineId)
+    const personOf = id => docs[0].attribution.machines[id]?.personId
+    const person = { alice: personOf(machine[0]), bob: personOf(machine[2]) }
+    const personOfActor = { [actors.alice]: person.alice, [actors.builder]: personOf(machine[1]), [actors.bob]: person.bob, [actors.reviewer]: personOf(machine[2]) }
+    assert.equal(personOf(machine[1]), person.alice, 'Alice’s laptop is Alice’s machine')
+    // An expected record names sides, people and Actors of the harness; these are their IDs in this run.
+    const value = ref => (ref?.side !== undefined ? machine[ref.side] : ref?.person ? person[ref.person] : ref?.actor ? actors[ref.actor]
+      : ref?.agent ? actorFor(person[ref.agent[0]], ref.agent[1]) : ref)
+    const resolve = ({ action, ...fields }) => ({ action, fields: Object.fromEntries(Object.entries(fields).map(([field, ref]) => [field, value(ref)])) })
+    // What enrollment registers for each Actor the harness enrolled: its person, and its harness for an agent.
+    const names = { [person.alice]: 'Alice', [person.bob]: 'Bob' }
+    const registration = id => {
+      for (const personId of [person.alice, person.bob]) {
+        if (id === actorFor(personId)) return { id, handle: `human-${personId}`, kind: 'human', displayName: names[personId] }
+        for (const harness of [AGENT_HARNESS, SETUP_HARNESS]) {
+          if (id === actorFor(personId, harness)) return { id, handle: `agent-${createHash('sha256').update(personId).digest('hex').slice(0, 20)}-${harness}`, kind: 'agent', displayName: harness }
+        }
+      }
+      return null
+    }
+    return { machineOfReplica: Object.fromEntries(replicaIds.map((replicaId, side) => [replicaId, machine[side]])), personOfActor,
+      baseline: { machineId: machine[0], actorId: actors.alice }, registration, resolve }
+  }
   const converge = async () => {
     const started = performance.now()
     while (true) {
@@ -112,18 +159,29 @@ async function runSeed(seed) {
     await services[0].call('/identity', { name: 'Alice', email: email('Alice'), operationId: 'identity' })
     ;({ project } = await services[0].call('/projects', { name: `Acceptance ${seed}`, operationId: 'create' }))
     actors.alice = project.actorId
+    // Creating a project signs its genesis and labels the creator's setup agent, both on Alice's desktop.
+    expected.expectRecords('create the project', [{ kind: 'project.genesis', subject: { person: 'alice' }, signer: { side: 0 } },
+      { kind: 'agent.name', subject: { agent: ['alice', SETUP_HARNESS] }, signer: { side: 0 } }])
     services[1] = await start(1)
     const device = await services[0].call(`/projects/${project.id}/invites`, { purpose: 'device', operationId: 'invite-laptop' })
     assert.equal((await enroll(1, device.invitation, 'join-laptop')).actorId, actors.alice)
+    // Pairing the laptop: the desktop certifies it, and the laptop labels its own setup agent.
+    expected.expectRecords('pair Alice’s laptop', [{ kind: 'machine.add', subject: { side: 1 }, personId: { person: 'alice' }, signer: { side: 0 } },
+      { kind: 'agent.name', subject: { agent: ['alice', SETUP_HARNESS] }, signer: { side: 1 } }])
     const builderInvite = await services[1].call(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'invite-builder' })
     await enroll(1, builderInvite.invitation, 'join-builder', { harnessId: AGENT_HARNESS, name: 'Builder' })
+    expected.expectRecords('name Builder', [{ kind: 'agent.name', subject: { agent: ['alice', AGENT_HARNESS] }, displayName: 'Builder', signer: { side: 1 } }])
     await advertise(gates[1])
     services[2] = await start(2)
     await services[2].call('/identity', { name: 'Bob', email: email('Bob'), operationId: 'identity' })
     const bobInvite = await services[0].call(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite-bob' })
     actors.bob = (await enroll(2, bobInvite.invitation, 'join-bob')).actorId
+    // Admitting Bob: the desktop certifies his machine as a member, and his laptop labels its setup agent.
+    expected.expectRecords('admit Bob', [{ kind: 'member.add', subject: { person: 'bob' }, displayName: 'Bob', signer: { side: 0 } },
+      { kind: 'agent.name', subject: { agent: ['bob', SETUP_HARNESS] }, signer: { side: 2 } }])
     const reviewerInvite = await services[2].call(`/projects/${project.id}/invites`, { purpose: 'agent', operationId: 'invite-reviewer' })
     await enroll(2, reviewerInvite.invitation, 'join-reviewer', { harnessId: AGENT_HARNESS, name: 'Reviewer' })
+    expected.expectRecords('name Reviewer', [{ kind: 'agent.name', subject: { agent: ['bob', AGENT_HARNESS] }, displayName: 'Reviewer', signer: { side: 2 } }])
     for (const [side, who] of [[1, 'builder'], [2, 'reviewer']]) {
       const grant = await services[side].call(`/projects/${project.id}/agent-grant`, { harnessId: AGENT_HARNESS })
       grants[who] = { ...grant, apiBase: `${services[side].url}/pardner/client/v1/projects/${project.id}/api`, file: join(root, `${who}-credential.json`) }
@@ -323,12 +381,15 @@ async function runSeed(seed) {
     }
     assert.deepEqual(pageErrors, [])
     progress('Verifying acknowledged operations and final effects against the independent manifest')
-    const docs = await converge()
+    await converge()
+    // Signatures travel in their own document, so they may land just after the boards converged.
+    const docs = await attributed()
     const verified = docs.map(doc => expected.verify(doc))
     assert.ok(verified.every(result => result.snapshotHash === verified[0].snapshotHash))
+    const attribution = expected.verifyAttribution(docs, knownSigners(docs))
     const maxima = {}
     for (const { kind, elapsed } of timings) maxima[kind] = Math.max(maxima[kind] ?? 0, elapsed)
-    const report = { seed, candidateSha256: candidate.sha256, scenarioPassed: true, topology: 'client', maxima, timings, gates: gates.map(gate => gate.events), verified, agentEvidence,
+    const report = { seed, candidateSha256: candidate.sha256, scenarioPassed: true, topology: 'client', maxima, timings, gates: gates.map(gate => gate.events), verified, attribution, agentEvidence,
       manifest: expected.report(), heads: docs.map(doc => doc.heads), fixture: { tasks: 100, comments: 400, scriptedOperations: 200 },
       limits: { localAckMs: 2500, clientProxyAckMs: 2500, agentEffectAckMs: 2500, localVisibleMs: 2000, offlineStartMs: 6000, convergenceMs: 10000 } }
     await writeFile(join(reportDirectory, 'report.json'), JSON.stringify(report, null, 2))
