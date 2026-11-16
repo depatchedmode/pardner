@@ -1583,7 +1583,8 @@ function TaskDetail({
                 <strong>{labelActor(actors[choice.actorId])}</strong>
                 <p>{choice.value}</p>
                 <button
-                  disabled={!canWrite}
+                  disabled={!canWrite || comment.actorId !== actor}
+                  title={comment.actorId !== actor ? 'Only the comment author may resolve it' : undefined}
                   onClick={() =>
                     submit('comment.resolve', {
                       commentId: comment.id,
