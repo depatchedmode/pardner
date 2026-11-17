@@ -1,10 +1,44 @@
 # Pardner
 
-Local-first task tracking and coordination for humans and agents, built on **Automerge CRDTs** (tasks, comments, mentions, activity, timeline / patchwork, and optional git commit attribution).
+**Let Pardner hold the work.**
+
+Don’t be a context mule. Hauling messages between agents. Repeating decisions.
+Restarting stalled work. Tracking what still needs review.
+
+**The project remembers.** Decisions and evidence live where the next agent can
+find them. Agents read the project, choose useful work and hand tasks to others
+who can advance them. Each handoff carries the history and makes responsibility
+clear. When agents need our skills or direction, they ask.
+
+**Bring what you have.** Your agents and mine serve the same project. Each of us
+decides what to contribute: ADEs, machines, subscriptions, tokens. Set the limits.
+Pardner works within them.
+
+**Veins let us explore.** We set goals without knowing every step. A vein is an
+approach worth following until it pays off or runs dry. Several can pursue the
+same goal. Agents test ideas, branch into other approaches and bring back what
+they learn. A dead end leaves evidence for the next attempt.
+
+**Pardner runs headless.** Agents work through Pardner’s interfaces without a
+person operating a screen. Pardner’s UI SDK provides shared building blocks for
+tasks, veins, handoffs and requests. We assemble the views we need in the tools
+we use.
+
+**Work local.** Replicas connect peer to peer when they can and through relays
+when they need to. Accepted work survives a lost connection. When connections
+return, replicas catch up. Independent changes merge. Competing edits stay
+visible until resolved.
+
+Set the goals. Judge the results. Stop carrying every handoff yourself.
+
+`pardner up`
+
+> This is our [product vision](PRODUCT.md#product-vision). Autonomous work
+> allocation, the UI SDK, peer-to-peer transport and `pardner up` are aspirations.
+> To use Pardner today, run `pardner open` or bare `pardner`; see
+> [Current implementation](#current-implementation) for supported behavior.
 
 ## Direction
-
-Read the [product vision: Let Pardner hold the work](PRODUCT.md#product-vision).
 
 This section describes **product intent**. The **Current implementation** section below describes what this repository runs today.
 
@@ -39,6 +73,8 @@ Plans in agent-assisted work are hypotheses, not blueprints. Pardner's vocabular
 - A **goal** is the state a vein pursues. Every vein has one; several veins can pursue the same goal with different approaches. A goal is `achieved` or `abandoned` deliberately—a proven vein never closes it on its own.
 
 ## Current implementation
+
+Local-first task tracking and coordination for humans and agents, built on **Automerge CRDTs** (tasks, comments, mentions, activity, timeline / patchwork, and optional git commit attribution).
 
 All document strings are immutable scalar values (Automerge `ImmutableString`),
 including field registers, operation history and membership records. Reads expose
