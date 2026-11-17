@@ -4,6 +4,8 @@ Local-first task tracking and coordination for humans and agents, built on **Aut
 
 ## Direction
 
+Read the [product vision: Let Pardner hold the work](PRODUCT.md#product-vision).
+
 This section describes **product intent**. The **Current implementation** section below describes what this repository runs today.
 
 ### Today (user experience)

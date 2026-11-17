@@ -1,5 +1,6 @@
 # Pardner documentation
 
+- [Product vision: Let Pardner hold the work](../PRODUCT.md#product-vision)
 - [CLI and Actor workflows](PARDNER-CLI.md)
 - [Event-driven agent bridge](PARDNER-BRIDGE.md)
 - [Real-agent bridge rehearsal](PARDNER-BRIDGE-REHEARSAL.md)
