@@ -4,7 +4,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto'
 import { chmod, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { joinRequestRefusal } from '../lib/enrollment.js'
+import { joinRequestRefusal, offerRefusal } from '../lib/enrollment.js'
 import { createHello, readHello } from '../lib/machine-handshake.js'
 import { generateMachineKey, loadMachineKey, machineIdentity, MACHINE_KEY_FILE, PERSON_ID, personIdFor, rawPublicKey, saveMachineKey, verify } from '../lib/machine-key.js'
 import { verifyRecord } from '../lib/membership.js'
@@ -34,6 +34,51 @@ const rejectedKeys = [...smallOrderY, ...outOfRangeY].flatMap(raw => {
   const withSignBit = Buffer.from(raw)
   withSignBit[31] |= 0x80
   return [raw, withSignBit]
+})
+
+test('machine and person ID checks preserve the existing forms and coercion', () => {
+  const { owner, ownerId, offer } = trustProject()
+  const signed = offer(owner, { purpose: 'human', role: 'member' })
+  assert.equal(offerRefusal(signed, owner.publicKey), null)
+
+  const suffix = 'abcde234567'.repeat(3).slice(0, 26)
+  const cases = [
+    [42, false, false],
+    ['', false, false],
+    [suffix, false, false],
+    ['machine-short', false, false],
+    ['person-short', false, false],
+    [`machine-${suffix}`, true, false],
+    [`person-${suffix}`, false, true],
+    [`machine-${suffix.toUpperCase()}`, false, false],
+    [`person-${suffix.toUpperCase()}`, false, false],
+    [`machine-${suffix}a`, false, false],
+    [`person-${suffix}a`, false, false],
+    [`machine-${suffix.slice(1)}0`, false, false],
+    [`person-${suffix.slice(1)}0`, false, false],
+    [[owner.machineId], true, false],
+    [[ownerId], false, true],
+  ]
+  for (const [value, machine, person] of cases) {
+    // A matching signer shape reaches the separate check that ties it to a public key.
+    assert.equal(offerRefusal({ ...signed, signer: value }, null),
+      machine ? 'Offer signer is not a machine of this project' : 'Incomplete invitation offer', JSON.stringify(value))
+    assert.equal(PERSON_ID.test(value), person, JSON.stringify(value))
+  }
+})
+
+test('rawPublicKey distinguishes key type, base64url format, and byte-level refusals', () => {
+  const { publicKey } = generateMachineKey()
+  const cases = [
+    [null, 'Expected an Ed25519 public key'],
+    [generateKeyPairSync('x25519').publicKey, 'Expected an Ed25519 public key'],
+    ['', 'Expected canonical base64url public key'],
+    [publicKey + '=', 'Expected canonical base64url public key'],
+    [Buffer.alloc(31).toString('base64url'), 'Expected canonical base64url public key'],
+    [encodeY(fieldPrime).toString('base64url'), 'Non-canonical Ed25519 public key'],
+    [encodeY(1n).toString('base64url'), 'Small-order Ed25519 public key'],
+  ]
+  for (const [value, message] of cases) assert.throws(() => rawPublicKey(value), { message })
 })
 
 test('rawPublicKey rejects all small-order points and non-canonical encodings', () => {
