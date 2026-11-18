@@ -76,7 +76,9 @@ gate.
   change's signer line, and every item carries its flags, review state and signers
   as data; a forged copy appears under its own signer with its warnings, also in
   `diff` (`cli-activity`). A record's time says it is when a machine wrote it to the
-  board.
+  board. Through the desktop client, activity and task timeline list the same entries
+  with `PARDNER_ACTOR` set or unset. Explicit `--actor` and `--agent` select one
+  Actor's entries (`client-cli`).
 - **Signing only own writes** (`attribution-rules`). A member continues another
   machine's current actor and sequence number and syncs the change to it (a member
   replica, then the hub): that machine never signs it, every peer shows it

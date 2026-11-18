@@ -73,7 +73,8 @@ it('reports an author-only comment deletion refusal and supports author retries 
   try {
     for (const id of ['alice', 'bob']) await run(['actors', 'register', id, '--handle', id, '--kind', 'human'])
     const { result: { taskId } } = await run(['task', 'create', '--title', 'Author permissions'])
-    const added = await run(['comment', taskId, 'Only I may delete this'])
+    const { result: added } = await cli(directory, ['comment', taskId, 'Only I may delete this'], { env: { PARDNER_ACTOR: 'alice' } })
+    assert.equal(added.actorId, 'alice')
     const args = ['comment-delete', added.result.commentId, '--revisions', JSON.stringify([added.operationId]), '--operation-id', 'delete-once']
     const refused = await cli(directory, [...args, '--actor', 'bob'])
     assert.equal(refused.code, 1)
