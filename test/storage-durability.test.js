@@ -166,3 +166,464 @@ describe('local persistence qualification', () => {
     })
   })
 })
+
+it('reopening preserves upstream heads and board views across kills during and immediately after open', { timeout: 20000 }, async () => {
+  const { Repo } = await import('@automerge/automerge-repo')
+  const { WorkspaceRuntime } = await import('../lib/workspace-runtime.js')
+  const { Workspace } = await import('../lib/workspace.js')
+  await withStorage(async directory => {
+    const runtime = await new WorkspaceRuntime({ directory, actors: [{ id: 'writer', handle: 'writer', kind: 'human' }] }).init()
+    let expected, url
+    try {
+      for (let index = 0; index < 20; index++) {
+        const receipt = await runtime.execute({ operationId: `open-${index}`, actorId: 'writer', type: 'task.create',
+          payload: { title: `Task ${index}`, description: 'Persist this description. '.repeat(80) } })
+        await runtime.execute({ operationId: `comment-${index}`, actorId: 'writer', type: 'comment.add',
+          payload: { taskId: receipt.result.taskId, text: 'This acknowledged comment must survive.' } })
+      }
+      expected = runtime.getDoc()
+      url = runtime.docHandle.url
+    } finally { await runtime.close() }
+    // Independent upstream loader, against identical persisted chunks. Activity is the runtime's own derivation
+    // from each change, not part of the stored board, so only the reopened runtime below is compared on it.
+    const { activity, ...board } = expected
+    assert.ok(activity.length >= 40, 'every operation has an Activity entry')
+    const upstream = new Repo({ storage: new NodeFSStorageAdapter(join(directory, 'repo')) })
+    try {
+      const handle = await upstream.find(url)
+      const workspace = new Workspace({ repo: upstream, handle, replicaId: 'comparison' })
+      assert.deepEqual(workspace.snapshot(), board)
+    } finally { await upstream.shutdown() }
+    for (const phase of ['during', 'after', 'derived', 'after']) {
+      const child = fork(new URL('../support/open-process.js', import.meta.url), [directory, phase],
+        { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] })
+      try {
+        const [message] = await once(child, 'message', { signal: AbortSignal.timeout(8000) })
+        assert.notEqual(message.type, 'error', message.message)
+        if (phase === 'during') assert.equal(message.type, 'opening')
+        else {
+          // The board is whole the moment it opens; its Activity follows once every change is derived again.
+          const { activity: _partial, ...opened } = message.snapshot
+          assert.deepEqual(opened, board)
+          assert.equal(message.status.savedLocally, true)
+          if (phase === 'derived') {
+            const [derived] = await once(child, 'message', { signal: AbortSignal.timeout(8000) })
+            assert.equal(derived.type, 'derived', derived.message)
+            assert.deepEqual(derived.activity, activity)
+          }
+        }
+      } finally {
+        const exited = once(child, 'exit')
+        child.kill('SIGKILL')
+        await exited
+      }
+    }
+  })
+})
+
+it('does not rewrite a loaded document, but barriers the first edit and retries a failed save', async () => {
+  await withStorage(async directory => {
+    const writer = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    let url
+    try {
+      const handle = writer.create({ value: 'acknowledged', padding: 'snapshot'.repeat(1000) })
+      url = handle.url
+      await writer.flush()
+      handle.change(doc => { doc.value = 'incremental' })
+      await writer.flush()
+    } finally { await writer.shutdown() }
+    const storage = new NodeFSStorageAdapter(directory)
+    const save = storage.save.bind(storage)
+    let writes = 0, fail = true
+    storage.save = async (...args) => {
+      writes++
+      if (fail) throw new Error('injected first-save failure')
+      return save(...args)
+    }
+    const reopened = new DurableRepo({ storage })
+    try {
+      const handle = await reopened.find(url)
+      await reopened.flush()
+      assert.equal(writes, 0, 'read-only open must not rewrite stored history')
+      assert.equal(handle.doc().value, 'incremental')
+      const before = reopened.persistedHeads.get(handle.documentId)
+      handle.change(doc => { doc.value = 'after-reopen' })
+      await assert.rejects(reopened.flush(), /injected first-save failure/)
+      assert.deepEqual(reopened.persistedHeads.get(handle.documentId), before)
+      fail = false
+      await reopened.flush()
+      assert.notDeepEqual(reopened.persistedHeads.get(handle.documentId), before)
+      await reopened.shutdown()
+      const final = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+      try { assert.equal((await final.find(url)).doc().value, 'after-reopen') }
+      finally { await final.shutdown() }
+    } finally { fail = false; await reopened.shutdown() }
+  })
+})
+
+it('loads overlapping snapshots and concurrent incremental tails without dropping history', async () => {
+  const A = await import('@automerge/automerge')
+  const { createHash } = await import('node:crypto')
+  await withStorage(async directory => {
+    const storage = new NodeFSStorageAdapter(directory)
+    const writer = new DurableRepo({ storage })
+    const handle = writer.create({ left: 0, right: 0 })
+    await writer.flush()
+    const base = handle.doc()
+    const left = A.change(A.clone(base), doc => { doc.left = 1 })
+    const right = A.change(A.clone(base), doc => { doc.right = 2 })
+    const expected = A.merge(A.clone(left), right)
+    await writer.shutdown()
+    const chunks = [['snapshot', A.save(base)], ['snapshot', A.save(left)], ['incremental', A.saveSince(right, A.getHeads(base))]]
+    for (const [kind, bytes] of chunks) await storage.save([handle.documentId, kind, createHash('sha256').update(bytes).digest('hex')], bytes)
+    const reader = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    try {
+      const reopened = await reader.find(handle.url)
+      assert.deepEqual(A.getHeads(reopened.doc()), A.getHeads(expected))
+      assert.deepEqual(reopened.doc(), expected)
+      await reader.flush()
+    } finally { await reader.shutdown() }
+  })
+})
+
+it('reopens a signed board and its signature document without rewriting either, and saves the first edit and its signature', { timeout: 60000 }, async () => {
+  const { Repo } = await import('@automerge/automerge-repo')
+  const { getHeads } = await import('@automerge/automerge')
+  const { shardOf, signaturesDocumentUrl, storedSignatures, verifyChange } = await import('../lib/change-signatures.js')
+  const { hubRuntime, testProject } = await import('../support/machines.js')
+  const { eventually, operationOf, stateOf } = await import('../support/signed-hub.js')
+  const actors = [{ id: 'writer', handle: 'writer', kind: 'human' }]
+  const project = testProject({ members: 1 })
+  const open = directory => hubRuntime(directory, { actors, project, attribution: { quietMs: 400, pollMs: 100 } }).init()
+  const chunks = async directory => (await fs.readdir(join(directory, 'repo'), { recursive: true, withFileTypes: true }))
+    .filter(entry => entry.isFile()).map(entry => join(entry.parentPath, entry.name)).sort()
+  const signed = (runtime, taskId) => stateOf(runtime, operationOf(runtime, taskId)?.operationId) === 'signed'
+  await withStorage(async directory => {
+    let first, written
+    let runtime = await open(directory)
+    try {
+      first = await runtime.execute({ operationId: 'signed-before-reopen', actorId: 'writer', type: 'task.create', payload: { title: 'Signed before reopen' } })
+      await eventually(() => signed(runtime, first.result.taskId) && storedSignatures(runtime.workspace.signatures.doc(), first.heads[0]).length,
+        'the first signature never reached the signature document')
+    } finally { await runtime.close() }
+    const stored = await chunks(directory)
+
+    runtime = await open(directory)
+    try {
+      const status = runtime.status()
+      assert.equal(status.savedLocally, true)
+      assert.equal(status.signatures.savedLocally, true)
+      assert.deepEqual(status.heads, first.heads)
+      await eventually(() => signed(runtime, first.result.taskId), 'the reopened board lost its signer')
+      assert.deepEqual(await chunks(directory), stored, 'reopening rewrote a stored document')
+
+      const second = await runtime.execute({ operationId: 'signed-after-reopen', actorId: 'writer', type: 'task.create', payload: { title: 'Signed after reopen' } })
+      assert.equal(second.savedLocally, true)
+      assert.deepEqual(runtime.repo.persistedHeads.get(runtime.workspace.handle.documentId), second.heads)
+      written = { taskId: second.result.taskId, hash: second.heads[0] }
+      // The signature document is saved in the background, then again by close().
+      await eventually(() => storedSignatures(runtime.workspace.signatures.doc(), written.hash).length, 'the signature was never written')
+    } finally { await runtime.close() }
+
+    // Both documents as an independent upstream loader reads them from disk.
+    const upstream = new Repo({ storage: new NodeFSStorageAdapter(join(directory, 'repo')) })
+    try {
+      const board = await upstream.find(runtime.manifest.url)
+      assert.deepEqual(getHeads(board.doc()), [written.hash])
+      const signatures = await upstream.find(signaturesDocumentUrl(project.projectId))
+      const [signature] = storedSignatures(signatures.doc(), written.hash)
+      assert.ok(shardOf(written.hash) in signatures.doc())
+      assert.equal(verifyChange(project.owner.publicKey, project.projectId, written.hash, signature), true)
+    } finally { await upstream.shutdown() }
+
+    runtime = await open(directory)
+    try {
+      assert.equal(runtime.getDoc().tasks[written.taskId].title, 'Signed after reopen')
+      await eventually(() => signed(runtime, first.result.taskId) && signed(runtime, written.taskId), 'a change lost its signer after the second reopen')
+    } finally { await runtime.close() }
+  })
+})
+
+// Text that does not compress, so chunk sizes follow what was written.
+function noise(length, seed = 209) {
+  let text = ''
+  while (text.length < length) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    text += seed.toString(16)
+  }
+  return text.slice(0, length)
+}
+
+/** The chunks on disk for one document, read by a new adapter: `type/hash:bytes`. */
+async function storedChunks(directory, documentId) {
+  const adapter = new NodeFSStorageAdapter(directory)
+  const chunks = []
+  for (const type of ['snapshot', 'incremental']) {
+    for (const { key, data } of await adapter.loadRange([documentId, type])) chunks.push(`${type}/${key[2]}:${data.length}`)
+  }
+  return chunks
+}
+
+it('opens a stored document without announcing every patch, and computes any later diff', async () => {
+  const A = await import('@automerge/automerge')
+  await withStorage(async directory => {
+    const writer = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    let url
+    try {
+      const handle = writer.create({ tasks: {}, order: [] })
+      for (let index = 0; index < 20; index++) {
+        handle.change(doc => {
+          doc.tasks[`task-${index}`] = { title: `Task ${index}`, labels: ['open', 'storage'] }
+          doc.order.unshift(`task-${index}`)
+        })
+      }
+      url = handle.url
+      await writer.flush()
+    } finally { await writer.shutdown() }
+    const reader = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    try {
+      const events = []
+      reader.findWithProgress(url).handle.on('change', event => events.push(event))
+      const handle = await reader.find(url)
+      // Pins Automerge 3.2.3: DocHandle's first diff was answered from the patch cache. An event here means the
+      // whole document is being diffed on every open again, and lib/durable-repo.js needs another look.
+      assert.deepEqual(events, [], 'the whole document was diffed on open')
+      const doc = handle.doc()
+      const heads = A.getHeads(doc)
+      const everything = A.diff(A.load(A.save(doc)), [], heads)
+      assert.ok(everything.length > 40)
+      // The shortcut was for that one question; the same question asked again is computed.
+      assert.deepEqual(A.diff(doc, [], heads), everything)
+      handle.change(value => { value.tasks['task-5'].title = 'After reopen' })
+      assert.equal(events.length, 1)
+      assert.ok(events[0].patches.every(patch => patch.path.slice(0, 3).join('/') === 'tasks/task-5/title'))
+      assert.deepEqual(A.diff(handle.doc(), [], heads), everything)
+      await reader.flush()
+    } finally { await reader.shutdown() }
+  })
+})
+
+it('saves a reopened document\'s edits as small chunks, compacts them as Repo does, and stays readable by Repo', async () => {
+  const A = await import('@automerge/automerge')
+  const { createHash } = await import('node:crypto')
+  const { Repo } = await import('@automerge/automerge-repo')
+  await withStorage(async directory => {
+    const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
+    const writer = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    let url, documentId
+    try {
+      // A document made in this process is saved by Repo itself: this is the layout the reopened one must keep.
+      const handle = writer.create({ padding: noise(8000), edits: [] });
+      ({ url, documentId } = handle)
+      await writer.flush()
+      const [snapshot] = await storedChunks(directory, documentId)
+      assert.equal(snapshot.split(':')[0], `snapshot/${sha256(A.getHeads(handle.doc()).join(''))}`)
+      handle.change(doc => { doc.edits.push('before reopen') })
+      await writer.flush()
+      const [incremental] = await new NodeFSStorageAdapter(directory).loadRange([documentId, 'incremental'])
+      assert.equal(incremental.key[2], sha256(incremental.data))
+    } finally { await writer.shutdown() }
+    const saved = await storedChunks(directory, documentId)
+    assert.equal(saved.length, 2)
+    const snapshotBytes = Number(saved[0].split(':')[1])
+    assert.ok(snapshotBytes >= 1024, 'the fixture must be large enough not to compact on every save')
+
+    const reader = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    let expected
+    try {
+      const handle = await reader.find(url)
+      await reader.flush()
+      assert.deepEqual(await storedChunks(directory, documentId), saved, 'a read-only reopen rewrote the document')
+
+      handle.change(doc => { doc.edits.push('first after reopen') })
+      await reader.flush()
+      const afterFirst = await storedChunks(directory, documentId)
+      assert.equal(afterFirst.length, 3)
+      assert.deepEqual(afterFirst.filter(chunk => saved.includes(chunk)), saved, 'the first edit rewrote a stored chunk')
+      const [added] = afterFirst.filter(chunk => !saved.includes(chunk))
+      const [, addedHash, addedBytes] = added.match(/^incremental\/([0-9a-f]{64}):(\d+)$/)
+      assert.ok(Number(addedBytes) < 512, `the first edit after a reopen wrote ${addedBytes} bytes`)
+      const written = (await new NodeFSStorageAdapter(directory).loadRange([documentId, 'incremental'])).find(chunk => chunk.key[2] === addedHash)
+      assert.equal(addedHash, sha256(written.data))
+
+      // Repo's rule: a save compacts once the incremental chunks have reached the snapshot's size, and not before.
+      const incrementalBytes = list => list.slice(1).reduce((sum, chunk) => sum + Number(chunk.split(':')[1]), 0)
+      let edits = 0, chunks = afterFirst
+      while (chunks.length > 1) {
+        const due = incrementalBytes(chunks) >= snapshotBytes
+        handle.change(doc => { doc.edits.push(noise(3000, ++edits)) })
+        await reader.flush()
+        chunks = await storedChunks(directory, documentId)
+        assert.equal(chunks.length === 1, due, `after edit ${edits}: ${chunks.map(chunk => chunk.replace(/\/[0-9a-f]+/, '')).join(' ')}`)
+        assert.ok(edits < 20)
+      }
+      assert.ok(edits > 2, 'the fixture must write incremental chunks before it compacts')
+      const heads = A.getHeads(handle.doc())
+      assert.match(chunks[0], new RegExp(`^snapshot/${sha256(heads.join(''))}:`))
+
+      handle.change(doc => { doc.edits.push('after compaction') })
+      await reader.flush()
+      assert.deepEqual((await storedChunks(directory, documentId)).map(chunk => chunk.split('/')[0]), ['snapshot', 'incremental'])
+      expected = handle.doc()
+      assert.deepEqual(reader.persistedHeads.get(documentId), A.getHeads(expected))
+    } finally { await reader.shutdown() }
+
+    const upstream = new Repo({ storage: new NodeFSStorageAdapter(directory) })
+    try {
+      const handle = await upstream.find(url)
+      assert.deepEqual(A.getHeads(handle.doc()), A.getHeads(expected))
+      assert.deepEqual(handle.doc(), expected)
+    } finally { await upstream.shutdown() }
+  })
+})
+
+it('keeps an edit whose compaction could not remove the chunks it replaced, and removes them at the next one', async () => {
+  const A = await import('@automerge/automerge')
+  await withStorage(async directory => {
+    const writer = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    let url, documentId
+    try {
+      // Under 1,024 bytes of snapshot, so every changed save is a compaction.
+      const handle = writer.create({ value: 'saved' });
+      ({ url, documentId } = handle)
+      await writer.flush()
+    } finally { await writer.shutdown() }
+    const [original] = await storedChunks(directory, documentId)
+    const storage = new NodeFSStorageAdapter(directory)
+    const remove = storage.remove.bind(storage)
+    let fail = true
+    storage.remove = async (...args) => {
+      if (fail) throw Object.assign(new Error('injected removal failure'), { code: 'EIO' })
+      return remove(...args)
+    }
+    const reader = new DurableRepo({ storage })
+    try {
+      const handle = await reader.find(url)
+      await reader.flush()
+      const before = reader.persistedHeads.get(documentId)
+      handle.change(doc => { doc.value = 'edited' })
+      await assert.rejects(reader.flush(), { code: 'EIO' })
+      assert.deepEqual(reader.persistedHeads.get(documentId), before, 'a failed save was reported as persisted')
+      const interrupted = await storedChunks(directory, documentId)
+      assert.equal(interrupted.length, 2)
+      assert.ok(interrupted.includes(original))
+      // Both snapshots on disk, as after a crash between the write and the removal: a new process reads the edit.
+      const crashed = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+      try { assert.equal((await crashed.find(url)).doc().value, 'edited') } finally { await crashed.shutdown() }
+
+      fail = false
+      await reader.flush()
+      assert.deepEqual(reader.persistedHeads.get(documentId), A.getHeads(handle.doc()))
+      assert.deepEqual(await storedChunks(directory, documentId), interrupted, 'the retry wrote the document again')
+      handle.change(doc => { doc.value = 'edited again' })
+      await reader.flush()
+      const compacted = await storedChunks(directory, documentId)
+      assert.equal(compacted.length, 1)
+      assert.ok(!interrupted.includes(compacted[0]))
+    } finally { fail = false; await reader.shutdown() }
+    const final = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    try { assert.equal((await final.find(url)).doc().value, 'edited again') } finally { await final.shutdown() }
+  })
+})
+
+/** Every file under a directory with a hash of its bytes. */
+async function fileHashes(directory) {
+  const { createHash } = await import('node:crypto')
+  const hashes = {}
+  for (const entry of await fs.readdir(directory, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue
+    const path = join(entry.parentPath, entry.name)
+    hashes[path.slice(directory.length + 1)] = createHash('sha256').update(await fs.readFile(path)).digest('hex')
+  }
+  return hashes
+}
+
+it('refuses to open a document with a damaged stored chunk and leaves every chunk as it was', async () => {
+  const { Repo } = await import('@automerge/automerge-repo')
+  await withStorage(async directory => {
+    const writer = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    let url, documentId
+    try {
+      const handle = writer.create({ padding: noise(8000), tasks: {} });
+      ({ url, documentId } = handle)
+      await writer.flush()
+      for (const name of ['one', 'two', 'three']) {
+        handle.change(doc => { doc.tasks[name] = { title: `Task ${name}` } })
+        await writer.flush()
+      }
+    } finally { await writer.shutdown() }
+    assert.equal((await storedChunks(directory, documentId)).length, 4)
+    // Damage the incremental chunk a loader reads first; the two after it are intact.
+    const adapter = new NodeFSStorageAdapter(directory)
+    const [first] = await adapter.loadRange([documentId, 'incremental'])
+    const file = adapter.getFilePath(first.key)
+    const intact = await fs.readFile(file)
+    const damaged = Buffer.from(intact)
+    damaged[damaged.length - 3] ^= 0xff
+    await fs.writeFile(file, damaged)
+    const before = await fileHashes(directory)
+
+    const reader = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    const timeout = new AbortController()
+    try {
+      await assert.rejects(reader.find(url, { signal: timeout.signal }), error => {
+        assert.match(error.message, new RegExp(`^Stored document ${documentId} failed validation and was not opened: .+ Its 4 stored chunks are unchanged\\.$`))
+        assert.equal(error.code, 'DAMAGED_STORAGE')
+        assert.ok(error.cause instanceof Error)
+        return true
+      })
+      // The handle is not left waiting out Repo's one-minute loading timeout, which would hold the process open.
+      assert.equal(reader.handles[documentId].inState(['unavailable']), true)
+      // A caller's timeout that fires after the failure must not surface as an unhandled rejection, which fails
+      // this test and ends a service some seconds after it reported the real error.
+      timeout.abort()
+      await new Promise(resolve => setImmediate(resolve))
+      await reader.flush()
+      assert.equal(reader.persistedHeads.has(documentId), false)
+    } finally { await reader.shutdown() }
+    assert.deepEqual(await fileHashes(directory), before)
+
+    // Why this loader stops: Repo 2.5.1's own loader opens the same files without any of the three saved tasks and
+    // without an error, and its next compaction would remove all four chunks, the intact ones included.
+    const upstream = new Repo({ storage: new NodeFSStorageAdapter(directory) })
+    try { assert.deepEqual(Object.keys((await upstream.find(url)).doc().tasks), []) } finally { await upstream.shutdown() }
+    assert.deepEqual(await fileHashes(directory), before)
+
+    await fs.writeFile(file, intact)
+    const repaired = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    try { assert.deepEqual(Object.keys((await repaired.find(url)).doc().tasks), ['one', 'three', 'two']) } finally { await repaired.shutdown() }
+  })
+})
+
+it('does not start a board whose stored chunk is damaged, leaves its stored documents as they were, and starts it once the chunk is restored', { timeout: 30000 }, async () => {
+  const { WorkspaceRuntime } = await import('../lib/workspace-runtime.js')
+  const actors = [{ id: 'writer', handle: 'writer', kind: 'human' }]
+  await withStorage(async directory => {
+    const runtime = await new WorkspaceRuntime({ directory, actors }).init()
+    let documentId
+    try {
+      for (let index = 0; index < 12; index++) {
+        await runtime.execute({ operationId: `damaged-${index}`, actorId: 'writer', type: 'task.create', payload: { title: `Task ${index}` } })
+      }
+      documentId = runtime.docHandle.documentId
+    } finally { await runtime.close() }
+    const adapter = new NodeFSStorageAdapter(join(directory, 'repo'))
+    const chunks = [...await adapter.loadRange([documentId, 'snapshot']), ...await adapter.loadRange([documentId, 'incremental'])]
+    const file = adapter.getFilePath(chunks.at(-1).key)
+    const intact = await fs.readFile(file)
+    const damaged = Buffer.from(intact)
+    damaged[damaged.length - 3] ^= 0xff
+    await fs.writeFile(file, damaged)
+    const before = await fileHashes(join(directory, 'repo'))
+
+    await assert.rejects(new WorkspaceRuntime({ directory }).init(), /failed validation and was not opened/)
+    assert.deepEqual(await fileHashes(join(directory, 'repo')), before)
+
+    await fs.writeFile(file, intact)
+    const restored = await new WorkspaceRuntime({ directory }).init()
+    try {
+      assert.equal(Object.keys(restored.getDoc().tasks).length, 12)
+      assert.equal(restored.status().savedLocally, true)
+    } finally { await restored.close() }
+  })
+})

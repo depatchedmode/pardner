@@ -80,3 +80,22 @@ checks all decoded changes for `makeText`, including losing alternatives and
 retries, then reopens the document. It asserts ordinary JavaScript output and
 retains explicit resolution and duplicate retry behavior. Schema 6 documents
 are refused without changing their bytes.
+
+## Large-board reopen
+
+`test/storage-durability.test.js` covers the direct loader and its save path.
+The reopened board has the upstream loader's heads and view, through kills
+during and just after open, with Activity equal once it is derived again;
+overlapping snapshots with concurrent incremental tails load whole. A read-only
+reopen writes nothing, for a board and for its signature document. The first
+edit adds one small chunk, compaction follows the upstream rule and naming, and
+the upstream loader reads the result. A failed save and a compaction whose
+removal fails are retried and are not reported as persisted early. A damaged
+stored chunk refuses to open at the repo and at the runtime with
+`DAMAGED_STORAGE`, every stored file keeps its bytes, and the restored chunk
+opens the whole board. The open is checked not to announce every patch of the
+stored document, which pins the private Automerge field the loader relies on.
+Not covered: which chunks a damaged store could still yield, and any repair
+tool. `scripts/bench-open.js` times the open by phase on a signed
+10,000-operation fixture; no timing assertion is added to shared-machine
+regression tests.
