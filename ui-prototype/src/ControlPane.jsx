@@ -1,3 +1,4 @@
+import { ActionButton, ActionForm } from './ControlAction.jsx'
 import CloudControl from './CloudControl.jsx'
 import { useCallback, useEffect, useState } from 'react'
 import { CANCELLABLE_EXECUTION_STATES as CANCELLABLE } from '@pardner/domain-vocab'
@@ -64,22 +65,19 @@ function ExecutionCard({ execution, state, actors, tasks, actor, canManage, act,
       {execution.artifacts.map((item, index) => <li key={index}><code>{item.kind}</code> {item.reference} · {actorName(actors, item.actor)}</li>)}
     </ul>}
     <div className="actions">
-      {CANCELLABLE.includes(execution.state) && <button disabled={busy} onClick={() => act('/pardner/control/executions/cancel', { id: execution.id })}>
+      {CANCELLABLE.includes(execution.state) && <ActionButton disabled={busy} onClick={() => act('/pardner/control/executions/cancel', { id: execution.id })}>
         {{ queued: 'Withdraw follow-up', cancel_requested: 'Repeat cancellation' }[execution.state] ?? 'Cancel this run'}
-      </button>}
-      {execution.state === 'unknown' && <button disabled={busy} onClick={() => act('/pardner/control/executions/reconcile', { id: execution.id })}>Look for this request in T3</button>}
+      </ActionButton>}
+      {execution.state === 'unknown' && <ActionButton disabled={busy} onClick={() => act('/pardner/control/executions/reconcile', { id: execution.id })}>Look for this request in T3</ActionButton>}
     </div>
-    {execution.state === 'unknown' && canManage && <form onSubmit={event => {
-      event.preventDefault()
-      void act('/pardner/control/executions/resolve', { id: execution.id, decision: event.nativeEvent.submitter.value, evidence })
-    }}>
+    {execution.state === 'unknown' && canManage && <ActionForm onSubmit={event => act('/pardner/control/executions/resolve', { id: execution.id, decision: event.nativeEvent.submitter.value, evidence })}>
       <label>Reconciliation evidence<textarea required value={evidence} onChange={event => setEvidence(event.target.value)} /></label>
       <button disabled={busy} value="retry">Retry with the same request</button>
       <button disabled={busy} value="abandon">Abandon this outcome</button>
-    </form>}
-    {ended && <form onSubmit={async event => {
-      event.preventDefault()
-      if (await act('/pardner/control/executions/verdicts', { id: execution.id, kind: verdictKind, verdict: event.nativeEvent.submitter.value, actorId: actor, evidence })) setEvidence('')
+    </ActionForm>}
+    {ended && <ActionForm onSubmit={async event => {
+      await act('/pardner/control/executions/verdicts', { id: execution.id, kind: verdictKind, verdict: event.nativeEvent.submitter.value, actorId: actor, evidence })
+      setEvidence('')
     }}>
       <label>Verdict type<select aria-label="Verdict type" value={verdictKind} onChange={event => setVerdictKind(event.target.value)}>
         <option value="human">Human acceptance</option>
@@ -88,15 +86,15 @@ function ExecutionCard({ execution, state, actors, tasks, actor, canManage, act,
       <label>Verdict evidence<textarea required value={evidence} onChange={event => setEvidence(event.target.value)} /></label>
       <button disabled={busy || !actor} value="accepted">Accept</button>
       <button disabled={busy || !actor} value="rejected">Reject</button>
-    </form>}
-    {ended && <form onSubmit={async event => {
-      event.preventDefault()
+    </ActionForm>}
+    {ended && <ActionForm onSubmit={async () => {
       const [kind, ...rest] = artifact.trim().split(/\s+/)
-      if (await act('/pardner/control/executions/artifacts', { id: execution.id, kind, reference: rest.join(' '), actorId: actor })) setArtifact('')
+      await act('/pardner/control/executions/artifacts', { id: execution.id, kind, reference: rest.join(' '), actorId: actor })
+      setArtifact('')
     }}>
       <label>Record artifact<input placeholder="commit abc1234" value={artifact} onChange={event => setArtifact(event.target.value)} /></label>
       <button disabled={busy || !actor || !artifact.trim()}>Record artifact</button>
-    </form>}
+    </ActionForm>}
   </article>
 }
 
@@ -124,20 +122,22 @@ function SessionCard({ session, state, actors, tasks, actor, canManage, act, bus
     {session.unqualified.map(note => <p key={note} className="notice">{note}</p>)}
     {session.health?.error && <p className="error" role="status">Last T3 pass failed: {session.health.error}</p>}
     {session.blocker && <p className="notice" role="status">Dispatch held: {session.blocker}</p>}
-    {session.holds.length > 0 && canManage && <form onSubmit={async event => {
-      event.preventDefault()
+    {session.holds.length > 0 && canManage && <ActionForm onSubmit={async () => {
       const runs = reviewedRuns.split(/[\s,]+/).filter(Boolean)
-      if (await act('/pardner/control/sessions/release', { threadId: session.threadId, evidence, reviewedRuns: runs, acceptVersion })) { setEvidence(''); setReviewedRuns(''); setAcceptVersion(false) }
+      await act('/pardner/control/sessions/release', { threadId: session.threadId, evidence, reviewedRuns: runs, acceptVersion })
+      setEvidence('')
+      setReviewedRuns('')
+      setAcceptVersion(false)
     }}>
       <ul>{session.holds.map(hold => <li key={hold}>{hold}</li>)}</ul>
       <label>Review evidence<textarea required value={evidence} onChange={event => setEvidence(event.target.value)} /></label>
       <label>Reviewed runs<input placeholder="Run IDs not started by Pardner" value={reviewedRuns} onChange={event => setReviewedRuns(event.target.value)} /></label>
       {versionHeld && <label className="check"><input type="checkbox" checked={acceptVersion} onChange={event => setAcceptVersion(event.target.checked)} />Accept this T3 version for this controller</label>}
       <button disabled={busy}>Release held work</button>
-    </form>}
-    <form onSubmit={async event => {
-      event.preventDefault()
-      if (await act('/pardner/control/executions', { id: createOperationId(), threadId: session.threadId, actorId: session.actorId, taskId, fromActorId: actor, text })) setText('')
+    </ActionForm>}
+    <ActionForm onSubmit={async () => {
+      await act('/pardner/control/executions', { id: createOperationId(), threadId: session.threadId, actorId: session.actorId, taskId, fromActorId: actor, text })
+      setText('')
     }}>
       <label>Task for this run<select aria-label="Task for this run" value={taskId} onChange={event => setTaskId(event.target.value)}>
         {session.allowedTaskIds.map(id => <option key={id} value={id}>{tasks[id]?.title ?? id}</option>)}
@@ -145,7 +145,7 @@ function SessionCard({ session, state, actors, tasks, actor, canManage, act, bus
       <label>Follow-up for {actorName(actors, session.actorId)}<textarea required value={text} onChange={event => setText(event.target.value)} /></label>
       <p className="muted">Saved in Pardner first; it is sent to T3 only when the thread is idle and nothing is held.</p>
       <button className="primary" disabled={busy || !actor}>Queue follow-up</button>
-    </form>
+    </ActionForm>
     <h3>Runs <span>{executions.length}</span></h3>
     {!executions.length && <p className="empty">No runs yet</p>}
     {executions.map(execution => <ExecutionCard key={execution.id} {...{ execution, state, actors, tasks, actor, canManage, act, busy }} />)}
@@ -162,19 +162,19 @@ function Setup({ state, actors, tasks, act, busy }) {
     [field]: current[field].includes(id) ? current[field].filter(value => value !== id) : [...current[field], id] }))
   return <details className="control-setup" open={!state.sessions.length}>
     <summary>Control settings</summary>
-    <form onSubmit={async event => {
-      event.preventDefault()
-      if (await act('/pardner/control/credential', { origin, pairingCode })) setPairingCode('')
+    <ActionForm onSubmit={async () => {
+      await act('/pardner/control/credential', { origin, pairingCode })
+      setPairingCode('')
     }}>
       <h3>T3 credential</h3>
       <p className="muted">One credential per controller, paired as approval-required. Re-pairing changes how T3 deduplicates requests.</p>
       <label>T3 address<input value={origin} onChange={event => setOrigin(event.target.value)} /></label>
       <label>T3 pairing code<input required autoComplete="off" value={pairingCode} onChange={event => setPairingCode(event.target.value)} /></label>
       <button disabled={busy}>{state.credential.status === 'missing' ? 'Pair T3' : 'Pair again'}</button>
-    </form>
-    <form onSubmit={async event => {
-      event.preventDefault()
-      if (await act('/pardner/control/projects', { ...project, repository: project.repository || null })) setProject({ id: '', name: '', repository: '' })
+    </ActionForm>
+    <ActionForm onSubmit={async () => {
+      await act('/pardner/control/projects', { ...project, repository: project.repository || null })
+      setProject({ id: '', name: '', repository: '' })
     }}>
       <h3>Projects</h3>
       <ul>{state.projects.map(item => <li key={item.id}>{item.name} · {item.repository ?? 'no repository'}</li>)}</ul>
@@ -182,10 +182,10 @@ function Setup({ state, actors, tasks, act, busy }) {
       <label>Project name<input required value={project.name} onChange={event => setProject({ ...project, name: event.target.value })} /></label>
       <label>GitHub repository<input placeholder="owner/name" value={project.repository} onChange={event => setProject({ ...project, repository: event.target.value })} /></label>
       <button disabled={busy}>Save project</button>
-    </form>
-    <form onSubmit={async event => {
-      event.preventDefault()
-      if (await act('/pardner/control/sessions', mapping)) setMapping({ projectId: '', threadId: '', actorId: '', allowedTaskIds: [], allowedFromActorIds: [] })
+    </ActionForm>
+    <ActionForm onSubmit={async () => {
+      await act('/pardner/control/sessions', mapping)
+      setMapping({ projectId: '', threadId: '', actorId: '', allowedTaskIds: [], allowedFromActorIds: [] })
     }}>
       <h3>Map a T3 thread</h3>
       <p className="muted">Each thread gets one agent Actor. Only top-level, approval-required threads are accepted.</p>
@@ -209,19 +209,19 @@ function Setup({ state, actors, tasks, act, busy }) {
         </label>)}
       </fieldset>
       <button disabled={busy}>Map thread</button>
-    </form>
+    </ActionForm>
   </details>
 }
 
 export default function ControlPane({ request, actors, tasks, actor, canManage }) {
   const [state, setState] = useState(null)
-  const [error, setError] = useState(null)
+  const [pollError, setPollError] = useState(null)
   const [busy, setBusy] = useState(false)
   const load = useCallback(async () => {
-    try { setState(await request('/pardner/control')); setError(null) } catch (failure) {
+    try { setState(await request('/pardner/control')); setPollError(null) } catch (failure) {
       // Keep the last view, but never let it pass for a current one.
       setState(current => current && { ...current, unreachable: true })
-      setError(failure)
+      setPollError(failure)
     }
   }, [request])
   useEffect(() => {
@@ -231,20 +231,18 @@ export default function ControlPane({ request, actors, tasks, actor, canManage }
   }, [load])
   const act = async (path, body) => {
     setBusy(true)
-    setError(null)
     try {
       await request(path, body)
       await load()
-      return true
-    } catch (failure) { setError(failure); return false } finally { setBusy(false) }
+    } finally { setBusy(false) }
   }
-  if (!state) return <section className="control" aria-label="Control"><p role="status">{error ? error.message : 'Opening control records…'}</p></section>
+  if (!state) return <section className="control" aria-label="Control"><p role="status">{pollError ? pollError.message : 'Opening control records…'}</p></section>
   if (!state.enabled) return <section className="control" aria-label="Control"><p className="empty">This service is not running a control pane.</p></section>
   const credential = state.credential
   return <section className="control" aria-label="Control">
     <div className="section-heading">
       <h2>Control</h2>
-      <button disabled={busy} onClick={() => act('/pardner/control/poll', {})}>Read T3 now</button>
+      <ActionButton disabled={busy} onClick={() => act('/pardner/control/poll', {})}>Read T3 now</ActionButton>
     </div>
     <p className="muted">
       T3 credential: {credential.status}{credential.expiresAt ? ` · expires ${new Date(credential.expiresAt).toLocaleDateString()}` : ''}
@@ -252,7 +250,7 @@ export default function ControlPane({ request, actors, tasks, actor, canManage }
       These records stay on this computer and are not synchronized or published to GitHub.
     </p>
     {['expired', 'expiring', 'rejected'].includes(credential.status) && <p className="notice" role="status">Pair T3 again before the credential stops working. Requests that may already be in T3 cannot be retried with a new credential.</p>}
-    {error && <div className="error" role="alert"><strong>{error.message}</strong></div>}
+    {pollError && <div className="error" role="alert"><strong>{pollError.message}</strong></div>}
     {canManage && <Setup {...{ state, actors, tasks, act, busy }} />}
     {!state.sessions.length && <p className="empty">No T3 threads are mapped yet.</p>}
     <CloudControl cloud={state.cloud} {...{ actor, act, busy, canManage }} />
