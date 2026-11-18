@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 const root = fileURLToPath(new URL('..', import.meta.url))
 const names = text => text.trim().split(/\s+/)
 const groups = [
+  { name: 'open-benchmark', scripts: [], files: ['scripts/bench-open.js'] },
   {
     name: 'trust-library', scripts: ['test:runtime'],
     files: names('lib/machine-key.js lib/membership.js support/trust-records.js test/machine-key.test.js test/membership.test.js test/membership-rules.test.js'),
