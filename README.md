@@ -426,6 +426,14 @@ Each service owns a persisted Automerge replica; a hub relays changes and owns a
 transactional SQLite delivery ledger. Actor identity is separate from replica
 identity, so the same Actor can work from more than one machine.
 
+Existing boards reopen with a direct, validated Automerge load of the stored
+snapshot and incremental chunks. Read-only reopen does not rewrite the document.
+Later edits are saved in the same layout as before: a small incremental chunk,
+or a snapshot once the incremental chunks have reached the snapshot's size. A
+stored chunk that fails validation stops the open with `DAMAGED_STORAGE` and
+leaves every file as it is, to be restored from a
+[cold backup](docs/PARDNER-CLIENT-RECOVERY.md).
+
 Local operations are acknowledged only after a disk persistence barrier. Enrolled
 replicas reopen without the hub and reconnect with a fresh machine handshake.
 Member machines are trusted full document writers: their synchronized changes bypass
