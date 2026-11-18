@@ -525,3 +525,105 @@ it('keeps an edit whose compaction could not remove the chunks it replaced, and 
     try { assert.equal((await final.find(url)).doc().value, 'edited again') } finally { await final.shutdown() }
   })
 })
+
+/** Every file under a directory with a hash of its bytes. */
+async function fileHashes(directory) {
+  const { createHash } = await import('node:crypto')
+  const hashes = {}
+  for (const entry of await fs.readdir(directory, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue
+    const path = join(entry.parentPath, entry.name)
+    hashes[path.slice(directory.length + 1)] = createHash('sha256').update(await fs.readFile(path)).digest('hex')
+  }
+  return hashes
+}
+
+it('refuses to open a document with a damaged stored chunk and leaves every chunk as it was', async () => {
+  const { Repo } = await import('@automerge/automerge-repo')
+  await withStorage(async directory => {
+    const writer = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    let url, documentId
+    try {
+      const handle = writer.create({ padding: noise(8000), tasks: {} });
+      ({ url, documentId } = handle)
+      await writer.flush()
+      for (const name of ['one', 'two', 'three']) {
+        handle.change(doc => { doc.tasks[name] = { title: `Task ${name}` } })
+        await writer.flush()
+      }
+    } finally { await writer.shutdown() }
+    assert.equal((await storedChunks(directory, documentId)).length, 4)
+    // Damage the incremental chunk a loader reads first; the two after it are intact.
+    const adapter = new NodeFSStorageAdapter(directory)
+    const [first] = await adapter.loadRange([documentId, 'incremental'])
+    const file = adapter.getFilePath(first.key)
+    const intact = await fs.readFile(file)
+    const damaged = Buffer.from(intact)
+    damaged[damaged.length - 3] ^= 0xff
+    await fs.writeFile(file, damaged)
+    const before = await fileHashes(directory)
+
+    const reader = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    const timeout = new AbortController()
+    try {
+      await assert.rejects(reader.find(url, { signal: timeout.signal }), error => {
+        assert.match(error.message, new RegExp(`^Stored document ${documentId} failed validation and was not opened: .+ Its 4 stored chunks are unchanged\\.$`))
+        assert.equal(error.code, 'DAMAGED_STORAGE')
+        assert.ok(error.cause instanceof Error)
+        return true
+      })
+      // The handle is not left waiting out Repo's one-minute loading timeout, which would hold the process open.
+      assert.equal(reader.handles[documentId].inState(['unavailable']), true)
+      // A caller's timeout that fires after the failure must not surface as an unhandled rejection, which fails
+      // this test and ends a service some seconds after it reported the real error.
+      timeout.abort()
+      await new Promise(resolve => setImmediate(resolve))
+      await reader.flush()
+      assert.equal(reader.persistedHeads.has(documentId), false)
+    } finally { await reader.shutdown() }
+    assert.deepEqual(await fileHashes(directory), before)
+
+    // Why this loader stops: Repo 2.5.1's own loader opens the same files without any of the three saved tasks and
+    // without an error, and its next compaction would remove all four chunks, the intact ones included.
+    const upstream = new Repo({ storage: new NodeFSStorageAdapter(directory) })
+    try { assert.deepEqual(Object.keys((await upstream.find(url)).doc().tasks), []) } finally { await upstream.shutdown() }
+    assert.deepEqual(await fileHashes(directory), before)
+
+    await fs.writeFile(file, intact)
+    const repaired = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    try { assert.deepEqual(Object.keys((await repaired.find(url)).doc().tasks), ['one', 'three', 'two']) } finally { await repaired.shutdown() }
+  })
+})
+
+it('does not start a board whose stored chunk is damaged, leaves its stored documents as they were, and starts it once the chunk is restored', { timeout: 30000 }, async () => {
+  const { WorkspaceRuntime } = await import('../lib/workspace-runtime.js')
+  const actors = [{ id: 'writer', handle: 'writer', kind: 'human' }]
+  await withStorage(async directory => {
+    const runtime = await new WorkspaceRuntime({ directory, actors }).init()
+    let documentId
+    try {
+      for (let index = 0; index < 12; index++) {
+        await runtime.execute({ operationId: `damaged-${index}`, actorId: 'writer', type: 'task.create', payload: { title: `Task ${index}` } })
+      }
+      documentId = runtime.docHandle.documentId
+    } finally { await runtime.close() }
+    const adapter = new NodeFSStorageAdapter(join(directory, 'repo'))
+    const chunks = [...await adapter.loadRange([documentId, 'snapshot']), ...await adapter.loadRange([documentId, 'incremental'])]
+    const file = adapter.getFilePath(chunks.at(-1).key)
+    const intact = await fs.readFile(file)
+    const damaged = Buffer.from(intact)
+    damaged[damaged.length - 3] ^= 0xff
+    await fs.writeFile(file, damaged)
+    const before = await fileHashes(join(directory, 'repo'))
+
+    await assert.rejects(new WorkspaceRuntime({ directory }).init(), /failed validation and was not opened/)
+    assert.deepEqual(await fileHashes(join(directory, 'repo')), before)
+
+    await fs.writeFile(file, intact)
+    const restored = await new WorkspaceRuntime({ directory }).init()
+    try {
+      assert.equal(Object.keys(restored.getDoc().tasks).length, 12)
+      assert.equal(restored.status().savedLocally, true)
+    } finally { await restored.close() }
+  })
+})
