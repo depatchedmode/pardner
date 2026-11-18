@@ -364,6 +364,45 @@ async function storedChunks(directory, documentId) {
   return chunks
 }
 
+it('opens a stored document without announcing every patch, and computes any later diff', async () => {
+  const A = await import('@automerge/automerge')
+  await withStorage(async directory => {
+    const writer = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    let url
+    try {
+      const handle = writer.create({ tasks: {}, order: [] })
+      for (let index = 0; index < 20; index++) {
+        handle.change(doc => {
+          doc.tasks[`task-${index}`] = { title: `Task ${index}`, labels: ['open', 'storage'] }
+          doc.order.unshift(`task-${index}`)
+        })
+      }
+      url = handle.url
+      await writer.flush()
+    } finally { await writer.shutdown() }
+    const reader = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    try {
+      const events = []
+      reader.findWithProgress(url).handle.on('change', event => events.push(event))
+      const handle = await reader.find(url)
+      // Pins Automerge 3.2.3: DocHandle's first diff was answered from the patch cache. An event here means the
+      // whole document is being diffed on every open again, and lib/durable-repo.js needs another look.
+      assert.deepEqual(events, [], 'the whole document was diffed on open')
+      const doc = handle.doc()
+      const heads = A.getHeads(doc)
+      const everything = A.diff(A.load(A.save(doc)), [], heads)
+      assert.ok(everything.length > 40)
+      // The shortcut was for that one question; the same question asked again is computed.
+      assert.deepEqual(A.diff(doc, [], heads), everything)
+      handle.change(value => { value.tasks['task-5'].title = 'After reopen' })
+      assert.equal(events.length, 1)
+      assert.ok(events[0].patches.every(patch => patch.path.slice(0, 3).join('/') === 'tasks/task-5/title'))
+      assert.deepEqual(A.diff(handle.doc(), [], heads), everything)
+      await reader.flush()
+    } finally { await reader.shutdown() }
+  })
+})
+
 it('saves a reopened document\'s edits as small chunks, compacts them as Repo does, and stays readable by Repo', async () => {
   const A = await import('@automerge/automerge')
   const { createHash } = await import('node:crypto')
