@@ -802,3 +802,44 @@ mutation text changed. Fresh default check: 174614 states, 679456 transitions,
 all four invariants and `ShutdownCompletes` hold. All eight mutations were
 caught, reported as drift and reproduced by the model, with all eight controls
 passing. See `clientModeUxPassMerge` in the evidence JSON.
+
+## Direct document load mapping review (2026-11-17)
+
+For #209, `DurableRepo` loads stored documents itself and saves the documents it
+loaded. Only `lib/durable-repo.js` changed; the mapping records source revision
+`d1178cc9bc3d243853d48160c32cc10935cc2eb1`.
+
+- **Load.** One validated `Automerge.load` of a document's snapshot and
+  incremental chunks, keeping the heads they hold and the list of chunks. A
+  chunk that fails validation rejects the load, marks the handle unavailable
+  and changes nothing on disk. `DocHandle`'s first diff is answered once with
+  no patches, so the load emits no `change` event.
+- **Save.** `saveDocument` writes a loaded document through the same adapter:
+  nothing when the heads are those on disk, otherwise an incremental chunk, or
+  a snapshot followed by removal of the chunks it replaces, by Repo's rule and
+  key layout. Documents made or first received in this process are still saved
+  by Repo's `saveDoc`.
+- **Find.** A caller's abort signal is detached once `find` settles; without a
+  signal `find` is Repo's own.
+
+Re-reviewed `SyncUp`, `PersistRun`, `StoreCloseBegin` and `StoreCloseComplete`:
+
+- `PersistRun`: `persistDocument` still awaits `saveDocument` inside one queued
+  job and sets `persistedHeads` only after it returns. The stored heads are
+  recorded after the adapter write, so a failed write is retried. A compaction
+  whose removal fails rejects the job; the retry finds the heads stored and
+  writes nothing. Persisted heads never pass a failed barrier, and the model's
+  single save step that succeeds or fails still describes it.
+- `SyncUp`: a synced change still reaches `storage.saveDoc` and its queued
+  background save. The load's missing `change` event removes one redundant send
+  from Repo's synchronizer; no model action depends on it.
+- `StoreCloseBegin`, `StoreCloseComplete`: the closing flag and the drain of
+  the queue before release are unchanged. Removing a document drops its entry
+  before any chunk is removed.
+
+No model action, guard, effect, atomicity assumption, anchor, invariant, witness
+or mutation text changed. Loading, the first update and a damaged chunk are
+outside the bounded model; `test/storage-durability.test.js` covers them. The
+default check (174614 states, 679456 transitions) and the eight-mutation
+demonstration pass as before. No power-loss or real-agent claim follows from
+this.
