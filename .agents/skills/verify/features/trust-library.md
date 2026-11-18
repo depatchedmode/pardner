@@ -3,7 +3,7 @@
 The client and project runtime now call these modules; their product behavior is
 in [the record store entry](trust-records.md). Run `node --test test/machine-key.test.js
 test/membership.test.js test/membership-rules.test.js` (also included in `test:runtime`) for the library itself.
-Every certification in these tests is built with real keys through the enrollment code
+Certification fixtures start with real keys and go through the enrollment code
 (`support/trust-records.js`); `forge()` re-signs a changed record as a modified client could. Checks cover Ed25519
 key round trips, raw-key machine IDs, 0600 files, corrupt/exposed/symlink refusal,
 exact domain separation, project-bound genesis and record verification, authority
@@ -19,6 +19,12 @@ order-freedom. The arrival-time helper is exercised separately; no running inges
 keys with `sign(domain, bytes)`, base64url raw public keys and a 16-byte raw actor
 prefix. Save is exclusive PKCS8 PEM creation with file fsync; it does not overwrite
 an existing key or claim power-loss durability. Protocol domains are fixed constants.
+
+`rawPublicKey` rejects small-order Ed25519 points and non-canonical encodings.
+`test/machine-key.test.js` covers both sign bits for each rejected y coordinate,
+signature refusal, and rejection by `verifyRecord`, `joinRequestRefusal` and
+`readHello`. It also checks that freshly generated keys keep their bytes and
+verify signatures.
 
 `personIdFor(publicKey)` is `person-` and 26 base32 characters of
 sha256("pardner/person/v1" ‖ raw key). `buildRecord(key, fields)` assigns metadata
