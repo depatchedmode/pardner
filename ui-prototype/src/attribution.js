@@ -1,3 +1,5 @@
+import { machineIdShortForm } from '../../shared/identity.js'
+
 // Who made each change, as this computer's Pardner checked it (lib/activity.js on the service). Every Activity entry
 // is derived from one change, and its signer line is that change's own verdict: it means "this machine signed
 // exactly this content", and it is the only part of an entry that is verified. What the entry says the change did
@@ -31,7 +33,7 @@ const FLAGS = {
 export function machineLabel(attribution, machineId) {
   if (typeof machineId !== 'string' || !machineId) return 'an unknown machine'
   const machine = own(attribution?.machines, machineId)
-  const short = String(machineId).slice('machine-'.length, 'machine-'.length + 6)
+  const short = machineIdShortForm(machineId)
   if (!machine) return `a machine outside this project (${short})`
   const name = machine.thisMachine ? 'this computer' : machine.name ?? `machine ${short}`
   return machine.personName ? `${machine.personName} · ${name}` : name
