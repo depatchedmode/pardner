@@ -41,7 +41,7 @@ const groups = [
   {
     name: 'persistence', scripts: ['test:qualification', 'test:runtime'], qualification: 'Disk persistence and directory ownership',
     files: names(`lib/atomic-file.js lib/durable-repo.js lib/heads.js lib/nodefs-storage-adapter.js lib/storage-key.js lib/storage-lease.js lib/private-state.js
-      support/persistence-process.js`),
+      support/persistence-process.js support/open-process.js`),
   },
   {
     name: 'transport', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'], qualification: 'Offline reopen, authenticated transport, or acknowledgement ordering',
