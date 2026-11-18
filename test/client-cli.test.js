@@ -107,6 +107,48 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
   } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
 })
 
+test('list commands distinguish invalid filters from empty results through the desktop client', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-list-filters-'))
+  let client
+  try {
+    client = await startClient({ directory, port: 0 })
+    const setup = (...args) => pardner(['client', ...args, '--data', directory])
+    await setup('identity', '--name', 'Alice', '--email', 'alice@example.test')
+    const { project } = await setup('create', '--name', 'List filters')
+    const grantFile = join(directory, 'agent.json')
+    await setup('agent-grant', '--project', project.id, '--output-file', grantFile)
+    const args = (...command) => [...command, '--token-file', grantFile]
+    const { result: { veinId, goalId } } = await pardner(args('vein', 'create', '--title', 'Edge caching', '--goal', 'Low latency'))
+
+    assert.equal((await pardnerFailure(args('tasks', '--assignee', ''))).code, 'INVALID_ARGUMENT')
+    assert.equal((await pardnerFailure(args('tasks', '--assignee', 'missing-actor'))).code, 'UNKNOWN_ACTOR')
+    for (const [command, typo, statuses] of [
+      ['tasks', 'upnext', ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']],
+      ['veins', 'ready', ['open', 'proven', 'dead-end', 'abandoned']],
+      ['goals', 'done', ['open', 'achieved', 'abandoned']],
+    ]) {
+      const error = await pardnerFailure(args(command, '--status', typo))
+      assert.equal(error.code, 'INVALID_ARGUMENT')
+      for (const status of statuses) assert.ok(error.message.includes(status), error.message)
+      assert.deepEqual((await pardner(args(command, '--status', 'abandoned')))[command], [])
+    }
+    for (const [command, flag, title] of [['tasks', 'vein', 'Edge caching'], ['veins', 'goal', 'Low latency']]) {
+      for (const reference of [title, `${flag}-${'0'.repeat(24)}`, 'constructor']) {
+        const error = await pardnerFailure(args(command, '--' + flag, reference, '--status', 'abandoned'))
+        assert.equal(error.code, 'NOT_FOUND')
+        assert.ok(error.message.includes(reference))
+        assert.ok(error.message.includes(flag + ' ID'))
+      }
+    }
+    assert.deepEqual((await pardner(args('tasks', '--vein', veinId))).tasks, [])
+    assert.deepEqual((await pardner(args('veins', '--goal', goalId, '--status', 'abandoned'))).veins, [])
+    assert.deepEqual((await pardner(args('veins', '--goal', goalId, '--status', 'open'))).veins.map(vein => vein.id), [veinId])
+  } finally {
+    await client?.stop()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('an agent Actor runs coordination commands through the client proxy with --token-file', { timeout: 60000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-token-file-'))
   let client
