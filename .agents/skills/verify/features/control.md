@@ -30,6 +30,9 @@ same flow in Chromium and WebKit. Selectors: **Control**, **T3 address**, **T3
 pairing code**, **Pair T3**, **Project ID**, **Map thread**, the thread region
 `T3 thread <title>`, **Follow-up for <agent>**, **Queue follow-up**, **Cancel this
 run**, **Verdict evidence**, **Release held work** and **Link GitHub issue**.
+The same suite submits rejected and unreachable T3 pairing requests, an invalid
+repository, and a thread mapping below the initial viewport. It checks inline
+errors across successful background reads, dismissal and corrected submissions.
 
 `node --test test/issue-links.test.js test/pardner-cli-issues.test.js` covers issue
 links through the API, two merged replicas and the CLI.
