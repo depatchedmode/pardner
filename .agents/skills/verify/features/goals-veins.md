@@ -19,6 +19,10 @@ signed-in Actor). It has a read-only **Goals** view (one article per goal with i
 the board and clears the status filter) and a **Vein** filter. Resolution has no
 browser control.
 
+The desktop client list-filter test in `test/client-cli.test.js` exercises invalid
+statuses for all three lists, unknown vein and goal IDs (including titles), and
+valid filters with empty or matching results through the project proxy.
+
 ## Driving it with the CLI and domain fixtures
 
 Run `node --test test/pardner-cli-veins.test.js test/veins-goals.test.js`, and
