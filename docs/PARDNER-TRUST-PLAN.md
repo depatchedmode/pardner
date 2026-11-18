@@ -24,6 +24,10 @@ Status: **plan**. Nothing here is implemented. The design is in [PARDNER-TRUST-D
 | 2 | Board surfaces | People panel with machines and agents, join requests, pairing dialog, remove and re-invite, removed state shown as such, a signer line in Activity | #152, #154, #175, #183 | UI suites (Chromium and WebKit) |
 | 3 | Handshake | Replace `deviceToken` and `replicaToken`. Sign hub HTTP requests. Close sessions on removal. Make `/policy` a local check. A restored hub waits for a peer. Retire the hand-run hub and replica roles. Reword the AGENTS.md admission rule | #187, part of #165 | lifecycle model, 20-seed, acceptance contract update |
 | 4 | Direct peer lane | An opt-in listener, the same handshake over a machine-keyed channel, and sync between two machines at a given address | — | lifecycle model, 20-seed, two real machines on separate networks |
+| I1 | One place for IDs | A single module for the machine and person ID forms, the short form and the key validity check. No behaviour change | — | verify |
+| I2 | Key validity | Refuse small-order and non-canonical Ed25519 keys wherever a key enters. Done (PR #260) | #253 | verify |
+| I3 | did:key identity | Machine and person IDs become `did:key`, as the [identity specification](PARDNER-IDENTITY-SPEC.md) says; record and join request version 3 without the public key field. Breaking: prior installs are refused and preserved | — | lifecycle model if its four files change, runtime, CLI and UI suites, independent agent review |
+| I4 | Identity claims and qualification | README, the client and recovery guides and the acceptance contract say what is enforced | #254 | 20-seed |
 
 ## Landing order (decided)
 
@@ -31,7 +35,7 @@ The gate lands first, and change attribution follows separately.
 
 - **Gate:** `integration/trust-gate` joins the keys, signed membership, invitations and pairing, the People panel, the machine-key handshake, plain string values, the three stage 0 fixes and the review fixes (#217, #219). It is qualified as one branch. README states that changes are not yet signed.
 - **Attribution:** signed changes (#220) and the Activity work (#222, #223, #225, #227) are a separate stack. Signing itself is sound. After five review rounds the owner decided to ship it like git: the signer is guaranteed, and the description is the author's statement, checked on a best-effort basis (#228). A close-out PR makes every view load whatever the board holds and words the UI to match.
-- **After both:** the machine-keyed channel (#215) with the direct peer lane (#200), the next-change-slot check (#221), per-project identity (#218) and open time (#209).
+- **After both:** did:key identity (#254) first, as its own milestone (rows I1 to I4); then the machine-keyed channel (#215) with the direct peer lane (#200), the next-change-slot check (#221), per-project identity (#218) and open time (#209).
 
 ## Ordering
 
@@ -43,4 +47,4 @@ The gate lands first, and change attribution follows separately.
 
 - `scripts/control-runtime.py` and `scripts/remote/rehearse.py` use the hub token. PR 3 ports or retires them.
 - Each PR updates README's current-implementation section, so it never claims more than is enforced.
-- Storage, sync and delivery milestones (1b, 1e, 1f, 1d, 3, 4) need `npm run test:acceptance -- --repeat 20 --seed 1` on an idle machine, and the lifecycle model check when they touch its four files.
+- Storage, sync and delivery milestones (1b, 1e, 1f, 1d, 3, I4, 4) need `npm run test:acceptance -- --repeat 20 --seed 1` on an idle machine, and the lifecycle model check when they touch its four files.

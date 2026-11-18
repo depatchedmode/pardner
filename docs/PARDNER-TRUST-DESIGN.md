@@ -37,9 +37,11 @@ See [Later](#later).
 
 - **One key per machine.** Each client directory has its own Ed25519 machine key (mode 0600; the OS keychain later). A "machine" means one client directory, not one computer.
 - **Machine ID.** `machine-` followed by the first 26 characters of the lowercase RFC 4648 base32 encoding of `sha256(publicKey)`, without padding.
+  - **Decided, not yet implemented (#254):** the machine ID becomes the `did:key` of the machine key, and a person's ID becomes the `did:key` of the machine they were admitted with. The rule is in the [identity specification](PARDNER-IDENTITY-SPEC.md).
+- **Key validity.** A public key that is small-order or not canonically encoded is refused wherever a key enters: records, join requests, the handshake and the registry (#253). Against such a key, a signature anyone can write would verify. The check does not depend on the runtime. The rule is in the [identity specification](PARDNER-IDENTITY-SPEC.md#3-key-validity).
 - **What signs.** The client service and its per-project runtime processes sign with the machine key; the runtime receives the key over its private channel from the client, never through arguments, the environment or another file. The standalone `pardner serve` agent service has no machine key and serves no other machine. Browsers, the CLI and agents keep authenticating to their local client with today's cookie, operator token and agent grants. No private key is ever given to a browser or an agent.
 - **No person key.** A person is the set of machines they have linked. There is no passphrase and no recovery file.
-- **Only Node's crypto.** Signing and verifying use Node's built-in Ed25519. No OpenSSH, GnuPG, UCAN or CBOR library is involved.
+- **Only Node's crypto.** Signing and verifying use Node's built-in Ed25519. No OpenSSH, GnuPG, UCAN or CBOR library is involved. The `did:key` text form needs only a base58 encoder of a few lines.
 
 ### 2. Membership records
 
@@ -52,6 +54,8 @@ recordId = sha256(canonical(record) ‖ signature)
 ```
 
 `canonical()` is the sorted-key JSON already used in `lib/workspace-schema.js`.
+
+**Decided, not yet implemented (#254):** record version 3, in which `signer`, `machineId` and `personId` hold DIDs and the separate public key field goes, because the DID carries the key. The records stay plain signed JSON.
 
 | Kind | Signed by | Effect |
 |---|---|---|
@@ -67,7 +71,7 @@ recordId = sha256(canonical(record) ‖ signature)
 **How membership is computed.** It is a pure function of the set of valid records, and does not depend on order:
 - **Signature.** A record counts only if its signature verifies and its `projectId` matches. Records from another project never count.
 - **A machine consents to its own certification.** A `member.add` or `machine.add` counts only if it carries the join request signed by the machine being certified, naming the project, the person it is joining and a hash of the whole offer (`offerHash = sha256("pardner/offer-hash/v1" ‖ canonical(offer))`). Nobody can certify a key they do not hold, and a consent cannot be reused for a different role or purpose. Without this, a member could certify an admin's key as their own machine, and so strip that admin's authority and undo their removals (found in the security review).
-- **A person ID belongs to its first machine.** A person's ID is derived from the public key of the machine they were admitted with: `person-` plus the first 26 base32 characters of `sha256("pardner/person/v1" ‖ raw public key)`. A `member.add` counts only if its person ID matches the key it certifies, so nobody can admit a fresh key under an existing person's ID. Further machines join a person only through `machine.add`. One consequence today: a computer paired into someone's identity cannot start a project or join another as a new person. Maya starts project B on her desktop and pairs the laptop into it (#218 tracks lifting this).
+- **A person ID belongs to its first machine.** A person's ID is derived from the public key of the machine they were admitted with: `person-` plus the first 26 base32 characters of `sha256("pardner/person/v1" ‖ raw public key)`. A `member.add` counts only if its person ID matches the key it certifies, so nobody can admit a fresh key under an existing person's ID. Further machines join a person only through `machine.add`. One consequence today: a computer paired into someone's identity cannot start a project or join another as a new person. Maya starts project B on her desktop and pairs the laptop into it (#218 tracks lifting this). With #254 the person ID becomes that machine's `did:key`, and the rule becomes: the person's DID equals the DID of the machine the record certifies.
 - **Certifications never displace each other.** Every valid, consented certification of a key counts; record order and record IDs decide nothing.
   - A key certified more than once for the same person is one machine. It is agents-only only if every certification says so, since lifting the mark takes the approval of someone who could pair a full machine anyway.
   - A person admitted more than once holds the highest role any valid admission gave. Where an owner-signed role record exists, the head of the role chain still decides the current role.
@@ -237,13 +241,19 @@ README states each stage's guarantee as it lands, so no stage claims more than i
    - The AGENTS.md admission rule is reworded in the same PR.
    - Updates `docs/PARDNER-CLI.md` and the acceptance contract.
 
+**Identity: did:key (#254).** Decided after stage 1. It lands before the sync channel (#215), as its own milestone.
+- One place for the machine and person ID forms, with no behaviour change.
+- Key validity (#253, done).
+- The switch to `did:key`, with record and join request version 3. A breaking change: prior installs are rejected and preserved, not migrated (AGENTS.md).
+- Updates `docs/PARDNER-CLIENT.md`, `docs/PARDNER-CLIENT-RECOVERY.md`, the acceptance contract and README.
+
 **Stage 2: direct peer lane.**
 
 4. The handshake plus sync between two member machines at an explicit address, validated on real separate machines. After this, owner and admin peers may record enrollments (Q3).
 
 **Qualification.**
 - Steps 1, 3 and 4 change `automerge-sync-server.js`, `lib/workspace.js`, `lib/workspace-runtime.js` or `lib/durable-repo.js`, so each needs the lifecycle model check.
-- Each of those steps is a storage, sync or delivery milestone, so each needs the 20-seed acceptance qualification on an idle machine.
+- Each of those steps is a storage, sync or delivery milestone, so each needs the 20-seed acceptance qualification on an idle machine. The identity change is a storage milestone too, and is qualified once, when its last pull request is in.
 - Automated suites supply keys through a test-only fixture, never through flags or the environment of a real install.
 
 ## Validation plan
@@ -282,6 +292,7 @@ This is a plan. None of these scenarios has been run.
 - **End-to-end encryption.** A project key wrapped to each member machine key, rotated on removal. Relays without the key store and forward ciphertext.
 - **Phones.** First through the hub over HTTPS, with a non-extractable WebCrypto Ed25519 key per phone browser certified by `machine.add`. Then a native app as a full replica.
 - **Stronger admin authority.** A passkey or hardware key that admins must touch to admit or remove, if a stolen admin laptop becomes a real concern. The record format leaves room for a key type.
+- **Outside identities.** A signed link from a person to an identity they hold elsewhere, such as a Bluesky account, added beside their Pardner ID and never in place of it (#257).
 - **Linked git keys** as profile badges for commit linking.
 - **Discovery and NAT traversal** for the direct lane.
 - **Machine keys in the OS keychain.**
@@ -293,6 +304,8 @@ This is a plan. None of these scenarios has been run.
 | Model | One strict gate (member machines only), free board work inside, exact attribution by signed changes. Roles (owner, admin, member) govern only admission and removal |
 | Keys | Machine keys only. No person key, passphrase or recovery file |
 | Encoding | Plain Ed25519-signed JSON records. No UCAN |
+| Identifiers | Machines and people are named by `did:key`, as a path to outside identities. Only the identifiers change: no DID documents, no resolution. Decided, not yet implemented (#254); the rule is in the [identity specification](PARDNER-IDENTITY-SPEC.md) |
+| Key validity | Small-order and non-canonical Ed25519 keys are refused wherever a key enters, by a rule that does not depend on the runtime (#253) |
 | Removal | An admin's removal leaves the people they admitted in. Removals are grow-only and order-free; if two machines remove each other, both go |
 | Admins | Only the owner removes or demotes admins. A lost owner freezes the admin list (Q4) |
 | Invitations | Admin approval with a confirmation code only, with no forge check. The code includes an approver nonce added after the request is stored |
@@ -312,3 +325,5 @@ This is a plan. None of these scenarios has been run.
 - **What was dropped.** The person key, scopes, UCAN, cascade and per-action replay are gone.
 - **What carried over.** Q1 (enforcement from arrival), Q2 (handshake), Q3 (hub-only enrollment), Q4 (owner-only admin removal) and Q7 (measure text storage first).
 - **Where the earlier text is.** The earlier text, including its measurements of replay cost and fork behaviour, is in git history at `2aacfbf0`.
+- **did:key identifiers (November 2026).** While the sync channel (#215) was being designed, the owner decided to name machines and people by `did:key`, in the form freeq uses for agents, as a path to linking outside identities later (#257). Only the identifiers change. There is still no person key, no UCAN and no DID resolution. It is a storage-breaking change, landed as its own milestone before #215.
+- **Key validity (November 2026).** A review of the #215 design found that Node 24.11.1 verifies forged signatures against small-order Ed25519 keys, and that Pardner imported keys without checking for them. Pardner now refuses those keys itself (#253).
