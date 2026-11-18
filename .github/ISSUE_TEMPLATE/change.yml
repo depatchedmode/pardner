@@ -1,0 +1,26 @@
+name: Change or task
+description: Propose a capability, improvement or maintenance task.
+labels: ["change"]
+body:
+  - type: markdown
+    attributes:
+      value: Remove tokens, invitations and private paths from examples.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Who needs this change, and what should they be able to do?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What would someone observe when the work is complete?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and constraints
+      description: Link related decisions or describe constraints the change must respect.

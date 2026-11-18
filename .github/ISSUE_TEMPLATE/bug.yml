@@ -1,0 +1,26 @@
+name: Bug report
+description: Report behavior that differs from what you expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Remove tokens, invitations and private paths from examples.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+      description: What did you try to do, what did you expect, and what happened?
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Example and environment
+      description: Give the smallest example you have, the version or commit, and where you saw it.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Supporting evidence
+      description: Include any redacted output or screenshots that help explain the problem.
