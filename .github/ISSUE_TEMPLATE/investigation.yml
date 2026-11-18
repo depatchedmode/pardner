@@ -1,0 +1,26 @@
+name: Investigation
+description: Frame a question that measurements or observations can answer.
+labels: ["investigation"]
+body:
+  - type: markdown
+    attributes:
+      value: Remove tokens, invitations and private paths from examples.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question to settle
+      description: What do we need to learn, and which decision depends on it?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence that would settle the question
+      description: Describe an observation or comparison that would let someone draw a conclusion.
+    validations:
+      required: true
+  - type: textarea
+    id: observations
+    attributes:
+      label: Existing observations
+      description: Include measurements, prior attempts or links that give the investigation a starting point.
