@@ -133,7 +133,22 @@ test('an agent Actor runs coordination commands through the client proxy with --
     // A person mentions the agent; the agent's inbox is its own without naming --actor.
     const { actors } = await api(`/projects/${project.id}`)
     const handle = actors.find(actor => actor.id === grant.actorId).handle
-    await api(`/projects/${project.id}/api/automerge/operations`, { type: 'comment.add', operationId: 'mention', payload: { taskId, text: `@${handle} please review` } })
+    const mention = await api(`/projects/${project.id}/api/automerge/operations`, { type: 'comment.add', operationId: 'mention', payload: { taskId, text: `@${handle} please review` } })
+    const env = { PARDNER_ACTOR: grant.actorId }
+    const reply = await pardner(['comment', taskId, 'Reviewing now', '--token-file', grantFile], env)
+    assert.equal(reply.actorId, grant.actorId)
+    for (const [command, scope] of [['activity', []], ['timeline', ['--task', taskId]]]) {
+      const args = [command, ...scope, '--token-file', grantFile]
+      const all = (await pardner(args, { PARDNER_ACTOR: undefined })).activity
+      assert.ok(all.some(entry => entry.operationId === mention.operationId && entry.actorId === project.actorId))
+      assert.ok(all.some(entry => entry.operationId === reply.operationId && entry.actorId === grant.actorId))
+      const ids = entries => entries.map(entry => entry.entry)
+      assert.deepEqual(ids((await pardner(args, env)).activity), ids(all))
+      for (const flag of ['--actor', '--agent']) {
+        const filtered = (await pardner([...args, flag, project.actorId], env)).activity
+        assert.deepEqual(ids(filtered), ids(all.filter(entry => entry.actorId === project.actorId)))
+      }
+    }
     const pending = await pardner(['mentions', 'pending', '--token-file', grantFile])
     assert.equal(pending.mentions.length, 1)
     const claim = await pardner(['mentions', 'claim-next', '--request-id', 'claim', '--token-file', grantFile])
