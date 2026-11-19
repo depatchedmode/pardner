@@ -39,6 +39,11 @@ unchanged newer task value. The focus case checks that the Task details heading
 has focus as soon as the panel opens, before a user enters a comment or issue
 reference. Inspect the resulting UI for presentation changes.
 
+The inline Status case delays the Task Details response after a successful
+save. The select keeps showing the saved choice, then accepts another edit
+once its revision arrives. The pending-create Escape case checks that the
+filled comment survives the preflight alert.
+
 ## Gotchas
 
 Fixtures must explicitly register Actors. `test:cli` does not include the separate

@@ -1297,6 +1297,9 @@ function TaskDetail({
       </aside>
     )
   const { task, comments, history, conflicts, revisions } = context
+  const statusRevisions = revisions.status.join(',')
+  // Keep the saved choice visible until Task Details has a new status revision.
+  const awaitingStatus = statusChoice && (statusChoice.previousRevisions === null || statusChoice.previousRevisions === statusRevisions)
   // History is the task's Activity entries, each derived from the change that wrote it, newest first.
   const historyRows = sortEvents(taskRows({ activity: lookups.activity, attribution: lookups.attribution }, taskId).filter(row => row.type !== 'comment.add'))
   const canWrite = Boolean(actor) && !busy
@@ -1420,18 +1423,18 @@ function TaskDetail({
             <select
               aria-label="Status"
               ref={statusSelect}
-              disabled={!canWrite}
-              value={statusChoice ?? task.status}
+              disabled={!canWrite || Boolean(awaitingStatus)}
+              value={awaitingStatus ? statusChoice.value : task.status}
               onChange={async (event) => {
                 const next = event.target.value
                 if (next === task.status) return
-                setStatusChoice(next)
-                await submit('task.update', {
+                setStatusChoice({ value: next, previousRevisions: null })
+                const receipt = await submit('task.update', {
                   taskId,
                   updates: { status: next },
                   expectedRevisions: { status: revisions.status },
                 })
-                setStatusChoice(null)
+                setStatusChoice(receipt ? { value: next, previousRevisions: statusRevisions } : null)
                 refocusStatus()
               }}
             >

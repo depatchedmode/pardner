@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium, webkit } from 'playwright'
-import { withClientReplicas, withClientWorkspace } from '../support/client-workspace.js'
+import { eventually, withClientReplicas, withClientWorkspace } from '../support/client-workspace.js'
 import { startCliService } from '../support/cli-resources.js'
 
 /** Waits until the hub stores `status` for vein `veinId`; a save that never lands fails after ten seconds. */
@@ -1210,6 +1210,47 @@ for (const engine of [chromium, webkit]) it(`changes a task's status in place fr
   })
 })
 
+for (const engine of [chromium, webkit]) it(`keeps a saved inline status while Task details catches up in ${engine.name()}`, { timeout: 120000 }, async () => {
+  await withClientWorkspace(engine, {}, async ({ page, task, operate, open }) => {
+    const { result: { taskId } } = await operate('task.create', { title: 'Approve release notes', status: 'review' })
+    const panel = page.getByRole('complementary', { name: 'Task details' })
+    const select = panel.getByLabel('Status', { exact: true })
+    const contextRoute = url => url.pathname.endsWith(`/task/${taskId}/context`)
+    let releaseContext
+    const holdContext = new Promise(resolve => { releaseContext = resolve })
+    let contextHeld = false
+    await page.route(contextRoute, async route => {
+      const response = await route.fetch()
+      if (response.ok() && (await response.json()).task.status === 'completed') {
+        contextHeld = true
+        await holdContext
+      }
+      await route.fulfill({ response })
+    })
+
+    try {
+      await open()
+      await page.getByRole('button', { name: /Approve release notes/ }).click()
+      await select.selectOption('completed')
+      await page.getByRole('region', { name: 'Completed' }).locator(`.task-card[data-task-id="${taskId}"]`).waitFor()
+      await eventually(() => contextHeld, 'the completed Details response was never held')
+      await panel.getByRole('status').filter({ hasText: /^Saved locally/ }).waitFor()
+      assert.equal((await task(taskId)).task.status, 'completed')
+      assert.equal(await select.inputValue(), 'completed', 'a late Details response must not undo the displayed save')
+      assert.equal(await select.isDisabled(), true, 'the next edit needs the current revision')
+
+      releaseContext()
+      await page.waitForFunction(() => document.querySelector('.side-panel select[aria-label="Status"]')?.disabled === false)
+      assert.equal(await select.inputValue(), 'completed')
+      await select.selectOption('in-progress')
+      await eventually(async () => (await task(taskId)).task.status === 'in-progress', 'the next edit did not use the new revision')
+    } finally {
+      releaseContext()
+      await page.unrouteAll({ behavior: 'wait' })
+    }
+  })
+})
+
 for (const engine of [chromium, webkit]) it(`recovers the inline Status select from a stale change and a lost response in ${engine.name()}`, { timeout: 180000 }, async () => {
   await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } } }, async ({ page, task, operate, open }) => {
     const { result: { taskId } } = await operate('task.create', { title: 'Approve release notes', status: 'review' })
@@ -1420,11 +1461,14 @@ for (const engine of [chromium, webkit]) it(`closes New task with Escape without
     await panel.waitFor({ state: 'detached' })
     await retry.waitFor()
     await page.locator('.task-card', { hasText: 'Existing card' }).click()
-    await details.getByLabel('Comment', { exact: true }).fill('Blocked by pending')
+    const comment = details.getByLabel('Comment', { exact: true })
+    await comment.fill('Blocked by pending')
+    assert.equal(await comment.inputValue(), 'Blocked by pending')
     await details.getByRole('button', { name: 'Add comment', exact: true }).click()
     const resolve = page.getByRole('alert').filter({ hasText: 'Resolve the saved request before starting another change.' })
     await resolve.waitFor()
     assert.ok(!(await resolve.textContent()).includes('Your last confirmed data remains available.'), 'a pre-flight alert has no suffix')
+    assert.equal(await comment.inputValue(), 'Blocked by pending', 'the blocked submit keeps the draft')
     await page.unroute('**/automerge/operations')
   })
 })
