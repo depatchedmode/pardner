@@ -137,6 +137,12 @@ gate.
   restart with its proof, also when the first save of the report and of each proof
   failed. An unsigned report also retries its first failed save and keeps the
   two hashes regardless of peer arrival order. A prefix two keys share attributes to neither.
+- **Hidden conflict edits.** `test/signed-entries.test.js` edits a nested list
+  in the losing alternative after the earlier changes reach both peers. It
+  checks that the edit produces no visible patch and that the hub and other
+  replica receive and attribute its exact hash without a later edit. The pinned
+  [Repo backport](../../../../vendor/automerge-repo/README.md) schedules sync on
+  head changes.
 - **Acceptance gate.** `test/acceptance-components.test.js`: the gate's stable
   attribution comparison ignores replica-specific labels, fails replicas that
   disagree on a signer, fails a signer other than the machine that performed the

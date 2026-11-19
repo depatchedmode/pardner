@@ -1,6 +1,7 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
+import { setTimeout as delay } from 'node:timers/promises'
 import * as A from '@automerge/automerge'
 import { machineActor, shardOf, signChange } from '../lib/change-signatures.js'
 import { canonical, plain } from '../lib/workspace-schema.js'
@@ -324,8 +325,9 @@ it('an edit inside a list of another Actor’s field value is counted against th
     const taskId = created.result.taskId, key = `${taskId}:tags`
     const bob = await bare(1)
     await eventually(() => bob.board.doc().taskFields?.[key], 'Bob never synced')
-    // A concurrent tags value Bob prepares, so the field has two alternatives; then Alice edits the tags herself.
+    // Bob's board-name write makes his concurrent tags assignment win by operation counter.
     const fork = A.change(A.clone(bob.board.doc(), { actor: machineActor(bob.key) }), doc => {
+      doc.name = new A.ImmutableString('Concurrent tags')
       doc.taskFields[key] = storageValue({ value: ['forged'], operationId: 'op-forged', actorId: member, replicaId: 'r', timestamp: new Date().toISOString() })
     })
     const revisions = alice.workspace.taskContext(taskId).revisions
@@ -333,17 +335,23 @@ it('an edit inside a list of another Actor’s field value is counted against th
     bob.board.update(doc => A.merge(doc, fork))
     sign(bob, project.projectId, A.getHeads(fork)[0])
     await eventually(() => Object.keys(A.getConflicts(bob.board.doc().taskFields, key) ?? {}).length === 2, 'Bob never saw both values')
-    // Bob's client then adds a tag inside Alice's own value.
+    assert.equal(String(bob.board.doc().taskFields[key].operationId), 'op-forged')
+    await settled([server.store, alice], A.getHeads(bob.board.doc()))
+    // Drain Repo 2.5.1's 100 ms send throttle so earlier visible changes cannot send this edit.
+    await delay(350)
+    const before = A.getHeads(bob.board.doc())
+    // Bob's client adds a tag inside Alice's hidden alternative.
     bob.board.change(doc => {
       const mine = Object.values(A.getConflicts(doc.taskFields, key)).find(value => String(value.operationId) === edited.operationId)
       mine.value.push(new A.ImmutableString('injected'))
     })
-    const [inside] = A.getHeads(bob.board.doc())
+    const after = A.getHeads(bob.board.doc())
+    const [inside] = after
+    assert.notDeepEqual(after, before)
+    assert.deepEqual(A.diff(bob.board.doc(), before, after), [], 'the hidden edit produces no visible patch')
     sign(bob, project.projectId, inside)
-    // Checked on the hub, which receives Bob's change directly. (Not on another replica: the hub has been seen to
-    // relay a bare peer's newest change to a replica only with its next change, on PR #223's code as well; see the PR.)
-    await settled([server.store], [inside])
-    for (const runtime of [server.store]) {
+    await settled([server.store, alice], [inside])
+    for (const runtime of [server.store, alice]) {
       const listed = await eventually(() => runtime.getDoc().attribution.registers?.[`taskFields:${key}`]?.[edited.operationId], `${runtime.role} never counted the edit against Alice’s value`)
       assert.ok(listed.changedBy.some(writer => writer.change === inside), 'the change that edited inside it is named')
       assert.ok(runtime.getDoc().attribution.registers[`taskFields:${key}`]['op-forged'], 'and the value Alice did not write is listed too')

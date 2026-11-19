@@ -1,0 +1,10 @@
+--- a/src/synchronizer/DocSynchronizer.ts
++++ b/src/synchronizer/DocSynchronizer.ts
+@@ -79 +79 @@
+-      "change",
++      "heads-changed",
+--- a/dist/synchronizer/DocSynchronizer.js
++++ b/dist/synchronizer/DocSynchronizer.js
+@@ -36 +36 @@
+-        handle.on("change", throttle(() => this.#syncWithPeers(), this.syncDebounceRate));
++        handle.on("heads-changed", throttle(() => this.#syncWithPeers(), this.syncDebounceRate));

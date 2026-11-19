@@ -141,6 +141,9 @@ export function classifyPath(path) {
   const group = groups.find(group => group.files.includes(path))
   if (group) return group
   if (manifests.includes(path)) return { name: 'dependencies', scripts: scriptOrder.filter(script => script !== 'test:verification') }
+  if (path.startsWith('vendor/automerge-repo/')) {
+    return { name: 'automerge-repo-backport', scripts: ['test:runtime', 'test:qualification'], qualification: 'Installed Automerge sync implementation changed' }
+  }
   if (path === '.node-version') return { name: 'node', scripts: scriptOrder, qualification: 'Pinned Node runtime changed' }
   if (/^ui-prototype\/(src\/|public\/)/.test(path) || ['ui-prototype/index.html', 'ui-prototype/vite.config.js'].includes(path)) {
     return { name: 'ui', scripts: ['test:ui'] }

@@ -75,6 +75,14 @@ it('flags foundation dependency and gate changes, including staged changes later
   assert.equal(planForFiles(['package.json']).qualification.required, true, 'Unavailable contents must not imply no dependency changes')
 })
 
+it('requires sync qualification when the vendored Repo backport changes', () => {
+  const archive = 'vendor/automerge-repo/automerge-repo-2.5.1-heads-sync.tgz'
+  const plan = planForFiles([archive])
+  assert.deepEqual(plan.scripts, ['test:qualification', 'test:runtime'])
+  assert.deepEqual(plan.qualification.triggers.map(trigger => trigger.path), [archive])
+  assert.deepEqual(plan.unclassified, [])
+})
+
 it('ignores manifest formatting and unrelated metadata but checks nested lockfile foundation entries', () => {
   const before = { dependencies: { ws: '8', react: '18' }, scripts: { verify: 'node scripts/verify.js' } }
   const after = { scripts: { ...before.scripts, 'verify:plan': 'node scripts/verify-plan.js' }, dependencies: { react: '19', ws: '8' } }

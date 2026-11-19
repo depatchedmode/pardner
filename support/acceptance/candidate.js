@@ -18,6 +18,9 @@ export async function candidateFingerprint(directory = root) {
     }
   }
   for (const path of ['bin', 'lib', 'scripts', 'support', 'test', 'ui-prototype/src', 'ui-prototype/dist']) await collect(path)
+  const manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'))
+  const repoBackport = manifest.dependencies?.['@automerge/automerge-repo']
+  if (repoBackport?.startsWith('file:vendor/automerge-repo/')) files.push(repoBackport.slice('file:'.length))
   const hashes = {}
   for (const path of files.sort()) hashes[path] = digest(await readFile(join(directory, path)))
   return { sha256: digest(JSON.stringify(hashes)), files: hashes,
