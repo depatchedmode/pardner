@@ -99,7 +99,8 @@ This starts Pardner in the background and opens the board in your browser. Then:
 1. Confirm your name and email, which Pardner reads from Git.
 2. Start a project, or join one with an invitation.
 
-You now have a project on your own disk and a board to watch it from.
+You now have a project on your own disk and a board to watch it from. Your
+machine is the project's hub: any machine that joins later syncs through it.
 `--harness` and `--name` register the agent you are setting up with, here a Codex
 agent called Alpha. Without `--name` it is named after you and its harness, such
 as “Maya’s Codex”.
@@ -110,8 +111,9 @@ Data lives in `~/.pardner/client` unless you pass `--data`.
 **Without a browser.** `open` still starts the service, but if it can't launch a
 browser it exits with `LAUNCH_UNAVAILABLE`. Run it with `--output-file FILE`
 instead: it prints the board's address as `localUrl` and writes the private
-sign-in link to the file. The link expires 60 seconds after it is issued. You
-can also do both setup steps from the CLI:
+sign-in link to the file. The link expires 60 seconds after it is issued. Do the
+same if `open` reports success but no browser appears. You can also do both
+setup steps from the CLI:
 
 ```sh
 pardner client identity --name NAME --email EMAIL --operation-id ID
@@ -139,6 +141,31 @@ pardner --token-file alpha.json mentions pending
 Give the agent the [harness skill](skills/pardner-harness/SKILL.md) so it knows
 how to read work, report progress and hand off.
 
+### A first task
+
+A new project has two Actors: you and your agent. This is the agent creating a
+task, reporting on it and handing it to you for review:
+
+```sh
+pardner --token-file alpha.json task create --title 'First task' --operation-id first-task
+pardner --token-file alpha.json show TASK --json
+pardner --token-file alpha.json comment TASK 'Started on this.'
+pardner --token-file alpha.json actors list
+pardner --token-file alpha.json handoff TASK --to ACTOR --status review \
+  --message 'Ready for review.' \
+  --revisions '{"assignee":["REVISION"],"status":["REVISION"]}'
+```
+
+- `TASK` is `result.taskId` in the output of `task create`.
+- `ACTOR` is your `id` or `handle` from `actors list`. A display name such as
+  “Maya” is not accepted.
+- The revisions are the `assignee` and `status` entries of the top-level
+  `revisions` object that `show` prints. You can pass that whole object.
+
+The task now shows on the board as yours to review. Each person has one agent
+per harness in a project, so a second agent of yours needs a different
+`--harness`.
+
 ### Work with someone else
 
 Invite them from the People panel on the board. They join from their own
@@ -163,12 +190,13 @@ command:
 export PARDNER_DATA_DIR=.pardner
 pardner actors register alice --handle alice --kind human --actor alice
 pardner actors register builder --handle builder --kind agent --actor alice
+pardner actors register reviewer --handle reviewer --kind agent --actor alice
 pardner task create --title 'Coordinate our first task' --assignee builder --actor alice --operation-id first-task
 pardner tasks --assignee builder --json
 ```
 
-Without `PARDNER_DATA_DIR` or `--data .pardner`, commands fail with
-`AUTH_REQUIRED`.
+The CLI finds `.pardner` in the directory you run it from. From anywhere else,
+without `PARDNER_DATA_DIR` or `--data`, commands fail with `AUTH_REQUIRED`.
 It syncs with no other machine and keeps its data apart from projects you open
 with `pardner open`.
 
@@ -199,6 +227,12 @@ flowchart LR
 
 ### Commands
 
+These examples use the standalone form and the Actors registered in
+[Agents only, on one machine](#agents-only-on-one-machine): `alice`, `builder`
+and `reviewer`. In a client project, replace `--actor NAME` with
+`--token-file FILE` and address other Actors by the `id` or `handle` that
+`pardner actors list` prints, as in [A first task](#a-first-task).
+
 | Task | Command |
 | --- | --- |
 | Agent work queue | `pardner tasks --assignee builder --json` |
@@ -220,8 +254,8 @@ A few rules keep concurrent work safe:
 - **Writes name who is acting.** Pass `--actor`, or `--token-file` for an agent in
   a client project.
 - **Edits say what they saw.** `show` returns a `revisions` object keyed by
-  field, at the top level of its JSON. An edit passes it back, whole or just the fields it changes, so it can't
-  silently overwrite a change it never read:
+  field, at the top level of its JSON. An edit passes it back, whole or just the
+  fields it changes, so it can't silently overwrite a change it never read:
 
   ```sh
   pardner show TASK --actor builder --json
@@ -230,7 +264,8 @@ A few rules keep concurrent work safe:
     --revisions '{"assignee":["ASSIGNMENT_REVISION"],"status":["STATUS_REVISION"]}'
   ```
 
-  Without them the edit fails with `REVISION_REQUIRED`.
+  Leaving out `--revisions` fails with `INVALID_ARGUMENT`. A value that doesn't
+  hold the revision a changed field currently has fails with `REVISION_REQUIRED`.
 - **Retries are safe.** Send the same operation ID and identical payload to retry
   an uncertain write. See the
   [operation identity contract](docs/PARDNER-CLI.md).
