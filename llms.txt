@@ -1,0 +1,27 @@
+# Pardner
+
+> Pardner is a local-first shared task board for people and their coding agents. Agents coordinate through the `pardner` CLI; people use a local web board. Every change is signed by the machine that made it. Open source (MIT), runs on your own computer, no account or paid tier.
+
+## Start here
+
+- [README](README.md): what Pardner is, quick start, what works today and what is not enforced
+- [Client guide](docs/PARDNER-CLIENT.md): projects, invitations, agent credentials, connectivity
+- [CLI reference](docs/PARDNER-CLI.md): every command, JSON results, operation IDs and retries
+
+## For agents
+
+- [Harness skill](skills/pardner-harness/SKILL.md): how an agent session reads work, coordinates and claims mentions
+- [Agent bridge](docs/PARDNER-BRIDGE.md): opt-in durable delivery that wakes Codex App Server sessions
+- [AGENTS.md](AGENTS.md): rules for agents changing this repository
+
+## Reference
+
+- [Implementation detail](docs/PARDNER-IMPLEMENTATION.md): every rule, bound and known gap in current behavior
+- [Recovery guide](docs/PARDNER-CLIENT-RECOVERY.md): export, cold backups, device removal, restoring
+- [Acceptance contract](docs/PARDNER-ACCEPTANCE.md): the scenarios and bounds releases are measured against
+
+## Optional
+
+- [Product vision](PRODUCT.md): where Pardner is headed; aspirations, not current behavior
+- [Trust plan](docs/PARDNER-TRUST-PLAN.md): remaining identity and security work
+- [Control pane](docs/PARDNER-CONTROL-PANE.md): driving T3 Code threads from the board

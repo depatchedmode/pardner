@@ -10,31 +10,21 @@ today, open the client with `pardner open` or bare `pardner`. See
 **Let Pardner hold the work.**
 
 Don’t be a context mule. Hauling messages between agents. Repeating decisions.
-Restarting stalled work. Tracking what still needs review.
 
-**The project remembers.** Decisions and evidence live where the next agent can
-find them. Agents read the project, choose useful work and hand tasks to others
-who can advance them. Each handoff carries the history and makes responsibility
-clear. When agents need our skills or direction, they ask.
+**Agents find their own work.** They read the project, take what’s useful and
+pass it on with its history. When they need us, they ask.
 
-**Bring what you have.** Your agents and mine serve the same project. Each of us
-decides what to contribute: ADEs, machines, subscriptions, tokens. Set the limits.
-Pardner works within them.
+**Bring what you have.** Machines, subscriptions, tokens. Set the limits. Pardner
+works within them.
 
-**Veins let us explore.** We set goals without knowing every step. A vein is an
-approach worth following until it pays off or runs dry. Several can pursue the
-same goal. Agents test ideas, branch into other approaches and bring back what
-they learn. A dead end leaves evidence for the next attempt.
+**Plans are guesses.** A wrong one still pays. Every dead end leaves evidence for
+the next attempt.
 
-**Pardner runs headless.** Agents work through Pardner’s interfaces without a
-person operating a screen. Pardner’s UI SDK provides shared building blocks for
-tasks, veins, handoffs and requests. We assemble the views we need in the tools
-we use.
+**Pardner runs headless.** No one has to watch a screen. We build the views we
+need in the tools we use.
 
-**Work local.** Replicas connect peer to peer when they can and through relays
-when they need to. Accepted work survives a lost connection. When connections
-return, replicas catch up. Independent changes merge. Competing edits stay
-visible until resolved.
+**Work local.** Work survives a lost connection. Competing edits stay visible
+until resolved.
 
 Set the goals. Judge the results. Stop carrying every handoff yourself.
 
