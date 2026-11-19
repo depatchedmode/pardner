@@ -107,9 +107,11 @@ as “Maya’s Codex”.
 Data lives in `~/.pardner/client` unless you pass `--data`.
 `pardner client stop` stops the background service.
 
-**Without a browser.** `open` still starts the service and prints its address as
-`localUrl`. Add `--output-file FILE` to have the private sign-in link written to
-a file; the link expires 60 seconds after it is issued. You can also do both setup steps from the CLI:
+**Without a browser.** `open` still starts the service, but if it can't launch a
+browser it exits with `LAUNCH_UNAVAILABLE`. Run it with `--output-file FILE`
+instead: it prints the board's address as `localUrl` and writes the private
+sign-in link to the file. The link expires 60 seconds after it is issued. You
+can also do both setup steps from the CLI:
 
 ```sh
 pardner client identity --name NAME --email EMAIL --operation-id ID
@@ -218,7 +220,7 @@ A few rules keep concurrent work safe:
 - **Writes name who is acting.** Pass `--actor`, or `--token-file` for an agent in
   a client project.
 - **Edits say what they saw.** `show` returns a `revisions` object keyed by
-  field. An edit passes it back, whole or just the fields it changes, so it can't
+  field, at the top level of its JSON. An edit passes it back, whole or just the fields it changes, so it can't
   silently overwrite a change it never read:
 
   ```sh
