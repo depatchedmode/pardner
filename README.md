@@ -61,6 +61,15 @@ Pardner is at version 0.1.0. Expect storage formats to change; see
 
 ## Getting started
 
+There are two ways to run Pardner. Most people want the first.
+
+| | Client | Standalone service |
+| --- | --- | --- |
+| Start it with | `pardner open` | `pardner serve` |
+| For | People and their agents | Agents and scripts only |
+| Board in the browser | Yes | No |
+| Shares a project with other machines | Yes | No |
+
 ### Install
 
 You need Git and Node **24.11.1**. Pardner runs from a checkout:
@@ -73,8 +82,11 @@ npm ci --prefix ui-prototype
 npm run ui:build
 ```
 
-The examples below write `pardner`. From a checkout that is
-`node bin/pardner.js`; install the package to put `pardner` on your PATH.
+Nothing has put `pardner` on your PATH yet. Every example below writes
+`pardner`; from a checkout, type `node bin/pardner.js` in its place, so
+`pardner open` becomes `node bin/pardner.js open`.
+
+Other Node versions are not supported; npm warns about a mismatch at install.
 
 ### Open the board
 
@@ -95,11 +107,22 @@ as “Maya’s Codex”.
 Data lives in `~/.pardner/client` unless you pass `--data`.
 `pardner client stop` stops the background service.
 
-### Connect an agent
-
-An agent acts in a project with a credential that you issue:
+**Without a browser.** `open` still starts the service and prints its address as
+`localUrl`. Add `--output-file FILE` to have the private sign-in link written to
+a file. You can also do both setup steps from the CLI:
 
 ```sh
+pardner client identity --name NAME --email EMAIL --operation-id ID
+pardner client create --name NAME --operation-id ID
+```
+
+### Connect an agent
+
+An agent acts in a project with a credential that you issue. `pardner client
+list` shows your projects and their IDs:
+
+```sh
+pardner client list
 pardner client agent-grant --project ID --output-file alpha.json
 ```
 
@@ -129,16 +152,20 @@ run the standalone service instead:
 pardner serve --data .pardner
 ```
 
-In another terminal, name the Actor on each command:
+The service writes its credentials to `.pardner/connection.json` (mode 0600).
+In another terminal, point the CLI at that directory and name the Actor on each
+command:
 
 ```sh
+export PARDNER_DATA_DIR=.pardner
 pardner actors register alice --handle alice --kind human --actor alice
 pardner actors register builder --handle builder --kind agent --actor alice
 pardner task create --title 'Coordinate our first task' --assignee builder --actor alice --operation-id first-task
 pardner tasks --assignee builder --json
 ```
 
-The service writes its credentials to `.pardner/connection.json` (mode 0600).
+Without `PARDNER_DATA_DIR` or `--data .pardner`, commands fail with
+`AUTH_REQUIRED`.
 It syncs with no other machine and keeps its data apart from projects you open
 with `pardner open`.
 
@@ -189,8 +216,8 @@ A few rules keep concurrent work safe:
 
 - **Writes name who is acting.** Pass `--actor`, or `--token-file` for an agent in
   a client project.
-- **Edits say what they saw.** A field edit passes the revisions returned by
-  `show`, so it can't silently overwrite a change it never read.
+- **Edits say what they saw.** A field edit passes the `revisions` value returned
+  by `show`, so it can't silently overwrite a change it never read.
 - **Retries are safe.** Send the same operation ID and identical payload to retry
   an uncertain write. See the
   [operation identity contract](docs/PARDNER-CLI.md).
