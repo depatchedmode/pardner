@@ -156,8 +156,9 @@ How machines authenticate:
   grants. None of them is accepted between machines.
 
 Member machines are trusted full document writers: their synchronized changes bypass
-the operation API's schema, attribution, revision and command validation. Changes
-are not signed yet, so a member machine's word is taken for who made a change.
+the operation API's schema, attribution, revision and command validation. Each
+change is signed by the machine that made it and attributed to that machine; a
+machine's word is still taken for which of its Actors acted.
 
 Existing incompatible storage is rejected and left intact. Choose a fresh
 directory; there is no automatic migration. A second process cannot own the same
