@@ -109,7 +109,7 @@ Data lives in `~/.pardner/client` unless you pass `--data`.
 
 **Without a browser.** `open` still starts the service and prints its address as
 `localUrl`. Add `--output-file FILE` to have the private sign-in link written to
-a file. You can also do both setup steps from the CLI:
+a file; the link expires 60 seconds after it is issued. You can also do both setup steps from the CLI:
 
 ```sh
 pardner client identity --name NAME --email EMAIL --operation-id ID
@@ -126,7 +126,8 @@ pardner client list
 pardner client agent-grant --project ID --output-file alpha.json
 ```
 
-Keep that file private and hand its path to the agent. Every command the agent
+The credential is for the agent you named when you ran `open`, here Alpha. Keep
+the file private and hand its path to the agent. Every command the agent
 runs with `--token-file` is recorded as that agent's work:
 
 ```sh
@@ -216,8 +217,18 @@ A few rules keep concurrent work safe:
 
 - **Writes name who is acting.** Pass `--actor`, or `--token-file` for an agent in
   a client project.
-- **Edits say what they saw.** A field edit passes the `revisions` value returned
-  by `show`, so it can't silently overwrite a change it never read.
+- **Edits say what they saw.** `show` returns a `revisions` object keyed by
+  field. An edit passes it back, whole or just the fields it changes, so it can't
+  silently overwrite a change it never read:
+
+  ```sh
+  pardner show TASK --actor builder --json
+  pardner handoff TASK --to reviewer --status review \
+    --message 'Ready for review.' --actor builder \
+    --revisions '{"assignee":["ASSIGNMENT_REVISION"],"status":["STATUS_REVISION"]}'
+  ```
+
+  Without them the edit fails with `REVISION_REQUIRED`.
 - **Retries are safe.** Send the same operation ID and identical payload to retry
   an uncertain write. See the
   [operation identity contract](docs/PARDNER-CLI.md).
