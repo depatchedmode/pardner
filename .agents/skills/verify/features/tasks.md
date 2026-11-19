@@ -35,7 +35,9 @@ The browser opens through `withClientWorkspace` (`support/client-workspace.js`) 
 uses **New task**, **Title**, **Create task**, **Comment**, **Add comment**, and **Retry saved request**. Its
 lost-response case checks identical operation attempts and exactly one comment
 through CLI readback. Its stale-write case checks a preserved draft and an
-unchanged newer task value. Inspect the resulting UI for presentation changes.
+unchanged newer task value. The focus case checks that the Task details heading
+has focus as soon as the panel opens, before a user enters a comment or issue
+reference. Inspect the resulting UI for presentation changes.
 
 ## Gotchas
 

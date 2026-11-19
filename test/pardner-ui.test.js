@@ -800,9 +800,22 @@ for (const engine of [chromium, webkit]) it(`moves focus into panels and back to
     const waitForFocus = (predicate, arg) => page.waitForFunction(predicate, arg, { timeout: 5000 })
     const card = page.locator(`.task-card[data-task-id="${taskId}"]`)
 
-    // Opening a card focuses the details heading; Escape and Close return focus to the card.
+    // The initial focus move finishes before the new controls can receive their first input.
+    const initialFocus = await page.evaluateHandle(() => {
+      const state = { headingFocused: false }
+      const observer = new MutationObserver(() => {
+        const heading = document.querySelector('[aria-label="Task details"] h2')
+        if (!heading) return
+        state.headingFocused = document.activeElement === heading
+        observer.disconnect()
+      })
+      observer.observe(document.body, { childList: true, subtree: true })
+      return state
+    })
     await card.click()
-    await waitForFocus(() => document.activeElement?.matches('.side-panel h2'))
+    await heading.waitFor()
+    assert.equal(await initialFocus.evaluate(state => state.headingFocused), true, 'focus is set when Task details mounts')
+    await initialFocus.dispose()
     assert.equal(await card.getAttribute('aria-current'), 'true', 'the open card is current')
     const neighbour = page.getByRole('button', { name: /A neighbouring card/ })
     assert.equal(await neighbour.getAttribute('aria-current'), null)

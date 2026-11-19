@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { STATUSES } from '@pardner/domain-vocab'
 import ActorMarkdown from './ActorMarkdown.jsx'
 import './pardner.css'
@@ -1204,8 +1204,8 @@ function TaskDetail({
   const [commentButton, refocusComment] = useRefocus()
   const [statusSelect, refocusStatus] = useRefocus()
   const [statusChoice, setStatusChoice] = useState(null)
-  // Focus the heading once per open; a remount on Actor switch must not steal focus.
-  useEffect(() => {
+  // Focus before the new controls can receive input, once per open.
+  useLayoutEffect(() => {
     if (context && heading.current && claimHeadingFocus()) heading.current.focus()
   }, [context, claimHeadingFocus])
   // An edit draft survives closing the panel, reloading the tab and switching
