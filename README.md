@@ -108,12 +108,12 @@ as “Maya’s Codex”.
 Data lives in `~/.pardner/client` unless you pass `--data`.
 `pardner client stop` stops the background service.
 
-**Without a browser.** `open` still starts the service, but if it can't launch a
-browser it exits with `LAUNCH_UNAVAILABLE`. Run it with `--output-file FILE`
-instead: it prints the board's address as `localUrl` and writes the private
-sign-in link to the file. The link expires 60 seconds after it is issued. Do the
-same if `open` reports success but no browser appears. You can also do both
-setup steps from the CLI:
+**Without a browser.** On a machine with no screen, always run `open` with
+`--output-file FILE`. It prints the board's address as `localUrl` and writes the
+private sign-in link to the file. The link expires 60 seconds after it is issued.
+Without the flag `open` still starts the service, but it either exits with
+`LAUNCH_UNAVAILABLE` or reports success with no browser to show. You can also do
+both setup steps from the CLI:
 
 ```sh
 pardner client identity --name NAME --email EMAIL --operation-id ID
