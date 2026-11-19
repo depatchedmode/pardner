@@ -200,26 +200,48 @@ it('reports same-group survivors when enumeration fails during supervision or ex
   for (const phase of ['supervision', 'cleanup']) {
     const directory = scratch(t)
     const pids = join(directory, 'pids.json')
-    const ps = denyingPs(directory, 1000)
     const ready = join(directory, 'ready')
+    const observed = join(directory, 'observed')
+    const deny = join(directory, 'deny')
+    const bin = join(directory, 'bin')
+    mkdirSync(bin)
+    // Once the sibling has installed its handler, return one real snapshot containing it.
+    // The watchdog consumes that snapshot synchronously before its next enumeration.
+    writeFileSync(join(bin, 'ps'), `#!/bin/sh
+if [ -f "${deny}" ]; then echo "ps: Operation not permitted" >&2; exit 1; fi
+if [ ! -f "${ready}" ]; then exec /bin/ps "$@"; fi
+/bin/ps "$@" || exit 1
+touch "${observed}"
+`, { mode: 0o755 })
+    // Socket inspection runs after the watchdog has reaped the leader and found the orphan.
+    writeFileSync(join(bin, 'lsof'), `#!/bin/sh
+touch "${deny}"
+`, { mode: 0o755 })
     const siblingProgram = `process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(${JSON.stringify(ready)}, 'ready'); setInterval(() => {}, 1000)`
     const program = `
       const { spawn } = require('node:child_process'); const fs = require('node:fs');
       const sibling = spawn(process.execPath, ['-e', ${JSON.stringify(siblingProgram)}], { stdio: 'ignore' });
       fs.writeFileSync(${JSON.stringify(pids)}, JSON.stringify([process.pid, sibling.pid]));
       const timer = setInterval(() => {
-        if (!fs.existsSync(${JSON.stringify(ready)}) || Number(fs.readFileSync(${JSON.stringify(join(directory, 'ps-calls'))}, 'utf8')) < 6) return;
+        if (!fs.existsSync(${JSON.stringify(observed)})) return;
         clearInterval(timer);
-        fs.writeFileSync(${JSON.stringify(join(directory, 'ps-limit'))}, '0');
-        ${phase === 'cleanup' ? 'process.exit(0)' : 'setInterval(() => {}, 1000)'};
+        ${phase === 'cleanup' ? 'process.exit(0)' : `fs.writeFileSync(${JSON.stringify(deny)}, '')`};
       }, 10);`
-    const run = watchdog(directory, { PATH: ps.PATH }, 20, program)
+    const run = watchdog(directory, { PATH: `${bin}:${process.env.PATH}` }, 20, program)
     const [child, sibling] = JSON.parse(readFileSync(pids, 'utf8'))
     t.after(() => { for (const pid of [child, sibling]) try { process.kill(pid, 'SIGKILL') } catch {} })
     assert.equal(run.status, exitCodes.unsupervised, run.stderr)
     const record = JSON.parse(readFileSync(join(directory, 'run.json'), 'utf8'))
     assert.equal(record.outcome, 'supervision-failed')
-    if (phase === 'cleanup') assert.equal(record.exitCode, 0, 'enumeration failed after the normal command exit')
+    assert.equal(record.timedOut, false)
+    if (phase === 'cleanup') {
+      assert.equal(record.exitCode, 0, 'enumeration failed after the normal command exit')
+      assert.ok(record.orphansAfterExit.some(row => row.pid === sibling))
+      assert.deepEqual(record.cleanup.signals, [])
+    } else {
+      assert.equal(record.signal, 'SIGTERM')
+      assert.deepEqual(record.cleanup.signals, ['SIGTERM'])
+    }
     assert.equal(record.cleanup.childExited, true)
     assert.equal(alive(child), false)
     assert.equal(alive(sibling), true)
