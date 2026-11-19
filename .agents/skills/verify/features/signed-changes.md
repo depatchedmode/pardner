@@ -135,7 +135,8 @@ gate.
 - **Acknowledgement, restart, prefixes.** A replica holding back its own signature
   stays `syncPending` until it is written. An equivocation report survives a hub
   restart with its proof, also when the first save of the report and of each proof
-  failed. A prefix two keys share attributes to neither.
+  failed. An unsigned report also retries its first failed save and keeps the
+  two hashes regardless of peer arrival order. A prefix two keys share attributes to neither.
 - **Acceptance gate.** `test/acceptance-components.test.js`: the gate's stable
   attribution comparison ignores replica-specific labels, fails replicas that
   disagree on a signer, fails a signer other than the machine that performed the

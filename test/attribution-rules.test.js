@@ -807,7 +807,10 @@ it('an equivocation report whose first save failed is saved by the background re
     await eventually(() => server.store.getDoc().attribution.summary.equivocations.length === 1, 'the conflict was never reported')
     assert.equal(server.store.getDoc().attribution.summary.equivocations[0].proven, false)
     await eventually(() => cache.equivocations(10).length === 1, 'the report was never saved after its first save failed', 10000)
-    assert.deepEqual(cache.equivocations(10)[0][1].hashes, hashes)
+    // Reports list the held hash first, which depends on which peer gets there first.
+    const [[key, report]] = cache.equivocations(10)
+    assert.deepEqual([...report.hashes].sort(), [...hashes].sort())
+    assert.equal(cache.equivocationProofs(key).size, 0)
     assert.ok(failures >= 2, 'the save was retried')
   })
 })
