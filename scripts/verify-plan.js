@@ -11,7 +11,7 @@ const groups = [
   { name: 'open-benchmark', scripts: [], files: ['scripts/bench-open.js'] },
   {
     name: 'trust-library', scripts: ['test:runtime'],
-    files: names('lib/machine-key.js lib/membership.js support/trust-records.js test/machine-key.test.js test/membership.test.js test/membership-rules.test.js'),
+    files: names('shared/identity.js lib/machine-key.js lib/membership.js support/trust-records.js test/machine-key.test.js test/membership.test.js test/membership-rules.test.js'),
     focused: [{ command: 'node --test test/machine-key.test.js test/membership.test.js test/membership-rules.test.js',
       note: 'Machine keys and order-free signed records, as a library: consent, derived person IDs, no displacement, agents-only authority' }],
   },

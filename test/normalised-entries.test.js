@@ -3,10 +3,14 @@ import assert from 'node:assert/strict'
 import * as A from '@automerge/automerge'
 import { deriveAll } from '../lib/change-log.js'
 import { activityView } from '../lib/activity.js'
+import { activityItems } from '../lib/cli.js'
+import { shortMachineId } from '../lib/client-people.js'
+import { reviewView } from '../lib/client-review.js'
 import { prepareOperation } from '../lib/workspace-commands.js'
 import { canonical, digest, plain, taskState } from '../lib/workspace-schema.js'
 import { storageValue } from '../lib/workspace-values.js'
 import { ALICE, actorsOf, board, everyOperation, run, signedByActor } from '../support/activity-fixture.js'
+import { machineLabel } from '../ui-prototype/src/attribution.js'
 
 // Rule: an entry has one reading. The derivation checks each event against its change's writes and produces one
 // normalised structure (`shows`: one value per field, as its change wrote it, the comment text it wrote, the records
@@ -17,6 +21,35 @@ import { ALICE, actorsOf, board, everyOperation, run, signedByActor } from '../s
 const alice = n => `${ALICE}${String(n).padStart(2, '0').repeat(8)}`
 const view = doc => activityView({ entries: deriveAll(doc).values(), stateOf: signedByActor(doc), actorsOf, recordValid: () => true })
 const entryOf = (doc, hash) => view(doc).find(entry => entry.changes.some(change => change.hash === hash))
+
+test('each machine label preserves its fallback and truncation for malformed IDs', () => {
+  const machineId = 'machine-abcdefghijklmnopqrstuvwxyz'
+  const cases = [
+    [machineId, 'abcdef', 'abcdef'],
+    [[machineId], null, null],
+    [12345678901234, null, null],
+    ['', '', null],
+    ['abcdefghijklmnopqrstuvwxyz', 'ijklmn', 'ijklmn'],
+    ['short', '', ''],
+    ['machine-ab', 'ab', 'ab'],
+    [machineId.toUpperCase(), 'ABCDEF', 'ABCDEF'],
+    ['person-abcdefghijklmnopqrstuvwxyz', 'bcdefg', 'bcdefg'],
+  ]
+  for (const [value, shortId, labelId] of cases) {
+    const change = { state: 'signed', machineId: value }
+    const attribution = { review: [change] }
+    const doc = { attribution, activity: [{ kind: 'operation', changes: [change] }] }
+    const unknown = 'an unknown machine'
+    const cliLabel = labelId === null ? unknown : `a machine outside this project [${labelId}]`
+    const boardLabel = labelId === null ? unknown : `a machine outside this project (${labelId})`
+    const context = JSON.stringify(value)
+
+    assert.equal(shortMachineId(value), shortId, context)
+    assert.equal(activityItems(doc)[0].signerLine, `Signed by ${cliLabel}`, context)
+    assert.equal(reviewView(doc, 'Project').changes[0].signers[0].line, `Signed by ${cliLabel}`, context)
+    assert.equal(machineLabel(attribution, value), boardLabel, context)
+  }
+})
 
 /** Runs `request` through the real write path, then rewrites its event with `edit` in the same change, as a modified client could. */
 function rewritten(doc, request, edit, { recompute = false } = {}) {
@@ -123,11 +156,9 @@ test('a handoff whose payload also carries other words shows, in the browser, th
   const described = describeEvent(entry.shows, { actors: {}, tasks: {} })
   assert.match(described.excerpt, /Rejected/)
   assert.doesNotMatch(described.excerpt, /Approved/)
-  const { activityItems } = await import('../lib/cli.js')
   const [item] = activityItems({ activity: [entry], actors: {}, tasks: {} })
   assert.equal(item.shows.comment.text, 'Rejected: do not ship')
   // The review list, when the entry is listed, reads the same structure.
-  const { reviewView } = await import('../lib/client-review.js')
   const listed = { ...entry, review: true }
   const { listing } = reviewView({ activity: [listed], actors: {}, tasks: {}, attribution: { machines: {}, review: [{ change: hash, entry: entry.id, kind: 'operation', state: 'signed', flags: {} }], summary: {} } }, 'Board')
   assert.doesNotMatch(listing, /Approved/)
