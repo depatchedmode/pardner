@@ -68,12 +68,14 @@ button:disabled {
   opacity: 0.5;
   cursor: default;
 }
-.primary {
+.primary,
+.people-panel:not(:has(.join-request-list)) .people-invite {
   background: #e5e5e5;
   color: #111;
   border-color: #e5e5e5;
 }
-.primary:hover {
+.primary:hover,
+.people-panel:not(:has(.join-request-list)) .people-invite:hover {
   background: white;
 }
 input,
@@ -1393,12 +1395,10 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
 }
 .people-panel::backdrop,
 .confirm-dialog::backdrop { background: #000a; }
-.people-panel > .muted,
-.people-intro { margin: 0 0 14px; }
+.people-panel > .muted { margin: 0 0 14px; }
 .people-panel > .notice { margin: 0 0 14px; }
 .people-panel > .notice p { margin: 0 0 8px; }
 .people-panel > .notice .actions { margin-top: 4px; }
-.people-actions { margin: 0 0 6px; }
 .people-section {
   margin-top: 22px;
   padding-top: 18px;
@@ -1535,3 +1535,32 @@ button[aria-disabled='true']:hover { background: #202020; border-color: var(--li
   .removed-project { margin-top: 2vh; }
   .removed-app header { padding: 12px 16px; }
 }
+
+/* Keep access controls together and give the current decision the strongest action. */
+.people-access {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+.people-access .sharing { flex: 1 1 188px; margin: 0; border: 0; padding: 0; }
+.people-access .sharing > .muted.small { margin: 0; }
+.people-access .sharing h3 { margin-bottom: 4px; }
+.requests-section .join-request-list { margin-top: 8px; }
+.request-decision { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
+.request-decision .actions { margin: 0; }
+.invite-dialog > .invite-context { color: var(--muted); font-size: 14px; }
+.invite-dialog .invite-ready { border: 0; margin-top: 16px; padding-top: 0; gap: 8px; }
+.people-panel .profile-heading p,
+.invite-dialog .profile-heading p { margin: 4px 0 0; }
+.invite-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.invite-ready > p { margin: 0; }
+.invite-ready > p:empty { display: none; }
+.invite-history { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 12px; }
+.invite-history summary { width: fit-content; cursor: pointer; color: var(--muted); padding-block: 12px; }
+.invite-history section { margin-top: 8px; border: 0; padding-top: 0; }
+.welcome:has(> .join-waiting) > :is(h1, .lead, .choice) { display: none; }
+.join-waiting { gap: 12px; }
+.join-waiting > button { margin-top: 4px; }

@@ -157,9 +157,9 @@ function JoinRequests({ api, project, hubReachable, onChanged }) {
   const requestError = failure ?? (knownOutage ? null : error)
   return <>
     <p ref={outcomeRef} role="status" tabIndex={-1} hidden={!outcome}>{outcome}</p>
-    {(requests.length > 0 || requestError) && <section className="people-section" aria-labelledby="join-requests-title">
+    {(requests.length > 0 || requestError) && <section className="people-section requests-section" aria-labelledby="join-requests-title">
       <h3 id="join-requests-title">Waiting to join {requests.length ? <span className="count">{requests.length}</span> : null}</h3>
-      {requests.length > 0 && <p className="muted small">Approve only if the person reads you exactly the code shown here. Compare it face to face or by voice, not through the channel the invitation came through.</p>}
+      {requests.length > 0 && <p className="muted small">Compare codes in person or by voice, outside the invite channel. Approve only if they match.</p>}
       <Failure error={requestError} />
       {requests.length > 0 &&
       <ul className="join-request-list">
@@ -173,12 +173,16 @@ function JoinRequests({ api, project, hubReachable, onChanged }) {
               ? `${request.person.email} · ${request.device.name}`
               : `${request.device.name} · joins as ${name}${request.person.email ? ` <${request.person.email}>` : ''}`}</p>
             {duplicates && <p className="warning-text">{duplicates} is already a member with this name or email. If this is the same person, reject this request and pair their computer with a My device invitation instead.</p>}
-            <p className="muted small">Confirmation code</p>
-            <p className="confirmation-code">{request.code ?? 'Waiting for code…'}</p>
-            <div className="actions">
-              <button className="primary" disabled={!request.code || Boolean(busy) || stale} aria-label={`Approve ${name}, code ${request.code ?? 'not shown'}`}
-                onClick={event => decide(request, true, event.currentTarget)}>{deciding && busy.approved ? 'Approving…' : 'Approve'}</button>
-              <button disabled={Boolean(busy) || stale} aria-label={`Reject ${name}`} onClick={event => decide(request, false, event.currentTarget)}>{deciding && !busy.approved ? 'Rejecting…' : 'Reject'}</button>
+            <div className="request-decision">
+              <div>
+                <p className="muted small">Confirmation code</p>
+                <p className={request.code ? 'confirmation-code' : 'muted small'}>{request.code ?? 'Waiting for code…'}</p>
+              </div>
+              <div className="actions">
+                <button className="primary" disabled={!request.code || Boolean(busy) || stale} aria-label={`Approve ${name}, code ${request.code ?? 'not shown'}`}
+                  onClick={event => decide(request, true, event.currentTarget)}>{deciding && busy.approved ? 'Approving…' : 'Approve'}</button>
+                <button disabled={Boolean(busy) || stale} aria-label={`Reject ${name}`} onClick={event => decide(request, false, event.currentTarget)}>{deciding && !busy.approved ? 'Rejecting…' : 'Reject'}</button>
+              </div>
             </div>
           </li>
         })}
@@ -214,15 +218,15 @@ function Sharing({ api, project }) {
     return <section className="people-section sharing" aria-labelledby="sharing-title">
       <h3 id="sharing-title">Route to the hub</h3>
       <p className="muted small" role="status">{share.state === 'on'
-        ? 'This computer reaches the project’s hub through a Pardner-managed tailcat route.'
-        : <>The route to the project’s hub is down{reason(share.error)} Work you save stays on this computer. Pardner retries automatically. If the route stays down, ask the person hosting the project to check Sharing in their People panel.</>}</p>
+        ? 'Connected through Pardner.'
+        : <>Route down{reason(share.error)} Saved work stays here. Pardner retries automatically. If it persists, ask the host to check Sharing in People.</>}</p>
     </section>
   }
   return <section className="people-section sharing" aria-labelledby="sharing-title">
     <h3 id="sharing-title">Sharing <span className="share-state" data-state={share.state}>{{ on: 'On', starting: 'Starting', error: 'Not running' }[share.state] ?? 'Off'}</span></h3>
     <Failure error={failure} />
-    {share.state === 'off' && <p className="muted small">Only this computer can reach “{project.name}”. Switch sharing on to invite someone on another computer, and to let computers that already joined sync.</p>}
-    {share.state === 'on' && <p className="muted small">Other computers reach “{project.name}”, and nothing else on this computer, through a Pardner-managed tailcat route. Switch it off and they keep working on their own copies until it is back on.</p>}
+    {share.state === 'off' && <p className="muted small">Turn on to let other computers join and sync through Pardner.</p>}
+    {share.state === 'on' && <p className="muted small">Other computers can join and sync through Pardner.</p>}
     {share.state === 'starting' && <p className="muted small" role="status">Starting the route to other computers…</p>}
     {share.state === 'error' && <p className="notice warning" role="status">Sharing is switched on, but its route is not running{reason(share.error)}</p>}
     <div className="actions">
@@ -436,21 +440,20 @@ export function PeoplePanel({ api, project, index, returnFocus, onClose, onChang
       <div className="profile-heading">
         <div>
           <h2 id="people-panel-title">People</h2>
-          <p className="muted">{project.name}{view && ` · ${plural(view.counts.people, 'person', 'people')} · ${plural(view.counts.machines, 'machine')} · ${plural(view.counts.agents, 'agent')}`
-            + (view?.counts.removed ? ` · ${view.counts.removed} removed` : '')}</p>
+          <p className="muted">{project.name}</p>
         </div>
         <button type="button" className="close" onClick={onClose}>Close</button>
       </div>
-      <p className="people-intro muted small">Everyone here can work on the whole board. Roles decide only who may let people in or remove them.</p>
       <Failure error={failure} />
       {!view ? !failure && <p className="muted" role="status">Loading…</p> : <>
-        {view.syncing && <p className="notice" role="status">This machine is still receiving the member list from the project’s hub. It appears here in a moment.</p>}
-        {view.hubReachable === false && <p className="notice warning" role="status">The project’s hub is unreachable, so this list is what this computer last received. Changes need the hub.</p>}
+        {view.syncing && <p className="notice" role="status">Receiving the member list…</p>}
+        {view.hubReachable === false && <p className="notice warning" role="status">Hub offline. Showing the last member list.</p>}
         <JoinRequests api={api} project={project} hubReachable={view.hubReachable} onChanged={changed} />
-        <Sharing api={api} project={project} />
-        {inviteAction?.allowed && <div className="actions people-actions">
-          <button type="button" className="primary" onClick={event => setInvite({ purpose: 'human', returnFocus: event.currentTarget })}>Invite someone</button>
-        </div>}
+        <div className="people-access">
+          <Sharing api={api} project={project} />
+          {inviteAction?.allowed && <button type="button" className="people-invite"
+            onClick={event => setInvite({ purpose: 'human', returnFocus: event.currentTarget })}>Invite someone</button>}
+        </div>
         {inviteAction && !inviteAction.allowed && <p className="muted small">{inviteAction.reason}</p>}
         <section className="people-section" aria-labelledby="members-title">
           <h3 id="members-title">Members <span className="count">{view.counts.people}</span></h3>

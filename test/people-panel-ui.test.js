@@ -26,9 +26,10 @@ for (const engine of [chromium, webkit]) it(`shows each role what it may do, cha
       const alicePage = await newPage(), bobPage = await newPage(), carolPage = await newPage(PHONE)
       await alice.open(alicePage); await bob.open(bobPage); await carol.open(carolPage)
 
-      // The owner: counts in the heading, every control on others, and no way to leave.
+      // The owner: member count, every control on others, and no way to leave.
       const owner = await openPanel(alicePage)
-      await owner.getByText(/^Shared board · 3 people · 4 machines · \d agents?$/).waitFor({ timeout: 30000 })
+      await owner.getByRole('heading', { name: 'Members 3' }).waitFor()
+      assert.equal(await owner.locator('.machine-list > li').count(), 4)
       await owner.getByRole('button', { name: 'Invite someone' }).waitFor()
       await member(owner, 'Alice').getByText('Started the project').waitFor()
       await member(owner, 'Bob').getByText('Let in by Alice').waitFor()
@@ -98,7 +99,9 @@ for (const engine of [chromium, webkit]) it(`shows each role what it may do, cha
       }
       await confirm.getByRole('button', { name: 'Remove Carol', exact: true }).click()
       await removed.getByRole('listitem', { name: 'Carol, removed' }).getByText('Was an admin · Removed by Alice', { exact: false }).waitFor({ timeout: 30000 })
-      await owner.getByText(/^Shared board · 2 people · 2 machines · \d agents? · 2 removed$/).waitFor()
+      await owner.getByRole('heading', { name: 'Members 2' }).waitFor()
+      await owner.getByRole('heading', { name: 'Removed 2' }).waitFor()
+      assert.equal(await owner.locator('.machine-list > li').count(), 2)
       // Carol's own board says she was removed, and by whom; it never says she is signed out (#154).
       const heading = carolPage.getByRole('heading', { name: 'You were removed from “Shared board”' })
       await heading.waitFor({ timeout: 45000 })
@@ -251,10 +254,10 @@ for (const engine of [chromium, webkit]) it(`switches sharing of a hosted projec
     const sharing = panel.getByRole('region', { name: /^Sharing/ })
     await sharing.getByRole('heading', { name: 'Sharing Off' }).waitFor()
     assert.equal(await panel.getByRole('heading', { name: 'Waiting to join' }).count(), 0)
-    await sharing.getByText('Only this computer can reach “Test board”.', { exact: false }).waitFor()
+    await sharing.getByText('Turn on to let other computers join and sync through Pardner.', { exact: false }).waitFor()
     await sharing.getByRole('button', { name: 'Switch sharing on' }).click()
     await sharing.getByRole('heading', { name: 'Sharing On' }).waitFor()
-    await sharing.getByText('and nothing else on this computer, through a Pardner-managed tailcat route', { exact: false }).waitFor()
+    await sharing.getByText('Other computers can join and sync through Pardner.', { exact: false }).waitFor()
     assert.deepEqual(client.registry.read().share.projects, [project.id])
     assert.equal(tunnel.log.serves, 1)
     assert.equal(await sharing.getByRole('button', { name: 'Switch sharing off' }).getAttribute('aria-pressed'), 'true')

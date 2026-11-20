@@ -284,19 +284,18 @@ function JoinWaiting({ join, outage, onStop }) {
   const linking = join.linkingAs ? `${join.linkingAs.name}${join.linkingAs.email ? ` <${join.linkingAs.email}>` : ''}` : null
   const what = join.purpose === 'human' ? `to join “${join.projectName}”`
     : `to link this computer${linking ? ` as ${linking}` : ''}${join.purpose === 'agent' ? ' for agents only' : ''} in “${join.projectName}”`
-  const who = join.purpose === 'human' ? 'The person who invited you, or another admin, approves it.'
-    : join.purpose === 'device' ? 'Approve it from one of your computers already in the project, or ask an admin.'
-      : 'Approve it from one of your computers already in the project.'
   return <section className="join-waiting" aria-label="Waiting for approval">
     <h2>Waiting for approval</h2>
-    <p>Your request {what} is saved with the project’s hub. {who}</p>
+    <p className="muted small">Request {what}</p>
     {join.code ? <>
       <p className="muted small">Your confirmation code</p>
       <p className="confirmation-code" data-testid="join-code">{join.code}</p>
-      <p className="muted small">Read this code to the person approving you, face to face or by voice rather than where the invitation came from. They approve only if their screen shows the same code.</p>
+      <p className="muted small">Read this code to the approver in person or by voice, outside the invite channel.</p>
     </> : <p className="muted small" role="status">{join.purpose === 'human'
-      ? 'Ask your inviter or an admin to open People on their project board. Your confirmation code will appear here.'
-      : 'Open People on the project board on the computer approving this request. Your confirmation code will appear here.'}</p>}
+      ? 'Ask your inviter or an admin to open People to reveal your code.'
+      : join.purpose === 'device'
+        ? 'Open People on a computer already in this project, or ask an admin.'
+        : 'Open People on one of your computers already in this project.'}</p>}
     {outage && <p className="warning-text" role="status">The project’s hub is unreachable right now. Still waiting; nothing was lost.</p>}
     <button type="button" onClick={onStop}>Stop waiting</button>
   </section>

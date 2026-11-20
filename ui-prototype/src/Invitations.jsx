@@ -4,11 +4,11 @@ import { createOperationId } from './operation-id.js'
 
 export const INVITES = {
   human: { menu: 'Human', detail: 'A person and their agent', title: 'Invite a person',
-    body: 'For someone joining with their own identity. Their agent sets up their own board connected to this project. You approve their request after comparing a confirmation code.' },
+    body: 'They join with their own identity.' },
   agent: { menu: 'Agent', detail: 'Another agent of yours', title: 'Connect another of your agents',
-    body: 'For an agent you already run in another app. It joins as your agent; Pardner doesn’t start or instruct it. On another computer, you approve it like a new machine.' },
+    body: 'Connect an agent you run in another app.' },
   device: { menu: 'My device', detail: 'Another computer you use', title: 'Pair one of your machines',
-    body: 'For another computer you use. It joins as you rather than as a new person. You approve it from this computer after comparing a confirmation code.' },
+    body: 'Link another computer to your identity.' },
 }
 
 const STATE_LABELS = { issued: 'Waiting to be used', redeemed: 'Used', revoked: 'Revoked', expired: 'Expired' }
@@ -176,7 +176,7 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
       </div>
       <button type="button" className="close" onClick={onClose}>Close</button>
     </div>
-    <p>{body}</p>
+    {!created && !needsSharing && <p className="invite-context">{body}</p>}
     {purpose === 'human' && project.memberRole === 'owner' && !created && <label className="role-choice">Role
       <select value={role} onChange={event => setRole(event.target.value)}>
         <option value="member">Member</option>
@@ -184,47 +184,52 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
       </select>
     </label>}
     {!created ? <>
-      {needsSharing && <p role="status">Switch on sharing so the invited computer can reach this project.</p>}
+      {needsSharing && <p role="status">This computer needs Sharing on to send a remote invite.</p>}
       <div className="actions">
         <button className="primary" disabled={busy} onClick={create}>
           {createLabel}
         </button>
       </div>
     </> : <section className="invite-ready" aria-label="New invitation">
-      <p className="invite-state" data-state={createdState}>
-        <strong>{STATE_LABELS[createdState]}</strong>{createdState === 'issued' && ` · ${formatExpiry(created.invite.expiresAt, now)}`}
-      </p>
+      <div className="invite-status">
+        <p className="invite-state" data-state={createdState}>
+          <strong>{STATE_LABELS[createdState]}</strong>{createdState === 'issued' && ` · ${formatExpiry(created.invite.expiresAt, now)}`}
+        </p>
+        {usable && <button type="button" className="quiet" disabled={busy} aria-label="Revoke this invitation"
+          onClick={() => revoke(created.invite.id)}>Revoke</button>}
+      </div>
       {usable ? <>
         <div className="actions">
           <button className="primary" onClick={copyInvite}>Copy invite</button>
           <button aria-expanded={revealed} aria-controls="invite-text" onClick={() => setRevealed(value => !value)}>
             {revealed ? 'Hide invite text' : 'Show invite text'}
           </button>
-          <button disabled={busy} aria-label="Revoke this invitation" onClick={() => revoke(created.invite.id)}>Revoke</button>
         </div>
         <p className="muted small" role="status">
-          {copied === 'done' ? 'Copied. Treat it like a password and send it privately; it works once.'
-            : copied === 'failed' ? 'This browser blocked copying. Use Show invite text and copy it manually.'
-              : revealed ? '' : 'The invitation stays hidden so it can’t be read from a shared screen.'}
+          {copied === 'done' ? 'Copied. Send it privately.'
+            : copied === 'failed' ? 'Copy blocked. Use Show invite text.'
+              : revealed ? '' : 'Send privately. One use.'}
         </p>
-        {purpose === 'human' && <p className="muted small">After they request to join, open People and look under Waiting to join. Compare the codes by voice or in person before approving.</p>}
+        {purpose === 'human' && <p className="muted small">When they request to join, open People → Waiting to join.</p>}
         {revealed && <div id="invite-text" className="reveal">
-          <p className="warning-text">Visible on screen. Stop sharing your screen before copying.</p>
+          <p className="warning-text">Stop screen sharing before copying.</p>
           <textarea readOnly rows={5} spellCheck={false} aria-label="Invite text" value={shareText}
             onFocus={event => event.target.select()} onClick={event => event.currentTarget.select()} />
         </div>}
       </> : <>
-        <p className="muted">This invitation can no longer be used. Create a new one if you still need it.</p>
+        <p className="muted">This invitation can no longer be used.</p>
         <div className="actions">
           <button className="primary" disabled={busy} onClick={createAnother}>Create another invitation</button>
         </div>
       </>}
     </section>}
     <Failure error={failure} hints={hints} />
-    <section aria-labelledby="invite-history">
-      <h3 id="invite-history">Invitations for this project</h3>
-      <InvitationHistory api={api} projectId={project.id} excludeId={created?.invite.id ?? null} refresh={refresh}
-        emptyText={created ? 'No other invitations.' : 'None yet.'} onFailure={setFailure} hints={hints} actionFailure={failure} />
-    </section>
+    <details className="invite-history">
+      <summary>Invitation history</summary>
+      <section aria-label="Invitations for this project">
+        <InvitationHistory api={api} projectId={project.id} excludeId={created?.invite.id ?? null} refresh={refresh}
+          emptyText={created ? 'No other invitations.' : 'None yet.'} onFailure={setFailure} hints={hints} actionFailure={failure} />
+      </section>
+    </details>
   </dialog>
 }
