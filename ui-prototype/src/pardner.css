@@ -1,6 +1,15 @@
+@font-face {
+  font-family: 'Monaspace Neon';
+  src: url('./fonts/monaspace-neon-v1.400.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.55;
   color: #e5e5e5;
   background: #0a0a0a;
   --surface: #141414;
@@ -44,6 +53,7 @@
 }
 body {
   margin: 0;
+  font-size: 0.875rem;
 }
 button,
 input,
@@ -68,12 +78,14 @@ button:disabled {
   opacity: 0.5;
   cursor: default;
 }
-.primary {
+.primary,
+.people-panel:not(:has(.join-request-list)) .people-invite {
   background: #e5e5e5;
   color: #111;
   border-color: #e5e5e5;
 }
-.primary:hover {
+.primary:hover,
+.people-panel:not(:has(.join-request-list)) .people-invite:hover {
   background: white;
 }
 input,
@@ -702,7 +714,7 @@ code {
 }
 /* Inline commands such as `pardner open`; Markdown code blocks keep their own sizing. */
 :not(pre) > code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: inherit;
   font-size: 0.92em;
 }
 .actions {
@@ -737,6 +749,10 @@ code {
 }
 /* 839 = --panel-width + --panel-reveal-min - 1: below 840px the board beside a
    680px panel would be a sliver under 160px, so the panel takes the full width. */
+@media (761px <= width <= 839px) {
+  nav { gap: 8px; padding-inline: 16px; }
+}
+
 @media (max-width: 839px) {
   .side-panel {
     width: 100%;
@@ -1071,10 +1087,9 @@ code {
   font-size: 14px;
 }
 .menu-anchor { position: relative; }
-.menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
+.menu { position: absolute; top: calc(100% + 6px); left: 0; }
+.menu,
+.invite-menu {
   z-index: 30;
   min-width: 270px;
   max-width: min(360px, calc(100vw - 32px));
@@ -1084,8 +1099,8 @@ code {
   border-radius: 8px;
   box-shadow: 0 14px 36px #000b;
 }
-.menu-end { left: auto; right: 0; }
-.menu button {
+.menu button,
+.invite-menu [role="menuitem"] {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1097,12 +1112,16 @@ code {
   padding: 9px 11px;
 }
 .menu button:hover,
-.menu button:focus-visible { background: #262626; }
+.menu button:focus-visible,
+.invite-menu [role="menuitem"]:is(:hover, :focus-visible) { background: #262626; }
+.invite-menu [role="menuitem"] { cursor: pointer; border-radius: 4px; min-height: 44px; }
+.invite-menu [aria-disabled="true"] { cursor: default; }
+.invite-menu [aria-disabled="true"] .menu-label { color: var(--muted); }
 .menu button:focus-visible { outline-offset: -2px; }
 .menu [aria-checked='true'] { background: var(--accent-wash); }
 .menu [aria-checked='true'] .menu-label { color: var(--accent); }
-.menu-label { font-size: 14px; font-weight: 500; }
-.menu-detail { font-size: 12px; color: var(--muted); }
+.menu-label { font-size: 0.9375rem; font-weight: 650; line-height: 1.4; }
+.menu-detail { font-size: 0.8125rem; color: var(--muted); line-height: 1.45; }
 .menu-separator { height: 1px; background: var(--line); margin: 6px 4px; }
 
 .avatar {
@@ -1212,7 +1231,7 @@ span.avatar-more { border: 1px solid var(--line); color: var(--muted); }
   margin-bottom: 8px;
 }
 .profile-heading > div { flex: 1; min-width: 0; }
-.profile-heading h2 { font-size: 20px; overflow-wrap: anywhere; }
+.profile-heading h2 { font-size: 1.375rem; font-weight: 750; line-height: 1.2; letter-spacing: -0.035em; overflow-wrap: anywhere; text-wrap: balance; }
 .profile-heading .close { align-self: start; }
 .profile-kind { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
 .you-tag { color: var(--muted); font-weight: 400; }
@@ -1270,13 +1289,14 @@ span.avatar-more { border: 1px solid var(--line); color: var(--muted); }
 .invite-ready { display: grid; gap: 4px; }
 .invite-ready .actions { margin: 6px 0 2px; }
 .invite-state { font-size: 13px; color: var(--muted); }
-.invite-ready .invite-state { font-size: 14px; color: inherit; margin: 0; }
+.invite-ready .invite-state { font-size: 0.8125rem; color: var(--muted); margin: 0; }
+.invite-ready .invite-state strong { display: block; font-size: 0.875rem; font-weight: 700; }
 .invite-state[data-state='issued'] strong,
 li .invite-state[data-state='issued'] { color: var(--accent); }
 .invite-state[data-state='expired'],
 .invite-state[data-state='revoked'] { color: var(--warning); }
 .reveal { margin-top: 8px; }
-.reveal textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.reveal textarea { font-family: inherit; font-size: 13px; }
 .warning-text { color: var(--warning); font-size: 13px; margin: 0 0 8px; }
 /* Each invitation: what it was for and its state, then who issued it and what became of it. */
 .invite-list li {
@@ -1299,14 +1319,14 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
 /* Confirmation codes are read aloud: large, spaced, tabular. */
 .confirmation-code {
   margin: 2px 0 10px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: inherit;
   font-size: 28px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   font-variant-numeric: tabular-nums;
   color: var(--accent);
 }
 .join-waiting { display: grid; gap: 6px; justify-items: start; }
-.join-waiting h2 { font-size: 20px; }
+.join-waiting h2 { font-size: 1.375rem; font-weight: 750; line-height: 1.2; letter-spacing: -0.035em; text-wrap: balance; }
 .join-waiting p { margin: 0; }
 .join-request-list { list-style: none; margin: 16px 0 0; padding: 0; }
 .join-request-list li { padding: 14px 0; }
@@ -1393,40 +1413,36 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
 }
 .people-panel::backdrop,
 .confirm-dialog::backdrop { background: #000a; }
-.people-panel > .muted,
-.people-intro { margin: 0 0 14px; }
+.people-panel > .muted { margin: 0 0 14px; }
 .people-panel > .notice { margin: 0 0 14px; }
 .people-panel > .notice p { margin: 0 0 8px; }
 .people-panel > .notice .actions { margin-top: 4px; }
-.people-actions { margin: 0 0 6px; }
 .people-section {
   margin-top: 22px;
   padding-top: 18px;
   border-top: 1px solid var(--line);
 }
-.people-section h3 { font-size: 15px; margin-bottom: 12px; }
-.people-section.sharing { margin-bottom: 14px; }
+.people-section h3 { font-size: 0.9375rem; font-weight: 700; line-height: 1.35; margin-bottom: 10px; }
 .share-state { margin-left: 6px; font-size: 13px; font-weight: 500; color: var(--muted); }
 .share-state[data-state='on'] { color: var(--accent); }
 .share-state[data-state='error'] { color: var(--warning); }
-.people-section.sharing .actions { margin-top: 8px; }
 .people-section > .muted.small { margin: -4px 0 12px; }
 .member-list,
 .machine-list,
 .agent-list,
 .removed-list,
 .consequences { list-style: none; margin: 0; padding: 0; }
-.member { padding: 16px 0; }
 .member + .member { border-top: 1px solid var(--line); }
-.member:first-child { padding-top: 4px; }
 .member-heading {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto 8px;
   align-items: center;
   gap: 12px;
+  min-height: 52px;
+  padding: 8px 4px;
 }
-.member-heading h4 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
-.member-heading p { margin: 2px 0 0; overflow-wrap: anywhere; }
+.member-name { font-size: 0.9375rem; font-weight: 650; overflow-wrap: anywhere; }
+.member-content { padding-bottom: 16px; }
 .role-badge {
   padding: 3px 10px;
   border: 1px solid var(--line);
@@ -1437,7 +1453,7 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
 .role-badge[data-role='owner'] { border-color: #2c6b55; color: var(--accent); }
 .role-badge[data-role='admin'] { border-color: var(--info-line); color: #b9d7ec; }
 .member-part { margin: 12px 0 0 52px; }
-.member-part h5 {
+.member-part h4 {
   margin: 0 0 6px;
   font-size: 12px;
   font-weight: 500;
@@ -1530,8 +1546,110 @@ button[aria-disabled='true']:hover { background: #202020; border-color: var(--li
   .member-actions,
   .member-note,
   .profile-editor { margin-left: 0; }
-  .member-heading { grid-template-columns: auto minmax(0, 1fr); }
-  .member-heading .role-badge { grid-column: 2; justify-self: start; }
+  .member-heading { gap: 8px; }
+  .member-heading .role-badge { padding-inline: 6px; }
   .removed-project { margin-top: 2vh; }
   .removed-app header { padding: 12px 16px; }
+}
+
+/* Roster rows reveal person details. Project-level actions stay below the roster. */
+.people-heading {
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.people-heading > div { flex-basis: 100px; overflow-wrap: anywhere; }
+.people-heading > .people-heading-actions { display: flex; flex: 0 1 auto; flex-wrap: wrap; gap: 10px; }
+@media (min-width: 761px) {
+  .people-panel {
+    margin: min(8vh, 64px) auto auto;
+    max-height: calc(100dvh - min(8vh, 64px) - 24px);
+  }
+}
+.people-panel > .requests-section {
+  margin-top: 18px;
+  padding: 12px 16px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+}
+.people-secondary { margin-top: 20px; border-top: 1px solid var(--line); }
+.people-secondary > * + * { border-top: 1px solid var(--line); }
+.people-disclosure > summary,
+.member-heading {
+  list-style: none;
+  cursor: pointer;
+}
+.people-disclosure > summary::-webkit-details-marker,
+.member-heading::-webkit-details-marker { display: none; }
+.people-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--muted);
+}
+.people-disclosure > summary::after,
+.member-heading::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border: solid currentColor;
+  border-width: 1px 1px 0 0;
+  transform: rotate(45deg);
+}
+.people-disclosure > summary::after { margin-left: auto; }
+:is(.member-details, .people-disclosure)[open] > summary::after { transform: rotate(135deg); }
+.people-secondary summary:hover,
+.member-heading:hover { color: var(--accent); }
+.people-disclosure[open] { padding-bottom: 12px; }
+.people-disclosure > p { margin: 0 0 10px; }
+.people-disclosure .people-section:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+.requests-section .join-request-list { margin-top: 8px; }
+.request-decision { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
+.request-decision .actions { margin: 0; }
+.invite-dialog > .invite-context { color: var(--muted); font-size: 14px; }
+.invite-dialog .invite-ready { border: 0; margin-top: 16px; padding-top: 0; gap: 8px; }
+.people-panel .profile-heading p,
+.invite-dialog .profile-heading p { margin: 4px 0 0; }
+.invite-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.invite-ready > p { margin: 0; max-width: 54ch; text-wrap: pretty; }
+.invite-ready > p:empty { display: none; }
+.invite-history { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 12px; }
+.invite-history summary { width: fit-content; cursor: pointer; color: var(--muted); padding-block: 12px; }
+.invite-history section { margin-top: 8px; border: 0; padding-top: 0; }
+.welcome:has(> .join-waiting) > :is(h1, .lead, .choice) { display: none; }
+.join-waiting { gap: 12px; }
+.join-waiting > button { margin-top: 4px; }
+
+/* Keep the route controls above the board without pushing its columns down. */
+.client-header { position: relative; }
+.board-sharing { position: relative; }
+.board-sharing-details > summary {
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.board-sharing-content {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(280px, calc(100vw - 32px));
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #0006;
+}
+.board-sharing-content p { margin: 0 0 10px; }
+.board-sharing-content p:last-child { margin-bottom: 0; }
+
+@media (max-width: 760px) {
+  .board-sharing { position: static; }
+  .board-sharing-content { top: calc(100% - 6px); right: 16px; }
 }

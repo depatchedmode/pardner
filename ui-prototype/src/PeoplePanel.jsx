@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Avatar } from './Avatar.jsx'
 import { harnessLabel } from './client-api.js'
-import { Failure, withCode } from './Failure.jsx'
+import { Failure } from './Failure.jsx'
 import { InvitationHistory, InviteDialog, formatTime } from './Invitations.jsx'
 import { createOperationId } from './operation-id.js'
 import { presenceOf } from './presence.js'
@@ -104,40 +104,68 @@ function ProfileEditor({ api, project, person, onSaved, onCancel }) {
 }
 
 /** Join requests this machine may approve. Opening one adds this approver's nonce, so both screens show its code. */
-function JoinRequests({ api, project, always, onChanged }) {
-  const [requests, setRequests] = useState(null)
+function JoinRequests({ api, project, hubReachable, onChanged }) {
+  const [requestList, setRequestList] = useState({ requests: [], error: null, stale: false })
+  const { requests, error, stale } = requestList
   const [failure, setFailure] = useState(null)
   const [busy, setBusy] = useState(null)
+  const [outcome, setOutcome] = useState('')
+  const outcomeRef = useRef(null)
+  const decidedButton = useRef(null)
   const load = useCallback(async () => {
-    const { requests: listed } = await api.joinRequests(project.id)
-    const opened = await Promise.all(listed.map(request => request.code ? request
-      : api.revealCode(project.id, request.id).then(result => result.request, error => { setFailure(error); return null })))
-    setRequests(opened.filter(Boolean))
+    try {
+      const { requests: listed } = await api.joinRequests(project.id)
+      const opened = await Promise.all(listed.map(async request => {
+        if (request.code) return { request }
+        try { return await api.revealCode(project.id, request.id) }
+        catch (error) { return { request, error } }
+      }))
+      setRequestList({
+        requests: opened.map(result => result.request),
+        error: opened.find(result => result.error)?.error ?? null,
+        stale: false,
+      })
+    } catch (error) {
+      setRequestList(current => ({ ...current, error, stale: true }))
+    }
   }, [api, project.id])
   useEffect(() => {
-    let stopped = false
-    load().catch(error => { if (!stopped) setFailure(error) })
-    const timer = setInterval(() => load().catch(() => {}), REQUESTS_POLL_MS)
-    return () => { stopped = true; clearInterval(timer) }
+    void load()
+    const timer = setInterval(load, REQUESTS_POLL_MS)
+    return () => clearInterval(timer)
   }, [load])
-  const decide = async (request, approved) => {
-    setBusy(request.id); setFailure(null)
+  useEffect(() => {
+    const button = decidedButton.current
+    if (!outcome || !button || button.isConnected) return
+    decidedButton.current = null
+    if (button.ownerDocument.activeElement === button.ownerDocument.body) outcomeRef.current?.focus()
+  }, [outcome, requests])
+  const decide = async (request, approved, button) => {
+    decidedButton.current = button.ownerDocument.activeElement === button ? button : null
+    setBusy({ id: request.id, approved }); setFailure(null); setOutcome('')
     try {
       if (approved) await api.approveRequest(project.id, request.id, request.code)
       else await api.rejectRequest(project.id, request.id)
+      const name = request.person.name
+      const subject = request.purpose === 'human' ? `the request from ${name}` : `the machine request for ${name}`
+      setOutcome(`${approved ? 'Approved' : 'Rejected'} ${subject}.`)
       await load()
       onChanged?.()
     } catch (error) { setFailure(error) } finally { setBusy(null) }
   }
-  if (!always && !requests?.length && !failure) return null
-  return <section className="people-section" aria-labelledby="join-requests-title">
-    <h3 id="join-requests-title">Waiting to join {requests?.length ? <span className="count">{requests.length}</span> : null}</h3>
-    {requests?.length ? <p className="muted small">Approve only if the person reads you exactly the code shown here. Compare it face to face or by voice, not through the channel the invitation came through.</p> : null}
-    <Failure error={failure} />
-    {requests === null ? <p className="muted">Loading…</p> : !requests.length ? <p className="muted">No one is waiting to join.</p> :
+  const knownOutage = hubReachable === false && error?.code === 'HUB_UNAVAILABLE'
+  const requestError = failure ?? (knownOutage ? null : error)
+  return <>
+    <p ref={outcomeRef} role="status" tabIndex={-1} hidden={!outcome}>{outcome}</p>
+    {(requests.length > 0 || requestError) && <section className="people-section requests-section" aria-labelledby="join-requests-title">
+      <h3 id="join-requests-title">Waiting to join {requests.length ? <span className="count">{requests.length}</span> : null}</h3>
+      {requests.length > 0 && <p className="muted small">Compare codes in person or by voice, outside the invite channel. Approve only if they match.</p>}
+      <Failure error={requestError} />
+      {requests.length > 0 &&
       <ul className="join-request-list">
         {requests.map(request => {
           const name = request.person.name
+          const deciding = busy?.id === request.id
           const duplicates = request.possibleDuplicates?.map(entry => entry.name).join(', ')
           return <li key={request.id} aria-label={REQUEST_TITLES[request.purpose](request)}>
             <p><strong>{REQUEST_TITLES[request.purpose](request)}</strong></p>
@@ -145,62 +173,22 @@ function JoinRequests({ api, project, always, onChanged }) {
               ? `${request.person.email} · ${request.device.name}`
               : `${request.device.name} · joins as ${name}${request.person.email ? ` <${request.person.email}>` : ''}`}</p>
             {duplicates && <p className="warning-text">{duplicates} is already a member with this name or email. If this is the same person, reject this request and pair their computer with a My device invitation instead.</p>}
-            <p className="muted small">Confirmation code</p>
-            <p className="confirmation-code">{request.code ?? '…'}</p>
-            <div className="actions">
-              <button className="primary" disabled={!request.code || Boolean(busy)} aria-label={`Approve ${name}, code ${request.code ?? 'not shown'}`}
-                onClick={() => decide(request, true)}>{busy === request.id ? 'Approving…' : 'Approve'}</button>
-              <button disabled={Boolean(busy)} aria-label={`Reject ${name}`} onClick={() => decide(request, false)}>Reject</button>
+            <div className="request-decision">
+              <div>
+                <p className="muted small">Confirmation code</p>
+                <p className={request.code ? 'confirmation-code' : 'muted small'}>{request.code ?? 'Waiting for code…'}</p>
+              </div>
+              <div className="actions">
+                <button className="primary" disabled={!request.code || Boolean(busy) || stale} aria-label={`Approve ${name}, code ${request.code ?? 'not shown'}`}
+                  onClick={event => decide(request, true, event.currentTarget)}>{deciding && busy.approved ? 'Approving…' : 'Approve'}</button>
+                <button disabled={Boolean(busy) || stale} aria-label={`Reject ${name}`} onClick={event => decide(request, false, event.currentTarget)}>{deciding && !busy.approved ? 'Rejecting…' : 'Reject'}</button>
+              </div>
             </div>
           </li>
         })}
       </ul>}
-  </section>
-}
-
-/**
- * Whether other computers can reach this project (lib/client-share.js). On the computer that hosts it this is a
- * switch; on a joined computer it says how that computer reaches the hub. The route's address is never shown.
- */
-/** A route's failure as the end of a sentence: ": why.", or a full stop when no reason is known. */
-const reason = error => error ? <>: {withCode(/[.!?]$/.test(error) ? error : `${error}.`)}</> : '.'
-
-function Sharing({ api, project }) {
-  const [share, setShare] = useState(project.share ?? null)
-  const [busy, setBusy] = useState(false)
-  const [failure, setFailure] = useState(null)
-  useEffect(() => {
-    let live = true
-    const load = () => api.share(project.id).then(result => { if (live) setShare(result.share) }).catch(() => {})
-    load()
-    const timer = setInterval(load, VIEW_POLL_MS)
-    return () => { live = false; clearInterval(timer) }
-  }, [api, project.id])
-  if (!share) return null
-  const change = async on => {
-    setBusy(true); setFailure(null)
-    try { setShare((await api.setShare(project.id, on)).share) } catch (error) { setFailure(error) } finally { setBusy(false) }
-  }
-  if (share.role === 'replica') {
-    return <section className="people-section sharing" aria-labelledby="sharing-title">
-      <h3 id="sharing-title">Route to the hub</h3>
-      <p className="muted small" role="status">{share.state === 'on'
-        ? 'This computer reaches the project’s hub through a Pardner-managed tailcat route.'
-        : <>The route to the project’s hub is down{reason(share.error)} Your work is saved here and syncs when it is back.</>}</p>
-    </section>
-  }
-  return <section className="people-section sharing" aria-labelledby="sharing-title">
-    <h3 id="sharing-title">Sharing <span className="share-state" data-state={share.state}>{{ on: 'On', starting: 'Starting', error: 'Not running' }[share.state] ?? 'Off'}</span></h3>
-    <Failure error={failure} />
-    {share.state === 'off' && <p className="muted small">Only this computer can reach “{project.name}”. Switch sharing on to invite someone on another computer, and to let computers that already joined sync.</p>}
-    {share.state === 'on' && <p className="muted small">Other computers reach “{project.name}”, and nothing else on this computer, through a Pardner-managed tailcat route. Switch it off and they keep working on their own copies until it is back on.</p>}
-    {share.state === 'starting' && <p className="muted small" role="status">Starting the route to other computers…</p>}
-    {share.state === 'error' && <p className="notice warning" role="status">Sharing is switched on, but its route is not running{reason(share.error)}</p>}
-    <div className="actions">
-      <button type="button" className={share.on ? '' : 'primary'} disabled={busy} aria-pressed={share.on} onClick={() => change(!share.on)}>
-        {busy ? (share.on ? 'Switching off…' : 'Switching on…') : share.on ? 'Switch sharing off' : 'Switch sharing on'}</button>
-    </div>
-  </section>
+    </section>}
+  </>
 }
 
 function MachineRow({ machine, person, now, onRemove }) {
@@ -220,54 +208,59 @@ function MachineRow({ machine, person, now, onRemove }) {
   </li>
 }
 
-function PersonRow({ api, project, person, index, now, editing, onEdit, onAction, onSaved }) {
+function PersonRow({ api, project, person, index, now, editing, suggestPairing, onEdit, onAction, onSaved }) {
   const titleId = useId()
   const actor = { id: person.actorId, kind: 'human', displayName: person.name }
   const actions = person.actions
   const admitted = person.admittedBy ? `Let in by ${person.admittedBy.name}` : 'Started the project'
   return <li className="member" aria-labelledby={titleId}>
-    <div className="member-heading">
-      <Avatar actor={actor} state={presenceOf(index, person.actorId)} />
-      <div>
-        <h4 id={titleId}>{person.name}{person.you && <span className="you-tag"> (you)</span>}</h4>
-        <p className="muted small">{[person.email, admitted].filter(Boolean).join(' · ')}</p>
+    <details className="member-details">
+      <summary className="member-heading">
+        <Avatar actor={actor} state={presenceOf(index, person.actorId)} />
+        <span className="member-name" id={titleId}>{person.name}{person.you && <span className="you-tag"> (you)</span>}</span>
+        <span className="role-badge" data-role={person.role}>{person.roleLabel}</span>
+      </summary>
+      <div className="member-content">
+        <p className="muted small member-note">{[person.email, admitted].filter(Boolean).join(' · ')}</p>
+        {editing ? <ProfileEditor api={api} project={project} person={person} onSaved={onSaved} onCancel={() => onEdit(false)} /> : <>
+          <div className="member-part">
+            <h4>Machines</h4>
+            {person.machines.length ? <ul className="machine-list" aria-label={`${person.name}’s machines`}>
+              {person.machines.map(machine => <MachineRow key={machine.id} machine={machine} person={person} now={now}
+                onRemove={(target, element) => onAction({ type: 'remove-machine', person, machine: target }, element)} />)}
+            </ul> : <p className="muted small">No machines. {person.name} can’t use the project until someone with access pairs a new one.</p>}
+          </div>
+          {person.agents.length > 0 && <div className="member-part">
+            <h4>Agents</h4>
+            <ul className="agent-list" aria-label={`${person.name}’s agents`}>
+              {person.agents.map(agent => <li key={agent.id}>
+                <Avatar actor={{ id: agent.id, kind: 'agent', displayName: agent.name }} state={presenceOf(index, agent.id)} size="sm" />
+                <span>{agent.name}</span>
+                <span className="muted small">{[harnessLabel(agent.harness), `on ${list(agent.machines.map(machine => machine.name))}`].filter(Boolean).join(' · ')}</span>
+                {agent.stoppedHere && <span className="tag removed-tag">Stopped on this machine</span>}
+                {agent.actions?.stopHere?.allowed && <button type="button" className="danger quiet" aria-label={`Stop ${agent.name} on this machine`}
+                  onClick={event => onAction({ type: 'stop-agent', person, agent }, event.currentTarget)}>Stop here</button>}
+              </li>)}
+            </ul>
+          </div>}
+          {suggestPairing && <p className="notice" role="note" aria-label="Pair a second machine">
+            <strong>Pair a second machine.</strong> If you lose every machine you own, nobody can remove or demote an admin. Only the owner can do that.
+          </p>}
+          {actions.note && <p className="muted small member-note">{actions.note}</p>}
+          {Object.keys(actions).some(key => key !== 'note') && <div className="actions member-actions">
+            {actions.editProfile && <button type="button" onClick={() => onEdit(true)}>Edit name and email</button>}
+            {actions.pairMachine?.allowed && <button type="button" onClick={event => onAction({ type: 'pair', person }, event.currentTarget)}>
+              {person.you ? 'Pair another machine' : `Pair a machine for ${person.name}`}</button>}
+            {actions.pairMachine && !actions.pairMachine.allowed && <Unavailable label={`Pair a machine for ${person.name}`} reason={actions.pairMachine.reason} />}
+            {actions.changeRole?.allowed && <button type="button" onClick={event => onAction({ type: 'role', person }, event.currentTarget)}>
+              {person.role === 'admin' ? 'Make member' : 'Make admin'}</button>}
+            {actions.remove?.allowed && <button type="button" className="danger" onClick={event => onAction({ type: 'remove-person', person }, event.currentTarget)}>
+              Remove {person.name}</button>}
+            {actions.remove && !actions.remove.allowed && <Unavailable label={`Remove ${person.name}`} reason={actions.remove.reason} />}
+          </div>}
+        </>}
       </div>
-      <span className="role-badge" data-role={person.role}>{person.roleLabel}</span>
-    </div>
-    {editing ? <ProfileEditor api={api} project={project} person={person} onSaved={onSaved} onCancel={() => onEdit(false)} /> : <>
-      <div className="member-part">
-        <h5>Machines</h5>
-        {person.machines.length ? <ul className="machine-list" aria-label={`${person.name}’s machines`}>
-          {person.machines.map(machine => <MachineRow key={machine.id} machine={machine} person={person} now={now}
-            onRemove={(target, element) => onAction({ type: 'remove-machine', person, machine: target }, element)} />)}
-        </ul> : <p className="muted small">No machines. {person.name} can’t use the project until someone with access pairs a new one.</p>}
-      </div>
-      {person.agents.length > 0 && <div className="member-part">
-        <h5>Agents</h5>
-        <ul className="agent-list" aria-label={`${person.name}’s agents`}>
-          {person.agents.map(agent => <li key={agent.id}>
-            <Avatar actor={{ id: agent.id, kind: 'agent', displayName: agent.name }} state={presenceOf(index, agent.id)} size="sm" />
-            <span>{agent.name}</span>
-            <span className="muted small">{[harnessLabel(agent.harness), `on ${list(agent.machines.map(machine => machine.name))}`].filter(Boolean).join(' · ')}</span>
-            {agent.stoppedHere && <span className="tag removed-tag">Stopped on this machine</span>}
-            {agent.actions?.stopHere?.allowed && <button type="button" className="danger quiet" aria-label={`Stop ${agent.name} on this machine`}
-              onClick={event => onAction({ type: 'stop-agent', person, agent }, event.currentTarget)}>Stop here</button>}
-          </li>)}
-        </ul>
-      </div>}
-      {actions.note && <p className="muted small member-note">{actions.note}</p>}
-      {Object.keys(actions).some(key => key !== 'note') && <div className="actions member-actions">
-        {actions.editProfile && <button type="button" onClick={() => onEdit(true)}>Edit name and email</button>}
-        {actions.pairMachine?.allowed && <button type="button" onClick={event => onAction({ type: 'pair', person }, event.currentTarget)}>
-          {person.you ? 'Pair another machine' : `Pair a machine for ${person.name}`}</button>}
-        {actions.pairMachine && !actions.pairMachine.allowed && <Unavailable label={`Pair a machine for ${person.name}`} reason={actions.pairMachine.reason} />}
-        {actions.changeRole?.allowed && <button type="button" onClick={event => onAction({ type: 'role', person }, event.currentTarget)}>
-          {person.role === 'admin' ? 'Make member' : 'Make admin'}</button>}
-        {actions.remove?.allowed && <button type="button" className="danger" onClick={event => onAction({ type: 'remove-person', person }, event.currentTarget)}>
-          Remove {person.name}</button>}
-        {actions.remove && !actions.remove.allowed && <Unavailable label={`Remove ${person.name}`} reason={actions.remove.reason} />}
-      </div>}
-    </>}
+    </details>
   </li>
 }
 
@@ -396,55 +389,55 @@ export function PeoplePanel({ api, project, index, returnFocus, onClose, onChang
     else setAction({ ...next, returnFocus: element })
   }
   const confirm = action && view && confirmation(action, view)
-  const me = view?.people.find(person => person.you)
   const inviteAction = view?.actions.invite
   const leave = view?.actions.leave
   return <>
     <dialog ref={dialog} className="people-panel" aria-labelledby="people-panel-title" onCancel={event => { event.preventDefault(); onClose() }}>
-      <div className="profile-heading">
+      <header className="profile-heading people-heading">
         <div>
           <h2 id="people-panel-title">People</h2>
-          <p className="muted">{project.name}{view && ` · ${plural(view.counts.people, 'person', 'people')} · ${plural(view.counts.machines, 'machine')} · ${plural(view.counts.agents, 'agent')}`
-            + (view?.counts.removed ? ` · ${view.counts.removed} removed` : '')}</p>
+          <p className="muted">{project.name}</p>
         </div>
-        <button type="button" className="close" onClick={onClose}>Close</button>
-      </div>
-      <p className="people-intro muted small">Everyone here can work on the whole board. Roles decide only who may let people in or remove them.</p>
+        <div className="people-heading-actions">
+          {inviteAction?.allowed && <button type="button" className="people-invite"
+            onClick={event => setInvite({ purpose: 'human', returnFocus: event.currentTarget })}>Invite someone</button>}
+          <button type="button" className="close" onClick={onClose} autoFocus>Close</button>
+        </div>
+      </header>
       <Failure error={failure} />
       {!view ? !failure && <p className="muted" role="status">Loading…</p> : <>
-        {view.syncing && <p className="notice" role="status">This machine is still receiving the member list from the project’s hub. It appears here in a moment.</p>}
-        {view.hubReachable === false && <p className="notice warning" role="status">The project’s hub is unreachable, so this list is what this computer last received. Changes need the hub.</p>}
-        {view.suggestPairing && <div className="notice" role="note" aria-label="Pair a second machine">
-          <p><strong>Pair a second machine.</strong> If you lose every machine you own, nobody can remove or demote an admin any more, because only the owner can.</p>
-          <div className="actions"><button type="button" onClick={event => setInvite({ purpose: 'device', person: null, returnFocus: event.currentTarget })}>Pair a machine</button></div>
-        </div>}
-        <Sharing api={api} project={project} />
-        {inviteAction?.allowed && <div className="actions people-actions">
-          <button type="button" className="primary" onClick={event => setInvite({ purpose: 'human', returnFocus: event.currentTarget })}>Invite someone</button>
-        </div>}
-        {inviteAction && !inviteAction.allowed && <p className="muted small">{inviteAction.reason}</p>}
-        <JoinRequests api={api} project={project} always={Boolean(inviteAction?.allowed)} onChanged={changed} />
+        {view.syncing && <p className="notice" role="status">Receiving the member list…</p>}
+        {view.hubReachable === false && <p className="notice warning" role="status">Hub offline. Showing the last member list.</p>}
+        <JoinRequests api={api} project={project} hubReachable={view.hubReachable} onChanged={changed} />
         <section className="people-section" aria-labelledby="members-title">
           <h3 id="members-title">Members <span className="count">{view.counts.people}</span></h3>
           <ul className="member-list">
             {view.people.map(person => <PersonRow key={person.id} api={api} project={project} person={person} index={index} now={now}
-              editing={person.you && editing} onEdit={setEditing} onAction={act}
+              editing={person.you && editing} suggestPairing={person.you && view.suggestPairing} onEdit={setEditing} onAction={act}
               onSaved={async () => { setEditing(false); await changed() }} />)}
           </ul>
         </section>
-        <RemovedList view={view} onInviteAgain={(person, element) => setInvite({ purpose: 'human', again: person, returnFocus: element })} />
-        <section className="people-section" aria-labelledby="people-invites-title">
-          <h3 id="people-invites-title">Invitations</h3>
-          <InvitationHistory api={api} projectId={project.id} refresh={refresh} emptyText="No invitations yet." onFailure={removed} />
-        </section>
-        {leave && <section className="people-section" aria-labelledby="leave-title">
-          <h3 id="leave-title">Leave this project</h3>
-          {leave.allowed ? <>
-            <p className="muted small">Your machines stop syncing with “{project.name}”. Your past work stays under your name.</p>
-            <button type="button" className="danger" onClick={event => setAction({ type: 'leave', returnFocus: event.currentTarget })}>Leave project</button>
-          </> : <p className="muted small">{leave.reason}</p>}
-        </section>}
-        <p className="muted small observed">Updated {formatTime(view.observedAt)}. Online and last seen come from the project’s hub.</p>
+        <div className="people-secondary">
+          <details className="people-disclosure">
+            <summary>Invitation history</summary>
+            <section aria-label="Invitations">
+              <InvitationHistory api={api} projectId={project.id} refresh={refresh} emptyText="No invitations yet." onFailure={removed} />
+            </section>
+          </details>
+          <details className="people-disclosure">
+            <summary>Membership</summary>
+            {inviteAction && !inviteAction.allowed && <p className="muted small">{inviteAction.reason}</p>}
+            <RemovedList view={view} onInviteAgain={(person, element) => setInvite({ purpose: 'human', again: person, returnFocus: element })} />
+            {leave && <section className="people-section" aria-labelledby="leave-title">
+              <h3 id="leave-title">Leave this project</h3>
+              {leave.allowed ? <>
+                <p className="muted small">Your machines stop syncing with “{project.name}”. Your past work stays under your name.</p>
+                <button type="button" className="danger" onClick={event => setAction({ type: 'leave', returnFocus: event.currentTarget })}>Leave project</button>
+              </> : <p className="muted small">{leave.reason}</p>}
+            </section>}
+            <p className="muted small observed">Updated {formatTime(view.observedAt)}. Online and last seen come from the project’s hub.</p>
+          </details>
+        </div>
       </>}
     </dialog>
     {confirm && <ConfirmDialog {...confirm} returnFocus={action.returnFocus} onClose={() => setAction(null)}

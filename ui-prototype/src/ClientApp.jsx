@@ -1,3 +1,4 @@
+import { Menu, MenuContent, MenuItem, MenuTrigger } from '@ui-sdk/react/menu'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Workspace } from './Pardner.jsx'
 import { Avatar, AvatarStack, PeopleDialog, ProfileDialog, actorName, avatarLabel } from './Avatar.jsx'
@@ -7,6 +8,7 @@ import {
 import { Failure } from './Failure.jsx'
 import { INVITES, InviteDialog } from './Invitations.jsx'
 import { createOperationId } from './operation-id.js'
+import { BoardSharing } from './BoardSharing.jsx'
 import { PeoplePanel } from './PeoplePanel.jsx'
 import { createPresenceReporter, focusByTask, presenceIndex, presenceOf, sortParticipants } from './presence.js'
 
@@ -284,17 +286,18 @@ function JoinWaiting({ join, outage, onStop }) {
   const linking = join.linkingAs ? `${join.linkingAs.name}${join.linkingAs.email ? ` <${join.linkingAs.email}>` : ''}` : null
   const what = join.purpose === 'human' ? `to join “${join.projectName}”`
     : `to link this computer${linking ? ` as ${linking}` : ''}${join.purpose === 'agent' ? ' for agents only' : ''} in “${join.projectName}”`
-  const who = join.purpose === 'human' ? 'The person who invited you, or another admin, approves it.'
-    : join.purpose === 'device' ? 'Approve it from one of your computers already in the project, or ask an admin.'
-      : 'Approve it from one of your computers already in the project.'
   return <section className="join-waiting" aria-label="Waiting for approval">
     <h2>Waiting for approval</h2>
-    <p>Your request {what} is saved with the project’s hub. {who}</p>
+    <p className="muted small">Request {what}</p>
     {join.code ? <>
       <p className="muted small">Your confirmation code</p>
       <p className="confirmation-code" data-testid="join-code">{join.code}</p>
-      <p className="muted small">Read this code to the person approving you, face to face or by voice rather than where the invitation came from. They approve only if their screen shows the same code.</p>
-    </> : <p className="muted small" role="status">Your confirmation code appears here when the person approving opens your request.</p>}
+      <p className="muted small">Read this code to the approver in person or by voice, outside the invite channel.</p>
+    </> : <p className="muted small" role="status">{join.purpose === 'human'
+      ? 'Ask your inviter or an admin to open People to reveal your code.'
+      : join.purpose === 'device'
+        ? 'Open People on a computer already in this project, or ask an admin.'
+        : 'Open People on one of your computers already in this project.'}</p>}
     {outage && <p className="warning-text" role="status">The project’s hub is unreachable right now. Still waiting; nothing was lost.</p>}
     <button type="button" onClick={onStop}>Stop waiting</button>
   </section>
@@ -407,19 +410,27 @@ function ProjectSwitcher({ projects, current, onSelect, onStartOrJoin }) {
 }
 
 function InviteMenu({ memberRole, onChoose }) {
-  const { open, close, buttonProps, menuProps } = useMenu()
-  // Only the owner and admins admit people; a member still pairs their own devices and agents.
-  const unavailable = purpose => purpose === 'human' && memberRole === 'member'
-  return <div className="menu-anchor">
-    <button type="button" className="invite-button" {...buttonProps}>Invite<Chevron /></button>
-    {open && <div className="menu menu-end" {...menuProps} aria-label="Invite">
-      {Object.entries(INVITES).map(([purpose, copy]) => <button type="button" role="menuitem" key={purpose} aria-disabled={unavailable(purpose) || undefined}
-        onClick={event => { if (unavailable(purpose)) { event.preventDefault(); return } close(false); onChoose(purpose, buttonProps.ref.current) }}>
-        <span className="menu-label">{copy.menu}</span>
-        <span className="menu-detail">{unavailable(purpose) ? 'Only the owner or an admin invites people' : copy.detail}</span>
-      </button>)}
-    </div>}
-  </div>
+  const trigger = useRef(null)
+  const choice = useRef(null)
+  // Complete the SDK's dismissal before the native dialog takes focus.
+  const finish = open => {
+    if (open || !choice.current) return
+    const purpose = choice.current
+    choice.current = null
+    onChoose(purpose, trigger.current)
+  }
+  return <Menu onAction={purpose => { choice.current = purpose }} onOpenChangeComplete={finish}>
+    <MenuTrigger type="button" className="invite-button" ref={trigger}>Invite<Chevron /></MenuTrigger>
+    <MenuContent className="invite-menu" aria-label="Invite" align="end" sideOffset={6} collisionPadding={12}>
+      {Object.entries(INVITES).map(([purpose, copy]) => {
+        const disabled = purpose === 'human' && memberRole === 'member'
+        return <MenuItem key={purpose} value={purpose} label={copy.menu} disabled={disabled}>
+          <span className="menu-label">{copy.menu}</span>
+          <span className="menu-detail">{disabled ? 'Owner or admin only' : copy.detail}</span>
+        </MenuItem>
+      })}
+    </MenuContent>
+  </Menu>
 }
 
 function ProjectView({ api, session, project, switcher, onAuthLost, refreshSession }) {
@@ -506,6 +517,7 @@ function ProjectView({ api, session, project, switcher, onAuthLost, refreshSessi
         onClick={event => setDialog({ type: 'members', returnFocus: event.currentTarget })}>
         People{waitingRequests > 0 && <span className="badge" aria-hidden="true">{waitingRequests} waiting</span>}
       </button>
+      <BoardSharing key={current.id} api={api} project={current} />
       <InviteMenu memberRole={current.memberRole} onChoose={(purpose, element) => setDialog({ type: 'invite', purpose, returnFocus: element })} />
       <button type="button" className="you" aria-label={`You: ${avatarLabel(me, presenceOf(index, me.id))}. Open your profile`}
         onClick={event => openProfile(me, event.currentTarget)}>
