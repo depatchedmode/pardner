@@ -29,7 +29,7 @@ invitations are joined from another computer, so they need a route to this one:
 the client started with `--public-url <https origin>`, or the project shared with
 `pardner client share --project ID --on` (a Pardner-managed tailcat route, a
 [prototype](PARDNER-CLIENT.md#sharing-a-project-with-other-computers); `--off`
-stops it, and neither flag reports its state). Without a route they fail with
+stops it; with neither flag it reports the state). Without a route they fail with
 `PUBLIC_URL_REQUIRED`, naming the loopback address and both fixes, and nothing is
 written. A route that cannot start reports `TUNNEL_UNAVAILABLE` with the reason. Agent invitations
 work without it for an agent on the same computer. `pardner client join

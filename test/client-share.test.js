@@ -145,7 +145,9 @@ test('sharing and a joined machine’s route come back after a restart, and a st
   const before = bobAgain.tunnel.log.forwards
   await aliceAgain.call(`/projects/${project.id}/share`, { on: false })
   await eventually(() => bobAgain.tunnel.log.forwards > before, 'an unanswered forward is restarted')
-  assert.equal((await bobAgain.call(`/projects/${project.id}`)).project.share.role, 'replica')
+  await eventually(async () => (await bobAgain.call(`/projects/${project.id}`)).project.share.state === 'error', 'a joined machine shows its route as down while the hub is not sharing')
+  await aliceAgain.call(`/projects/${project.id}/share`, { on: true })
+  await eventually(async () => (await bobAgain.call(`/projects/${project.id}`)).project.share.state === 'on', 'and as up again once the hub answers')
 })
 
 test('only the hosting computer shares, and a malformed or mismatched route is refused before anything is dialled', { timeout: 60000 }, async t => {

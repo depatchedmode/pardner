@@ -552,7 +552,7 @@ no stable command line or wire format.
 project switches it in the People panel (**Sharing**) or with:
 
 ```sh
-node bin/pardner.js client share --project ID --on    # or --off; neither reports the state
+node bin/pardner.js client share --project ID --on    # or --off; with neither flag it reports the state
 ```
 
 Only a person on the hosting computer can switch it; an agent credential and a
