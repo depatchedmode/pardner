@@ -672,7 +672,8 @@ test('without --public-url, Human and My device invitations are refused at issue
     assert.equal(response.status, 409); assert.equal(result.code, 'PUBLIC_URL_REQUIRED')
     assert.equal(result.error, `A ${purpose === 'human' ? 'Human' : 'My device'} invitation is used on another computer, but this client has no public address, ` +
       `so the invitation would point to ${alice.client.url}, which only this computer can reach. ` +
-      'Restart this client with `pardner client serve --public-url <https origin>`, then create the invitation again.')
+      'Restart this client with `pardner client serve --public-url <https origin>`, then create the invitation again. ' +
+      `Or switch on sharing for this project: \`pardner client share --project ${project.id} --on\`.`)
     assert.deepEqual(result.details, { purpose, endpoint: `${alice.client.url}/pardner/client/v1/enroll` })
     assert.equal(result.invitation, undefined)
   }

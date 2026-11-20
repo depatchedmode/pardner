@@ -25,9 +25,13 @@ integrations.
 
 `pardner client invite --project ID --purpose human|agent|device --output-file FILE
 --operation-id ID` writes a private invitation to `FILE`. Human and My device
-invitations are joined from another computer, so they need the client started with
-`--public-url <https origin>`; without it they fail with `PUBLIC_URL_REQUIRED`,
-naming the loopback address and the fix, and nothing is written. Agent invitations
+invitations are joined from another computer, so they need a route to this one:
+the client started with `--public-url <https origin>`, or the project shared with
+`pardner client share --project ID --on` (a Pardner-managed tailcat route, a
+[prototype](PARDNER-CLIENT.md#sharing-a-project-with-other-computers); `--off`
+stops it; with neither flag it reports the state). Without a route they fail with
+`PUBLIC_URL_REQUIRED`, naming the loopback address and both fixes, and nothing is
+written. A route that cannot start reports `TUNNEL_UNAVAILABLE` with the reason. Agent invitations
 work without it for an agent on the same computer. `pardner client join
 --invitation-file FILE --operation-id ID` fails with `INVITATION_UNREACHABLE`, naming
 the address, when an invitation points to another computer's loopback address; a

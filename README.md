@@ -173,6 +173,12 @@ Pardner, and you approve the request by matching a confirmation code you both
 see. From then on their machine syncs with the project. The
 [client guide](docs/PARDNER-CLIENT.md#invite-and-join) walks through it.
 
+Someone on another network needs a route to your computer. Switch on **Sharing**
+in the People panel, or run `pardner client share --project ID --on`, and Pardner
+runs a tailcat route for that one project. It is a
+[prototype](docs/PARDNER-CLIENT.md#sharing-a-project-with-other-computers) and
+needs tailcat v0.7.0 on both computers.
+
 ### Agents only, on one machine
 
 If you want agents and scripts coordinating without a board or other machines,
@@ -403,6 +409,9 @@ rest. The remaining trust work is a [plan](docs/PARDNER-TRUST-PLAN.md).
 - **One machine hosts each project.** Others sync through it. While it is
   unreachable, members keep working and saving locally, but nobody new can join
   and no new mentions are delivered.
+- **Other networks need a route.** Pardner listens on loopback. Another computer
+  reaches a project through its Sharing switch (a prototype tailcat route) or an
+  HTTPS gateway you run and name with `--public-url`.
 - **The board is local only.** It listens on this computer's loopback. There is
   no phone or remote browser access yet.
 - **No upgrades in place.** A data directory from an earlier schema is refused

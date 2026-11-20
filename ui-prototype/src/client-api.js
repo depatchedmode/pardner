@@ -74,7 +74,7 @@ const unreachable = cause => Object.assign(
 
 export function createClientApi(config, { fetcher = (...args) => fetch(...args) } = {}) {
   const base = config.clientApiBase
-  const call = async (path, body, { keepalive = false, absolute = false } = {}) => {
+  const call = async (path, body, { keepalive = false, absolute = false, timeoutMs = 10000 } = {}) => {
     let response
     try {
       response = await fetcher(absolute ? path : `${base}${path}`, {
@@ -83,7 +83,7 @@ export function createClientApi(config, { fetcher = (...args) => fetch(...args) 
         cache: 'no-store',
         headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        ...(keepalive ? { keepalive: true } : { signal: AbortSignal.timeout(10000) }),
+        ...(keepalive ? { keepalive: true } : { signal: AbortSignal.timeout(timeoutMs) }),
       })
     } catch (failure) { throw unreachable(failure) }
     let result = null
@@ -113,6 +113,9 @@ export function createClientApi(config, { fetcher = (...args) => fetch(...args) 
     createInvite: (projectId, { purpose, operationId, role, personId }) => call(`/projects/${id(projectId)}/invites`,
       { purpose, operationId, ...(role ? { role } : {}), ...(personId ? { personId } : {}) }),
     people: projectId => call(`/projects/${id(projectId)}/people`),
+    share: projectId => call(`/projects/${id(projectId)}/share`),
+    // Starting the route can take a while on a slow network.
+    setShare: (projectId, on) => call(`/projects/${id(projectId)}/share`, { on }, { timeoutMs: 45000 }),
     removeMember: (projectId, { kind, id: subject, operationId }) => call(`/projects/${id(projectId)}/revoke`, { kind, id: subject, operationId }),
     changeRole: (projectId, { personId, role, operationId }) => call(`/projects/${id(projectId)}/role`, { personId, role, operationId }),
     leave: (projectId, { operationId }) => call(`/projects/${id(projectId)}/leave`, { operationId }),

@@ -112,6 +112,12 @@ const groups = [
       note: 'Real client enrollment, authority boundaries, CLI privacy, cold restoration, revocation, offline restart, project isolation, the People view, leaving and the removed state' }],
   },
   {
+    name: 'client-share', scripts: ['test:runtime', 'test:ui'],
+    qualification: 'The route other machines reach a hosted project by, and what that route admits',
+    files: names('lib/client-share.js lib/tailcat.js support/fake-tunnel.js'),
+    focused: [{ command: 'node --test test/client-share.test.js', note: 'The sharing switch, the shared listener’s route filter, joining and syncing through a stand-in tunnel, restart and stale-forward replacement; the real tailcat route needs a separate two-client exercise' }],
+  },
+  {
     name: 'onboarding-invitation', scripts: ['test:cli', 'test:ui'], files: ['lib/onboarding-invitation.js'],
     qualification: 'Enrollment data parsing and the recipient setup entry point',
     focused: [{ command: 'node --test test/onboarding-invitation.test.js', note: 'Raw and prompted versioned invitation parsing; real redemption is exercised separately' }],

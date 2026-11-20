@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Avatar } from './Avatar.jsx'
 import { harnessLabel } from './client-api.js'
-import { Failure } from './Failure.jsx'
+import { Failure, withCode } from './Failure.jsx'
 import { InvitationHistory, InviteDialog, formatTime } from './Invitations.jsx'
 import { createOperationId } from './operation-id.js'
 import { presenceOf } from './presence.js'
@@ -155,6 +155,51 @@ function JoinRequests({ api, project, always, onChanged }) {
           </li>
         })}
       </ul>}
+  </section>
+}
+
+/**
+ * Whether other computers can reach this project (lib/client-share.js). On the computer that hosts it this is a
+ * switch; on a joined computer it says how that computer reaches the hub. The route's address is never shown.
+ */
+/** A route's failure as the end of a sentence: ": why.", or a full stop when no reason is known. */
+const reason = error => error ? <>: {withCode(/[.!?]$/.test(error) ? error : `${error}.`)}</> : '.'
+
+function Sharing({ api, project }) {
+  const [share, setShare] = useState(project.share ?? null)
+  const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState(null)
+  useEffect(() => {
+    let live = true
+    const load = () => api.share(project.id).then(result => { if (live) setShare(result.share) }).catch(() => {})
+    load()
+    const timer = setInterval(load, VIEW_POLL_MS)
+    return () => { live = false; clearInterval(timer) }
+  }, [api, project.id])
+  if (!share) return null
+  const change = async on => {
+    setBusy(true); setFailure(null)
+    try { setShare((await api.setShare(project.id, on)).share) } catch (error) { setFailure(error) } finally { setBusy(false) }
+  }
+  if (share.role === 'replica') {
+    return <section className="people-section sharing" aria-labelledby="sharing-title">
+      <h3 id="sharing-title">Route to the hub</h3>
+      <p className="muted small" role="status">{share.state === 'on'
+        ? 'This computer reaches the project’s hub through a Pardner-managed tailcat route.'
+        : <>The route to the project’s hub is down{reason(share.error)} Your work is saved here and syncs when it is back.</>}</p>
+    </section>
+  }
+  return <section className="people-section sharing" aria-labelledby="sharing-title">
+    <h3 id="sharing-title">Sharing <span className="share-state" data-state={share.state}>{{ on: 'On', starting: 'Starting', error: 'Not running' }[share.state] ?? 'Off'}</span></h3>
+    <Failure error={failure} />
+    {share.state === 'off' && <p className="muted small">Only this computer can reach “{project.name}”. Switch sharing on to invite someone on another computer, and to let computers that already joined sync.</p>}
+    {share.state === 'on' && <p className="muted small">Other computers reach “{project.name}”, and nothing else on this computer, through a Pardner-managed tailcat route. Switch it off and they keep working on their own copies until it is back on.</p>}
+    {share.state === 'starting' && <p className="muted small" role="status">Starting the route to other computers…</p>}
+    {share.state === 'error' && <p className="notice warning" role="status">Sharing is switched on, but its route is not running{reason(share.error)}</p>}
+    <div className="actions">
+      <button type="button" className={share.on ? '' : 'primary'} disabled={busy} aria-pressed={share.on} onClick={() => change(!share.on)}>
+        {busy ? (share.on ? 'Switching off…' : 'Switching on…') : share.on ? 'Switch sharing off' : 'Switch sharing on'}</button>
+    </div>
   </section>
 }
 
@@ -373,6 +418,7 @@ export function PeoplePanel({ api, project, index, returnFocus, onClose, onChang
           <p><strong>Pair a second machine.</strong> If you lose every machine you own, nobody can remove or demote an admin any more, because only the owner can.</p>
           <div className="actions"><button type="button" onClick={event => setInvite({ purpose: 'device', person: null, returnFocus: event.currentTarget })}>Pair a machine</button></div>
         </div>}
+        <Sharing api={api} project={project} />
         {inviteAction?.allowed && <div className="actions people-actions">
           <button type="button" className="primary" onClick={event => setInvite({ purpose: 'human', returnFocus: event.currentTarget })}>Invite someone</button>
         </div>}
