@@ -15,9 +15,10 @@ async function openPanel(page) {
   await panel.getByRole('heading', { name: /^Members/ }).waitFor({ timeout: 30000 })
   return panel
 }
-/** One person's entry in the panel's member list, found by the name in its heading. */
 const member = (panel, name) => panel.locator('.member-list > li')
-  .filter({ has: panel.page().getByRole('heading', { level: 4, name: new RegExp(`^${name}( \\(you\\))?$`) }) })
+  .filter({ has: panel.page().locator('.member-name').filter({ hasText: new RegExp(`^${name}( \\(you\\))?$`) }) })
+const openMember = (panel, name) => member(panel, name).locator('summary').click()
+const openDisclosure = (panel, name) => panel.locator('summary').getByText(name, { exact: true }).click()
 
 for (const engine of [chromium, webkit]) it(`shows each role what it may do, changes a role, and removes a machine and a person in ${engine.name()}`,
   { timeout: 300000 }, async () => {
@@ -29,6 +30,12 @@ for (const engine of [chromium, webkit]) it(`shows each role what it may do, cha
       // The owner: member count, every control on others, and no way to leave.
       const owner = await openPanel(alicePage)
       await owner.getByRole('heading', { name: 'Members 3' }).waitFor()
+      assert.equal(await owner.getByRole('list', { name: 'Alice’s machines' }).count(), 0, 'the roster starts collapsed')
+      assert.equal(await owner.getByRole('region', { name: 'Sharing' }).count(), 0, 'Sharing lives on the board')
+      assert.equal(await owner.getByRole('region', { name: 'Invitations' }).count(), 0, 'history starts collapsed')
+      assert.ok(await owner.locator('header').getByRole('button', { name: 'Invite someone' }).isVisible())
+      for (const name of ['Alice', 'Bob', 'Carol']) await openMember(owner, name)
+      await openDisclosure(owner, 'Membership')
       assert.equal(await owner.locator('.machine-list > li').count(), 4)
       await owner.getByRole('button', { name: 'Invite someone' }).waitFor()
       await member(owner, 'Alice').getByText('Started the project').waitFor()
@@ -51,15 +58,19 @@ for (const engine of [chromium, webkit]) it(`shows each role what it may do, cha
 
       // The admin: lets members in and out, but has no controls on the owner and can't change roles.
       const admin = await openPanel(bobPage)
+      for (const name of ['Alice', 'Carol']) await openMember(admin, name)
+      await openDisclosure(admin, 'Membership')
       await admin.getByRole('button', { name: 'Invite someone' }).waitFor()
       await member(admin, 'Alice').getByText('Only the owner manages the owner’s machines. The owner can’t be removed.').waitFor()
-      assert.equal(await member(admin, 'Alice').getByRole('button').count(), 0)
+      assert.equal(await member(admin, 'Alice').locator('.member-content').getByRole('button').count(), 0)
       await member(admin, 'Carol').getByRole('button', { name: 'Remove Carol', exact: true }).waitFor()
       assert.equal(await member(admin, 'Carol').getByRole('button', { name: /^Make / }).count(), 0, 'only the owner changes roles')
       await admin.getByRole('button', { name: 'Leave project' }).waitFor()
 
       // The member, at phone width: pairs and edits only their own entry, and is told why they can't let people in.
       const plain = await openPanel(carolPage)
+      for (const name of ['Alice', 'Bob', 'Carol']) await openMember(plain, name)
+      await openDisclosure(plain, 'Membership')
       await plain.getByText('Only the owner or an admin can let people in. You can pair your own machines.').waitFor()
       assert.equal(await plain.getByRole('button', { name: 'Invite someone' }).count(), 0)
       for (const name of ['Alice', 'Bob']) assert.equal(await member(plain, name).getByRole('button', { name: /^(Remove|Pair|Make)/ }).count(), 0)
@@ -131,6 +142,7 @@ for (const engine of [chromium, webkit]) it(`approves a join and pairs a machine
       await nudge.getByRole('button', { name: 'Not now' }).click()
       await nudge.waitFor({ state: 'detached' })
       const panel = await openPanel(alicePage)
+      await openMember(panel, 'Alice')
       const panelNudge = panel.getByRole('note', { name: 'Pair a second machine' })
       await panelNudge.waitFor()
 
@@ -167,8 +179,8 @@ for (const engine of [chromium, webkit]) it(`approves a join and pairs a machine
       const code = (await request.locator('.confirmation-code').filter({ hasText: /^\d{4} \d{4}$/ }).textContent({ timeout: 30000 })).trim()
       await eventually(async () => (await dana.call('/join', danaJoin)).join?.code === code, 'Dana never showed the same code')
       const waitingHeading = await panel.getByRole('heading', { name: /^Waiting to join/ }).boundingBox()
-      const sharingHeading = await panel.getByRole('heading', { name: /^Sharing/ }).boundingBox()
-      assert.ok(waitingHeading.y < sharingHeading.y, 'live requests appear before Sharing')
+      const membersHeading = await panel.getByRole('heading', { name: /^Members/ }).boundingBox()
+      assert.ok(waitingHeading.y < membersHeading.y, 'live requests appear before the roster')
       const approve = request.getByRole('button', { name: `Approve Dana, code ${code}` })
       await approve.focus()
       await approve.press('Enter')
@@ -178,9 +190,11 @@ for (const engine of [chromium, webkit]) it(`approves a join and pairs a machine
       assert.equal(await outcome.evaluate(element => element === element.ownerDocument.activeElement), true)
       assert.equal(await panel.getByRole('heading', { name: /^Waiting to join/ }).count(), 0)
       await eventually(async () => Boolean((await dana.call('/join', danaJoin)).project), 'Dana never finished joining')
+      await openMember(panel, 'Dana')
       await member(panel, 'Dana').getByText('Let in by Alice').waitFor({ timeout: 30000 })
 
       // Invitation history: who issued each and who used it, newest first, and revoking from the list.
+      await openDisclosure(panel, 'Invitation history')
       const history = panel.getByRole('region', { name: 'Invitations' })
       await history.getByRole('listitem', { name: /^Person invitation, Used, Issued by Alice/ }).getByText(/Used by Dana/).waitFor({ timeout: 30000 })
       await history.getByRole('listitem', { name: /^Machine for Alice invitation, Used|^Machine invitation, Used/ }).first().waitFor()
@@ -216,6 +230,7 @@ for (const engine of [chromium, webkit]) it(`approves a join and pairs a machine
 
       // Bob renames himself from his phone; Alice's board shows the new name. Agent names stay as given.
       const bobPanel = await openPanel(bobPage)
+      await openMember(bobPanel, 'Bob')
       await member(bobPanel, 'Bob').getByRole('button', { name: 'Edit name and email' }).click()
       const form = bobPanel.getByRole('form', { name: 'Your name and email' })
       await form.getByText('Your agents keep the names they were given', { exact: false }).waitFor()
@@ -226,6 +241,7 @@ for (const engine of [chromium, webkit]) it(`approves a join and pairs a machine
       await member(panel, 'Robert').waitFor({ timeout: 30000 })
 
       // Bob leaves; his board says so, and Alice's panel lists him as having left.
+      await openDisclosure(bobPanel, 'Membership')
       await bobPanel.getByRole('button', { name: 'Leave project' }).click()
       const leaving = bobPage.getByRole('dialog', { name: 'Leave “Shared board”?' })
       await leaving.getByText('Your past work stays in the project under your name.').waitFor()
@@ -233,6 +249,7 @@ for (const engine of [chromium, webkit]) it(`approves a join and pairs a machine
       await bobPage.getByRole('heading', { name: 'You left “Shared board”' }).waitFor({ timeout: 30000 })
       await bobPage.getByText('You chose to leave this project.').waitFor()
       assert.ok(await bobPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no sideways scrolling at phone width')
+      await openDisclosure(panel, 'Membership')
       await panel.getByRole('region', { name: /^Removed/ }).getByRole('listitem', { name: 'Robert, left' }).getByText(/Left the project/).waitFor({ timeout: 30000 })
 
       // Alice stops her own agent on this computer; it keeps working from her other machine.
@@ -250,13 +267,12 @@ for (const engine of [chromium, webkit]) it(`switches sharing of a hosted projec
   const tunnel = fakeTunnel()
   await withClientWorkspace(engine, { contextOptions: PHONE, clientOptions: { tunnel } }, async ({ page, open, client, project }) => {
     await open()
-    const panel = await openPanel(page)
-    const sharing = panel.getByRole('region', { name: /^Sharing/ })
-    await sharing.getByRole('heading', { name: 'Sharing Off' }).waitFor()
-    assert.equal(await panel.getByRole('heading', { name: 'Waiting to join' }).count(), 0)
+    const sharing = page.getByRole('region', { name: 'Sharing', exact: true })
+    await sharing.locator('summary').click()
+    await sharing.locator('summary').filter({ hasText: 'Off' }).waitFor()
     await sharing.getByText('Turn on to let other computers join and sync through Pardner.', { exact: false }).waitFor()
     await sharing.getByRole('button', { name: 'Switch sharing on' }).click()
-    await sharing.getByRole('heading', { name: 'Sharing On' }).waitFor()
+    await sharing.locator('summary').filter({ hasText: /Sharing On$/ }).waitFor()
     await sharing.getByText('Other computers can join and sync through Pardner.', { exact: false }).waitFor()
     assert.deepEqual(client.registry.read().share.projects, [project.id])
     assert.equal(tunnel.log.serves, 1)
@@ -267,11 +283,11 @@ for (const engine of [chromium, webkit]) it(`switches sharing of a hosted projec
     tunnel.serve = async () => { throw Object.assign(new Error('tailcat could not start'), { code: 'TUNNEL_UNAVAILABLE' }) }
     for (const running of [...tunnel.log.running]) await running.stop()
     await sharing.getByText('Sharing is switched on, but its route is not running: tailcat could not start.', { exact: true }).waitFor({ timeout: 20000 })
-    await sharing.getByRole('heading', { name: 'Sharing Not running' }).waitFor()
+    await sharing.locator('summary').filter({ hasText: 'Not running' }).waitFor()
     tunnel.serve = serve
-    await sharing.getByRole('heading', { name: 'Sharing On' }).waitFor({ timeout: 20000 })
+    await sharing.locator('summary').filter({ hasText: /Sharing On$/ }).waitFor({ timeout: 20000 })
     await sharing.getByRole('button', { name: 'Switch sharing off' }).click()
-    await sharing.getByRole('heading', { name: 'Sharing Off' }).waitFor()
+    await sharing.locator('summary').filter({ hasText: 'Off' }).waitFor()
     assert.deepEqual(client.registry.read().share.projects, [])
     assert.equal(tunnel.log.running.size, 0)
   })

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Avatar } from './Avatar.jsx'
 import { harnessLabel } from './client-api.js'
-import { Failure, withCode } from './Failure.jsx'
+import { Failure } from './Failure.jsx'
 import { InvitationHistory, InviteDialog, formatTime } from './Invitations.jsx'
 import { createOperationId } from './operation-id.js'
 import { presenceOf } from './presence.js'
@@ -191,51 +191,6 @@ function JoinRequests({ api, project, hubReachable, onChanged }) {
   </>
 }
 
-/**
- * Whether other computers can reach this project (lib/client-share.js). On the computer that hosts it this is a
- * switch; on a joined computer it says how that computer reaches the hub. The route's address is never shown.
- */
-/** A route's failure as the end of a sentence: ": why.", or a full stop when no reason is known. */
-const reason = error => error ? <>: {withCode(/[.!?]$/.test(error) ? error : `${error}.`)}</> : '.'
-
-function Sharing({ api, project }) {
-  const [share, setShare] = useState(project.share ?? null)
-  const [busy, setBusy] = useState(false)
-  const [failure, setFailure] = useState(null)
-  useEffect(() => {
-    let live = true
-    const load = () => api.share(project.id).then(result => { if (live) setShare(result.share) }).catch(() => {})
-    load()
-    const timer = setInterval(load, VIEW_POLL_MS)
-    return () => { live = false; clearInterval(timer) }
-  }, [api, project.id])
-  if (!share) return null
-  const change = async on => {
-    setBusy(true); setFailure(null)
-    try { setShare((await api.setShare(project.id, on)).share) } catch (error) { setFailure(error) } finally { setBusy(false) }
-  }
-  if (share.role === 'replica') {
-    return <section className="people-section sharing" aria-labelledby="sharing-title">
-      <h3 id="sharing-title">Route to the hub</h3>
-      <p className="muted small" role="status">{share.state === 'on'
-        ? 'Connected through Pardner.'
-        : <>Route down{reason(share.error)} Saved work stays here. Pardner retries automatically. If it persists, ask the host to check Sharing in People.</>}</p>
-    </section>
-  }
-  return <section className="people-section sharing" aria-labelledby="sharing-title">
-    <h3 id="sharing-title">Sharing <span className="share-state" data-state={share.state}>{{ on: 'On', starting: 'Starting', error: 'Not running' }[share.state] ?? 'Off'}</span></h3>
-    <Failure error={failure} />
-    {share.state === 'off' && <p className="muted small">Turn on to let other computers join and sync through Pardner.</p>}
-    {share.state === 'on' && <p className="muted small">Other computers can join and sync through Pardner.</p>}
-    {share.state === 'starting' && <p className="muted small" role="status">Starting the route to other computers…</p>}
-    {share.state === 'error' && <p className="notice warning" role="status">Sharing is switched on, but its route is not running{reason(share.error)}</p>}
-    <div className="actions">
-      <button type="button" disabled={busy} aria-pressed={share.on} onClick={() => change(!share.on)}>
-        {busy ? (share.on ? 'Switching off…' : 'Switching on…') : share.on ? 'Switch sharing off' : 'Switch sharing on'}</button>
-    </div>
-  </section>
-}
-
 function MachineRow({ machine, person, now, onRemove }) {
   const state = machineState(machine, now)
   const tags = [machine.thisMachine && 'This machine', machine.hostsProject && 'Hosts the project', machine.agentsOnly && 'Agents only'].filter(Boolean)
@@ -259,51 +214,53 @@ function PersonRow({ api, project, person, index, now, editing, suggestPairing, 
   const actions = person.actions
   const admitted = person.admittedBy ? `Let in by ${person.admittedBy.name}` : 'Started the project'
   return <li className="member" aria-labelledby={titleId}>
-    <div className="member-heading">
-      <Avatar actor={actor} state={presenceOf(index, person.actorId)} />
-      <div>
-        <h4 id={titleId}>{person.name}{person.you && <span className="you-tag"> (you)</span>}</h4>
-        <p className="muted small">{[person.email, admitted].filter(Boolean).join(' · ')}</p>
+    <details className="member-details">
+      <summary className="member-heading">
+        <Avatar actor={actor} state={presenceOf(index, person.actorId)} />
+        <span className="member-name" id={titleId}>{person.name}{person.you && <span className="you-tag"> (you)</span>}</span>
+        <span className="role-badge" data-role={person.role}>{person.roleLabel}</span>
+      </summary>
+      <div className="member-content">
+        <p className="muted small member-note">{[person.email, admitted].filter(Boolean).join(' · ')}</p>
+        {editing ? <ProfileEditor api={api} project={project} person={person} onSaved={onSaved} onCancel={() => onEdit(false)} /> : <>
+          <div className="member-part">
+            <h4>Machines</h4>
+            {person.machines.length ? <ul className="machine-list" aria-label={`${person.name}’s machines`}>
+              {person.machines.map(machine => <MachineRow key={machine.id} machine={machine} person={person} now={now}
+                onRemove={(target, element) => onAction({ type: 'remove-machine', person, machine: target }, element)} />)}
+            </ul> : <p className="muted small">No machines. {person.name} can’t use the project until someone with access pairs a new one.</p>}
+          </div>
+          {person.agents.length > 0 && <div className="member-part">
+            <h4>Agents</h4>
+            <ul className="agent-list" aria-label={`${person.name}’s agents`}>
+              {person.agents.map(agent => <li key={agent.id}>
+                <Avatar actor={{ id: agent.id, kind: 'agent', displayName: agent.name }} state={presenceOf(index, agent.id)} size="sm" />
+                <span>{agent.name}</span>
+                <span className="muted small">{[harnessLabel(agent.harness), `on ${list(agent.machines.map(machine => machine.name))}`].filter(Boolean).join(' · ')}</span>
+                {agent.stoppedHere && <span className="tag removed-tag">Stopped on this machine</span>}
+                {agent.actions?.stopHere?.allowed && <button type="button" className="danger quiet" aria-label={`Stop ${agent.name} on this machine`}
+                  onClick={event => onAction({ type: 'stop-agent', person, agent }, event.currentTarget)}>Stop here</button>}
+              </li>)}
+            </ul>
+          </div>}
+          {suggestPairing && <p className="notice" role="note" aria-label="Pair a second machine">
+            <strong>Pair a second machine.</strong> If you lose every machine you own, nobody can remove or demote an admin. Only the owner can do that.
+          </p>}
+          {actions.note && <p className="muted small member-note">{actions.note}</p>}
+          {Object.keys(actions).some(key => key !== 'note') && <div className="actions member-actions">
+            {actions.editProfile && <button type="button" onClick={() => onEdit(true)}>Edit name and email</button>}
+            {actions.pairMachine?.allowed && <button type="button" onClick={event => onAction({ type: 'pair', person }, event.currentTarget)}>
+              {person.you ? 'Pair another machine' : `Pair a machine for ${person.name}`}</button>}
+            {actions.pairMachine && !actions.pairMachine.allowed && <Unavailable label={`Pair a machine for ${person.name}`} reason={actions.pairMachine.reason} />}
+            {actions.changeRole?.allowed && <button type="button" onClick={event => onAction({ type: 'role', person }, event.currentTarget)}>
+              {person.role === 'admin' ? 'Make member' : 'Make admin'}</button>}
+            {actions.remove?.allowed && <button type="button" className="danger" onClick={event => onAction({ type: 'remove-person', person }, event.currentTarget)}>
+              Remove {person.name}</button>}
+            {actions.remove && !actions.remove.allowed && <Unavailable label={`Remove ${person.name}`} reason={actions.remove.reason} />}
+          </div>}
+        </>}
       </div>
-      <span className="role-badge" data-role={person.role}>{person.roleLabel}</span>
-    </div>
-    {editing ? <ProfileEditor api={api} project={project} person={person} onSaved={onSaved} onCancel={() => onEdit(false)} /> : <>
-      <div className="member-part">
-        <h5>Machines</h5>
-        {person.machines.length ? <ul className="machine-list" aria-label={`${person.name}’s machines`}>
-          {person.machines.map(machine => <MachineRow key={machine.id} machine={machine} person={person} now={now}
-            onRemove={(target, element) => onAction({ type: 'remove-machine', person, machine: target }, element)} />)}
-        </ul> : <p className="muted small">No machines. {person.name} can’t use the project until someone with access pairs a new one.</p>}
-      </div>
-      {person.agents.length > 0 && <div className="member-part">
-        <h5>Agents</h5>
-        <ul className="agent-list" aria-label={`${person.name}’s agents`}>
-          {person.agents.map(agent => <li key={agent.id}>
-            <Avatar actor={{ id: agent.id, kind: 'agent', displayName: agent.name }} state={presenceOf(index, agent.id)} size="sm" />
-            <span>{agent.name}</span>
-            <span className="muted small">{[harnessLabel(agent.harness), `on ${list(agent.machines.map(machine => machine.name))}`].filter(Boolean).join(' · ')}</span>
-            {agent.stoppedHere && <span className="tag removed-tag">Stopped on this machine</span>}
-            {agent.actions?.stopHere?.allowed && <button type="button" className="danger quiet" aria-label={`Stop ${agent.name} on this machine`}
-              onClick={event => onAction({ type: 'stop-agent', person, agent }, event.currentTarget)}>Stop here</button>}
-          </li>)}
-        </ul>
-      </div>}
-      {suggestPairing && <p className="notice" role="note" aria-label="Pair a second machine">
-        <strong>Pair a second machine.</strong> If you lose every machine you own, nobody can remove or demote an admin. Only the owner can do that.
-      </p>}
-      {actions.note && <p className="muted small member-note">{actions.note}</p>}
-      {Object.keys(actions).some(key => key !== 'note') && <div className="actions member-actions">
-        {actions.editProfile && <button type="button" onClick={() => onEdit(true)}>Edit name and email</button>}
-        {actions.pairMachine?.allowed && <button type="button" onClick={event => onAction({ type: 'pair', person }, event.currentTarget)}>
-          {person.you ? 'Pair another machine' : `Pair a machine for ${person.name}`}</button>}
-        {actions.pairMachine && !actions.pairMachine.allowed && <Unavailable label={`Pair a machine for ${person.name}`} reason={actions.pairMachine.reason} />}
-        {actions.changeRole?.allowed && <button type="button" onClick={event => onAction({ type: 'role', person }, event.currentTarget)}>
-          {person.role === 'admin' ? 'Make member' : 'Make admin'}</button>}
-        {actions.remove?.allowed && <button type="button" className="danger" onClick={event => onAction({ type: 'remove-person', person }, event.currentTarget)}>
-          Remove {person.name}</button>}
-        {actions.remove && !actions.remove.allowed && <Unavailable label={`Remove ${person.name}`} reason={actions.remove.reason} />}
-      </div>}
-    </>}
+    </details>
   </li>
 }
 
@@ -432,29 +389,26 @@ export function PeoplePanel({ api, project, index, returnFocus, onClose, onChang
     else setAction({ ...next, returnFocus: element })
   }
   const confirm = action && view && confirmation(action, view)
-  const me = view?.people.find(person => person.you)
   const inviteAction = view?.actions.invite
   const leave = view?.actions.leave
   return <>
     <dialog ref={dialog} className="people-panel" aria-labelledby="people-panel-title" onCancel={event => { event.preventDefault(); onClose() }}>
-      <div className="profile-heading">
+      <header className="profile-heading people-heading">
         <div>
           <h2 id="people-panel-title">People</h2>
           <p className="muted">{project.name}</p>
         </div>
-        <button type="button" className="close" onClick={onClose}>Close</button>
-      </div>
+        <div className="people-heading-actions">
+          {inviteAction?.allowed && <button type="button" className="people-invite"
+            onClick={event => setInvite({ purpose: 'human', returnFocus: event.currentTarget })}>Invite someone</button>}
+          <button type="button" className="close" onClick={onClose} autoFocus>Close</button>
+        </div>
+      </header>
       <Failure error={failure} />
       {!view ? !failure && <p className="muted" role="status">Loading…</p> : <>
         {view.syncing && <p className="notice" role="status">Receiving the member list…</p>}
         {view.hubReachable === false && <p className="notice warning" role="status">Hub offline. Showing the last member list.</p>}
         <JoinRequests api={api} project={project} hubReachable={view.hubReachable} onChanged={changed} />
-        <div className="people-access">
-          <Sharing api={api} project={project} />
-          {inviteAction?.allowed && <button type="button" className="people-invite"
-            onClick={event => setInvite({ purpose: 'human', returnFocus: event.currentTarget })}>Invite someone</button>}
-        </div>
-        {inviteAction && !inviteAction.allowed && <p className="muted small">{inviteAction.reason}</p>}
         <section className="people-section" aria-labelledby="members-title">
           <h3 id="members-title">Members <span className="count">{view.counts.people}</span></h3>
           <ul className="member-list">
@@ -463,19 +417,27 @@ export function PeoplePanel({ api, project, index, returnFocus, onClose, onChang
               onSaved={async () => { setEditing(false); await changed() }} />)}
           </ul>
         </section>
-        <RemovedList view={view} onInviteAgain={(person, element) => setInvite({ purpose: 'human', again: person, returnFocus: element })} />
-        <section className="people-section" aria-labelledby="people-invites-title">
-          <h3 id="people-invites-title">Invitations</h3>
-          <InvitationHistory api={api} projectId={project.id} refresh={refresh} emptyText="No invitations yet." onFailure={removed} />
-        </section>
-        {leave && <section className="people-section" aria-labelledby="leave-title">
-          <h3 id="leave-title">Leave this project</h3>
-          {leave.allowed ? <>
-            <p className="muted small">Your machines stop syncing with “{project.name}”. Your past work stays under your name.</p>
-            <button type="button" className="danger" onClick={event => setAction({ type: 'leave', returnFocus: event.currentTarget })}>Leave project</button>
-          </> : <p className="muted small">{leave.reason}</p>}
-        </section>}
-        <p className="muted small observed">Updated {formatTime(view.observedAt)}. Online and last seen come from the project’s hub.</p>
+        <div className="people-secondary">
+          <details className="people-disclosure">
+            <summary>Invitation history</summary>
+            <section aria-label="Invitations">
+              <InvitationHistory api={api} projectId={project.id} refresh={refresh} emptyText="No invitations yet." onFailure={removed} />
+            </section>
+          </details>
+          <details className="people-disclosure">
+            <summary>Membership</summary>
+            {inviteAction && !inviteAction.allowed && <p className="muted small">{inviteAction.reason}</p>}
+            <RemovedList view={view} onInviteAgain={(person, element) => setInvite({ purpose: 'human', again: person, returnFocus: element })} />
+            {leave && <section className="people-section" aria-labelledby="leave-title">
+              <h3 id="leave-title">Leave this project</h3>
+              {leave.allowed ? <>
+                <p className="muted small">Your machines stop syncing with “{project.name}”. Your past work stays under your name.</p>
+                <button type="button" className="danger" onClick={event => setAction({ type: 'leave', returnFocus: event.currentTarget })}>Leave project</button>
+              </> : <p className="muted small">{leave.reason}</p>}
+            </section>}
+            <p className="muted small observed">Updated {formatTime(view.observedAt)}. Online and last seen come from the project’s hub.</p>
+          </details>
+        </div>
       </>}
     </dialog>
     {confirm && <ConfirmDialog {...confirm} returnFocus={action.returnFocus} onClose={() => setAction(null)}

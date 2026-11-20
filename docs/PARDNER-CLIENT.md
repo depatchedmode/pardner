@@ -332,7 +332,7 @@ retry. The invitation is used up; other waiting requests on it are rejected. An
 admin on another computer approves the same way: their own machine signs, and the
 hub records it.
 
-The **People** panel (below) shows live join requests above Sharing, with their codes, to everyone
+The **People** panel (below) shows live join requests above Members, with their codes, to everyone
 who may approve one: the owner and admins for new people, and the person's own
 machines, the owner or an admin for a new machine. The header's **People** button
 counts the requests waiting for this machine. Each request shows the name, email
@@ -421,22 +421,24 @@ browser launch; it uses its scoped agent grant to read and edit the board.
 The header's **People** button opens a panel built from this machine's own
 membership records, so it opens offline; the hub checks every action again when
 it is taken. Roles decide only who may let people in or remove them: every member
-may change anything on the board. The panel shows:
+may change anything on the board. The header offers **Invite someone** when you
+can invite people. Pending requests appear above the member roster.
 
-- **Counts** of people, machines, agents and removed entries in its heading.
-- **Each person:** their role, email and who let them in (or that they started
-  the project); their machines, with **This machine**, **Hosts the project**,
+- **Members:** names and roles. Open a person to see their email, who let them
+  in, and the actions available for that person. Their machines show
+  **This machine**, **Hosts the project**,
   **Agents only**, and online or last seen where the hub knows it (the hub keeps
   this in memory, so it resets when the hub restarts); and their agents with the
   machines they run on. A machine's short ID tells apart machines with the same
   name; a machine paired after its person joined says who paired it.
 - **Waiting to join:** join requests with the confirmation code, **Approve** and
   **Reject**, as above.
-- **Removed:** people and machines removed from the project, with who removed
+- **Membership:** leaving the project and **Removed**, which lists
+  people and machines removed from the project, with who removed
   them or that the person left, distinct from offline (#175). The board's avatar
   stack no longer lists a removed person, and their profile says they were
   removed; their earlier work keeps their name.
-- **Invitations:** newest first, with what each was for, who issued it and when,
+- **Invitation history:** newest first, with what each was for, who issued it and when,
   its state, and who used or revoked it. It shows ten at a time, up to the newest
   fifty, refreshes while open, and offers **Revoke** for unused ones (#183). The
   Invite dialog shows the same history.
@@ -485,7 +487,7 @@ machine cannot remove itself. `client role --project ID --person PERSON_ID --rol
 admin|member` is the owner's alone; each change names the role record it replaces.
 People an admin admitted stay when that admin is removed or demoted.
 
-**Leaving.** `client leave --project ID` (or **Leave project** in the panel) signs
+**Leaving.** `client leave --project ID` (or **Leave project** under **Membership**) signs
 `member.remove` for this machine's own person. All of the person's machines lose
 access, as with any removal, and the people they let in stay. The owner can't
 leave, and an agents-only machine can't leave on its person's behalf.
@@ -550,7 +552,7 @@ tailcat` on macOS); Pardner refuses any other version, because tailcat promises
 no stable command line or wire format.
 
 **The switch.** Sharing is per project and off by default. The person hosting a
-project switches it in the People panel (**Sharing**) or with:
+project switches it on the board (**Sharing**) or with:
 
 ```sh
 node bin/pardner.js client share --project ID --on    # or --off; with neither flag it reports the state
@@ -595,7 +597,7 @@ commitment. Without the route a shared project behaves as in any hub outage:
 enrolled computers reopen and save locally, and joining and new deliveries wait.
 An existing `--public-url` route keeps working beside it. On a joined computer,
 **People** shows that Pardner retries automatically. If the route stays down,
-ask the person hosting the project to check **Sharing** in their People panel.
+ask the person hosting the project to check **Sharing** on their board.
 
 **Not in this prototype.** The route is outside the signed offer, so nothing
 binds an invitation to its route beyond the port the offer names. There is no

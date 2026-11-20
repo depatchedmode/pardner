@@ -8,6 +8,7 @@ import {
 import { Failure } from './Failure.jsx'
 import { INVITES, InviteDialog } from './Invitations.jsx'
 import { createOperationId } from './operation-id.js'
+import { BoardSharing } from './BoardSharing.jsx'
 import { PeoplePanel } from './PeoplePanel.jsx'
 import { createPresenceReporter, focusByTask, presenceIndex, presenceOf, sortParticipants } from './presence.js'
 
@@ -516,6 +517,7 @@ function ProjectView({ api, session, project, switcher, onAuthLost, refreshSessi
         onClick={event => setDialog({ type: 'members', returnFocus: event.currentTarget })}>
         People{waitingRequests > 0 && <span className="badge" aria-hidden="true">{waitingRequests} waiting</span>}
       </button>
+      <BoardSharing key={current.id} api={api} project={current} />
       <InviteMenu memberRole={current.memberRole} onChoose={(purpose, element) => setDialog({ type: 'invite', purpose, returnFocus: element })} />
       <button type="button" className="you" aria-label={`You: ${avatarLabel(me, presenceOf(index, me.id))}. Open your profile`}
         onClick={event => openProfile(me, event.currentTarget)}>
