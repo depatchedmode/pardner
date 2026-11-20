@@ -197,7 +197,7 @@ function Sharing({ api, project }) {
     {share.state === 'starting' && <p className="muted small" role="status">Starting the route to other computers…</p>}
     {share.state === 'error' && <p className="notice warning" role="status">Sharing is switched on, but its route is not running{reason(share.error)}</p>}
     <div className="actions">
-      <button type="button" className={share.on ? '' : 'primary'} disabled={busy} aria-pressed={share.on} onClick={() => change(!share.on)}>
+      <button type="button" disabled={busy} aria-pressed={share.on} onClick={() => change(!share.on)}>
         {busy ? (share.on ? 'Switching off…' : 'Switching on…') : share.on ? 'Switch sharing off' : 'Switch sharing on'}</button>
     </div>
   </section>
@@ -220,7 +220,7 @@ function MachineRow({ machine, person, now, onRemove }) {
   </li>
 }
 
-function PersonRow({ api, project, person, index, now, editing, onEdit, onAction, onSaved }) {
+function PersonRow({ api, project, person, index, now, editing, suggestPairing, onEdit, onAction, onSaved }) {
   const titleId = useId()
   const actor = { id: person.actorId, kind: 'human', displayName: person.name }
   const actions = person.actions
@@ -255,6 +255,9 @@ function PersonRow({ api, project, person, index, now, editing, onEdit, onAction
           </li>)}
         </ul>
       </div>}
+      {suggestPairing && <p className="notice" role="note" aria-label="Pair a second machine">
+        <strong>Pair a second machine.</strong> If you lose every machine you own, nobody can remove or demote an admin. Only the owner can do that.
+      </p>}
       {actions.note && <p className="muted small member-note">{actions.note}</p>}
       {Object.keys(actions).some(key => key !== 'note') && <div className="actions member-actions">
         {actions.editProfile && <button type="button" onClick={() => onEdit(true)}>Edit name and email</button>}
@@ -414,10 +417,6 @@ export function PeoplePanel({ api, project, index, returnFocus, onClose, onChang
       {!view ? !failure && <p className="muted" role="status">Loading…</p> : <>
         {view.syncing && <p className="notice" role="status">This machine is still receiving the member list from the project’s hub. It appears here in a moment.</p>}
         {view.hubReachable === false && <p className="notice warning" role="status">The project’s hub is unreachable, so this list is what this computer last received. Changes need the hub.</p>}
-        {view.suggestPairing && <div className="notice" role="note" aria-label="Pair a second machine">
-          <p><strong>Pair a second machine.</strong> If you lose every machine you own, nobody can remove or demote an admin any more, because only the owner can.</p>
-          <div className="actions"><button type="button" onClick={event => setInvite({ purpose: 'device', person: null, returnFocus: event.currentTarget })}>Pair a machine</button></div>
-        </div>}
         <Sharing api={api} project={project} />
         {inviteAction?.allowed && <div className="actions people-actions">
           <button type="button" className="primary" onClick={event => setInvite({ purpose: 'human', returnFocus: event.currentTarget })}>Invite someone</button>
@@ -428,7 +427,7 @@ export function PeoplePanel({ api, project, index, returnFocus, onClose, onChang
           <h3 id="members-title">Members <span className="count">{view.counts.people}</span></h3>
           <ul className="member-list">
             {view.people.map(person => <PersonRow key={person.id} api={api} project={project} person={person} index={index} now={now}
-              editing={person.you && editing} onEdit={setEditing} onAction={act}
+              editing={person.you && editing} suggestPairing={person.you && view.suggestPairing} onEdit={setEditing} onAction={act}
               onSaved={async () => { setEditing(false); await changed() }} />)}
           </ul>
         </section>

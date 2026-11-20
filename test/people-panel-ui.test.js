@@ -132,7 +132,8 @@ for (const engine of [chromium, webkit]) it(`approves a join and pairs a machine
       await panelNudge.waitFor()
 
       // Pairing: the new machine waits, both screens show one code, and Alice approves it from the panel.
-      await panelNudge.getByRole('button', { name: 'Pair a machine' }).click()
+      const pairMachine = panel.getByRole('button', { name: /^Pair (a|another) machine$/, exact: false })
+      await pairMachine.click()
       const pairing = alicePage.getByRole('dialog', { name: 'Pair one of your machines' })
       await pairing.getByRole('button', { name: 'Create invitation' }).click()
       await pairing.getByRole('button', { name: 'Show invite text' }).click()
@@ -214,11 +215,18 @@ for (const engine of [chromium, webkit]) it(`approves a join and pairs a machine
 
 for (const engine of [chromium, webkit]) it(`switches sharing of a hosted project on and off in ${engine.name()}`, { timeout: 120000 }, async () => {
   const tunnel = fakeTunnel()
-  await withClientWorkspace(engine, { clientOptions: { tunnel } }, async ({ page, open, client, project }) => {
+  await withClientWorkspace(engine, { contextOptions: PHONE, clientOptions: { tunnel } }, async ({ page, open, client, project }) => {
     await open()
     const panel = await openPanel(page)
     const sharing = panel.getByRole('region', { name: /^Sharing/ })
     await sharing.getByRole('heading', { name: 'Sharing Off' }).waitFor()
+    const requests = panel.getByRole('heading', { name: 'Waiting to join' })
+    const pairing = panel.getByRole('note', { name: 'Pair a second machine' })
+    await pairing.waitFor()
+    await requests.scrollIntoViewIfNeeded()
+    const requestsBox = await requests.boundingBox()
+    const pairingBox = await pairing.boundingBox()
+    assert.ok(requestsBox.y < pairingBox.y, 'pending requests are above the pairing reminder')
     await sharing.getByText('Only this computer can reach “Test board”.', { exact: false }).waitFor()
     await sharing.getByRole('button', { name: 'Switch sharing on' }).click()
     await sharing.getByRole('heading', { name: 'Sharing On' }).waitFor()
