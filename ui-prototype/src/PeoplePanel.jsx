@@ -162,6 +162,9 @@ function JoinRequests({ api, project, always, onChanged }) {
  * Whether other computers can reach this project (lib/client-share.js). On the computer that hosts it this is a
  * switch; on a joined computer it says how that computer reaches the hub. The route's address is never shown.
  */
+/** A route's failure as the end of a sentence: ": why.", or a full stop when no reason is known. */
+const reason = error => error ? <>: {withCode(/[.!?]$/.test(error) ? error : `${error}.`)}</> : '.'
+
 function Sharing({ api, project }) {
   const [share, setShare] = useState(project.share ?? null)
   const [busy, setBusy] = useState(false)
@@ -183,7 +186,7 @@ function Sharing({ api, project }) {
       <h3 id="sharing-title">Route to the hub</h3>
       <p className="muted small" role="status">{share.state === 'on'
         ? 'This computer reaches the project’s hub through a Pardner-managed tailcat route.'
-        : <>The route to the project’s hub is down{share.error ? <>: {withCode(share.error)}</> : '.'} Your work is saved here and syncs when it is back.</>}</p>
+        : <>The route to the project’s hub is down{reason(share.error)} Your work is saved here and syncs when it is back.</>}</p>
     </section>
   }
   return <section className="people-section sharing" aria-labelledby="sharing-title">
@@ -192,7 +195,7 @@ function Sharing({ api, project }) {
     {share.state === 'off' && <p className="muted small">Only this computer can reach “{project.name}”. Switch sharing on to invite someone on another computer, and to let computers that already joined sync.</p>}
     {share.state === 'on' && <p className="muted small">Other computers reach “{project.name}”, and nothing else on this computer, through a Pardner-managed tailcat route. Switch it off and they keep working on their own copies until it is back on.</p>}
     {share.state === 'starting' && <p className="muted small" role="status">Starting the route to other computers…</p>}
-    {share.state === 'error' && <p className="notice warning" role="status">Sharing is switched on, but its route is not running{share.error ? <>: {withCode(share.error)}</> : '.'}</p>}
+    {share.state === 'error' && <p className="notice warning" role="status">Sharing is switched on, but its route is not running{reason(share.error)}</p>}
     <div className="actions">
       <button type="button" className={share.on ? '' : 'primary'} disabled={busy} aria-pressed={share.on} onClick={() => change(!share.on)}>
         {busy ? (share.on ? 'Switching off…' : 'Switching on…') : share.on ? 'Switch sharing off' : 'Switch sharing on'}</button>

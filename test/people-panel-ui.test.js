@@ -227,6 +227,14 @@ for (const engine of [chromium, webkit]) it(`switches sharing of a hosted projec
     assert.equal(tunnel.log.serves, 1)
     assert.equal(await sharing.getByRole('button', { name: 'Switch sharing off' }).getAttribute('aria-pressed'), 'true')
     assert.ok(!(await page.content()).includes(client.registry.read().share.address), 'the route’s address is never on the page')
+    // A route that stops while sharing is on is reported as a whole sentence.
+    const serve = tunnel.serve
+    tunnel.serve = async () => { throw Object.assign(new Error('tailcat could not start'), { code: 'TUNNEL_UNAVAILABLE' }) }
+    for (const running of [...tunnel.log.running]) await running.stop()
+    await sharing.getByText('Sharing is switched on, but its route is not running: tailcat could not start.', { exact: true }).waitFor({ timeout: 20000 })
+    await sharing.getByRole('heading', { name: 'Sharing Not running' }).waitFor()
+    tunnel.serve = serve
+    await sharing.getByRole('heading', { name: 'Sharing On' }).waitFor({ timeout: 20000 })
     await sharing.getByRole('button', { name: 'Switch sharing off' }).click()
     await sharing.getByRole('heading', { name: 'Sharing Off' }).waitFor()
     assert.deepEqual(client.registry.read().share.projects, [])
