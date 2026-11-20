@@ -1025,13 +1025,7 @@ code {
 .client-identity {
   display: flex;
   align-items: center;
-  gap: 14px;
   min-width: 0;
-}
-.brand {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--muted);
 }
 .project-title {
   margin: 0;

@@ -106,7 +106,6 @@ function RemovedProject({ project, switcher }) {
   return <div className="removed-app" data-client>
     <header className="client-header">
       <div className="client-identity">
-        <span className="brand">Pardner</span>
         <ProjectSwitcher {...switcher} current={project} />
       </div>
     </header>
@@ -506,7 +505,6 @@ function ProjectView({ api, session, project, switcher, onAuthLost, refreshSessi
   const remotePresenceUnavailable = presence?.available === false || current.status?.hubConnected === false
   const header = <>
     <div className="client-identity">
-      <span className="brand">Pardner</span>
       <ProjectSwitcher {...switcher} current={current} />
     </div>
     <div className="client-people">
