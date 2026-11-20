@@ -119,7 +119,7 @@ for (const engine of [chromium, webkit]) it(`approves a join and pairs a machine
   { timeout: 300000 }, async () => {
     await withClientReplicas(engine, { humans: ['Alice', 'Bob'] }, async ({ people, newPage, newcomer, eventually, project }) => {
       const [alice, bob] = people
-      const alicePage = await newPage(), bobPage = await newPage(PHONE)
+      const alicePage = await newPage(PHONE), bobPage = await newPage(PHONE)
       await alice.open(alicePage); await bob.open(bobPage)
 
       // The owner of a one-machine project is nudged on the board; dismissed there, it stays in the panel until done.
@@ -163,8 +163,17 @@ for (const engine of [chromium, webkit]) it(`approves a join and pairs a machine
       const request = panel.getByRole('listitem', { name: 'Dana wants to join as a member' })
       const code = (await request.locator('.confirmation-code').filter({ hasText: /^\d{4} \d{4}$/ }).textContent({ timeout: 30000 })).trim()
       await eventually(async () => (await dana.call('/join', danaJoin)).join?.code === code, 'Dana never showed the same code')
-      await request.getByRole('button', { name: `Approve Dana, code ${code}` }).click()
-      await panel.getByText('No one is waiting to join.').waitFor({ timeout: 30000 })
+      const waitingHeading = await panel.getByRole('heading', { name: /^Waiting to join/ }).boundingBox()
+      const sharingHeading = await panel.getByRole('heading', { name: /^Sharing/ }).boundingBox()
+      assert.ok(waitingHeading.y < sharingHeading.y, 'live requests appear before Sharing')
+      const approve = request.getByRole('button', { name: `Approve Dana, code ${code}` })
+      await approve.focus()
+      await approve.press('Enter')
+      const outcome = panel.getByText('Approved the request from Dana.', { exact: true })
+      await outcome.waitFor({ timeout: 30000 })
+      await request.waitFor({ state: 'detached' })
+      assert.equal(await outcome.evaluate(element => element === element.ownerDocument.activeElement), true)
+      assert.equal(await panel.getByRole('heading', { name: /^Waiting to join/ }).count(), 0)
       await eventually(async () => Boolean((await dana.call('/join', danaJoin)).project), 'Dana never finished joining')
       await member(panel, 'Dana').getByText('Let in by Alice').waitFor({ timeout: 30000 })
 
@@ -180,6 +189,27 @@ for (const engine of [chromium, webkit]) it(`approves a join and pairs a machine
       await history.getByRole('listitem', { name: /^Person invitation, Revoked/ }).getByText(/Revoked by Alice/).waitFor({ timeout: 30000 })
       const states = await alice.call(`/projects/${project.id}/invites`)
       assert.equal(states.invites.find(entry => entry.id === spare.invite.id).state, 'revoked')
+
+      // A declined request reports the actual action while the hub responds, then confirms the outcome.
+      const declined = await alice.call(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'declined' })
+      const ellis = await newcomer('Ellis')
+      await ellis.call('/join', { invitation: declined.invitation, operationId: 'join' })
+      const declinedRow = panel.getByRole('listitem', { name: 'Ellis wants to join as a member' })
+      const reject = declinedRow.getByRole('button', { name: 'Reject Ellis' })
+      let releaseReject
+      const pendingReject = new Promise(resolve => { releaseReject = resolve })
+      const rejectRoute = '**/join-requests/*/reject'
+      await alicePage.route(rejectRoute, async route => { await pendingReject; await route.continue() })
+      try {
+        await reject.click()
+        await declinedRow.getByText('Rejecting…', { exact: true }).waitFor()
+        assert.equal(await declinedRow.getByText('Approving…', { exact: true }).count(), 0)
+      } finally {
+        releaseReject()
+      }
+      await panel.getByText('Rejected the request from Ellis.', { exact: true }).waitFor()
+      await declinedRow.waitFor({ state: 'detached' })
+      await alicePage.unroute(rejectRoute)
 
       // Bob renames himself from his phone; Alice's board shows the new name. Agent names stay as given.
       const bobPanel = await openPanel(bobPage)
@@ -220,13 +250,7 @@ for (const engine of [chromium, webkit]) it(`switches sharing of a hosted projec
     const panel = await openPanel(page)
     const sharing = panel.getByRole('region', { name: /^Sharing/ })
     await sharing.getByRole('heading', { name: 'Sharing Off' }).waitFor()
-    const requests = panel.getByRole('heading', { name: 'Waiting to join' })
-    const pairing = panel.getByRole('note', { name: 'Pair a second machine' })
-    await pairing.waitFor()
-    await requests.scrollIntoViewIfNeeded()
-    const requestsBox = await requests.boundingBox()
-    const pairingBox = await pairing.boundingBox()
-    assert.ok(requestsBox.y < pairingBox.y, 'pending requests are above the pairing reminder')
+    assert.equal(await panel.getByRole('heading', { name: 'Waiting to join' }).count(), 0)
     await sharing.getByText('Only this computer can reach “Test board”.', { exact: false }).waitFor()
     await sharing.getByRole('button', { name: 'Switch sharing on' }).click()
     await sharing.getByRole('heading', { name: 'Sharing On' }).waitFor()

@@ -104,40 +104,68 @@ function ProfileEditor({ api, project, person, onSaved, onCancel }) {
 }
 
 /** Join requests this machine may approve. Opening one adds this approver's nonce, so both screens show its code. */
-function JoinRequests({ api, project, always, onChanged }) {
-  const [requests, setRequests] = useState(null)
+function JoinRequests({ api, project, hubReachable, onChanged }) {
+  const [requestList, setRequestList] = useState({ requests: [], error: null, stale: false })
+  const { requests, error, stale } = requestList
   const [failure, setFailure] = useState(null)
   const [busy, setBusy] = useState(null)
+  const [outcome, setOutcome] = useState('')
+  const outcomeRef = useRef(null)
+  const decidedButton = useRef(null)
   const load = useCallback(async () => {
-    const { requests: listed } = await api.joinRequests(project.id)
-    const opened = await Promise.all(listed.map(request => request.code ? request
-      : api.revealCode(project.id, request.id).then(result => result.request, error => { setFailure(error); return null })))
-    setRequests(opened.filter(Boolean))
+    try {
+      const { requests: listed } = await api.joinRequests(project.id)
+      const opened = await Promise.all(listed.map(async request => {
+        if (request.code) return { request }
+        try { return await api.revealCode(project.id, request.id) }
+        catch (error) { return { request, error } }
+      }))
+      setRequestList({
+        requests: opened.map(result => result.request),
+        error: opened.find(result => result.error)?.error ?? null,
+        stale: false,
+      })
+    } catch (error) {
+      setRequestList(current => ({ ...current, error, stale: true }))
+    }
   }, [api, project.id])
   useEffect(() => {
-    let stopped = false
-    load().catch(error => { if (!stopped) setFailure(error) })
-    const timer = setInterval(() => load().catch(() => {}), REQUESTS_POLL_MS)
-    return () => { stopped = true; clearInterval(timer) }
+    void load()
+    const timer = setInterval(load, REQUESTS_POLL_MS)
+    return () => clearInterval(timer)
   }, [load])
-  const decide = async (request, approved) => {
-    setBusy(request.id); setFailure(null)
+  useEffect(() => {
+    const button = decidedButton.current
+    if (!outcome || !button || button.isConnected) return
+    decidedButton.current = null
+    if (button.ownerDocument.activeElement === button.ownerDocument.body) outcomeRef.current?.focus()
+  }, [outcome, requests])
+  const decide = async (request, approved, button) => {
+    decidedButton.current = button.ownerDocument.activeElement === button ? button : null
+    setBusy({ id: request.id, approved }); setFailure(null); setOutcome('')
     try {
       if (approved) await api.approveRequest(project.id, request.id, request.code)
       else await api.rejectRequest(project.id, request.id)
+      const name = request.person.name
+      const subject = request.purpose === 'human' ? `the request from ${name}` : `the machine request for ${name}`
+      setOutcome(`${approved ? 'Approved' : 'Rejected'} ${subject}.`)
       await load()
       onChanged?.()
     } catch (error) { setFailure(error) } finally { setBusy(null) }
   }
-  if (!always && !requests?.length && !failure) return null
-  return <section className="people-section" aria-labelledby="join-requests-title">
-    <h3 id="join-requests-title">Waiting to join {requests?.length ? <span className="count">{requests.length}</span> : null}</h3>
-    {requests?.length ? <p className="muted small">Approve only if the person reads you exactly the code shown here. Compare it face to face or by voice, not through the channel the invitation came through.</p> : null}
-    <Failure error={failure} />
-    {requests === null ? <p className="muted">Loading…</p> : !requests.length ? <p className="muted">No one is waiting to join.</p> :
+  const knownOutage = hubReachable === false && error?.code === 'HUB_UNAVAILABLE'
+  const requestError = failure ?? (knownOutage ? null : error)
+  return <>
+    <p ref={outcomeRef} role="status" tabIndex={-1} hidden={!outcome}>{outcome}</p>
+    {(requests.length > 0 || requestError) && <section className="people-section" aria-labelledby="join-requests-title">
+      <h3 id="join-requests-title">Waiting to join {requests.length ? <span className="count">{requests.length}</span> : null}</h3>
+      {requests.length > 0 && <p className="muted small">Approve only if the person reads you exactly the code shown here. Compare it face to face or by voice, not through the channel the invitation came through.</p>}
+      <Failure error={requestError} />
+      {requests.length > 0 &&
       <ul className="join-request-list">
         {requests.map(request => {
           const name = request.person.name
+          const deciding = busy?.id === request.id
           const duplicates = request.possibleDuplicates?.map(entry => entry.name).join(', ')
           return <li key={request.id} aria-label={REQUEST_TITLES[request.purpose](request)}>
             <p><strong>{REQUEST_TITLES[request.purpose](request)}</strong></p>
@@ -146,16 +174,17 @@ function JoinRequests({ api, project, always, onChanged }) {
               : `${request.device.name} · joins as ${name}${request.person.email ? ` <${request.person.email}>` : ''}`}</p>
             {duplicates && <p className="warning-text">{duplicates} is already a member with this name or email. If this is the same person, reject this request and pair their computer with a My device invitation instead.</p>}
             <p className="muted small">Confirmation code</p>
-            <p className="confirmation-code">{request.code ?? '…'}</p>
+            <p className="confirmation-code">{request.code ?? 'Waiting for code…'}</p>
             <div className="actions">
-              <button className="primary" disabled={!request.code || Boolean(busy)} aria-label={`Approve ${name}, code ${request.code ?? 'not shown'}`}
-                onClick={() => decide(request, true)}>{busy === request.id ? 'Approving…' : 'Approve'}</button>
-              <button disabled={Boolean(busy)} aria-label={`Reject ${name}`} onClick={() => decide(request, false)}>Reject</button>
+              <button className="primary" disabled={!request.code || Boolean(busy) || stale} aria-label={`Approve ${name}, code ${request.code ?? 'not shown'}`}
+                onClick={event => decide(request, true, event.currentTarget)}>{deciding && busy.approved ? 'Approving…' : 'Approve'}</button>
+              <button disabled={Boolean(busy) || stale} aria-label={`Reject ${name}`} onClick={event => decide(request, false, event.currentTarget)}>{deciding && !busy.approved ? 'Rejecting…' : 'Reject'}</button>
             </div>
           </li>
         })}
       </ul>}
-  </section>
+    </section>}
+  </>
 }
 
 /**
@@ -186,7 +215,7 @@ function Sharing({ api, project }) {
       <h3 id="sharing-title">Route to the hub</h3>
       <p className="muted small" role="status">{share.state === 'on'
         ? 'This computer reaches the project’s hub through a Pardner-managed tailcat route.'
-        : <>The route to the project’s hub is down{reason(share.error)} Your work is saved here and syncs when it is back.</>}</p>
+        : <>The route to the project’s hub is down{reason(share.error)} Work you save stays on this computer. Pardner retries automatically. If the route stays down, ask the person hosting the project to check Sharing in their People panel.</>}</p>
     </section>
   }
   return <section className="people-section sharing" aria-labelledby="sharing-title">
@@ -417,12 +446,12 @@ export function PeoplePanel({ api, project, index, returnFocus, onClose, onChang
       {!view ? !failure && <p className="muted" role="status">Loading…</p> : <>
         {view.syncing && <p className="notice" role="status">This machine is still receiving the member list from the project’s hub. It appears here in a moment.</p>}
         {view.hubReachable === false && <p className="notice warning" role="status">The project’s hub is unreachable, so this list is what this computer last received. Changes need the hub.</p>}
+        <JoinRequests api={api} project={project} hubReachable={view.hubReachable} onChanged={changed} />
         <Sharing api={api} project={project} />
         {inviteAction?.allowed && <div className="actions people-actions">
           <button type="button" className="primary" onClick={event => setInvite({ purpose: 'human', returnFocus: event.currentTarget })}>Invite someone</button>
         </div>}
         {inviteAction && !inviteAction.allowed && <p className="muted small">{inviteAction.reason}</p>}
-        <JoinRequests api={api} project={project} always={Boolean(inviteAction?.allowed)} onChanged={changed} />
         <section className="people-section" aria-labelledby="members-title">
           <h3 id="members-title">Members <span className="count">{view.counts.people}</span></h3>
           <ul className="member-list">

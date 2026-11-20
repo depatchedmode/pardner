@@ -332,7 +332,7 @@ retry. The invitation is used up; other waiting requests on it are rejected. An
 admin on another computer approves the same way: their own machine signs, and the
 hub records it.
 
-The **People** panel (below) lists join requests, with their codes, to everyone
+The **People** panel (below) shows live join requests above Sharing, with their codes, to everyone
 who may approve one: the owner and admins for new people, and the person's own
 machines, the owner or an admin for a new machine. The header's **People** button
 counts the requests waiting for this machine. Each request shows the name, email
@@ -593,7 +593,9 @@ minute, so reconnecting can then take up to two minutes.
 direct path exists, Tailscale's public DERP relays, which carry no uptime
 commitment. Without the route a shared project behaves as in any hub outage:
 enrolled computers reopen and save locally, and joining and new deliveries wait.
-An existing `--public-url` route keeps working beside it.
+An existing `--public-url` route keeps working beside it. On a joined computer,
+**People** shows that Pardner retries automatically. If the route stays down,
+ask the person hosting the project to check **Sharing** in their People panel.
 
 **Not in this prototype.** The route is outside the signed offer, so nothing
 binds an invitation to its route beyond the port the offer names. There is no

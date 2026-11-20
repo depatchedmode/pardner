@@ -317,7 +317,7 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     assert.match(approverCode, /^\d{4} \d{4}$/)
     await waiting.getByTestId('join-code').getByText(approverCode, { exact: true }).waitFor({ timeout: 30000 })
     await request.getByRole('button', { name: `Approve Bob, code ${approverCode}` }).click()
-    await requests.getByText('No one is waiting to join.').waitFor({ timeout: 30000 })
+    await requests.getByText('Approved the request from Bob.', { exact: true }).waitFor({ timeout: 30000 })
     await requests.getByRole('button', { name: 'Close' }).click()
     await bobPage.getByRole('button', { name: 'Project: Shared board. Switch project' }).waitFor({ timeout: 30000 })
     await bobPage.getByRole('button', { name: /^You: Bob, human/ }).waitFor()
@@ -448,6 +448,36 @@ for (const engine of [chromium, webkit]) it(`links a second device from the iden
     assert.equal(desktop.client.registry.read().identity.id, alice.client.registry.read().identity.id, 'the device adopts the sponsor identity')
     assert.equal(alice.client.registry.read().invites[device.invite.id].state, 'redeemed')
     assert.deepEqual(errors, [])
+  })
+
+for (const engine of [chromium, webkit]) it(`explains recovery on a joined computer when its sharing route goes down in ${engine.name()}`,
+  { timeout: 120000 }, async t => {
+    const { startClient } = await import(serviceModule)
+    const host = await person(t, startClient, 'Alice', undefined, { route: false, tunnel: fakeTunnel() })
+    const guest = await person(t, startClient, 'Bob', undefined, { route: false, tunnel: fakeTunnel() })
+    await host.call('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
+    await guest.call('/identity', { name: 'Bob', email: 'bob@example.test', operationId: 'identity' })
+    const { project } = await host.call('/projects', { name: 'Shared board', operationId: 'create' })
+    const sharing = `/projects/${project.id}/share`
+    await host.call(sharing, { on: true })
+    const { invitation } = await host.call(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
+    await joinApproved({ join: body => guest.call('/join', body), approver: host.call, invitation, operationId: 'join' })
+
+    const browser = await engine.launch({ headless: true })
+    t.after(() => browser.close())
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
+    await page.goto(await guest.open())
+    await page.getByRole('button', { name: /^People/ }).click()
+    const route = page.getByRole('region', { name: 'Route to the hub' })
+    await route.getByRole('status').getByText(/Pardner-managed tailcat route/).waitFor({ timeout: 30000 })
+    await host.call(sharing, { on: false })
+    await route.getByRole('status').getByText(/Work you save stays on this computer. Pardner retries automatically./).waitFor({ timeout: 30000 })
+    await route.getByText(/ask the person hosting the project to check Sharing/).waitFor()
+    assert.equal(await route.getByRole('button').count(), 0)
+    await page.getByText(/this list is what this computer last received/).waitFor()
+    assert.equal(await page.getByRole('heading', { name: 'Waiting to join' }).count(), 0, 'a known hub outage does not repeat the same error in an empty request section')
+    await host.call(sharing, { on: true })
+    await route.getByRole('status').getByText(/Pardner-managed tailcat route/).waitFor({ timeout: 45000 })
   })
 
 for (const engine of [chromium, webkit]) it(`recovers a loopback-only invitation and keeps the Invite dialog usable through a hub outage in ${engine.name()}`,
