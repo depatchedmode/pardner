@@ -294,7 +294,9 @@ function JoinWaiting({ join, outage, onStop }) {
       <p className="muted small">Your confirmation code</p>
       <p className="confirmation-code" data-testid="join-code">{join.code}</p>
       <p className="muted small">Read this code to the person approving you, face to face or by voice rather than where the invitation came from. They approve only if their screen shows the same code.</p>
-    </> : <p className="muted small" role="status">Your confirmation code appears here when the person approving opens your request.</p>}
+    </> : <p className="muted small" role="status">{join.purpose === 'human'
+      ? 'Ask your inviter or an admin to open People on their project board. Your confirmation code will appear here.'
+      : 'Open People on the project board on the computer approving this request. Your confirmation code will appear here.'}</p>}
     {outage && <p className="warning-text" role="status">The project’s hub is unreachable right now. Still waiting; nothing was lost.</p>}
     <button type="button" onClick={onStop}>Stop waiting</button>
   </section>

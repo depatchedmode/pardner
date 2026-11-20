@@ -111,6 +111,7 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
   const [refresh, setRefresh] = useState(0)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState(null)
+  const [needsSharing, setNeedsSharing] = useState(false)
   const [revealed, setRevealed] = useState(false)
   const [copied, setCopied] = useState(null)
   const [now, setNow] = useState(() => Date.now())
@@ -128,11 +129,16 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
   const create = async () => {
     setBusy(true); setFailure(null)
     try {
+      if (needsSharing) {
+        await api.setShare(project.id, true)
+        setNeedsSharing(false)
+      }
       setCreated(await api.createInvite(project.id, { purpose, operationId: operationId.current, ...(purpose === 'human' ? { role } : {}),
         ...(person ? { personId: person.id } : {}) }))
       setRevealed(false); setCopied(null); setRefresh(value => value + 1)
     } catch (error) {
-      setFailure(error)
+      if (error.code === 'PUBLIC_URL_REQUIRED' && project.role === 'hub') setNeedsSharing(true)
+      else setFailure(error)
       if (error.code === 'OPERATION_ID_REUSED') operationId.current = createOperationId()
     } finally { setBusy(false) }
   }
@@ -159,6 +165,8 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
   }
   const createdState = created && effectiveState(created.invite, now)
   const usable = createdState === 'issued' && Boolean(shareText)
+  let createLabel = busy ? 'Creating…' : 'Create invitation'
+  if (needsSharing) createLabel = busy ? 'Switching sharing on…' : 'Switch sharing on and create invitation'
   return <dialog ref={dialog} className="invite-dialog" aria-labelledby="invite-title"
     onCancel={event => { event.preventDefault(); onClose() }}>
     <div className="profile-heading">
@@ -175,9 +183,14 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
         <option value="admin">Admin: may also let people in and remove members</option>
       </select>
     </label>}
-    {!created ? <div className="actions">
-      <button className="primary" disabled={busy} onClick={create}>{busy ? 'Creating…' : 'Create invitation'}</button>
-    </div> : <section className="invite-ready" aria-label="New invitation">
+    {!created ? <>
+      {needsSharing && <p role="status">Switch on sharing so the invited computer can reach this project.</p>}
+      <div className="actions">
+        <button className="primary" disabled={busy} onClick={create}>
+          {createLabel}
+        </button>
+      </div>
+    </> : <section className="invite-ready" aria-label="New invitation">
       <p className="invite-state" data-state={createdState}>
         <strong>{STATE_LABELS[createdState]}</strong>{createdState === 'issued' && ` · ${formatExpiry(created.invite.expiresAt, now)}`}
       </p>
@@ -194,6 +207,7 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
             : copied === 'failed' ? 'This browser blocked copying. Use Show invite text and copy it manually.'
               : revealed ? '' : 'The invitation stays hidden so it can’t be read from a shared screen.'}
         </p>
+        {purpose === 'human' && <p className="muted small">After they request to join, open People and look under Waiting to join. Compare the codes by voice or in person before approving.</p>}
         {revealed && <div id="invite-text" className="reveal">
           <p className="warning-text">Visible on screen. Stop sharing your screen before copying.</p>
           <textarea readOnly rows={5} spellCheck={false} aria-label="Invite text" value={shareText}

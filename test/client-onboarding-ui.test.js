@@ -9,6 +9,7 @@ import { chromium, webkit } from 'playwright'
 import { bootstrapPath, createClientApi, projectConfiguration, takeBootstrapGrant } from '../ui-prototype/src/client-api.js'
 import { createConnection } from '../ui-prototype/src/connection.js'
 import { sameComputerRoute } from '../support/client-workspace.js'
+import { fakeTunnel } from '../support/fake-tunnel.js'
 import { joinApproved } from '../support/enrollment.js'
 import { buildOffer, encodeInvitation } from '../lib/enrollment.js'
 import { generateMachineKey } from '../lib/machine-key.js'
@@ -190,10 +191,10 @@ async function gitProfile(name) {
 }
 
 // `route: false` stands for a client started without --public-url.
-async function person(t, startClient, name, agent, { route = true } = {}) {
+async function person(t, startClient, name, agent, { route = true, tunnel } = {}) {
   const directory = await mkdtemp(join(tmpdir(), `pardner-ui-${name.toLowerCase()}-`))
   const gitDirectory = await gitProfile(name)
-  const client = await startClient({ directory, ...(route ? await sameComputerRoute() : { port: 0 }), deviceName: `${name}’s laptop`, gitDirectory, setupAgent: agent })
+  const client = await startClient({ directory, ...(route ? await sameComputerRoute() : { port: 0 }), deviceName: `${name}’s laptop`, gitDirectory, setupAgent: agent, tunnel })
   t.after(async () => {
     await client.stop()
     await rm(directory, { recursive: true, force: true })
@@ -286,6 +287,7 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
       copied = await page.evaluate(() => navigator.clipboard.readText())
     }
     // WebKit does not expose Chromium's clipboard permissions. Exercise its explicit reveal path.
+    await dialog.getByText(/^After they request to join, open People/).waitFor()
     await dialog.getByRole('button', { name: 'Show invite text' }).click()
     const invitation = await dialog.getByLabel('Invite text').inputValue()
     assert.match(invitation, /pardner-invite-v2\./)
@@ -305,7 +307,7 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await bobPage.getByRole('button', { name: 'Join project' }).click()
     // Bob waits; Alice opens his request, both screens show one code, and Alice approves it.
     const waiting = bobPage.getByRole('region', { name: 'Waiting for approval' })
-    await waiting.getByText('Your confirmation code appears here when the person approving opens your request.').waitFor({ timeout: 30000 })
+    await waiting.getByText('Ask your inviter or an admin to open People on their project board. Your confirmation code will appear here.').waitFor({ timeout: 30000 })
     // The People button counts the requests waiting for this machine; the panel shows each with its code.
     await page.getByRole('button', { name: 'People, 1 waiting to join' }).click({ timeout: 30000 })
     const requests = page.getByRole('dialog', { name: 'People', exact: true })
@@ -448,7 +450,7 @@ for (const engine of [chromium, webkit]) it(`links a second device from the iden
     assert.deepEqual(errors, [])
   })
 
-for (const engine of [chromium, webkit]) it(`refuses a loopback-only invitation and keeps the Invite dialog usable through a hub outage in ${engine.name()}`,
+for (const engine of [chromium, webkit]) it(`recovers a loopback-only invitation and keeps the Invite dialog usable through a hub outage in ${engine.name()}`,
   { timeout: 150000 }, async t => {
     const { startClient } = await import(serviceModule)
     const browser = await engine.launch({ headless: true })
@@ -467,7 +469,7 @@ for (const engine of [chromium, webkit]) it(`refuses a loopback-only invitation 
     }
 
     // Carol's client was started without --public-url, so a Human invitation could only be used on her computer.
-    const carol = await person(t, startClient, 'Carol', undefined, { route: false })
+    const carol = await person(t, startClient, 'Carol', undefined, { route: false, tunnel: fakeTunnel() })
     await carol.call('/identity', { name: 'Carol', email: 'carol@example.test', operationId: 'identity' })
     await carol.call('/projects', { name: 'Loopback board', operationId: 'create' })
     const carolPage = await newPage()
@@ -476,12 +478,17 @@ for (const engine of [chromium, webkit]) it(`refuses a loopback-only invitation 
     await refusing.getByText('None yet.').waitFor()
     assert.equal(await refusing.getByRole('alert').count(), 0, 'no alert before the person acts')
     await refusing.getByRole('button', { name: 'Create invitation' }).click()
-    const refusal = refusing.getByRole('alert')
-    await refusal.getByText('This invitation would only work on this computer', { exact: true }).waitFor()
-    await refusal.getByText(`would point to ${carol.client.url}, which only this computer can reach`, { exact: false }).waitFor()
-    assert.equal(await refusal.locator('code').first().textContent(), 'pardner client serve --public-url <https origin>')
+    const enableSharing = refusing.getByRole('button', { name: 'Switch sharing on and create invitation' })
+    await enableSharing.waitFor()
+    assert.deepEqual(carol.client.registry.read().share.projects, [], 'sharing stays off until confirmed')
     assert.equal(await refusing.getByRole('button', { name: 'Copy invite' }).count(), 0)
     assert.equal(Object.keys(carol.client.registry.read().invites).length, 0, 'the refused invitation was never recorded')
+    await refusing.getByLabel('Role').selectOption('admin')
+    await enableSharing.click()
+    await refusing.getByRole('button', { name: 'Copy invite' }).waitFor()
+    const [created] = Object.values(carol.client.registry.read().invites)
+    assert.equal(created.offer.role, 'admin')
+    assert.equal(carol.client.registry.read().share.projects.length, 1)
     await refusing.getByRole('button', { name: 'Close' }).click()
 
     // An invitation whose only route is another computer's loopback address names it instead of advising a retry.

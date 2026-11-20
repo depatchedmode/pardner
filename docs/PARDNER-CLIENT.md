@@ -280,17 +280,15 @@ prompt or the raw invitation. Invitations from earlier Pardner versions are
 refused with a request for a new one.
 
 Human and My device invitations are used by a client on another computer, so they
-need a route other computers can reach. A client started without `--public-url`
-refuses to issue them with `PUBLIC_URL_REQUIRED`: the message names the loopback
-address the invitation would have carried and says to restart the client with
-`pardner client serve --public-url <https origin>`. On a joined computer the
-invitation is issued by the hub, so the message asks for the hub's client to be
-restarted. Agent invitations stay available without `--public-url`, for an agent
-on the same computer. An explicit `--public-url` is always honoured, including a
-loopback relay or test gate (see
-[Connectivity and recovery boundaries](#connectivity-and-recovery-boundaries)).
-Switching on [sharing](#sharing-a-project-with-other-computers) for the project
-is the other way to give its invitations a route; the refusal names that too.
+need a route other computers can reach. On the hosting computer, if there is no
+usable route, the invitation dialog offers **Switch sharing on and create
+invitation**. You can also switch on [sharing](#sharing-a-project-with-other-computers)
+from People before opening the dialog. On a joined computer, invitations come
+from the project's hub and the person hosting the project must enable its route.
+The CLI reports a missing route as `PUBLIC_URL_REQUIRED` and gives commands for
+the host. An explicit `--public-url` also works, including a loopback relay or
+test gate (see [Connectivity and recovery boundaries](#connectivity-and-recovery-boundaries)).
+Agent invitations on the same computer need no external route.
 
 During a hub outage the dialog's invitation list says it couldn't load and offers
 **Retry**; it raises no alert until the person acts. Creating an invitation then
