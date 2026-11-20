@@ -25,6 +25,24 @@ it('parses only one complete data envelope and never treats surrounding prose as
   }
 })
 
+it('tells the user how to move a pending join forward before a code exists', () => {
+  const approval = {
+    human: 'have my inviter or an admin open People on the project board',
+    device: 'open People on one of my computers already in the project, or ask an admin to open it',
+    agent: 'open People on one of my computers already in the project to reveal it',
+  }
+  for (const [purpose, nextStep] of Object.entries(approval)) {
+    const prompt = invitationPrompt({ projectName: 'Shared board', purpose, invitation: envelope })
+    assert.match(prompt, /join --data CLIENT_DIR --invitation-file FILE --operation-id STABLE_ID\n/)
+    assert.match(prompt, /If join reports a pending request:\n- Tell me immediately/)
+    assert.match(prompt, /If there is no confirmation code yet, ask me to/)
+    assert.ok(prompt.includes(nextStep))
+    assert.match(prompt, /Retry the same join command with the same operation ID/)
+    assert.match(prompt, /compare it with the approver by voice or in person before they approve/)
+    assert.match(prompt, /If join reports the project immediately, continue with setup/)
+  }
+})
+
 it('keeps project names in quoted data and gives each purpose the right identity intent', () => {
   const name = 'A project\nwith "quotes"'
   const prompt = purpose => invitationPrompt({ projectName: name, purpose, invitation: envelope })

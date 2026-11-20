@@ -310,6 +310,9 @@ place, so the invitation stays usable.
 Until it is approved, the joining machine receives nothing from the project. The
 browser shows **Waiting for approval**; `client join` reports `{ join: { state,
 requestId, code, … } }` and is run again with the same operation ID to continue.
+The copied setup prompt asks the receiving agent to let you know as soon as
+the request is pending, even before there is a code. Ask the approver to open
+**People** on their project board to reveal it.
 
 **Confirmation code.** When the approver opens the request, their client adds a
 fresh random nonce. Both sides then derive the same eight-digit code from the
