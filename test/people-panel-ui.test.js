@@ -1,7 +1,8 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium, webkit } from 'playwright'
-import { withClientReplicas } from '../support/client-workspace.js'
+import { withClientReplicas, withClientWorkspace } from '../support/client-workspace.js'
+import { fakeTunnel } from '../support/fake-tunnel.js'
 
 // The People panel (#198) and the removed state (#154) on real clients, in Chromium and WebKit. The first human
 // hosts the project; the others are replicas that joined through approved invitations.
@@ -210,3 +211,25 @@ for (const engine of [chromium, webkit]) it(`approves a join and pairs a machine
       await agents.getByText('Stopped on this machine').waitFor({ timeout: 30000 })
     })
   })
+
+for (const engine of [chromium, webkit]) it(`switches sharing of a hosted project on and off in ${engine.name()}`, { timeout: 120000 }, async () => {
+  const tunnel = fakeTunnel()
+  await withClientWorkspace(engine, { clientOptions: { tunnel } }, async ({ page, open, client, project }) => {
+    await open()
+    const panel = await openPanel(page)
+    const sharing = panel.getByRole('region', { name: /^Sharing/ })
+    await sharing.getByRole('heading', { name: 'Sharing Off' }).waitFor()
+    await sharing.getByText('Only this computer can reach “Test board”.', { exact: false }).waitFor()
+    await sharing.getByRole('button', { name: 'Switch sharing on' }).click()
+    await sharing.getByRole('heading', { name: 'Sharing On' }).waitFor()
+    await sharing.getByText('and nothing else on this computer, through a Pardner-managed tailcat route', { exact: false }).waitFor()
+    assert.deepEqual(client.registry.read().share.projects, [project.id])
+    assert.equal(tunnel.log.serves, 1)
+    assert.equal(await sharing.getByRole('button', { name: 'Switch sharing off' }).getAttribute('aria-pressed'), 'true')
+    assert.ok(!(await page.content()).includes(client.registry.read().share.address), 'the route’s address is never on the page')
+    await sharing.getByRole('button', { name: 'Switch sharing off' }).click()
+    await sharing.getByRole('heading', { name: 'Sharing Off' }).waitFor()
+    assert.deepEqual(client.registry.read().share.projects, [])
+    assert.equal(tunnel.log.running.size, 0)
+  })
+})

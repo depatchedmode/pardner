@@ -25,6 +25,7 @@ const HEADINGS = {
   HUB_UNAVAILABLE: 'The project’s hub is unreachable',
   PUBLIC_URL_REQUIRED: 'This invitation would only work on this computer',
   INVITATION_UNREACHABLE: 'This invitation points somewhere this computer can’t reach',
+  TUNNEL_UNAVAILABLE: 'The route between computers couldn’t start',
 }
 // Invitations for a joined project are issued by its hub, so an outage there blocks them.
 export const INVITE_HINTS = {

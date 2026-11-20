@@ -479,7 +479,7 @@ for (const engine of [chromium, webkit]) it(`refuses a loopback-only invitation 
     const refusal = refusing.getByRole('alert')
     await refusal.getByText('This invitation would only work on this computer', { exact: true }).waitFor()
     await refusal.getByText(`would point to ${carol.client.url}, which only this computer can reach`, { exact: false }).waitFor()
-    assert.equal(await refusal.locator('code').textContent(), 'pardner client serve --public-url <https origin>')
+    assert.equal(await refusal.locator('code').first().textContent(), 'pardner client serve --public-url <https origin>')
     assert.equal(await refusing.getByRole('button', { name: 'Copy invite' }).count(), 0)
     assert.equal(Object.keys(carol.client.registry.read().invites).length, 0, 'the refused invitation was never recorded')
     await refusing.getByRole('button', { name: 'Close' }).click()
