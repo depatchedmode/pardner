@@ -289,6 +289,8 @@ restarted. Agent invitations stay available without `--public-url`, for an agent
 on the same computer. An explicit `--public-url` is always honoured, including a
 loopback relay or test gate (see
 [Connectivity and recovery boundaries](#connectivity-and-recovery-boundaries)).
+Switching on [sharing](#sharing-a-project-with-other-computers) for the project
+is the other way to give its invitations a route; the refusal names that too.
 
 During a hub outage the dialog's invitation list says it couldn't load and offers
 **Retry**; it raises no alert until the person acts. Creating an invitation then
@@ -537,6 +539,76 @@ first, `client revoke-invite --project ID --invite INVITE_ID` revokes one, and
 `client profile --project ID --name NAME --email EMAIL` edits this person's
 profile.
 
+## Sharing a project with other computers
+
+This is a prototype of [#251](https://github.com/depatchedmode/pardner/issues/251):
+Pardner runs a [tailcat](https://github.com/tailscale/tailcat) route itself, so
+two computers on unrelated networks need no public address, tunnel account or
+`--public-url`. Both computers need tailcat **v0.7.0** installed (`brew install
+tailcat` on macOS); Pardner refuses any other version, because tailcat promises
+no stable command line or wire format.
+
+**The switch.** Sharing is per project and off by default. The person hosting a
+project switches it in the People panel (**Sharing**) or with:
+
+```sh
+node bin/pardner.js client share --project ID --on    # or --off; neither reports the state
+```
+
+Only a person on the hosting computer can switch it; an agent credential and a
+joined computer are refused. The setting survives a restart.
+
+**What on does.** The hub's client opens a second loopback listener and starts
+`tailcat serve` for that one port. The listener passes only `POST
+/pardner/client/v1/enroll` for invitations to a shared project, and the machine
+routes under `/pardner/client/v1/replica/<shared project>/`, including the sync
+socket. Everything else answers 404 there: the board, the operator and browser
+API, and every project that is not shared, whatever credential is presented. It
+refuses a request that carries an `Origin`, an escaped or repeated path
+separator, or a host other than the advertised one. Joining and syncing are
+authenticated exactly as before, by the invitation and confirmation code and by
+the machine handshake.
+
+**What an invitation carries.** While a project is shared, its invitations name
+`http://127.0.0.1:<port>` as the hub and carry the tailcat address beside the
+signed offer. The joining client starts `tailcat forward` itself, bound to its
+own loopback on that port, before it dials, and keeps it running across restarts.
+Nobody runs tailcat by hand. The setup prompt tells a computer without Pardner
+which commit to check out and to install tailcat. A tailcat address is a bearer
+secret for reaching the shared listener: it is kept in the invitation and the two
+private client registries, and is never shown in the board, a status, a log or an
+error.
+
+**What off does.** The hub removes the project from the route and closes its
+machines' sync sockets; when no project is shared it stops tailcat and closes the
+listener. Joined computers keep saving locally and show the hub as unreachable.
+Switch it on again and they reconnect, normally within about 20 seconds: a
+running `tailcat forward` does not find a restarted server by itself, so each
+joined client checks its end every 8 seconds and replaces a forward nothing
+answers through. During a long outage it checks less often, at worst once a
+minute, so reconnecting can then take up to two minutes.
+
+**Outage.** The route needs each computer's network and, to connect and when no
+direct path exists, Tailscale's public DERP relays, which carry no uptime
+commitment. Without the route a shared project behaves as in any hub outage:
+enrolled computers reopen and save locally, and joining and new deliveries wait.
+An existing `--public-url` route keeps working beside it.
+
+**Not in this prototype.** The route is outside the signed offer, so nothing
+binds an invitation to its route beyond the port the offer names. There is no
+key rotation and no tailcat allow-list by client key: an address-holder reaches
+the shared listener and is stopped there by the invitation secret and the
+machine handshake. The address a hub hands out stays the same until its
+`tailcat/share.private.json` is deleted, which strands the computers that joined
+through it. One sharing port per client is advertised to every project it shares;
+a joining computer on which that port is taken cannot join. A joined computer
+keeps its forward after it leaves or is removed, until its client directory is
+discarded. Direct sync between
+joined computers ([#200](https://github.com/depatchedmode/pardner/issues/200))
+is unchanged: they still sync only through the hub. It has been exercised on one
+computer with two clients over a real tailcat route, not yet between two
+computers on separate networks.
+
 ## Actors and presence
 
 The authenticated session determines the author. Assignment and board filters
@@ -577,8 +649,10 @@ Phone access is not currently offered: the board is served only on this
 computer's loopback. It is planned through the hub over HTTPS.
 
 A reachable private network can provide a direct route to the project authority;
-an HTTPS relay can connect unrelated networks. Automatic discovery, NAT
-traversal and arbitrary peer mesh are not implemented. The protocol retains the
+an HTTPS relay can connect unrelated networks, and so can the managed tailcat
+route of a [shared project](#sharing-a-project-with-other-computers), which does
+its own NAT traversal. Automatic discovery and arbitrary peer mesh are not
+implemented. The protocol retains the
 existing hub/WebSocket synchronization path. See the plan's
 [connectivity decisions](PARDNER-ONBOARDING-PLAN.md#connectivity-outage-and-recovery).
 
