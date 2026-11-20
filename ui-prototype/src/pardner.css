@@ -1,6 +1,15 @@
+@font-face {
+  font-family: 'Monaspace Neon';
+  src: url('./fonts/monaspace-neon-v1.400.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.55;
   color: #e5e5e5;
   background: #0a0a0a;
   --surface: #141414;
@@ -44,6 +53,7 @@
 }
 body {
   margin: 0;
+  font-size: 0.875rem;
 }
 button,
 input,
@@ -704,7 +714,7 @@ code {
 }
 /* Inline commands such as `pardner open`; Markdown code blocks keep their own sizing. */
 :not(pre) > code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: inherit;
   font-size: 0.92em;
 }
 .actions {
@@ -739,6 +749,10 @@ code {
 }
 /* 839 = --panel-width + --panel-reveal-min - 1: below 840px the board beside a
    680px panel would be a sliver under 160px, so the panel takes the full width. */
+@media (761px <= width <= 839px) {
+  nav { gap: 8px; padding-inline: 16px; }
+}
+
 @media (max-width: 839px) {
   .side-panel {
     width: 100%;
@@ -1073,10 +1087,9 @@ code {
   font-size: 14px;
 }
 .menu-anchor { position: relative; }
-.menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
+.menu { position: absolute; top: calc(100% + 6px); left: 0; }
+.menu,
+.invite-menu {
   z-index: 30;
   min-width: 270px;
   max-width: min(360px, calc(100vw - 32px));
@@ -1086,8 +1099,8 @@ code {
   border-radius: 8px;
   box-shadow: 0 14px 36px #000b;
 }
-.menu-end { left: auto; right: 0; }
-.menu button {
+.menu button,
+.invite-menu [role="menuitem"] {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1099,12 +1112,16 @@ code {
   padding: 9px 11px;
 }
 .menu button:hover,
-.menu button:focus-visible { background: #262626; }
+.menu button:focus-visible,
+.invite-menu [role="menuitem"]:is(:hover, :focus-visible) { background: #262626; }
+.invite-menu [role="menuitem"] { cursor: pointer; border-radius: 4px; min-height: 44px; }
+.invite-menu [aria-disabled="true"] { cursor: default; }
+.invite-menu [aria-disabled="true"] .menu-label { color: var(--muted); }
 .menu button:focus-visible { outline-offset: -2px; }
 .menu [aria-checked='true'] { background: var(--accent-wash); }
 .menu [aria-checked='true'] .menu-label { color: var(--accent); }
-.menu-label { font-size: 14px; font-weight: 500; }
-.menu-detail { font-size: 12px; color: var(--muted); }
+.menu-label { font-size: 0.9375rem; font-weight: 650; line-height: 1.4; }
+.menu-detail { font-size: 0.8125rem; color: var(--muted); line-height: 1.45; }
 .menu-separator { height: 1px; background: var(--line); margin: 6px 4px; }
 
 .avatar {
@@ -1214,7 +1231,7 @@ span.avatar-more { border: 1px solid var(--line); color: var(--muted); }
   margin-bottom: 8px;
 }
 .profile-heading > div { flex: 1; min-width: 0; }
-.profile-heading h2 { font-size: 20px; overflow-wrap: anywhere; }
+.profile-heading h2 { font-size: 1.375rem; font-weight: 750; line-height: 1.2; letter-spacing: -0.035em; overflow-wrap: anywhere; text-wrap: balance; }
 .profile-heading .close { align-self: start; }
 .profile-kind { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
 .you-tag { color: var(--muted); font-weight: 400; }
@@ -1272,13 +1289,14 @@ span.avatar-more { border: 1px solid var(--line); color: var(--muted); }
 .invite-ready { display: grid; gap: 4px; }
 .invite-ready .actions { margin: 6px 0 2px; }
 .invite-state { font-size: 13px; color: var(--muted); }
-.invite-ready .invite-state { font-size: 14px; color: inherit; margin: 0; }
+.invite-ready .invite-state { font-size: 0.8125rem; color: var(--muted); margin: 0; }
+.invite-ready .invite-state strong { display: block; font-size: 0.875rem; font-weight: 700; }
 .invite-state[data-state='issued'] strong,
 li .invite-state[data-state='issued'] { color: var(--accent); }
 .invite-state[data-state='expired'],
 .invite-state[data-state='revoked'] { color: var(--warning); }
 .reveal { margin-top: 8px; }
-.reveal textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.reveal textarea { font-family: inherit; font-size: 13px; }
 .warning-text { color: var(--warning); font-size: 13px; margin: 0 0 8px; }
 /* Each invitation: what it was for and its state, then who issued it and what became of it. */
 .invite-list li {

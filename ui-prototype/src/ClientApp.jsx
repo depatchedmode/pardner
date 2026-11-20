@@ -1,3 +1,4 @@
+import { Menu, MenuContent, MenuItem, MenuTrigger } from '@ui-sdk/react/menu'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Workspace } from './Pardner.jsx'
 import { Avatar, AvatarStack, PeopleDialog, ProfileDialog, actorName, avatarLabel } from './Avatar.jsx'
@@ -408,19 +409,27 @@ function ProjectSwitcher({ projects, current, onSelect, onStartOrJoin }) {
 }
 
 function InviteMenu({ memberRole, onChoose }) {
-  const { open, close, buttonProps, menuProps } = useMenu()
-  // Only the owner and admins admit people; a member still pairs their own devices and agents.
-  const unavailable = purpose => purpose === 'human' && memberRole === 'member'
-  return <div className="menu-anchor">
-    <button type="button" className="invite-button" {...buttonProps}>Invite<Chevron /></button>
-    {open && <div className="menu menu-end" {...menuProps} aria-label="Invite">
-      {Object.entries(INVITES).map(([purpose, copy]) => <button type="button" role="menuitem" key={purpose} aria-disabled={unavailable(purpose) || undefined}
-        onClick={event => { if (unavailable(purpose)) { event.preventDefault(); return } close(false); onChoose(purpose, buttonProps.ref.current) }}>
-        <span className="menu-label">{copy.menu}</span>
-        <span className="menu-detail">{unavailable(purpose) ? 'Only the owner or an admin invites people' : copy.detail}</span>
-      </button>)}
-    </div>}
-  </div>
+  const trigger = useRef(null)
+  const choice = useRef(null)
+  // Complete the SDK's dismissal before the native dialog takes focus.
+  const finish = open => {
+    if (open || !choice.current) return
+    const purpose = choice.current
+    choice.current = null
+    onChoose(purpose, trigger.current)
+  }
+  return <Menu onAction={purpose => { choice.current = purpose }} onOpenChangeComplete={finish}>
+    <MenuTrigger type="button" className="invite-button" ref={trigger}>Invite<Chevron /></MenuTrigger>
+    <MenuContent className="invite-menu" aria-label="Invite" align="end" sideOffset={6} collisionPadding={12}>
+      {Object.entries(INVITES).map(([purpose, copy]) => {
+        const disabled = purpose === 'human' && memberRole === 'member'
+        return <MenuItem key={purpose} value={purpose} label={copy.menu} disabled={disabled}>
+          <span className="menu-label">{copy.menu}</span>
+          <span className="menu-detail">{disabled ? 'Owner or admin only' : copy.detail}</span>
+        </MenuItem>
+      })}
+    </MenuContent>
+  </Menu>
 }
 
 function ProjectView({ api, session, project, switcher, onAuthLost, refreshSession }) {

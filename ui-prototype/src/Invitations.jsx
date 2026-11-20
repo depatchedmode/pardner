@@ -24,13 +24,13 @@ export const formatTime = value => {
   const at = timeOf(value)
   return Number.isFinite(at) ? new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null
 }
-export function formatExpiry(value, now) {
+export function formatExpiry(value, now, includeDate = true) {
   const at = timeOf(value)
   if (!Number.isFinite(at)) return 'Expiry not reported'
   const minutes = Math.round((at - now) / 60000)
   if (minutes <= 0) return `Expired ${formatTime(at)}`
   const relative = minutes < 90 ? `${minutes} min` : `${Math.round(minutes / 60)} h`
-  return `Expires in ${relative} · ${formatTime(at)}`
+  return includeDate ? `Expires in ${relative} · ${formatTime(at)}` : `Expires in ${relative}`
 }
 const kindLabel = invite => invite.purpose === 'human' ? `Person${invite.role === 'admin' ? ' · admin' : ''}`
   : invite.purpose === 'device' ? `Machine${invite.for?.name ? ` for ${invite.for.name}` : ''}` : `Agent${invite.for?.name ? ` for ${invite.for.name}` : ''}`
@@ -193,7 +193,8 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
     </> : <section className="invite-ready" aria-label="New invitation">
       <div className="invite-status">
         <p className="invite-state" data-state={createdState}>
-          <strong>{STATE_LABELS[createdState]}</strong>{createdState === 'issued' && ` · ${formatExpiry(created.invite.expiresAt, now)}`}
+          <strong>{createdState === 'issued' ? 'Ready to share' : STATE_LABELS[createdState]}</strong>
+          {createdState === 'issued' && formatExpiry(created.invite.expiresAt, now, false)}
         </p>
         {usable && <button type="button" className="quiet" disabled={busy} aria-label="Revoke this invitation"
           onClick={() => revoke(created.invite.id)}>Revoke</button>}
