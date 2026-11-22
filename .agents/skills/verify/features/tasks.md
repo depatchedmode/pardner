@@ -40,6 +40,8 @@ has focus as soon as the panel opens, before a user enters a comment or issue
 reference. The full-width panel case holds the task read open, checks that the
 covered board is inert, walks both Tab directions, and resizes without losing a
 comment draft. It confirms that Close restores the task card or New task button.
+The task read recovery case drops the initial GET and its first retry, then
+checks that Retry shows loading and eventually opens the same task in place.
 Inspect the resulting UI for presentation changes.
 The board view test in Chromium and WebKit uses Arrow Right, End and Home to
 move between Tasks, Goals and Activity. It verifies selection, focus and which

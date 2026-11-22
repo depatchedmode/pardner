@@ -1217,6 +1217,7 @@ function TaskDetail({
   onClose,
 }) {
   const [context, setContext] = useState(null)
+  const [contextAttempt, setContextAttempt] = useState(0)
   const heading = useRef(null)
   const [editButton, refocusEdit] = useRefocus()
   const [handoffButton, refocusHandoff] = useRefocus()
@@ -1298,13 +1299,31 @@ function TaskDetail({
     return () => {
       stale = true
     }
-  }, [taskId, actor, heads, request])
+  }, [taskId, actor, heads, request, contextAttempt])
+  const panelHeading = (
+    <div className="panel-heading">
+      <h2 tabIndex={fullWidth ? 0 : -1} ref={heading}>
+        {context ? <bdi>{context.task.title}</bdi> : 'Task details'}
+      </h2>
+      <button autoFocus={!context} onClick={onClose}>Close</button>
+    </div>
+  )
+  const readError = failure && (
+    <div className="error" role="alert">
+      <strong>{context ? 'Couldn’t refresh task' : 'Couldn’t open task'}</strong>
+      <p>{failure.message}</p>
+      <button type="button" onClick={() => {
+        heading.current.focus({ preventScroll: true })
+        setFailure(null)
+        setContextAttempt(attempt => attempt + 1)
+      }}>Retry</button>
+    </div>
+  )
   if (!context)
     return (
       <>
-        <button autoFocus onClick={onClose}>Close</button>
-        <p role="status">Opening task…</p>
-        <ErrorNotice error={failure} />
+        {panelHeading}
+        {readError || <p role="status">Opening task…</p>}
         {errorNotice}
       </>
     )
@@ -1337,10 +1356,7 @@ function TaskDetail({
   const noticeFor = slot => formSlot === slot && errorNotice
   return (
     <>
-      <div className="panel-heading">
-        <h2 tabIndex={fullWidth ? 0 : -1} ref={heading}><bdi>{task.title}</bdi></h2>
-        <button onClick={onClose}>Close</button>
-      </div>
+      {panelHeading}
       <div className="task-context">
         <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />
         <p className="muted">
@@ -1358,7 +1374,7 @@ function TaskDetail({
         <AvatarStack actors={here} index={session.index} max={6} size="sm" label="Here now" labelSuffix=", on this task"
           onOpen={session.onOpenProfile} />
       </div>}
-      <ErrorNotice error={failure} />
+      {readError}
       {!FORM_SLOTS.includes(formSlot) && errorNotice}
       {draft && newerFields.length > 0 && (
         <div className="notice draft-notice" role="status">

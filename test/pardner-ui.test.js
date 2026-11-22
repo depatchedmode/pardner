@@ -849,7 +849,7 @@ for (const engine of [chromium, webkit]) it(`moves focus into panels and back to
     const initialFocus = await page.evaluateHandle(() => {
       const state = { headingFocused: false }
       const observer = new MutationObserver(() => {
-        const heading = document.querySelector('[aria-label="Task details"] h2')
+        const heading = document.querySelector('[aria-label="Task details"] .panel-heading h2:has(bdi)')
         if (!heading) return
         state.headingFocused = document.activeElement === heading
         observer.disconnect()
@@ -858,7 +858,7 @@ for (const engine of [chromium, webkit]) it(`moves focus into panels and back to
       return state
     })
     await card.click()
-    await heading.waitFor()
+    await heading.getByText('Keep focus where the work is', { exact: true }).waitFor()
     assert.equal(await initialFocus.evaluate(state => state.headingFocused), true, 'focus is set when Task details mounts')
     await initialFocus.dispose()
     assert.equal(await card.getAttribute('aria-current'), 'true', 'the open card is current')
@@ -986,6 +986,45 @@ for (const engine of [chromium, webkit]) it(`keeps focus in full-width task pane
   })
 })
 
+for (const engine of [chromium, webkit]) it(`retries a failed task read without closing the panel in ${engine.name()}`, { timeout: 60000 }, async () => {
+  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 390, height: 700 } } }, async ({ page, operate, open }) => {
+    await operate('task.create', { title: 'Recover the release checklist', description: 'Verify the sign-off.' })
+    await open()
+    const card = page.getByRole('button', { name: /Recover the release checklist/ })
+    const panel = page.getByRole('dialog', { name: 'Task details' })
+    const alert = panel.getByRole('alert')
+    const retry = alert.getByRole('button', { name: 'Retry', exact: true })
+    let attempts = 0
+    let release
+    const held = new Promise(resolve => { release = resolve })
+    await page.route('**/automerge/task/*/context*', async route => {
+      assert.equal(route.request().method(), 'GET')
+      attempts++
+      if (attempts < 3) return route.abort('failed')
+      await held
+      await route.continue()
+    })
+
+    await card.press('Enter')
+    await alert.getByText('Couldn’t open task', { exact: true }).waitFor()
+    assert.equal(await panel.getByText('Opening task…').count(), 0)
+    await retry.press('Enter')
+    await alert.getByText('Couldn’t open task', { exact: true }).waitFor()
+    assert.equal(attempts, 2, 'a failed retry returns to the error state')
+    try {
+      await retry.press('Enter')
+      await panel.getByRole('status').getByText('Opening task…').waitFor()
+      assert.equal(await alert.count(), 0)
+    } finally {
+      release()
+    }
+    await panel.getByText('Verify the sign-off.', { exact: true }).waitFor()
+    await page.waitForFunction(() => document.activeElement?.textContent === 'Recover the release checklist')
+    assert.equal(attempts, 3)
+    assert.equal(await retry.count(), 0)
+  })
+})
+
 it('describes Activity and task History as plain sentences', { timeout: 120000 }, async () => {
   await withClientWorkspace(chromium, { contextOptions: { viewport: { width: 1440, height: 900 } }, actors: [{ id: 'carol', kind: 'human', displayName: 'Carol Moreno' }, { id: 'builder', kind: 'agent', displayName: 'Builder' }] }, async ({ page, task, operate, open }) => {
     const as = (actor, type, payload) => operate(type, payload, actor)
@@ -1105,7 +1144,7 @@ it('filters, groups and pages the Activity feed', { timeout: 120000 }, async () 
     const row = activity.locator('article button[data-task-id]').first()
     const opener = await row.elementHandle()
     await row.click()
-    await page.locator('.side-panel h2').waitFor()
+    await page.locator('.side-panel .panel-heading h2:has(bdi)').waitFor()
     const before = await articles.count()
     await as('alice', 'comment.add', { taskId, text: 'Arrived while the panel was open' })
     await page.waitForFunction(count => document.querySelectorAll('.activity article').length > count, before)
