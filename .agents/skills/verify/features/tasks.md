@@ -44,6 +44,8 @@ The task read recovery case drops the initial GET and its first retry, then
 checks that Retry shows loading and eventually opens the same task in place.
 The visual control case measures field border contrast, checks persistent
 selection cues in forced colors, and checks the comment field on a touch tablet.
+The long-discussion case opens Write comment at 320px, confirms the field is
+visible and focused, posts once, and checks that the unread stripe mirrors in RTL.
 Inspect the resulting UI for presentation changes.
 The board view test in Chromium and WebKit uses Arrow Right, End and Home to
 move between Tasks, Goals and Activity. It verifies selection, focus and which

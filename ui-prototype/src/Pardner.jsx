@@ -1244,6 +1244,7 @@ function TaskDetail({
     try { client.saveDraft(taskId, draftRef.current) } catch { /* the in-memory draft remains */ }
   }, [client, taskId])
   const [message, setMessage] = useState('')
+  const commentInput = useRef(null)
   const [commentFocused, setCommentFocused] = useState(false)
   const [to, setTo] = useState('')
   const [handoffStatus, setHandoffStatus] = useState('review')
@@ -1640,22 +1641,31 @@ function TaskDetail({
             {actor && newCount > 0 && <span className="comment-new-count"> · {newCount} new</span>}
           </h3>
           {actor && (
-            <button
-              disabled={!canWrite || !newCount}
-              onClick={() =>
-                submit('read.mark', {
-                  taskId,
-                  comments: comments.flatMap((comment) =>
-                    comment.revisionIds.map((revisionId) => ({
-                      commentId: comment.id,
-                      revisionId,
-                    })),
-                  ),
-                })
-              }
-            >
-              Mark all read
-            </button>
+            <div className="actions">
+              {comments.length > 0 && (
+                <button type="button" onClick={() => {
+                  const field = commentInput.current
+                  field.scrollIntoView({ block: 'center', inline: 'nearest' })
+                  field.focus({ preventScroll: true })
+                }}>Write comment</button>
+              )}
+              <button
+                disabled={!canWrite || !newCount}
+                onClick={() =>
+                  submit('read.mark', {
+                    taskId,
+                    comments: comments.flatMap((comment) =>
+                      comment.revisionIds.map((revisionId) => ({
+                        commentId: comment.id,
+                        revisionId,
+                      })),
+                    ),
+                  })
+                }
+              >
+                Mark all read
+              </button>
+            </div>
           )}
         </div>
         {comments.map((comment) => {
@@ -1708,6 +1718,7 @@ function TaskDetail({
           <label>
             Comment
             <textarea
+              ref={commentInput}
               aria-label="Comment"
               required
               value={message}

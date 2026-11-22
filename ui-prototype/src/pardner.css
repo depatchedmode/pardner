@@ -487,8 +487,8 @@ nav select {
   border-bottom: 1px solid var(--line);
 }
 .comment.is-new {
-  border-left: 2px solid var(--accent);
-  padding-left: 10px;
+  border-inline-start: 2px solid var(--accent);
+  padding-inline-start: 10px;
 }
 .comment-head {
   display: flex;

@@ -1068,6 +1068,40 @@ it('keeps editable fields and selection visually distinct', { timeout: 60000 }, 
   })
 })
 
+for (const engine of [chromium, webkit]) it(`jumps to the composer from a long discussion in ${engine.name()}`, { timeout: 60000 }, async () => {
+  await withClientWorkspace(engine, {
+    contextOptions: { viewport: { width: 320, height: 700 } },
+    actors: [{ id: 'reviewer', kind: 'human', displayName: 'Maya Chen' }],
+  }, async ({ page, operate, open, task }) => {
+    const { result: { taskId } } = await operate('task.create', { title: 'Review the release checklist' })
+    for (let index = 1; index <= 12; index++) {
+      await operate('comment.add', { taskId, text: `Review note ${index}. Verify the staging build before handing it to the next reviewer.` }, index === 1 ? 'reviewer' : undefined)
+    }
+    await open()
+    await page.getByRole('button', { name: /Review the release checklist/ }).click()
+    const panel = page.getByRole('dialog', { name: 'Task details' })
+    const shortcut = panel.getByRole('button', { name: 'Write comment', exact: true })
+    const comment = panel.getByRole('textbox', { name: 'Comment', exact: true })
+    await shortcut.scrollIntoViewIfNeeded()
+    assert.ok(await comment.evaluate(element => element.getBoundingClientRect().top > innerHeight))
+    await shortcut.press('Enter')
+    assert.ok(await comment.evaluate(element => element === document.activeElement && element.getBoundingClientRect().bottom <= innerHeight))
+    await comment.fill('The staging build is ready.')
+    await panel.getByRole('button', { name: 'Add comment', exact: true }).press('Enter')
+    await panel.locator('article.comment').getByText('The staging build is ready.', { exact: true }).waitFor()
+    assert.equal((await task(taskId)).comments.filter(item => item.content === 'The staging build is ready.').length, 1)
+
+    const unread = panel.locator('article.comment').filter({ has: page.getByText('New', { exact: true }) })
+    const borders = () => unread.evaluate(element => {
+      const style = getComputedStyle(element)
+      return [parseFloat(style.borderLeftWidth), parseFloat(style.borderRightWidth)]
+    })
+    assert.deepEqual(await borders(), [2, 0])
+    await page.evaluate(() => { document.documentElement.dir = 'rtl' })
+    assert.deepEqual(await borders(), [0, 2])
+  })
+})
+
 it('describes Activity and task History as plain sentences', { timeout: 120000 }, async () => {
   await withClientWorkspace(chromium, { contextOptions: { viewport: { width: 1440, height: 900 } }, actors: [{ id: 'carol', kind: 'human', displayName: 'Carol Moreno' }, { id: 'builder', kind: 'agent', displayName: 'Builder' }] }, async ({ page, task, operate, open }) => {
     const as = (actor, type, payload) => operate(type, payload, actor)
