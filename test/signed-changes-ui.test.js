@@ -121,7 +121,7 @@ for (const engine of [chromium, webkit]) it(`later changes by another member nev
         // The task panel shows the comment as it is now, and says someone other than its author changed it.
         await page.getByRole('combobox', { name: 'Show' }).selectOption('changes')
         await deleted.locator('button[data-task-id]').click()
-        const panel = page.getByRole('complementary', { name: 'Task details' })
+        const panel = page.getByRole('dialog', { name: 'Task details' })
         const comment = panel.locator('article.comment', { hasText: 'Words put in Alice’s mouth' })
         await comment.getByText('Changed by someone other than its author.', { exact: false }).waitFor({ timeout: 30000 })
         assert.equal(await panel.locator('.comment-changed').count(), 1, 'only the changed comment says so')
@@ -179,7 +179,7 @@ for (const engine of [chromium, webkit]) it(`a board holding an Actor that is no
         await notice.getByText('Shown empty: tags of task “Tags soon unreadable”.', { exact: false }).waitFor()
         // The board still shows the task; its panel says what it shows empty, and its edit form opens with no tags.
         await card.click()
-        const panel = page.getByRole('complementary', { name: 'Task details' })
+        const panel = page.getByRole('dialog', { name: 'Task details' })
         await panel.getByText('Shown empty, because what this task holds there can’t be read: tags.').waitFor({ timeout: 30000 })
         await panel.getByRole('button', { name: 'Edit task', exact: true }).click()
         const tags = panel.getByRole('region', { name: 'Edit task' }).getByLabel('Tags, separated by commas')

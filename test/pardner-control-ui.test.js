@@ -13,7 +13,7 @@ async function openAgentSetup(page) {
   await page.getByRole('menuitem', { name: 'Agent setup' }).click()
   return setupDialog(page)
 }
-const taskDetails = page => page.getByRole('complementary', { name: 'Task details' })
+const taskDetails = page => page.getByRole('dialog', { name: 'Task details' })
 async function openAgentRuns(page, title) {
   await page.getByRole('button', { name: new RegExp(title) }).click()
   const panel = taskDetails(page)

@@ -289,7 +289,7 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await page.getByRole('button', { name: 'New task' }).click()
     await page.getByLabel('Title').fill('Draft isolation')
     await page.getByRole('button', { name: 'Create task' }).click()
-    const panel = page.getByRole('complementary', { name: 'Task details' })
+    const panel = page.getByRole('dialog', { name: 'Task details' })
     await panel.getByRole('heading', { name: 'Draft isolation' }).waitFor()
     const card = page.locator('.task-card', { hasText: 'Draft isolation' })
     await card.getByRole('img', { name: 'Alice, human, active, on this task' }).waitFor({ timeout: 20000 })

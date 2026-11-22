@@ -25,7 +25,7 @@ it('resolves a real two-replica task status conflict through the browser', { tim
     const page = await newPage()
     await alice.open(page)
     await page.getByRole('button', { name: /Resolve together/ }).click()
-    const panel = page.getByRole('complementary', { name: 'Task details' })
+    const panel = page.getByRole('dialog', { name: 'Task details' })
     await panel.getByRole('heading', { name: 'Resolve status' }).waitFor()
     const section = panel.locator('section.conflict')
     assert.ok(await section.getByText('Alice', { exact: false }).count() >= 1, 'Alice is named')

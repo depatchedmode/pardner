@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { STATUSES } from '@pardner/domain-vocab'
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@ui-sdk/react/tabs'
+import { Dialog, DialogContent } from '@ui-sdk/react/dialog'
 import ActorMarkdown from './ActorMarkdown.jsx'
 import './pardner.css'
 import { createOperationId } from './operation-id.js'
@@ -42,15 +43,53 @@ const atOrAfter = (event, cutoff) => {
   const b = Date.parse(cutoff.timestamp) || 0
   return a !== b ? a > b : String(event.operationId) >= String(cutoff.operationId)
 }
-// Escape closes a panel unless a dialog owns it or typed text would be lost.
-function escapeKeepsPanel(event) {
-  if (event.defaultPrevented) return true
-  const target = event.target
-  // An open dialog (profile, invite) closes first, not the panel beneath it.
-  if (target?.closest?.('[aria-modal="true"]') || document.querySelector('[aria-modal="true"]:not([hidden])')) return true
+function hasTypedText(target) {
   const typed = target?.tagName === 'TEXTAREA' ||
     (target?.tagName === 'INPUT' && ['', 'text', 'search', 'url', 'email'].includes(target.getAttribute('type') ?? ''))
   return Boolean(typed && target.value.trim() !== '')
+}
+
+// Match the breakpoint where .side-panel fills the viewport.
+const fullWidthPanel = '(max-width: 839px)'
+function useFullWidthPanel() {
+  const [modal, setModal] = useState(() => matchMedia(fullWidthPanel).matches)
+  useEffect(() => {
+    const query = matchMedia(fullWidthPanel)
+    const update = () => setModal(query.matches)
+    query.addEventListener('change', update)
+    update()
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return modal
+}
+function TaskPanel({ label, modal, onClose, children }) {
+  const panel = useRef(null)
+  useLayoutEffect(() => {
+    if (modal && !panel.current.contains(document.activeElement) && !document.activeElement?.closest('[aria-modal="true"]')) {
+      panel.current.focus({ preventScroll: true })
+    }
+  }, [modal])
+  useEffect(() => {
+    if (modal) return
+    // Escape still closes a desktop panel if a disappearing form briefly leaves focus on the page.
+    const escapeFromPage = event => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.target !== document.body) return
+      if (document.querySelector('[aria-modal="true"]:not([hidden])')) return
+      event.preventDefault()
+      onClose()
+    }
+    document.addEventListener('keydown', escapeFromPage, true)
+    return () => document.removeEventListener('keydown', escapeFromPage, true)
+  }, [modal, onClose])
+  return <Dialog defaultOpen modal={modal} closeOnOutsidePress={false} onOpenChange={(open, details) => {
+    if (open) return
+    if (details.reason === 'escape-key' && hasTypedText(details.event?.target)) details.cancel()
+    else onClose()
+  }}>
+    <DialogContent ref={panel} className="side-panel" inline aria-label={label} initialFocus="none" finalFocus="none">
+      {children}
+    </DialogContent>
+  </Dialog>
 }
 // Task details operations whose errors render above that form's submit button.
 const FORM_SLOTS = ['task.update', 'task.handoff', 'comment.add', 'task.link-issue', 'task.unlink-issue']
@@ -122,7 +161,7 @@ function useRefocus() {
       const active = document.activeElement
       // Only recover lost focus: never take it back from a control the user
       // has moved to while the request was running.
-      if (active && active !== document.body) {
+      if (active && active !== document.body && !active.matches('.side-panel')) {
         wanted.current = false
         return
       }
@@ -224,7 +263,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
   // The project grants control to people on this computer.
   const canControl = Boolean(session.canControl)
   sessionRef.current = session
-  // Task panels open below the client header so people, Invite and the project stay reachable.
+  // Desktop task panels open below the client header so project controls stay reachable.
   const headerRef = useRef(null)
   const [headerHeight, setHeaderHeight] = useState(0)
   useEffect(() => {
@@ -242,6 +281,8 @@ export function Workspace({ config, reloadConfiguration, session }) {
   const actor = config.actorId
   const [selected, setSelected] = useState(() => client.preferences().selected || null)
   const [creating, setCreating] = useState(false)
+  const fullWidth = useFullWidthPanel()
+  const modalPanel = fullWidth && Boolean(selected || creating)
   // In-memory New task draft ({ fields, tags }); null means the defaults. Never persisted.
   const [newTaskDraft, setNewTaskDraft] = useState(null)
   const [view, setView] = useState(() => {
@@ -570,8 +611,8 @@ export function Workspace({ config, reloadConfiguration, session }) {
   // Closing a panel clears its message but never the pending request; the page notice then offers Retry.
   const closeCreate = () => { setCreating(false); setError(null) }
   const closeDetails = () => { setSelected(null); setError(null) }
-  return (
-    <Tabs className="app" data-client value={view} onValueChange={setView} style={{ '--client-header-height': `${headerHeight}px` }}>
+  const boardContent = (
+    <div className="board-content" inert={modalPanel}>
       <header ref={headerRef} className="client-header">
         {session.header}
         <div className="header-controls">
@@ -767,45 +808,54 @@ export function Workspace({ config, reloadConfiguration, session }) {
           )}
         </TabsPanel>
       </main>
+    </div>
+  )
+  return (
+    <Tabs className="app" data-client value={view} onValueChange={setView} style={{ '--client-header-height': `${headerHeight}px` }}>
+      {boardContent}
       {creating && (
-        <TaskForm
-          actors={actors}
-          actor={actor}
-          busy={busy}
-          pending={Boolean(pending)}
-          draft={newTaskDraft}
-          onDraftChange={setNewTaskDraft}
-          notice={errorSlot === 'create' && errorNotice}
-          onClose={closeCreate}
-          onSubmit={async (fields) => {
-            return submit('task.create', fields)
-          }}
-        />
+        <TaskPanel label="New task" modal={fullWidth} onClose={closeCreate}>
+          <TaskForm
+            actors={actors}
+            actor={actor}
+            busy={busy}
+            pending={Boolean(pending)}
+            draft={newTaskDraft}
+            onDraftChange={setNewTaskDraft}
+            notice={errorSlot === 'create' && errorNotice}
+            onClose={closeCreate}
+            onSubmit={async (fields) => {
+              return submit('task.create', fields)
+            }}
+          />
+        </TaskPanel>
       )}
       {canControl && session.agentSetupOrigin && <AgentSetupDialog request={request} actors={actors} tasks={doc.tasks} actor={actor}
         returnFocus={session.agentSetupOrigin} onClose={session.closeAgentSetup} />}
       {selected && (
-        <TaskDetail
-          key={`${selected}:${actor}`}
-          taskId={selected}
-          actors={actors}
-          lookups={lookups}
-          actor={actor}
-          heads={doc.heads.join(',')}
-          request={request}
-          confirmedOperation={confirmedOperation}
-          submit={submit}
-          busy={busy}
-          status={status}
-          connected={connected}
-          session={session}
-          client={client}
-          errorSlot={errorSlot}
-          errorNotice={errorNotice}
-          clearError={() => setError(null)}
-          claimHeadingFocus={claimHeadingFocus}
-          onClose={closeDetails}
-        />
+        <TaskPanel key={`${selected}:${actor}`} label="Task details" modal={fullWidth} onClose={closeDetails}>
+          <TaskDetail
+            taskId={selected}
+            actors={actors}
+            lookups={lookups}
+            actor={actor}
+            heads={doc.heads.join(',')}
+            request={request}
+            confirmedOperation={confirmedOperation}
+            submit={submit}
+            busy={busy}
+            status={status}
+            connected={connected}
+            session={session}
+            client={client}
+            errorSlot={errorSlot}
+            errorNotice={errorNotice}
+            clearError={() => setError(null)}
+            claimHeadingFocus={claimHeadingFocus}
+            fullWidth={fullWidth}
+            onClose={closeDetails}
+          />
+        </TaskPanel>
       )}
     </Tabs>
   )
@@ -980,22 +1030,12 @@ function TaskForm({
   const locked = controlled && (busy || pending)
   const [titleBlank, setTitleBlank] = useState(false)
   const noActor = !editing && !actors[actor]
-  useEffect(() => {
-    if (editing) return undefined
-    const key = (event) => {
-      if (event.key !== 'Escape' || escapeKeepsPanel(event)) return
-      onClose()
-    }
-    document.addEventListener('keydown', key)
-    return () => document.removeEventListener('keydown', key)
-  }, [editing, onClose])
   // A failed submit returns focus to its button once it re-enables; the error is announced, not focused.
   const [submitButton, refocusSubmit] = useRefocus()
+  const Container = editing ? 'section' : Fragment
+  const containerProps = editing ? { className: 'editor', 'aria-label': 'Edit task' } : {}
   return (
-    <section
-      className={editing ? 'editor' : 'side-panel'}
-      aria-label={editing ? 'Edit task' : 'New task'}
-    >
+    <Container {...containerProps}>
       {!editing && (
         <div className="panel-heading">
           <h2>New task</h2>
@@ -1116,7 +1156,7 @@ function TaskForm({
           )}
         </div>
       </form>
-    </section>
+    </Container>
   )
 }
 /** Links to existing GitHub issues. Pardner stores the reference only; GitHub status never moves the task. */
@@ -1173,6 +1213,7 @@ function TaskDetail({
   errorNotice,
   clearError,
   claimHeadingFocus,
+  fullWidth,
   onClose,
 }) {
   const [context, setContext] = useState(null)
@@ -1258,22 +1299,14 @@ function TaskDetail({
       stale = true
     }
   }, [taskId, actor, heads, request])
-  useEffect(() => {
-    const key = (event) => {
-      if (event.key !== 'Escape' || escapeKeepsPanel(event)) return
-      onClose()
-    }
-    document.addEventListener('keydown', key)
-    return () => document.removeEventListener('keydown', key)
-  }, [onClose])
   if (!context)
     return (
-      <aside className="side-panel">
-        <button onClick={onClose}>Close</button>
+      <>
+        <button autoFocus onClick={onClose}>Close</button>
         <p role="status">Opening task…</p>
         <ErrorNotice error={failure} />
         {errorNotice}
-      </aside>
+      </>
     )
   const { task, comments, history, conflicts, revisions } = context
   // History is the task's Activity entries, each derived from the change that wrote it, newest first.
@@ -1303,9 +1336,9 @@ function TaskDetail({
     : errorSlot
   const noticeFor = slot => formSlot === slot && errorNotice
   return (
-    <aside className="side-panel" aria-label="Task details">
+    <>
       <div className="panel-heading">
-        <h2 tabIndex={-1} ref={heading}><bdi>{task.title}</bdi></h2>
+        <h2 tabIndex={fullWidth ? 0 : -1} ref={heading}><bdi>{task.title}</bdi></h2>
         <button onClick={onClose}>Close</button>
       </div>
       <div className="task-context">
@@ -1704,6 +1737,6 @@ function TaskDetail({
           />
         ))}
       </section>
-    </aside>
+    </>
   )
 }

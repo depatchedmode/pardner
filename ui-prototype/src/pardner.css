@@ -349,6 +349,9 @@ nav select {
   padding: 26px;
   z-index: 5;
 }
+.board-content {
+  display: contents;
+}
 .panel-heading {
   align-items: start;
   justify-content: space-between;
@@ -643,17 +646,17 @@ nav select {
   color: var(--warning);
   border-color: var(--warning-line);
 }
-.app > .error,
-.app > .notice {
+.board-content > .error,
+.board-content > .notice {
   padding: 15px 28px;
   border-width: 0 0 1px;
   border-radius: 0;
 }
-.app > .error {
+.board-content > .error {
   max-height: 30vh;
   overflow: auto;
 }
-.app > .error p {
+.board-content > .error p {
   max-width: 75ch;
 }
 /* Pulled up against its input: the form gap would otherwise separate them. */
@@ -851,15 +854,15 @@ code, pre {
     display: flex;
     flex-direction: column;
   }
-  .app > * {
+  .board-content > * {
     flex-shrink: 0;
   }
-  .app > main {
+  .board-content > main {
     flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
   }
-  .app > main:has(> .board-panel:not([hidden])) {
+  .board-content > main:has(> .board-panel:not([hidden])) {
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -936,11 +939,6 @@ code, pre {
     padding-block: 11px;
     margin-block: -11px;
   }
-  /* body too: WebKit scrolls body when only the root element is locked. */
-  html:has(.side-panel),
-  html:has(.side-panel) body {
-    overflow: hidden;
-  }
   button, input, select {
     min-height: 44px;
   }
@@ -1000,8 +998,8 @@ code, pre {
   .panel-heading h2 {
     font-size: var(--text-heading);
   }
-  .app > .error,
-  .app > .notice {
+  .board-content > .error,
+  .board-content > .notice {
     padding: 14px 16px;
   }
 }
@@ -1525,7 +1523,7 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
   .switcher { font-size: var(--text-section); padding-inline: 8px 6px; }
   .avatar, .avatar-more { min-height: 0; }
 }
-@media (min-width: 761px) {
+@media (min-width: 840px) {
   .app[data-client] .side-panel {
     inset-block-start: var(--client-header-height, 0px);
     border-top: 1px solid var(--line);

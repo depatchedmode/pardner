@@ -37,7 +37,10 @@ lost-response case checks identical operation attempts and exactly one comment
 through CLI readback. Its stale-write case checks a preserved draft and an
 unchanged newer task value. The focus case checks that the Task details heading
 has focus as soon as the panel opens, before a user enters a comment or issue
-reference. Inspect the resulting UI for presentation changes.
+reference. The full-width panel case holds the task read open, checks that the
+covered board is inert, walks both Tab directions, and resizes without losing a
+comment draft. It confirms that Close restores the task card or New task button.
+Inspect the resulting UI for presentation changes.
 The board view test in Chromium and WebKit uses Arrow Right, End and Home to
 move between Tasks, Goals and Activity. It verifies selection, focus and which
 content and filters are available.
