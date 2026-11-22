@@ -101,7 +101,7 @@ describe('goal and vein conflicts in the Goals view', () => {
       const { page } = harness
       const { veinId, goalIds } = await seed(harness)
       await disagree(harness, 'veins', veinId, 'status', [['proven'], ['dead-end']], 'vein')
-      await page.getByRole('button', { name: 'Goals', exact: true }).click()
+      await page.getByRole('tab', { name: 'Goals', exact: true }).click()
       const row = page.locator(`li[data-vein-id="${veinId}"]`)
       const pill = row.locator('.record-status')
       await pill.waitFor()
@@ -135,7 +135,7 @@ describe('goal and vein conflicts in the Goals view', () => {
       const { page } = harness
       const { goalIds: [goalId] } = await seed(harness)
       await disagree(harness, 'goals', goalId, 'status', [['achieved'], ['abandoned']], 'goal')
-      await page.getByRole('button', { name: 'Goals', exact: true }).click()
+      await page.getByRole('tab', { name: 'Goals', exact: true }).click()
       const article = page.locator(`.goal[data-goal-id="${goalId}"]`)
       const pill = article.locator('.goal-heading .record-status')
       await pill.waitFor()
@@ -159,7 +159,7 @@ describe('goal and vein conflicts in the Goals view', () => {
       await disagree(harness, 'veins', veinId, 'goalId', [[goalA], [goalB]], 'vein')
       const current = (await harness.alice.doc()).veins[veinId]
       assert.deepEqual([...current.goalIds].sort(), [goalA, goalB].sort())
-      await page.getByRole('button', { name: 'Goals', exact: true }).click()
+      await page.getByRole('tab', { name: 'Goals', exact: true }).click()
       const underA = page.locator(`.goal[data-goal-id="${goalA}"] li[data-vein-id="${veinId}"]`)
       const underB = page.locator(`.goal[data-goal-id="${goalB}"] li[data-vein-id="${veinId}"]`)
       await underA.waitFor()
@@ -184,7 +184,7 @@ describe('goal and vein conflicts in the Goals view', () => {
       const { page, alice, bob } = harness
       const { veinId } = await seed(harness)
       await disagree(harness, 'veins', veinId, 'status', [['proven'], ['dead-end']], 'vein')
-      await page.getByRole('button', { name: 'Goals', exact: true }).click()
+      await page.getByRole('tab', { name: 'Goals', exact: true }).click()
       const row = page.locator(`li[data-vein-id="${veinId}"]`)
       const details = row.locator('details.record-conflict')
       await details.locator('summary').click()

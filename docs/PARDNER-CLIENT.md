@@ -259,7 +259,7 @@ Start Pardner with a fresh `--data` directory.
 The project's hub is the client that created it. It is the enrollment point: it
 keeps invitations and join requests in its registry and records every admission.
 
-The board's **Invite** menu offers:
+Open **People** on the board, then choose **Invite**. The menu offers:
 
 - **Human:** another person joins with their own identity, their local client and
   setup agent. Only the owner or an admin can create one. The owner chooses the
@@ -552,7 +552,7 @@ tailcat` on macOS); Pardner refuses any other version, because tailcat promises
 no stable command line or wire format.
 
 **The switch.** Sharing is per project and off by default. The person hosting a
-project switches it on the board (**Sharing**) or with:
+project opens **Project status** in the board header for the Sharing switch, or uses:
 
 ```sh
 node bin/pardner.js client share --project ID --on    # or --off; with neither flag it reports the state
@@ -596,8 +596,9 @@ direct path exists, Tailscale's public DERP relays, which carry no uptime
 commitment. Without the route a shared project behaves as in any hub outage:
 enrolled computers reopen and save locally, and joining and new deliveries wait.
 An existing `--public-url` route keeps working beside it. On a joined computer,
-**People** shows that Pardner retries automatically. If the route stays down,
-ask the person hosting the project to check **Sharing** on their board.
+**Project status** shows the connection to the host and when the board last synced.
+Pardner retries automatically. If the route stays down, ask the person hosting
+the project to check Sharing under **Project status** on their board.
 
 **Not in this prototype.** The route is outside the signed offer, so nothing
 binds an invitation to its route beyond the port the offer names. There is no
@@ -628,7 +629,9 @@ author without `--actor`. A file holding only the token works with an explicit
 `--server PROJECT_API_BASE`. The [API contract](PARDNER-ONBOARDING-CONTRACT.md#browserserver-contract)
 documents operation, session, report and end routes.
 
-An avatar shows identity, human/agent kind and active, idle or offline presence.
+Hover over a board avatar to preview its name, kind and presence. Selecting a
+board avatar opens **People**, where each member’s expanded row links to their
+profile and their agents’ profiles.
 Active means connected and reporting activity; idle means connected without
 current activity; offline means no live session observed. Focus markers come
 from explicit reports. Profiles show Git details, the human relationship,

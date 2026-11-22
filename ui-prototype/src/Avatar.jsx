@@ -1,4 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { DialogClose, DialogTitle } from '@ui-sdk/react/dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@ui-sdk/react/tooltip'
+import { BoardDialog } from './BoardDialog.jsx'
 import { harnessLabel, managerLabel } from './client-api.js'
 import { PRESENCE_LABELS, presenceOf } from './presence.js'
 
@@ -35,9 +37,9 @@ export function avatarLabel(actor, state, extra = '') {
   return `${actorName(actor)}, ${kind}, ${PRESENCE_LABELS[state].toLowerCase()}${extra}`
 }
 
-export function Avatar({ actor, state = 'offline', size = 'md', onOpen, labelSuffix = '' }) {
+export function Avatar({ actor, state = 'offline', size = 'md', onOpen, labelSuffix = '', openLabel = 'Open profile', preview = false, you = false }) {
   const kind = actor?.kind === 'agent' ? 'agent' : 'human'
-  const label = avatarLabel(actor, state, labelSuffix)
+  const label = avatarLabel(actor, state, `${you ? ', you' : ''}${labelSuffix}`)
   const content = <>
     <span className="avatar-initials" aria-hidden="true">{initials(actorName(actor))}</span>
     {kind === 'agent' && <BotGlyph />}
@@ -45,38 +47,36 @@ export function Avatar({ actor, state = 'offline', size = 'md', onOpen, labelSuf
   </>
   const props = {
     className: `avatar avatar-${size}`, 'data-kind': kind, 'data-presence': state,
-    style: { '--avatar-hue': hue(actor?.id ?? '') }, title: label,
+    style: { '--avatar-hue': hue(actor?.id ?? '') }, title: preview ? undefined : label,
   }
   if (!onOpen) return <span {...props} role="img" aria-label={label}>{content}</span>
-  return <button type="button" {...props} aria-label={`${label}. Open profile`} onClick={event => onOpen(actor, event.currentTarget)}>
+  const Trigger = preview ? TooltipTrigger : 'button'
+  const button = <Trigger type="button" {...props} aria-label={`${label}. ${openLabel}`} onClick={event => onOpen(actor, event.currentTarget)}>
     {content}
-  </button>
+  </Trigger>
+  if (!preview) return button
+  return <Tooltip delay={300}>
+    {button}
+    <TooltipContent className="avatar-preview" side="bottom" sideOffset={8} collisionPadding={12}>
+      <strong><bdi>{actorName(actor)}</bdi>{you && <span className="you-tag"> (you)</span>}</strong>
+      <div className="muted small">{kind === 'agent' ? 'Agent' : 'Human'} · <span className="presence-text" data-presence={state}>{PRESENCE_LABELS[state]}</span></div>
+    </TooltipContent>
+  </Tooltip>
 }
 
 /** Up to `max` avatars, then a "+N" control that opens the full list. */
-export function AvatarStack({ actors, index, max = 5, size = 'md', onOpen, onMore, labelSuffix = '', label }) {
+export function AvatarStack({ actors, index, max = 5, size = 'md', onOpen, onMore, labelSuffix = '', label, openLabel, preview, currentActorId }) {
   const shown = actors.slice(0, max)
   const hidden = actors.length - shown.length
   return <div className={`avatar-stack avatar-stack-${size}`} role="group" aria-label={label}>
     {shown.map(actor => <Avatar key={actor.id} actor={actor} state={presenceOf(index, actor.id)} size={size}
-      onOpen={onOpen} labelSuffix={labelSuffix} />)}
+      onOpen={onOpen} labelSuffix={labelSuffix} openLabel={openLabel} preview={preview} you={actor.id === currentActorId} />)}
     {hidden > 0 && (onMore
       ? <button type="button" className={`avatar-more avatar-${size}`} onClick={event => onMore(event.currentTarget)}
-        aria-label={`${hidden} more ${hidden === 1 ? 'Actor' : 'Actors'}${labelSuffix}. Show everyone`}>+{hidden}</button>
+        aria-label={`${hidden} more ${hidden === 1 ? 'Actor' : 'Actors'}${labelSuffix}. ${openLabel ?? 'Show everyone'}`}>+{hidden}</button>
       : <span className={`avatar-more avatar-${size}`} role="img"
         aria-label={`${hidden} more ${hidden === 1 ? 'Actor' : 'Actors'}${labelSuffix}`}>+{hidden}</span>)}
   </div>
-}
-
-function useModal(onClose, returnFocus) {
-  const dialog = useRef(null)
-  useEffect(() => {
-    const element = dialog.current
-    if (!element.open) element.showModal()
-    return () => { if (returnFocus?.isConnected) returnFocus.focus() }
-  }, [returnFocus])
-  return { ref: dialog, onCancel: event => { event.preventDefault(); onClose() },
-    onClick: event => { if (event.target === dialog.current) onClose() } }
 }
 
 const value = text => text ? text : <span className="not-reported">{NOT_REPORTED}</span>
@@ -88,25 +88,24 @@ function relativeAge(ms) {
 }
 
 export function ProfileDialog({ actor, actors, entry, tasks, currentActorId, returnFocus, onClose, onOpenTask }) {
-  const modal = useModal(onClose, returnFocus)
   const state = entry?.state ?? 'offline'
   const human = actor.kind === 'agent' && actor.humanId
     ? actors.find(candidate => candidate.kind === 'human' && candidate.humanId === actor.humanId) : null
   const devices = Array.isArray(actor.devices) ? actor.devices.filter(device => device?.name || device?.id) : []
   const sessions = entry?.sessions ?? []
   const titleId = `profile-${actor.id}`
-  return <dialog className="profile-dialog" aria-labelledby={titleId} {...modal}>
+  return <BoardDialog className="profile-dialog" returnFocus={returnFocus} onClose={onClose} closeOnOutsidePress>
     <div className="profile-heading">
       <Avatar actor={actor} state={state} size="lg" />
       <div>
-        <h2 id={titleId}>{actorName(actor)}{actor.id === currentActorId && <span className="you-tag"> (you)</span>}</h2>
+        <DialogTitle><bdi>{actorName(actor)}</bdi>{actor.id === currentActorId && <span className="you-tag"> (you)</span>}</DialogTitle>
         <p className="profile-kind">
           {actor.kind === 'agent' ? `Agent${human ? ` · ${actorName(human)}’s agent` : ''}` : 'Human'}
           {' · '}{actor.removed ? <span className="tag removed-tag">Removed from the project</span>
             : <span className="presence-text" data-presence={state}>{PRESENCE_LABELS[state]}</span>}
         </p>
       </div>
-      <button type="button" className="close" onClick={onClose}>Close</button>
+      <DialogClose className="close">Close</DialogClose>
     </div>
     <section aria-labelledby={`${titleId}-identity`}>
       <h3 id={`${titleId}-identity`}>Identity</h3>
@@ -154,27 +153,5 @@ export function ProfileDialog({ actor, actors, entry, tasks, currentActorId, ret
         })}
       </ul>
     </section>
-  </dialog>
-}
-
-export function PeopleDialog({ actors, index, returnFocus, onClose, onOpen, onManage }) {
-  const modal = useModal(onClose, returnFocus)
-  return <dialog className="profile-dialog" aria-labelledby="people-title" {...modal}>
-    <div className="profile-heading">
-      <div><h2 id="people-title">People in this project</h2></div>
-      <button type="button" className="close" onClick={onClose}>Close</button>
-    </div>
-    <ul className="people-list">
-      {actors.map(actor => {
-        const state = presenceOf(index, actor.id)
-        return <li key={actor.id}>
-          <Avatar actor={actor} state={state} />
-          <button type="button" className="link-button" onClick={event => onOpen(actor, event.currentTarget)}>{actorName(actor)}</button>
-          <span className="muted">{actor.kind === 'agent' ? 'Agent' : 'Human'}</span>
-          <span className="presence-text" data-presence={state}>{PRESENCE_LABELS[state]}</span>
-        </li>
-      })}
-    </ul>
-    {onManage && <p className="manage-people"><button type="button" className="link-button" onClick={onManage}>Machines, roles and removed people</button></p>}
-  </dialog>
+  </BoardDialog>
 }

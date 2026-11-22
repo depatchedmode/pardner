@@ -1,14 +1,44 @@
+import { DialogClose, DialogTitle } from '@ui-sdk/react/dialog'
+import { Menu, MenuContent, MenuItem, MenuTrigger } from '@ui-sdk/react/menu'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { BoardDialog } from './BoardDialog.jsx'
+import Chevron from './Chevron.jsx'
 import { Failure, INVITE_HINTS, failureText, withCode } from './Failure.jsx'
 import { createOperationId } from './operation-id.js'
 
-export const INVITES = {
+const INVITES = {
   human: { menu: 'Human', detail: 'A person and their agent', title: 'Invite a person',
     body: 'They join with their own identity.' },
   agent: { menu: 'Agent', detail: 'Another agent of yours', title: 'Connect another of your agents',
     body: 'Connect an agent you run in another app.' },
   device: { menu: 'My device', detail: 'Another computer you use', title: 'Pair one of your machines',
     body: 'Link another computer to your identity.' },
+}
+
+export function InviteMenu({ canInvitePeople, container, onChoose }) {
+  const trigger = useRef(null)
+  const choice = useRef(null)
+  // Wait for the menu to dismiss before the invitation dialog takes focus.
+  const finish = open => {
+    if (open || !choice.current) return
+    const purpose = choice.current
+    choice.current = null
+    onChoose(purpose, trigger.current)
+  }
+  return <Menu onAction={purpose => { choice.current = purpose }} onOpenChangeComplete={finish}>
+    <MenuTrigger type="button" className="invite-button people-invite" ref={trigger}>
+      Invite <Chevron />
+    </MenuTrigger>
+    <MenuContent className="board-menu" aria-label="Invite" container={container} align="end" sideOffset={6} collisionPadding={12}>
+      {Object.entries(INVITES).map(([purpose, copy]) => {
+        const disabled = purpose === 'human' && !canInvitePeople
+        return <MenuItem key={purpose} value={purpose} label={copy.menu} disabled={disabled}>
+          <span className="menu-label">{copy.menu}</span>
+          <span className="menu-detail">{disabled ? 'Owner or admin only' : copy.detail}</span>
+        </MenuItem>
+      })}
+    </MenuContent>
+  </Menu>
 }
 
 const STATE_LABELS = { issued: 'Waiting to be used', redeemed: 'Used', revoked: 'Revoked', expired: 'Expired' }
@@ -103,7 +133,6 @@ export function InvitationHistory({ api, projectId, excludeId = null, refresh = 
  * for, when it is not the viewer; `again` is a removed person this Human invitation is meant for.
  */
 export function InviteDialog({ api, project, purpose, person = null, again = null, returnFocus, onClose }) {
-  const dialog = useRef(null)
   const operationId = useRef(createOperationId())
   // The owner may offer the admin role; an admin offers only the member role.
   const [role, setRole] = useState(again?.role === 'admin' && project.memberRole === 'owner' ? 'admin' : 'member')
@@ -122,10 +151,9 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
     : again ? `${again.name} was removed, so they join again as a new person, from a fresh client directory on their computer. Their earlier work stays under their old entry. You approve their request after comparing a confirmation code.`
       : copy.body
   useEffect(() => {
-    dialog.current.showModal()
     const tick = setInterval(() => setNow(Date.now()), 30000)
-    return () => { clearInterval(tick); if (returnFocus?.isConnected) returnFocus.focus() }
-  }, [returnFocus])
+    return () => clearInterval(tick)
+  }, [])
   const create = async () => {
     setBusy(true); setFailure(null)
     try {
@@ -167,14 +195,13 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
   const usable = createdState === 'issued' && Boolean(shareText)
   let createLabel = busy ? 'Creating…' : 'Create invitation'
   if (needsSharing) createLabel = busy ? 'Switching sharing on…' : 'Switch sharing on and create invitation'
-  return <dialog ref={dialog} className="invite-dialog" aria-labelledby="invite-title"
-    onCancel={event => { event.preventDefault(); onClose() }}>
+  return <BoardDialog className="invite-dialog" returnFocus={returnFocus} onClose={onClose}>
     <div className="profile-heading">
       <div>
-        <h2 id="invite-title">{title}</h2>
+        <DialogTitle>{title}</DialogTitle>
         <p className="muted">{project.name}</p>
       </div>
-      <button type="button" className="close" onClick={onClose}>Close</button>
+      <DialogClose className="close">Close</DialogClose>
     </div>
     {!created && !needsSharing && <p className="invite-context">{body}</p>}
     {purpose === 'human' && project.memberRole === 'owner' && !created && <label className="role-choice">Role
@@ -232,5 +259,5 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
           emptyText={created ? 'No other invitations.' : 'None yet.'} onFailure={setFailure} hints={hints} actionFailure={failure} />
       </section>
     </details>
-  </dialog>
+  </BoardDialog>
 }

@@ -1,6 +1,10 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { Failure } from './Failure.jsx'
 
+export function canQueueFollowUp(route, taskId, actor) {
+  return route.allowedTaskIds.includes(taskId) && route.allowedFromActorIds.includes(actor)
+}
+
 function useActionError(action) {
   const [error, setError] = useState(null)
   const noticeRef = useRef(null)

@@ -21,7 +21,7 @@ for (const engine of [chromium, webkit]) it(`names who made each change, lists m
       await eventually(async () => (await alice.doc()).tasks[result.taskId], 'the change never reached Alice')
       const page = await newPage()
       await alice.open(page)
-      await page.getByRole('button', { name: 'Activity', exact: true }).click()
+      await page.getByRole('tab', { name: 'Activity', exact: true }).click()
       const written = row(page, 'Written on Bob’s machine')
       await written.locator('.event-signer').getByText('Signed by Bob · Bob’s laptop').waitFor({ timeout: 30000 })
       assert.equal(await written.locator('.event-signer').getAttribute('data-tone'), 'signed')
@@ -53,7 +53,7 @@ for (const engine of [chromium, webkit]) it(`names who made each change, lists m
         assert.equal(await row(page, 'Written on Bob’s machine').count(), 0, 'only changes that need review are listed')
         // Applied, not hidden: the task is on Alice's board and, through her hub, on Bob's.
         await eventually(async () => (await bob.doc()).activity.find(entry => entry.key === unsigned.operationId)?.changes[0]?.state === 'unattributed', 'Bob never learned it is unattributed')
-        await page.getByRole('button', { name: 'Tasks', exact: true }).click()
+        await page.getByRole('tab', { name: 'Tasks', exact: true }).click()
         await page.locator('.task-card').filter({ hasText: 'Never signed' }).waitFor()
       } finally { await unsigned.repo.shutdown() }
 
@@ -63,7 +63,7 @@ for (const engine of [chromium, webkit]) it(`names who made each change, lists m
       const altered = await alterEntry({ key: bob.client.registry.machineKey, projectId: project.id, nativeUrl, boardUrl, operationId: entry.operationId,
         edit: event => { event.payload.text = new A.ImmutableString('Bob’s words') } })
       try {
-        await page.getByRole('button', { name: 'Activity', exact: true }).click()
+        await page.getByRole('tab', { name: 'Activity', exact: true }).click()
         await page.getByRole('combobox', { name: 'Show' }).selectOption('changes')
         // Shown as Alice signed it, with the alteration and the machine that made it.
         const signed = row(page, 'Alice’s own words')
@@ -102,7 +102,7 @@ for (const engine of [chromium, webkit]) it(`later changes by another member nev
         await eventually(async () => (await alice.doc()).attribution.deletions?.[doomed.commentId], 'the deletion never reached Alice')
         const page = await newPage()
         await alice.open(page)
-        await page.getByRole('button', { name: 'Activity', exact: true }).click()
+        await page.getByRole('tab', { name: 'Activity', exact: true }).click()
         // The deleted comment's entry keeps Alice's words and her signed time, and says it was deleted later, by a
         // change that needs review, naming that change's signer, never as Alice's own deletion.
         const deleted = row(page, 'Alice’s deleted words')
@@ -147,7 +147,7 @@ for (const engine of [chromium, webkit]) it(`a board part a member's change rewr
         await page.getByText('Part of this board can’t be read, so what it holds isn’t shown: goals.', { exact: false }).waitFor({ timeout: 30000 })
         await page.locator('.task-card').filter({ hasText: 'Still on the board' }).waitFor()
         // The change is listed for review under its own signer.
-        await page.getByRole('button', { name: 'Activity', exact: true }).click()
+        await page.getByRole('tab', { name: 'Activity', exact: true }).click()
         await page.getByRole('combobox', { name: 'Show' }).selectOption('review')
         await page.locator('article.event .event-signer').getByText('Signed by Bob · Bob’s laptop').first().waitFor({ timeout: 30000 })
         const doc = await alice.doc()

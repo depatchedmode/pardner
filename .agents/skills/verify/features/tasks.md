@@ -38,6 +38,12 @@ through CLI readback. Its stale-write case checks a preserved draft and an
 unchanged newer task value. The focus case checks that the Task details heading
 has focus as soon as the panel opens, before a user enters a comment or issue
 reference. Inspect the resulting UI for presentation changes.
+The board view test in Chromium and WebKit uses Arrow Right, End and Home to
+move between Tasks, Goals and Activity. It verifies selection, focus and which
+content and filters are available.
+The Markdown fixture checks the shared reading scale, nested list spacing,
+checklist alignment and reading order. Task instructions precede issue
+management in the Task details panel.
 
 ## Gotchas
 

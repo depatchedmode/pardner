@@ -1,32 +1,31 @@
-import { ActionButton, ActionForm } from './ControlAction.jsx'
+import { ActionButton, ActionForm, canQueueFollowUp } from './ControlAction.jsx'
 import { useState } from 'react'
 import { CANCELLABLE_EXECUTION_STATES } from '@pardner/domain-vocab'
 import { createOperationId } from './operation-id.js'
 
-function CloudContext({ context, cloud, actor, act, busy, canManage }) {
+function CloudContext({ context, executions, actor, taskId, act, busy }) {
   const [text, setText] = useState('')
-  const [taskId, setTaskId] = useState(context.allowedTaskIds[0] ?? '')
   const [capture, setCapture] = useState({ commit: '', diff: '', tests: '' })
   const [review, setReview] = useState('')
   const [verdictKind, setVerdictKind] = useState('human')
   const [verdictEvidence, setVerdictEvidence] = useState('')
+  const setup = taskId === undefined
   const authority = { actorId: context.actorId, taskId, fromActorId: actor }
   return <article className="control-session" aria-label={`Cloud context ${context.contextId}`}>
     <h3>Cursor Cloud · {context.contextId}</h3>
-    <p>{context.repository} · {context.startingRef}</p>
+    {setup && <p>{context.repository} · {context.startingRef}</p>}
     <p>Agent: <code>{context.agentId}</code> · {context.identity?.status ?? 'Not created'} · {context.stale ? 'Stale / not observed' : 'Fresh read'}</p>
-    <p className="muted">Cloud location · no local working directory. Observed: {context.observedAt ? new Date(context.observedAt).toISOString() : 'never'}</p>
+    {setup && <p className="muted">Cloud location · no local working directory. Observed: {context.observedAt ? new Date(context.observedAt).toISOString() : 'never'}</p>}
     {context.blocker && <p className="notice">{context.blocker}</p>}
     {context.health && <p role="status">{context.health}</p>}
-    <ActionForm onSubmit={async () => {
+    {!setup && canQueueFollowUp(context, taskId, actor) && <ActionForm onSubmit={async () => {
       await act('/pardner/control/cloud/executions', { executionId: createOperationId(), contextId: context.contextId, ...authority, text })
       setText('')
     }}>
-      <label>Cloud task<select value={taskId} onChange={event => setTaskId(event.target.value)}>{context.allowedTaskIds.map(id => <option key={id}>{id}</option>)}</select></label>
       <label>Cloud follow-up<textarea required value={text} onChange={event => setText(event.target.value)} /></label>
       <button disabled={busy || !actor}>Save Cloud intent</button>
-    </ActionForm>
-    {cloud.executions.filter(row => row.contextId === context.contextId).map(row => <section key={row.executionId} aria-label={`Cloud execution ${row.executionId}`}>
+    </ActionForm>}
+    {executions.map(row => <section key={row.executionId} aria-label={`Cloud execution ${row.executionId}`}>
       <h4>{row.executionId} · {row.state}</h4>
       <p>Run: <code>{row.runId ?? 'Acceptance not established'}</code> · submissions: {row.submissions} · execution outcome: {row.outcome ?? 'pending'}</p>
       {row.reason && <p>{row.reason}</p>}
@@ -43,28 +42,32 @@ function CloudContext({ context, cloud, actor, act, busy, canManage }) {
         <button disabled={busy || !actor} value="rejected">Reject Cloud result</button>
       </ActionForm>}
 
-      {row.evidence ? <p>Immutable evidence: <code>{row.evidence.sha256}</code>. Independent check and human acceptance remain separate.</p> : row.state === 'terminal' && row.runId && canManage && <ActionForm onSubmit={() => act('/pardner/control/cloud/executions/freeze', { ...capture, ...authority, taskId: row.intent.taskId, executionId: row.executionId })}>
+      {row.evidence ? <p>Immutable evidence: <code>{row.evidence.sha256}</code>. Independent check and human acceptance remain separate.</p> : row.state === 'terminal' && row.runId && <ActionForm onSubmit={() => act('/pardner/control/cloud/executions/freeze', { ...capture, ...authority, taskId: row.intent.taskId, executionId: row.executionId })}>
         <label>Full commit hash<input required value={capture.commit} onChange={event => setCapture({ ...capture, commit: event.target.value })} /></label>
         <label>Diff evidence<textarea value={capture.diff} onChange={event => setCapture({ ...capture, diff: event.target.value })} /></label>
         <label>Test command and results<textarea required value={capture.tests} onChange={event => setCapture({ ...capture, tests: event.target.value })} /></label>
         <button disabled={busy || !actor}>Freeze attempt evidence</button>
       </ActionForm>}
     </section>)}
-    {context.hold && canManage && <ActionForm onSubmit={() => act('/pardner/control/cloud/contexts/release', { contextId: context.contextId, evidence: review })}>
+    {context.hold && setup && <ActionForm onSubmit={() => act('/pardner/control/cloud/contexts/release', { contextId: context.contextId, evidence: review })}>
       <label>Cloud hold review<input required value={review} onChange={event => setReview(event.target.value)} /></label>
       <button disabled={busy}>Release reviewed Cloud hold</button>
     </ActionForm>}
   </article>
 }
 
-export default function CloudControl({ cloud, actor, act, busy, canManage }) {
+export default function CloudControl({ cloud, actor, taskId, act, busy }) {
   const [mapping, setMapping] = useState({ contextId: '', projectId: '', actorId: '', repository: '', startingRef: '', allowedTaskIds: '', allowedFromActorIds: '' })
   if (!cloud) return null
+  const setup = taskId === undefined
+  const runs = setup ? [] : cloud.executions.filter(row => row.intent.taskId === taskId)
+  const contexts = setup ? cloud.contexts : cloud.contexts.filter(context => canQueueFollowUp(context, taskId, actor)
+    || runs.some(row => row.contextId === context.contextId))
+  if (!setup && !contexts.length) return null
   return <section aria-label="Cursor Cloud">
-    <h2>Cursor Cloud</h2>
+    <h3>Cursor Cloud</h3>
     <p>{cloud.dispatchEnabled ? 'Dispatch enabled' : 'Live dispatch disabled'} · {cloud.configured ? 'Transport configured' : 'Access not configured'} · Live qualification pending.</p>
-    <p className="muted">Intent and evidence are saved on this service. Cancellation holds the queue and does not undo changes.</p>
-    {canManage && <details><summary>Register Cloud context</summary>
+    {setup && <details><summary>Register Cloud context</summary>
       <p>Use a registered project and agent Actor with explicit task and sender IDs. This reserves a new Cloud agent identity; it does not adopt an existing chat.</p>
       <ActionForm onSubmit={() => act('/pardner/control/cloud/contexts', { ...mapping,
           allowedTaskIds: mapping.allowedTaskIds.split(',').map(id => id.trim()).filter(Boolean),
@@ -74,6 +77,7 @@ export default function CloudControl({ cloud, actor, act, busy, canManage }) {
         <button disabled={busy}>Register Cloud context</button>
       </ActionForm>
     </details>}
-    {cloud.contexts.map(context => <CloudContext key={context.contextId} {...{ context, cloud, actor, act, busy, canManage }} />)}
+    {contexts.map(context => <CloudContext key={context.contextId} executions={runs.filter(row => row.contextId === context.contextId)}
+      {...{ context, actor, taskId, act, busy }} />)}
   </section>
 }

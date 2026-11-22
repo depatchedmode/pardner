@@ -14,9 +14,9 @@ now has a separate [Cloud adapter](PARDNER-CURSOR-CLOUD.md) with live dispatch d
 
 On the computer running your Pardner client, run `pardner open` (or
 `control open` for the [pinned control runtime](PARDNER-CONTROL-RUNTIME.md)), then
-choose **Control**. You act as yourself; there is no Actor to choose. Control is
-offered only to people on this computer's loopback page; agent credentials and
-other devices are refused.
+open the project menu and choose **Agent setup**. You act as yourself. The
+setup and task run controls require a person signed in on this computer’s
+loopback page.
 
 1. **Pair T3.** Run `t3 auth pairing create`, then enter the T3 address and code.
    Pardner pairs one `approval-required` credential and keeps it in
@@ -24,8 +24,11 @@ other devices are refused.
 2. **Register a project** with an ID, a name and an optional GitHub repository.
 3. **Map a T3 thread** to one agent Actor, with explicit task IDs and sender Actors.
    Only top-level `approval-required` threads are accepted.
-4. **Queue a follow-up** from the thread. It is saved in Pardner first and sent only
-   when T3 shows the thread idle and nothing is held.
+4. Open the authorized task and expand **Agent runs**. Queue a follow-up from
+   the mapped thread shown there. Pardner saves it first and sends it when T3
+   shows the thread idle and nothing is held. Run output, cancellation, and
+   verdicts are available here. Use **Agent setup** to release a thread or
+   Cloud context hold.
 
 In a task, **Link GitHub issue** takes `owner/repo#number`. The CLI equivalents are
 `pardner issue link TASK owner/repo#77` and `pardner issue unlink TASK owner/repo#77 --revisions JSON`.

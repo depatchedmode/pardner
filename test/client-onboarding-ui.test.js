@@ -180,6 +180,20 @@ it('indexes presence snapshots, treats absent Actors as offline, and deduplicate
 })
 
 // Both engines exercise the real local client service.
+const peopleDialog = page => page.getByRole('dialog', { name: 'People', exact: true })
+async function openPeople(page) {
+  await page.getByRole('button', { name: /^People(?:,|$)/ }).click()
+  return peopleDialog(page)
+}
+
+async function openPerson(people, name) {
+  const row = people.locator('.member-list > li').filter({
+    has: people.page().locator('.member-name').filter({ hasText: new RegExp(`^${RegExp.escape(name)}(?: \\(you\\))?$`) }),
+  })
+  await row.locator('summary').click()
+  return row
+}
+
 const serviceModule = new URL('../lib/client-service.js', import.meta.url)
 
 async function gitProfile(name) {
@@ -209,6 +223,13 @@ async function person(t, startClient, name, agent, { route = true, tunnel } = {}
     return result
   }
   return { client, call, directory, open: async () => (await call('/open', {})).url }
+}
+
+async function admitPerson(t, startClient, approver, projectId, name, agent) {
+  const guest = await person(t, startClient, name, agent)
+  await guest.call('/identity', { name, email: `${name.toLowerCase()}@example.test`, operationId: 'identity' })
+  const { invitation } = await approver(`/projects/${projectId}/invites`, { purpose: 'human', operationId: `invite-${name}` })
+  await joinApproved({ join: body => guest.call('/join', body), approver, invitation, operationId: 'join' })
 }
 
 async function eventually(read, message, timeout = 20000) {
@@ -250,14 +271,14 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await switcher.waitFor()
     assert.equal(await page.evaluate(async () => (await document.fonts.load('14px "Monaspace Neon"'))
       .some(face => face.status === 'loaded')), true, 'Monaspace loads from the local UI build')
-    await page.getByRole('button', { name: /^You: Alice, human, (idle|active)\. Open your profile$/ }).waitFor()
+    await page.getByRole('button', { name: /^Alice, human, (idle|active), you\. Open People$/ }).waitFor()
     // The owner of a new project, on one machine, is told to pair a second one; the suggestion can be put off.
     const pairing = page.getByRole('status', { name: 'Pair a second machine' })
     await pairing.getByText('If you lose every machine you own, nobody can remove or demote an admin any more', { exact: false }).waitFor({ timeout: 30000 })
     await pairing.getByRole('button', { name: 'Not now' }).click()
     await pairing.waitFor({ state: 'detached' })
     // A registered setup agent is not evidence of activity.
-    await page.getByRole('button', { name: 'Alpha, agent, offline. Open profile' }).waitFor()
+    await page.getByRole('button', { name: 'Alpha, agent, offline. Open People' }).waitFor()
     assert.equal(await page.getByRole('combobox', { name: 'Actor', exact: true }).count(), 0, 'there is no author picker')
 
     // The used link is replay-safe: this browser stays signed in.
@@ -274,7 +295,10 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await card.getByRole('img', { name: 'Alice, human, active, on this task' }).waitFor({ timeout: 20000 })
 
     // Invitation text stays out of the DOM until revealed; Copy uses the real invitation.
-    const inviteTrigger = page.getByRole('button', { name: 'Invite', exact: true })
+    assert.equal(await page.getByRole('button', { name: 'Invite', exact: true }).count(), 0, 'invitations start inside People')
+    assert.equal(await page.getByRole('button', { name: /^You:/ }).count(), 0, 'your avatar replaces the separate profile button')
+    const invitingPeople = await openPeople(page)
+    const inviteTrigger = invitingPeople.getByRole('button', { name: 'Invite', exact: true })
     const inviteMenu = page.getByRole('menu', { name: 'Invite', exact: true })
     await inviteTrigger.press('ArrowDown')
     const humanItem = inviteMenu.getByRole('menuitem', { name: /^Human/ })
@@ -311,6 +335,7 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     assert.equal((await page.content()).includes(invitation), false)
     await dialog.getByRole('button', { name: 'Close' }).click()
     await eventually(() => inviteTrigger.evaluate(element => element === document.activeElement), 'Closing the invitation must restore focus to Invite')
+    await invitingPeople.getByRole('button', { name: 'Close', exact: true }).click()
 
     // Bob joins with his own identity from his own client.
     const bobContext = await browser.newContext({ viewport: { width: 1280, height: 720 } })
@@ -337,8 +362,9 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await requests.getByText('Approved the request from Bob.', { exact: true }).waitFor({ timeout: 30000 })
     await requests.getByRole('button', { name: 'Close' }).click()
     await bobPage.getByRole('button', { name: 'Project: Shared board. Switch project' }).waitFor({ timeout: 30000 })
-    await bobPage.getByRole('button', { name: /^You: Bob, human/ }).waitFor()
-    const bobInvite = bobPage.getByRole('button', { name: 'Invite', exact: true })
+    await bobPage.getByRole('button', { name: /^Bob, human, .*, you\. Open People$/ }).waitFor()
+    const bobPeople = await openPeople(bobPage)
+    const bobInvite = bobPeople.getByRole('button', { name: 'Invite', exact: true })
     await bobInvite.press('ArrowDown')
     const bobInviteMenu = bobPage.getByRole('menu', { name: 'Invite', exact: true })
     const unavailable = bobInviteMenu.getByRole('menuitem', { name: /^Human/ })
@@ -348,14 +374,22 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     assert.equal(await bobPage.getByRole('dialog', { name: 'Invite a person' }).count(), 0)
     await bobPage.keyboard.press('Escape')
     await bobInviteMenu.waitFor({ state: 'hidden' })
-    const bobAvatar = page.getByRole('button', { name: /^Bob, human, (idle|active)\. Open profile$/ })
+    await bobPeople.getByRole('button', { name: 'Close', exact: true }).click()
+    const bobAvatar = page.getByRole('button', { name: /^Bob, human, (idle|active)\. Open People$/ })
     await bobAvatar.waitFor({ timeout: 30000 })
+    await bobAvatar.hover()
+    const preview = page.getByRole('tooltip').filter({ hasText: 'Bob' })
+    await preview.getByText('Human', { exact: false }).waitFor()
     await bobAvatar.click()
+    const bobRoster = peopleDialog(page)
+    const bobRow = await openPerson(bobRoster, 'Bob')
+    await bobRow.getByRole('button', { name: 'View profile' }).click()
     const profile = page.getByRole('dialog', { name: 'Bob' })
     await profile.getByText('bob@example.test').waitFor()
     await profile.getByText('Bob’s laptop').first().waitFor()
     await profile.getByText(/Browser$/).first().waitFor()
     await page.keyboard.press('Escape')
+    await bobRoster.getByRole('button', { name: 'Close', exact: true }).click()
     await bobAvatar.waitFor()
     assert.equal(await bobAvatar.evaluate(element => element === document.activeElement), true, 'closing returns focus')
 
@@ -405,14 +439,18 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await renamedCard.getByRole('img', { name: 'Alpha, agent, active, on this task' }).waitFor({ timeout: 20000 })
     await panel.getByRole('button', { name: 'Alpha, agent, active, on this task. Open profile' }).waitFor()
     await page.getByRole('group', { name: 'People in this project' })
-      .getByRole('button', { name: 'Alpha, agent, active. Open profile' }).click()
+      .getByRole('button', { name: 'Alpha, agent, active. Open People' }).click()
+    const alphaRoster = peopleDialog(page)
+    const alphaRow = await openPerson(alphaRoster, 'Alice')
+    await alphaRow.getByRole('button', { name: 'Alpha', exact: true }).click()
     const alphaProfile = page.getByRole('dialog', { name: 'Alpha' })
     await alphaProfile.getByText('claude-opus-5-5').waitFor()
     await alphaProfile.getByText('Claude Code').first().waitFor()
     await alphaProfile.getByText('T3').waitFor()
     await alphaProfile.getByRole('button', { name: 'Close' }).click()
+    await alphaRoster.getByRole('button', { name: 'Close' }).click()
     await alice.call(`/projects/${project.id}/sessions/${started.sessionId}/end`, {}, agent.token)
-    await page.getByRole('button', { name: 'Alpha, agent, offline. Open profile' }).waitFor({ timeout: 20000 })
+    await page.getByRole('button', { name: 'Alpha, agent, offline. Open People' }).waitFor({ timeout: 20000 })
 
     // Project switching keeps each project's draft and selection separate.
     await panel.getByRole('button', { name: 'Edit task' }).click()
@@ -471,7 +509,7 @@ for (const engine of [chromium, webkit]) it(`links a second device from the iden
     await waiting.getByTestId('join-code').getByText(request.code, { exact: true }).waitFor({ timeout: 30000 })
     await alice.call(`/projects/${project.id}/join-requests/${pending.id}/approve`, { code: request.code })
     await page.getByRole('button', { name: 'Project: Linked board. Switch project' }).waitFor({ timeout: 30000 })
-    await page.getByRole('button', { name: /^You: Alice, human/ }).waitFor()
+    await page.getByRole('button', { name: /^Alice, human, .*, you\. Open People$/ }).waitFor()
     assert.equal(desktop.client.registry.read().identity.id, alice.client.registry.read().identity.id, 'the device adopts the sponsor identity')
     assert.equal(alice.client.registry.read().invites[device.invite.id].state, 'redeemed')
     assert.deepEqual(errors, [])
@@ -494,19 +532,29 @@ for (const engine of [chromium, webkit]) it(`explains recovery on a joined compu
     t.after(() => browser.close())
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
     await page.goto(await guest.open())
-    const route = page.getByRole('region', { name: 'Route to the hub' })
-    await route.locator('summary').click()
+    const trigger = page.getByRole('button', { name: /Saved locally.*synced/i })
+    const details = page.getByRole('dialog', { name: 'Project status' })
+    const route = details.getByRole('region', { name: 'Connection to host' })
+    await trigger.click()
     await route.getByRole('status').getByText(/Connected through Pardner/).waitFor({ timeout: 30000 })
+    const hostPage = await browser.newPage()
+    await hostPage.goto(await host.open())
+    await hostPage.getByRole('button', { name: /Sharing on/i }).click()
+    await hostPage.getByRole('dialog', { name: 'Project status' }).getByText('1 connected computer', { exact: true }).waitFor()
+    await hostPage.close()
     await host.call(sharing, { on: false })
     await route.getByRole('status').getByText(/Saved work stays here. Pardner retries automatically./).waitFor({ timeout: 30000 })
     await route.getByText(/ask the host to check Sharing/).waitFor()
     assert.equal(await route.getByRole('button').count(), 0)
+    await page.keyboard.press('Escape')
+    await details.waitFor({ state: 'hidden' })
     await page.getByRole('button', { name: /^People/ }).click()
     const people = page.getByRole('dialog', { name: 'People', exact: true })
     await people.getByText(/Showing the last member list/).waitFor()
     assert.equal(await people.getByRole('heading', { name: 'Waiting to join' }).count(), 0,
       'a known hub outage does not repeat the same error in an empty request section')
     await people.getByRole('button', { name: 'Close', exact: true }).click()
+    await page.getByRole('button', { name: /Saved locally.*waiting for hub/i }).click()
     await host.call(sharing, { on: true })
     await route.getByRole('status').getByText(/Connected through Pardner/).waitFor({ timeout: 45000 })
   })
@@ -524,7 +572,7 @@ for (const engine of [chromium, webkit]) it(`recovers a loopback-only invitation
     }
     const openInvite = async (page, projectName, { item = /^Human/, title = 'Invite a person' } = {}) => {
       await page.getByRole('button', { name: `Project: ${projectName}. Switch project` }).waitFor({ timeout: 30000 })
-      await page.getByRole('button', { name: 'Invite' }).click()
+      await (await openPeople(page)).getByRole('button', { name: 'Invite', exact: true }).click()
       await page.getByRole('menuitem', { name: item }).click()
       return page.getByRole('dialog', { name: title })
     }
@@ -551,6 +599,7 @@ for (const engine of [chromium, webkit]) it(`recovers a loopback-only invitation
     assert.equal(created.offer.role, 'admin')
     assert.equal(carol.client.registry.read().share.projects.length, 1)
     await refusing.getByRole('button', { name: 'Close' }).click()
+    await peopleDialog(carolPage).getByRole('button', { name: 'Close', exact: true }).click()
 
     // An invitation whose only route is another computer's loopback address names it instead of advising a retry.
     const { port } = await sameComputerRoute()
@@ -688,7 +737,7 @@ it('explains sign-in, the Git prefill, invitation follow-up and People focus in 
   const projectId = (await call('/session')).projects[0].id
 
   // The new invitation is not repeated in history; after revoking it, another is one click away.
-  await page.getByRole('button', { name: 'Invite' }).click()
+  await (await openPeople(page)).getByRole('button', { name: 'Invite', exact: true }).click()
   await page.getByRole('menuitem', { name: /^Human/ }).click()
   const dialog = page.getByRole('dialog', { name: 'Invite a person' })
   await dialog.getByRole('button', { name: 'Create invitation' }).click()
@@ -715,23 +764,24 @@ it('explains sign-in, the Git prefill, invitation follow-up and People focus in 
   assert.equal(await dialog.locator('.invite-list li').count(), 1)
   await dialog.getByRole('button', { name: 'Close' }).click()
 
-  // People → Profile → Close returns to the list, and closing the list returns focus to "+N".
-  await addFixturePeople(client, projectId, [
-    { name: 'Omar', agent: { harnessId: 'cursor', name: 'Cursor (ci)' } },
-    { name: 'Priya', agent: { harnessId: 'openai-codex', name: 'Quill' } },
-  ])
-  const more = page.getByRole('button', { name: /more Actors?\. Show everyone$/ })
+  await peopleDialog(page).getByRole('button', { name: 'Close', exact: true }).click()
+
+  // Closing a profile returns to People, and closing People returns focus to +N.
+  await admitPerson(t, startClient, call, projectId, 'Omar', { harnessId: 'cursor', name: 'Cursor (ci)' })
+  await admitPerson(t, startClient, call, projectId, 'Priya', { harnessId: 'openai-codex', name: 'Quill' })
+  const more = page.getByRole('button', { name: /more Actors?\. Open People$/ })
   await more.waitFor({ timeout: 30000 })
   await more.click()
-  const people = page.getByRole('dialog', { name: 'People in this project' })
-  await people.getByRole('button', { name: 'Omar', exact: true }).click()
+  const people = peopleDialog(page)
+  const omarRow = await openPerson(people, 'Omar')
+  await omarRow.getByRole('button', { name: 'View profile' }).click()
   const profile = page.getByRole('dialog', { name: 'Omar' })
   await profile.waitFor()
   await page.keyboard.press('Escape')
   await people.waitFor()
   assert.equal(await profile.count(), 0)
   await people.getByRole('button', { name: 'Close' }).click()
-  await page.waitForFunction(() => /Show everyone$/.test(document.activeElement?.getAttribute('aria-label') ?? ''))
+  await page.waitForFunction(() => /Open People$/.test(document.activeElement?.getAttribute('aria-label') ?? ''))
   assert.deepEqual(errors, [])
 })
 
@@ -740,7 +790,7 @@ it('shows letter initials and keeps an owner’s Git details off agent profiles 
   const alice = await person(t, startClient, 'Alice', { harnessId: 'anthropic-claude-code', name: 'Alpha' })
   await alice.call('/identity', { name: 'Alice', email: 'alice@example.test', operationId: 'identity' })
   const { project } = await alice.call('/projects', { name: 'Initials board', operationId: 'create' })
-  await addFixturePeople(alice.client, project.id, [{ name: 'Omar', agent: { harnessId: 'cursor', name: 'Cursor (ci)' } }])
+  await admitPerson(t, startClient, alice.call, project.id, 'Omar', { harnessId: 'cursor', name: 'Cursor (ci)' })
   const browser = await chromium.launch({ headless: true })
   t.after(() => browser.close())
   const errors = []
@@ -753,6 +803,9 @@ it('shows letter initials and keeps an owner’s Git details off agent profiles 
   assert.equal(await cursor.locator('.avatar-initials').textContent(), 'CC', 'punctuation is not an initial')
 
   await cursor.click()
+  const roster = peopleDialog(page)
+  const row = await openPerson(roster, 'Omar')
+  await row.getByRole('button', { name: 'Cursor (ci)', exact: true }).click()
   const agentProfile = page.getByRole('dialog', { name: 'Cursor (ci)' })
   await agentProfile.getByText('Works for').waitFor()
   await agentProfile.locator('dd', { hasText: /^Omar$/ }).waitFor()
@@ -762,7 +815,7 @@ it('shows letter initials and keeps an owner’s Git details off agent profiles 
   assert.equal(await agentProfile.getByText('omar@example.test').count(), 0, 'the owner’s email is not shown as the agent’s')
   await page.keyboard.press('Escape')
 
-  await stack.getByRole('button', { name: /^Omar, human, / }).click()
+  await row.getByRole('button', { name: 'View profile' }).click()
   const humanProfile = page.getByRole('dialog', { name: 'Omar' })
   await humanProfile.locator('dt', { hasText: /^Email$/ }).waitFor()
   await humanProfile.getByText('omar@example.test').waitFor()

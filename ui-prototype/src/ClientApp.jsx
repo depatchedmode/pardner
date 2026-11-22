@@ -1,16 +1,15 @@
-import { Menu, MenuContent, MenuItem, MenuTrigger } from '@ui-sdk/react/menu'
+import { Menu, MenuContent, MenuItem, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger } from '@ui-sdk/react/menu'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Workspace } from './Pardner.jsx'
-import { Avatar, AvatarStack, PeopleDialog, ProfileDialog, actorName, avatarLabel } from './Avatar.jsx'
+import { AvatarStack, ProfileDialog } from './Avatar.jsx'
+import Chevron from './Chevron.jsx'
 import {
   consumeCapturedGrant, createClientApi, harnessLabel, invitationPreview, projectConfiguration, syncLabel, takeBootstrapGrant,
 } from './client-api.js'
 import { Failure } from './Failure.jsx'
-import { INVITES, InviteDialog } from './Invitations.jsx'
 import { createOperationId } from './operation-id.js'
-import { BoardSharing } from './BoardSharing.jsx'
 import { PeoplePanel } from './PeoplePanel.jsx'
-import { createPresenceReporter, focusByTask, presenceIndex, presenceOf, sortParticipants } from './presence.js'
+import { createPresenceReporter, focusByTask, presenceIndex, sortParticipants } from './presence.js'
 
 const LAST_PROJECT = 'pardner:client:last-project'
 const PENDING_CREATE = 'pardner:client:pending-create'
@@ -347,87 +346,41 @@ function Welcome({ api, session, current, onBack, onReady }) {
   </main>
 }
 
-function useMenu() {
-  const [open, setOpen] = useState(false)
-  const button = useRef(null)
-  const menu = useRef(null)
-  const items = () => [...(menu.current?.querySelectorAll('[role^="menuitem"]') ?? [])]
-  useEffect(() => {
-    if (!open) return
-    const current = items().find(item => item.getAttribute('aria-checked') === 'true') ?? items()[0]
-    current?.focus()
-    const outside = event => { if (!menu.current?.contains(event.target) && !button.current?.contains(event.target)) setOpen(false) }
-    document.addEventListener('pointerdown', outside)
-    return () => document.removeEventListener('pointerdown', outside)
-  }, [open])
-  const close = (refocus = true) => { setOpen(false); if (refocus) button.current?.focus() }
-  const onKeyDown = event => {
-    const list = items(), at = list.indexOf(document.activeElement)
-    if (event.key === 'Escape') { event.preventDefault(); close() }
-    else if (event.key === 'Tab') close(false)
-    else if (event.key === 'ArrowDown') { event.preventDefault(); list[(at + 1) % list.length]?.focus() }
-    else if (event.key === 'ArrowUp') { event.preventDefault(); list[(at - 1 + list.length) % list.length]?.focus() }
-    else if (event.key === 'Home') { event.preventDefault(); list[0]?.focus() }
-    else if (event.key === 'End') { event.preventDefault(); list.at(-1)?.focus() }
-  }
-  const buttonProps = {
-    ref: button, 'aria-haspopup': 'menu', 'aria-expanded': open, onClick: () => setOpen(value => !value),
-    onKeyDown: event => { if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true) } },
-  }
-  return { open, close, buttonProps, menuProps: { ref: menu, role: 'menu', onKeyDown } }
-}
-
-function Chevron() {
-  return <svg className="chevron" viewBox="0 0 12 8" aria-hidden="true" focusable="false"><path d="m1 1.5 5 5 5-5" /></svg>
-}
-
 function hasPendingRequest(project) {
   try { return sessionStorage.getItem(`pardner:${project.id}:${project.actorId}:pending`) !== null } catch { return false }
 }
 
-function ProjectSwitcher({ projects, current, onSelect, onStartOrJoin }) {
-  const { open, close, buttonProps, menuProps } = useMenu()
-  return <div className="menu-anchor">
-    <h1 className="project-title">
-      <button type="button" className="switcher" {...buttonProps} aria-label={`Project: ${current.name}. Switch project`}>
-        <span>{current.name}</span><Chevron />
-      </button>
-    </h1>
-    {open && <div className="menu" {...menuProps} aria-label="Projects">
-      {projects.map(project => <button type="button" key={project.id} role="menuitemradio"
-        aria-checked={project.id === current.id} onClick={() => { close(); if (project.id !== current.id) onSelect(project.id) }}>
-        <span className="menu-label">{project.name}</span>
-        <span className="menu-detail">{project.removed ? (project.removal?.left ? 'You left · no longer syncs' : 'Removed · no longer syncs')
-          : `${syncLabel(project.status)}${hasPendingRequest(project) ? ' · unconfirmed change' : ''}`}</span>
-      </button>)}
-      <div className="menu-separator" role="separator" />
-      <button type="button" role="menuitem" onClick={() => { close(false); onStartOrJoin() }}>
-        <span className="menu-label">Start or join a project…</span>
-      </button>
-    </div>}
-  </div>
-}
-
-function InviteMenu({ memberRole, onChoose }) {
+function ProjectSwitcher({ projects, current, onSelect, onStartOrJoin, onAgentSetup }) {
   const trigger = useRef(null)
-  const choice = useRef(null)
-  // Complete the SDK's dismissal before the native dialog takes focus.
-  const finish = open => {
-    if (open || !choice.current) return
-    const purpose = choice.current
-    choice.current = null
-    onChoose(purpose, trigger.current)
-  }
-  return <Menu onAction={purpose => { choice.current = purpose }} onOpenChangeComplete={finish}>
-    <MenuTrigger type="button" className="invite-button" ref={trigger}>Invite<Chevron /></MenuTrigger>
-    <MenuContent className="invite-menu" aria-label="Invite" align="end" sideOffset={6} collisionPadding={12}>
-      {Object.entries(INVITES).map(([purpose, copy]) => {
-        const disabled = purpose === 'human' && memberRole === 'member'
-        return <MenuItem key={purpose} value={purpose} label={copy.menu} disabled={disabled}>
-          <span className="menu-label">{copy.menu}</span>
-          <span className="menu-detail">{disabled ? 'Owner or admin only' : copy.detail}</span>
-        </MenuItem>
-      })}
+  const afterClose = useRef(null)
+  const ordered = [projects.find(project => project.id === current.id) ?? current,
+    ...projects.filter(project => project.id !== current.id)]
+  return <Menu modal={false} onOpenChangeComplete={open => {
+    if (open) return
+    const action = afterClose.current
+    afterClose.current = null
+    action?.()
+  }}>
+    <h1 className="project-title">
+      <MenuTrigger ref={trigger} className="switcher" aria-label={`Project: ${current.name}. Switch project`}>
+        <span dir="auto">{current.name}</span><Chevron />
+      </MenuTrigger>
+    </h1>
+    <MenuContent className="project-menu board-menu" aria-label="Projects" align="start" sideOffset={6} collisionPadding={12}>
+      <MenuRadioGroup value={current.id} onValueChange={id => { afterClose.current = () => onSelect(id) }}>
+        {ordered.map(project => <MenuRadioItem key={project.id} value={project.id} label={project.name} closeOnSelect>
+          <span className="menu-label"><bdi>{project.name}</bdi></span>
+          <span className="menu-detail">{project.removed ? (project.removal?.left ? 'You left · no longer syncs' : 'Removed · no longer syncs')
+            : `${syncLabel(project.status)}${hasPendingRequest(project) ? ' · unconfirmed change' : ''}`}</span>
+        </MenuRadioItem>)}
+      </MenuRadioGroup>
+      <MenuSeparator className="menu-separator" />
+      {onAgentSetup && <MenuItem value="agent-setup" onSelect={() => { afterClose.current = () => onAgentSetup(trigger.current) }}>
+        <span className="menu-label">Agent setup</span>
+      </MenuItem>}
+      <MenuItem value="start-or-join" onSelect={() => { afterClose.current = onStartOrJoin }}>
+        <span className="menu-label">Start or join a project…</span>
+      </MenuItem>
     </MenuContent>
   </Menu>
 }
@@ -436,7 +389,9 @@ function ProjectView({ api, session, project, switcher, onAuthLost, refreshSessi
   const [details, setDetails] = useState(null)
   const [presence, setPresence] = useState(null)
   const [failure, setFailure] = useState(null)
-  const [dialog, setDialog] = useState(null)
+  const [peopleOrigin, setPeopleOrigin] = useState(null)
+  const [agentSetupOrigin, setAgentSetupOrigin] = useState(null)
+  const [profile, setProfile] = useState(null)
   const [requestedTask, setRequestedTask] = useState(null)
   const [tasks, setTasks] = useState({})
   const [waitingRequests, setWaitingRequests] = useState(0)
@@ -498,33 +453,38 @@ function ProjectView({ api, session, project, switcher, onAuthLost, refreshSessi
   const actors = useMemo(() => details?.actors ?? [], [details])
   const actorsById = useMemo(() => Object.fromEntries(actors.map(actor => [actor.id, actor])), [actors])
   // Removed people stay in the board's history but not among the people here now (#175); the People panel lists them.
-  const participants = useMemo(() => sortParticipants(actors.filter(actor => !actor.removed), index), [actors, index])
-  const me = actorsById[current.actorId] ?? { id: current.actorId, handle: current.actorId, kind: 'human', displayName: session.identity.name }
-  const openProfile = useCallback((actor, element) => setDialog({ type: 'profile', actorId: actor.id, returnFocus: element }), [])
-  const close = () => setDialog(null)
+  const participants = useMemo(() => {
+    const others = sortParticipants(actors.filter(actor => !actor.removed && actor.id !== current.actorId), index)
+    const you = actorsById[current.actorId]
+    return you ? [you, ...others] : others
+  }, [actors, actorsById, current.actorId, index])
+  const openProfile = useCallback((actor, element) => setProfile({ actorId: actor.id, returnFocus: element }), [])
+  const openPeople = element => setPeopleOrigin(element)
+  const closePeople = () => setPeopleOrigin(null)
   const remotePresenceUnavailable = presence?.available === false || current.status?.hubConnected === false
+  const canControl = details?.project.controlAvailable === true
   const header = <>
     <div className="client-identity">
-      <ProjectSwitcher {...switcher} current={current} />
+      <ProjectSwitcher {...switcher} current={current} onAgentSetup={canControl ? setAgentSetupOrigin : undefined} />
     </div>
     <div className="client-people">
-      {participants.length > 0 && <AvatarStack actors={participants} index={index} max={5} label="People in this project"
-        onOpen={openProfile} onMore={element => setDialog({ type: 'people', returnFocus: element })} />}
+      <div className="people-entry">
+        {participants.length > 0 && <AvatarStack actors={participants} index={index} max={5} label="People in this project"
+          currentActorId={current.actorId} openLabel="Open People" preview
+          onOpen={(_actor, element) => openPeople(element)} onMore={openPeople} />}
+        <button type="button" className="people-button" aria-label={`People${waitingRequests ? `, ${waitingRequests} waiting to join` : ''}`}
+          onClick={event => openPeople(event.currentTarget)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            strokeLinecap="round" aria-hidden="true" focusable="false">
+            <circle cx="9" cy="7.5" r="2.75" vectorEffect="non-scaling-stroke" />
+            <path d="M3 19v-1a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v1M17 5a3 3 0 0 1 0 5M18 14a4 4 0 0 1 3 4v1" vectorEffect="non-scaling-stroke" />
+          </svg>
+          {waitingRequests > 0 && <span className="badge" aria-hidden="true">{waitingRequests} waiting</span>}
+        </button>
+      </div>
       {remotePresenceUnavailable && <span className="muted small">Remote presence unavailable</span>}
-      <button type="button" className="people-button" aria-label={`People${waitingRequests ? `, ${waitingRequests} waiting to join` : ''}`}
-        onClick={event => setDialog({ type: 'members', returnFocus: event.currentTarget })}>
-        People{waitingRequests > 0 && <span className="badge" aria-hidden="true">{waitingRequests} waiting</span>}
-      </button>
-      <BoardSharing key={current.id} api={api} project={current} />
-      <InviteMenu memberRole={current.memberRole} onChoose={(purpose, element) => setDialog({ type: 'invite', purpose, returnFocus: element })} />
-      <button type="button" className="you" aria-label={`You: ${avatarLabel(me, presenceOf(index, me.id))}. Open your profile`}
-        onClick={event => openProfile(me, event.currentTarget)}>
-        <Avatar actor={me} state={presenceOf(index, me.id)} size="sm" />
-        <span>You: {actorName(me)}</span>
-      </button>
     </div>
   </>
-  const canControl = details?.project.controlAvailable === true
   const refreshRequests = () => api.joinRequests(project.id).then(result => setWaitingRequests(result.requests.length), () => {})
   // If the owner loses every machine, nobody can remove or demote admins: suggest pairing a second one early.
   const ownMachines = details?.membership?.machines?.filter(machine => machine.personId === session.identity.id).length
@@ -534,7 +494,7 @@ function ProjectView({ api, session, project, switcher, onAuthLost, refreshSessi
   const notice = suggestPairing ? <div className="notice" role="status" aria-label="Pair a second machine">
     <p><strong>Pair a second machine with this project.</strong> If you lose every machine you own, nobody can remove or demote an admin any more, because only the owner can.</p>
     <div className="actions">
-      <button onClick={event => setDialog({ type: 'invite', purpose: 'device', returnFocus: event.currentTarget })}>Pair a machine</button>
+      <button onClick={event => openPeople(event.currentTarget)}>Open People</button>
       <button onClick={dismissPairing}>Not now</button>
     </div>
   </div> : null
@@ -555,18 +515,13 @@ function ProjectView({ api, session, project, switcher, onAuthLost, refreshSessi
   </main>
   return <>
     <Workspace key={config.workspaceId} config={config} reloadConfiguration={reloadConfiguration}
-      session={{ ...sessionProps, header, notice }} />
-    {dialog?.type === 'profile' && actorsById[dialog.actorId] && <ProfileDialog actor={actorsById[dialog.actorId]}
-      actors={actors} entry={index.get(dialog.actorId)} tasks={tasks} currentActorId={current.actorId}
-      returnFocus={dialog.returnFocus}
-      onClose={dialog.from === 'people' ? () => setDialog({ type: 'people', returnFocus: dialog.returnFocus }) : close}
-      onOpenTask={taskId => { close(); setRequestedTask({ taskId, at: Date.now() }) }} />}
-    {dialog?.type === 'people' && <PeopleDialog actors={participants} index={index} returnFocus={dialog.returnFocus}
-      onClose={close} onOpen={actor => setDialog({ type: 'profile', actorId: actor.id, returnFocus: dialog.returnFocus, from: 'people' })}
-      onManage={() => setDialog({ type: 'members', returnFocus: dialog.returnFocus })} />}
-    {dialog?.type === 'members' && <PeoplePanel api={api} project={current} index={index} returnFocus={dialog.returnFocus}
-      onClose={close} onRemoved={removed} onChanged={() => { void load().catch(() => {}); void refreshRequests() }} />}
-    {dialog?.type === 'invite' && <InviteDialog api={api} project={current} purpose={dialog.purpose}
-      returnFocus={dialog.returnFocus} onClose={() => { close(); void refreshSession().catch(() => {}) }} />}
+      session={{ ...sessionProps, api, project: current, header, notice, agentSetupOrigin, closeAgentSetup: () => setAgentSetupOrigin(null) }} />
+    {peopleOrigin && <PeoplePanel api={api} project={current} index={index} actorsById={actorsById} returnFocus={peopleOrigin}
+      onOpenProfile={(actorId, element) => openProfile(actorsById[actorId], element)}
+      onClose={closePeople} onRemoved={removed} onChanged={() => { void load().catch(() => {}); void refreshRequests() }} />}
+    {profile && actorsById[profile.actorId] && <ProfileDialog actor={actorsById[profile.actorId]}
+      actors={actors} entry={index.get(profile.actorId)} tasks={tasks} currentActorId={current.actorId}
+      returnFocus={profile.returnFocus} onClose={() => setProfile(null)}
+      onOpenTask={taskId => { setProfile(null); closePeople(); setRequestedTask({ taskId, at: Date.now() }) }} />}
   </>
 }

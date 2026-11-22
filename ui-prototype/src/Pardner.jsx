@@ -1,15 +1,16 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { STATUSES } from '@pardner/domain-vocab'
+import { Tabs, TabsList, TabsPanel, TabsTab } from '@ui-sdk/react/tabs'
 import ActorMarkdown from './ActorMarkdown.jsx'
 import './pardner.css'
 import { createOperationId } from './operation-id.js'
 import { createConnection, loadConfiguration, websocketUrl } from './connection.js'
-import ControlPane from './ControlPane.jsx'
+import { AgentSetupDialog, TaskAgentRuns } from './ControlPane.jsx'
 import ClientApp from './ClientApp.jsx'
 import { AvatarStack } from './Avatar.jsx'
 import RecordConflicts from './RecordConflicts.jsx'
 import { disputedStatusText } from './record-conflicts.js'
-import { syncStatusText } from './sync-status.js'
+import { BoardStatus, SaveStatus } from './BoardStatus.jsx'
 import { isNewComment } from './comments.js'
 import { defaultHandoffStatus } from './handoff.js'
 import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js'
@@ -46,13 +47,13 @@ function escapeKeepsPanel(event) {
   if (event.defaultPrevented) return true
   const target = event.target
   // An open dialog (profile, invite) closes first, not the panel beneath it.
-  if (target?.closest?.('dialog') || document.querySelector('dialog[open]')) return true
+  if (target?.closest?.('[aria-modal="true"]') || document.querySelector('[aria-modal="true"]:not([hidden])')) return true
   const typed = target?.tagName === 'TEXTAREA' ||
     (target?.tagName === 'INPUT' && ['', 'text', 'search', 'url', 'email'].includes(target.getAttribute('type') ?? ''))
   return Boolean(typed && target.value.trim() !== '')
 }
 // Task details operations whose errors render above that form's submit button.
-const FORM_SLOTS = ['task.update', 'task.handoff', 'comment.add']
+const FORM_SLOTS = ['task.update', 'task.handoff', 'comment.add', 'task.link-issue', 'task.unlink-issue']
 const labelActor = (actor) =>
   actor ? `${actor.displayName || actor.handle} · ${actor.kind}` : 'Unassigned'
 
@@ -134,21 +135,6 @@ function useRefocus() {
   })
   return [ref, useCallback(() => { wanted.current = true }, [])]
 }
-function SaveStatus({ status, connected, busy, heads }) {
-  const text = !status && connected && !busy
-    ? 'Connecting to local service'
-    : syncStatusText(status, { connected, busy, heads })
-  return (
-    <span
-      className="save-status"
-      role="status"
-      data-pending={Boolean(status?.syncPending)}
-    >
-      {text}
-    </span>
-  )
-}
-
 const CURRENT_TITLE = 'As named now: not part of what was signed'
 
 /** A name or title looked up now, marked as current. */
@@ -258,7 +244,10 @@ export function Workspace({ config, reloadConfiguration, session }) {
   const [creating, setCreating] = useState(false)
   // In-memory New task draft ({ fields, tags }); null means the defaults. Never persisted.
   const [newTaskDraft, setNewTaskDraft] = useState(null)
-  const [view, setView] = useState(() => client.preferences().view || 'board')
+  const [view, setView] = useState(() => {
+    const saved = client.preferences().view
+    return saved === 'goals' || saved === 'activity' ? saved : 'board'
+  })
   const [filter, setFilter] = useState(() => client.preferences().filter || '')
   const [statusFilter, setStatusFilter] = useState(() => client.preferences().statusFilter || '')
   const [veinFilter, setVeinFilter] = useState(() => client.preferences().veinFilter || '')
@@ -424,7 +413,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
       const from = opener.current
       const card = from?.taskId && document.querySelector(`.task-card[data-task-id="${CSS.escape(from.taskId)}"]`)
       const usable = element => element?.isConnected && !element.disabled
-      ;[card || from, newTaskButton.current, viewNav.current?.querySelector('[aria-pressed="true"]')].find(usable)?.focus()
+      ;[card || from, newTaskButton.current, viewNav.current?.querySelector('[aria-selected="true"]')].find(usable)?.focus()
     }
     panelWasOpen.current = open
   }, [selected, creating])
@@ -557,7 +546,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
   const concurrentParts = rootIds(true).filter(id => !unreadableParts.includes(id))
   const unreadableRecords = unreadableLines(unreadableItems, { tasks: doc.tasks, goals, veins })
   const openVein = (_element, veinId) => {
-    focusAfterView.current = () => viewNav.current?.querySelector('[aria-pressed="true"]')?.focus()
+    focusAfterView.current = () => viewNav.current?.querySelector('[aria-selected="true"]')?.focus()
     showVein(veinId)
   }
   const openGoal = (_element, goalId) => {
@@ -582,11 +571,11 @@ export function Workspace({ config, reloadConfiguration, session }) {
   const closeCreate = () => { setCreating(false); setError(null) }
   const closeDetails = () => { setSelected(null); setError(null) }
   return (
-    <div className="app" data-client style={{ '--client-header-height': `${headerHeight}px` }}>
+    <Tabs className="app" data-client value={view} onValueChange={setView} style={{ '--client-header-height': `${headerHeight}px` }}>
       <header ref={headerRef} className="client-header">
         {session.header}
         <div className="header-controls">
-          <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
+          <BoardStatus api={session.api} project={session.project} status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
           <button
             ref={newTaskButton}
             className="primary"
@@ -625,30 +614,11 @@ export function Workspace({ config, reloadConfiguration, session }) {
         </button>}
       </div>}
       <nav aria-label="Workspace views" ref={viewNav}>
-        <button
-          aria-pressed={view === 'board'}
-          onClick={() => setView('board')}
-        >
-          Tasks
-        </button>
-        <button
-          aria-pressed={view === 'goals'}
-          onClick={() => setView('goals')}
-        >
-          Goals
-        </button>
-        <button
-          aria-pressed={view === 'activity'}
-          onClick={() => setView('activity')}
-        >
-          Activity
-        </button>
-        {canControl && <button
-          aria-pressed={view === 'control'}
-          onClick={() => setView('control')}
-        >
-          Control
-        </button>}
+        <TabsList className="workspace-tabs" aria-label="Workspace views">
+          <TabsTab value="board">Tasks</TabsTab>
+          <TabsTab value="goals">Goals</TabsTab>
+          <TabsTab value="activity">Activity</TabsTab>
+        </TabsList>
         {view === 'board' && <>
         <SelectActor
           label="Assigned to"
@@ -662,7 +632,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
           <option value="">All statuses</option>
           <StatusOptions />
         </select></label>
-        <label>Vein<select aria-label="Vein" title={veins[activeVeinFilter]?.title ?? 'All veins'} value={activeVeinFilter} onChange={event => setVeinFilter(event.target.value)}>
+        <label className="vein-filter">Vein<select aria-label="Vein" title={veins[activeVeinFilter]?.title ?? 'All veins'} value={activeVeinFilter} onChange={event => setVeinFilter(event.target.value)}>
           <option value="">All veins</option>
           {Object.values(veins).sort((a, b) => a.title.localeCompare(b.title)).map(vein =>
             <option key={vein.id} value={vein.id}>{vein.title}</option>)}
@@ -684,7 +654,8 @@ export function Workspace({ config, reloadConfiguration, session }) {
       </nav>
       {/* Keyed by view so a view switch never inherits a stale scroll position. */}
       <main key={view}>
-        {view === 'board' ? (
+        <TabsPanel value="board" className="board-panel" keepMounted>
+          {view === 'board' && (
           <div className="board" data-filtered={Boolean(statusFilter)} style={{ '--columns': STATUSES.length }}>
             {STATUSES.filter(column => !statusFilter || column === statusFilter).map((column) => (
               <section
@@ -715,11 +686,11 @@ export function Workspace({ config, reloadConfiguration, session }) {
                         setCreating(false)
                       })}
                     >
-                      <span className="priority">
-                        {task.priority.toUpperCase()}
+                      <strong><bdi>{task.title}</bdi></strong>
+                      <span className="task-meta">
+                        <bdi>{labelActor(actors[task.assignee])}</bdi>
+                        <span className="priority">{task.priority}</span>
                       </span>
-                      <strong>{task.title}</strong>
-                      <span>{labelActor(actors[task.assignee])}</span>
                       {task.veinIds?.filter(veinId => veins[veinId]).map(veinId => (
                         <span className="vein-label" key={veinId}>{veins[veinId].title}</span>
                       ))}
@@ -737,7 +708,10 @@ export function Workspace({ config, reloadConfiguration, session }) {
               </section>
             ))}
           </div>
-        ) : view === 'goals' ? (
+          )}
+        </TabsPanel>
+        <TabsPanel value="goals" keepMounted>
+          {view === 'goals' && (
           <Goals
             goals={goals}
             veins={veins}
@@ -751,9 +725,10 @@ export function Workspace({ config, reloadConfiguration, session }) {
             errorNotice={errorSlot === 'record' && errorNotice}
             errorOrigin={errorOrigin}
           />
-        ) : view === 'control' && canControl ? (
-          <ControlPane request={request} actors={actors} tasks={doc.tasks} actor={actor} canManage={canControl} />
-        ) : (
+          )}
+        </TabsPanel>
+        <TabsPanel value="activity" keepMounted>
+          {view === 'activity' && (
           <section className="activity">
             <div className="activity-heading">
               <h2>Activity</h2>
@@ -789,7 +764,8 @@ export function Workspace({ config, reloadConfiguration, session }) {
               ? <button type="button" onClick={showOlder}>Show older activity</button>
               : <p className="muted">Start of activity</p>)}
           </section>
-        )}
+          )}
+        </TabsPanel>
       </main>
       {creating && (
         <TaskForm
@@ -806,6 +782,8 @@ export function Workspace({ config, reloadConfiguration, session }) {
           }}
         />
       )}
+      {canControl && session.agentSetupOrigin && <AgentSetupDialog request={request} actors={actors} tasks={doc.tasks} actor={actor}
+        returnFocus={session.agentSetupOrigin} onClose={session.closeAgentSetup} />}
       {selected && (
         <TaskDetail
           key={`${selected}:${actor}`}
@@ -829,7 +807,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
           onClose={closeDetails}
         />
       )}
-    </div>
+    </Tabs>
   )
 }
 
@@ -936,11 +914,11 @@ function Goals({ goals, veins, showVein, actor, actors, attribution = null, subm
         return (
           <article className="goal" key={goal.id} aria-label={goal.title} data-goal-id={goal.id} tabIndex={-1}>
             <div className="goal-heading">
-              <h3>{goal.title}</h3>
+              <h3><bdi>{goal.title}</bdi></h3>
               {statusControl('goal', goal, GOAL_STATUSES)}
             </div>
             {recordId === goal.id && errorNotice}
-            {goal.description && <p className="muted">{goal.description}</p>}
+            {goal.description && <p className="muted goal-description" dir="auto">{goal.description}</p>}
             {conflicts('goal', goal)}
             {!goalVeins.length && <p className="muted">No veins pursue this goal yet.</p>}
             <ul>
@@ -1142,7 +1120,7 @@ function TaskForm({
   )
 }
 /** Links to existing GitHub issues. Pardner stores the reference only; GitHub status never moves the task. */
-function IssueLinks({ taskId, issues, canWrite, submit }) {
+function IssueLinks({ taskId, issues, canWrite, submit, notice }) {
   const [reference, setReference] = useState('')
   const [invalid, setInvalid] = useState(false)
   return (
@@ -1160,7 +1138,7 @@ function IssueLinks({ taskId, issues, canWrite, submit }) {
           ))}
         </ul>
       ) : <p className="muted">No linked issues. Linking does not contact GitHub.</p>}
-      <form onSubmit={async event => {
+      <form className="issue-link-form" onSubmit={async event => {
         event.preventDefault()
         const match = /^\s*([^#\s]+\/[^#\s]+)#(\d+)\s*$/.exec(reference)
         setInvalid(!match)
@@ -1169,8 +1147,9 @@ function IssueLinks({ taskId, issues, canWrite, submit }) {
         if (receipt) setReference(current => current === reference ? '' : current)
       }}>
         <label>Link GitHub issue<input placeholder="owner/repo#123" value={reference} onChange={event => setReference(event.target.value)} /></label>
-        {invalid && <p className="error" role="alert">Name the issue as owner/repo#number.</p>}
         <button disabled={!canWrite || !reference.trim()}>Link issue</button>
+        {invalid && <p className="error" role="alert">Name the issue as owner/repo#number.</p>}
+        {notice}
       </form>
     </section>
   )
@@ -1326,10 +1305,19 @@ function TaskDetail({
   return (
     <aside className="side-panel" aria-label="Task details">
       <div className="panel-heading">
-        <h2 tabIndex={-1} ref={heading}>{task.title}</h2>
+        <h2 tabIndex={-1} ref={heading}><bdi>{task.title}</bdi></h2>
         <button onClick={onClose}>Close</button>
       </div>
-      <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />
+      <div className="task-context">
+        <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />
+        <p className="muted">
+          <bdi>{labelActor(actors[task.assignee])}</bdi> · {quickStatus ? '' : `${LABELS[task.status]} · `}
+          <span className="priority">{task.priority}</span>
+        </p>
+        {context.veins?.length > 0 && (
+          <p className="muted">Veins: {context.veins.map(vein => `${vein.title} (${LABELS[vein.status]})`).join(', ')}</p>
+        )}
+      </div>
       {emptyFields(context.unreadable, 'task', taskId).length > 0 && <p className="notice warning" role="status">
         Shown empty, because what this task holds there can’t be read: {emptyFields(context.unreadable, 'task', taskId).join(', ')}.</p>}
       {here.length > 0 && <div className="here-now">
@@ -1337,16 +1325,8 @@ function TaskDetail({
         <AvatarStack actors={here} index={session.index} max={6} size="sm" label="Here now" labelSuffix=", on this task"
           onOpen={session.onOpenProfile} />
       </div>}
-      <p className="muted">
-        {labelActor(actors[task.assignee])} · {quickStatus ? '' : `${LABELS[task.status]} · `}
-        {task.priority.toUpperCase()}
-      </p>
-      {context.veins?.length > 0 && (
-        <p className="muted">Veins: {context.veins.map(vein => `${vein.title} (${LABELS[vein.status]})`).join(', ')}</p>
-      )}
       <ErrorNotice error={failure} />
       {!FORM_SLOTS.includes(formSlot) && errorNotice}
-      <IssueLinks taskId={taskId} issues={context.issues ?? []} canWrite={canWrite} submit={submit} />
       {draft && newerFields.length > 0 && (
         <div className="notice draft-notice" role="status">
           <p>
@@ -1408,11 +1388,7 @@ function TaskDetail({
             return receipt
           }}
         />
-      ) : (
-        <>
-          <MarkdownBody>{task.description || 'No description yet.'}</MarkdownBody>
-        </>
-      )}
+      ) : <MarkdownBody>{task.description || 'No description yet.'}</MarkdownBody>}
       <div className="task-actions">
         {quickStatus && (
           <label className="status-field">
@@ -1607,6 +1583,7 @@ function TaskDetail({
         </form>
       </section>
       )}
+      {session.canControl && <TaskAgentRuns request={request} actors={actors} taskId={taskId} actor={actor} />}
       <section>
         <div className="section-heading">
           <h3>
@@ -1699,6 +1676,8 @@ function TaskDetail({
           </button>
         </form>
       </section>
+      <IssueLinks taskId={taskId} issues={context.issues ?? []} canWrite={canWrite} submit={submit}
+        notice={noticeFor('task.link-issue') || noticeFor('task.unlink-issue')} />
       <section>
         <h3>Evidence</h3>
         {context.evidence.length ? (

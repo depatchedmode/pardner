@@ -7,6 +7,32 @@ import { chromium, webkit } from 'playwright'
 import { withClientReplicas, withClientWorkspace } from '../support/client-workspace.js'
 import { startCliService } from '../support/cli-resources.js'
 
+for (const engine of [chromium, webkit]) it(`switches board views by keyboard in ${engine.name()}`,
+  { timeout: 30000 }, async () => {
+    await withClientWorkspace(engine, {}, async ({ page, open }) => {
+      await open()
+      const views = page.getByRole('tablist', { name: 'Workspace views' })
+      const tasks = views.getByRole('tab', { name: 'Tasks', selected: true })
+      await tasks.focus()
+      await page.keyboard.press('ArrowRight')
+      const goals = views.getByRole('tab', { name: 'Goals', selected: true })
+      await goals.waitFor()
+      assert.equal(await goals.evaluate(node => node === document.activeElement), true)
+      await page.getByRole('tabpanel', { name: 'Goals' }).waitFor()
+      assert.equal(await page.getByLabel('Assigned to').count(), 0)
+
+      await page.keyboard.press('End')
+      await views.getByRole('tab', { name: 'Activity', selected: true }).waitFor()
+      await page.getByRole('tabpanel', { name: 'Activity' }).getByRole('heading', { name: 'Activity' }).waitFor()
+      await page.getByLabel('Show', { exact: true }).waitFor()
+
+      await page.keyboard.press('Home')
+      await tasks.waitFor()
+      await page.getByRole('tabpanel', { name: 'Tasks' }).getByRole('heading', { name: /^Backlog/ }).waitFor()
+      assert.equal(await page.getByRole('tabpanel').count(), 1)
+    })
+  })
+
 /** Waits until the hub stores `status` for vein `veinId`; a save that never lands fails after ten seconds. */
 async function eventuallyStatus(host, veinId, status) {
   const deadline = Date.now() + 10000
@@ -72,10 +98,10 @@ for (const uuidAvailable of [true, false]) it(
       await alice.getByRole('button', { name: 'Hand off work', exact: true }).click()
       assert.equal(await alice.getByRole('button', { name: 'Hand off', exact: true }).isDisabled(), true)
       assert.equal(await alice.getByLabel('Assigned to').count(), 1)
-      await alice.getByRole('button', { name: 'Activity', exact: true }).click()
+      await alice.getByRole('tab', { name: 'Activity', exact: true }).click()
       assert.equal(await alice.getByLabel('Assigned to').count(), 0, 'board filters are hidden off the Tasks view')
       assert.equal(await alice.getByLabel('Status filter').count(), 0)
-      await alice.getByRole('button', { name: 'Tasks', exact: true }).click()
+      await alice.getByRole('tab', { name: 'Tasks', exact: true }).click()
       await alice
         .getByLabel('Comment', { exact: true })
         .fill('The requirements are ready for @builder.')
@@ -233,7 +259,7 @@ for (const uuidAvailable of [true, false]) it(
       await alice.getByRole('region', { name: 'Dead end' })
         .getByRole('button', { name: /Review the handoff evidence/ }).waitFor()
       await alice.getByLabel('Status filter').selectOption('review')
-      await alice.getByRole('button', { name: 'Goals', exact: true }).click()
+      await alice.getByRole('tab', { name: 'Goals', exact: true }).click()
       const goal = alice.getByRole('article', { name: 'Ship the first release' })
       await goal.getByText('Ready for a verdict', { exact: true }).waitFor()
       const veinRow = goal.locator(`li[data-vein-id="${vein.veinId}"]`)
@@ -287,16 +313,16 @@ for (const uuidAvailable of [true, false]) it(
       await eventuallyStatus(host, vein.veinId, 'proven')
 
       // A task panel open over Goals must not make "Status" ambiguous.
-      await alice.getByRole('button', { name: 'Tasks', exact: true }).click()
+      await alice.getByRole('tab', { name: 'Tasks', exact: true }).click()
       await alice.getByLabel('Status filter').selectOption('dead-end')
       await alice.getByRole('button', { name: /Review the handoff evidence/ }).click()
       await alice.getByLabel('Status', { exact: true }).waitFor()
-      await alice.getByRole('button', { name: 'Goals', exact: true }).click()
+      await alice.getByRole('tab', { name: 'Goals', exact: true }).click()
       assert.equal(await alice.getByLabel('Status', { exact: true }).count(), 1)
       await alice.getByRole('button', { name: 'Close', exact: true }).click()
-      await alice.getByRole('button', { name: 'Tasks', exact: true }).click()
+      await alice.getByRole('tab', { name: 'Tasks', exact: true }).click()
       await alice.getByLabel('Status filter').selectOption('review')
-      await alice.getByRole('button', { name: 'Goals', exact: true }).click()
+      await alice.getByRole('tab', { name: 'Goals', exact: true }).click()
 
       const goalStatus = alice.getByLabel('Status of goal Ship the first release', { exact: true })
       await goalStatus.focus()
@@ -372,6 +398,12 @@ const MARKDOWN_FIXTURE = [
   '',
   '### Heading three',
   '',
+  'Descriptions and comments use the same reading scale.',
+  '',
+  '- Keep related changes together.',
+  '  - Leave room for a nested list.',
+  '- Check each change before sharing it.',
+  '',
   '> A quoted decision from the review.',
   '',
   '- [ ] Write the failing assertion first',
@@ -406,6 +438,10 @@ for (const engine of [chromium, webkit]) it(`gives user-authored Markdown its ow
         return Object.fromEntries(properties.map(property => [property, style[property]]))
       }
       return {
+        prose: pick('p', 'fontSize', 'lineHeight'),
+        list: pick('ul', 'paddingInlineStart', 'marginBlockStart'),
+        nestedList: pick('ul ul', 'paddingInlineStart', 'marginBlockStart'),
+        listItem: pick('ul > li + li', 'marginBlockStart'),
         h1: pick('h1', 'fontSize', 'fontWeight', 'lineHeight', 'marginTop'),
         h2: pick('h2', 'fontSize', 'fontWeight', 'lineHeight'),
         h3: pick('h3', 'fontSize', 'fontWeight', 'color'),
@@ -421,9 +457,17 @@ for (const engine of [chromium, webkit]) it(`gives user-authored Markdown its ow
     const fromDescription = await styles(description)
     assert.deepEqual(await styles(comment), fromDescription, 'descriptions and comments render Markdown identically')
     const size = value => parseFloat(value)
-    assert.ok(size(fromDescription.h1.fontSize) < 17, `h1 ${fromDescription.h1.fontSize} is below the 17px section heading`)
+    const section = await panel.getByRole('heading', { name: /^Comments/ }).evaluate(node => getComputedStyle(node).fontSize)
+    assert.ok(size(fromDescription.h1.fontSize) < size(section), `h1 ${fromDescription.h1.fontSize} is below the ${section} section heading`)
     assert.ok(size(fromDescription.h1.fontSize) >= size(fromDescription.h2.fontSize))
     assert.ok(size(fromDescription.h2.fontSize) >= size(fromDescription.h3.fontSize))
+    assert.ok(size(fromDescription.h3.fontSize) >= size(fromDescription.prose.fontSize), 'Markdown headings are at least as large as the prose')
+    assert.ok(size(fromDescription.prose.fontSize) >= 16 && size(fromDescription.prose.lineHeight) >= size(fromDescription.prose.fontSize) * 1.5)
+    assert.ok(size(fromDescription.list.paddingInlineStart) < 40, 'bullets use less indentation than the browser default')
+    assert.equal(fromDescription.nestedList.paddingInlineStart, fromDescription.list.paddingInlineStart)
+    assert.ok(size(fromDescription.list.marginBlockStart) > size(fromDescription.listItem.marginBlockStart), 'item spacing is smaller than the gap between text blocks')
+    assert.ok(await description.evaluate(node => Boolean(node.compareDocumentPosition(document.querySelector('section[aria-label="GitHub issues"]')) & Node.DOCUMENT_POSITION_FOLLOWING)),
+      'task instructions precede issue management in reading order')
     assert.ok(Number(fromDescription.h1.fontWeight) >= 700 && Number(fromDescription.h2.fontWeight) >= 700, 'h1 and h2 are bold')
     assert.equal(fromDescription.h3.color, fromDescription.mutedColor, 'h3 is muted')
     assert.ok(size(fromDescription.quote.borderLeftWidth) >= 2 && fromDescription.quote.borderLeftStyle === 'solid')
@@ -504,7 +548,7 @@ for (const engine of [chromium, webkit]) it(`keeps the app frame in the viewport
     }))
     await open()
     await page.getByRole('button', { name: /Backlog task 40/ }).waitFor()
-    const nav = name => page.getByRole('navigation', { name: 'Workspace views' }).getByRole('button', { name, exact: true })
+    const nav = name => page.getByRole('tablist', { name: 'Workspace views' }).getByRole('tab', { name, exact: true })
     const frame = () => page.evaluate(() => {
       const top = selector => document.querySelector(selector).getBoundingClientRect().top
       const newTask = [...document.querySelectorAll('header button')].find(button => button.textContent === 'New task')
@@ -866,14 +910,14 @@ for (const engine of [chromium, webkit]) it(`moves focus into panels and back to
     await page.keyboard.press('Escape')
 
     // An Activity button is an opener too.
-    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('button', { name: 'Activity', exact: true }).click()
+    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('tab', { name: 'Activity', exact: true }).click()
     const activityButton = page.locator('.activity article button[data-task-id]').first()
     const activityLabel = await activityButton.textContent()
     await activityButton.click()
     await waitForFocus(() => document.activeElement?.matches('.side-panel h2'))
     await page.keyboard.press('Escape')
     await waitForFocus(text => document.activeElement?.closest('.activity') && document.activeElement.textContent === text, activityLabel)
-    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('button', { name: 'Tasks', exact: true }).click()
+    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('tab', { name: 'Tasks', exact: true }).click()
 
     // After creating a task its card becomes the opener.
     await page.getByRole('button', { name: 'New task', exact: true }).click()
@@ -899,7 +943,7 @@ it('describes Activity and task History as plain sentences', { timeout: 120000 }
     await as('builder', 'task.link-commit', { taskId, commit: { hash: 'a1b2c3d4e5f6', message: 'feat: ship it' } })
     const { veinId } = (await as('carol', 'vein.create', { title: 'Launch plan', goal: { title: 'Launch well' } })).result
     await open()
-    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('button', { name: 'Activity', exact: true }).click()
+    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('tab', { name: 'Activity', exact: true }).click()
     const activity = page.locator('.activity')
     await activity.getByText('Carol Moreno moved Ship the release to Review', { exact: false }).first().waitFor()
     const visible = await activity.innerText()
@@ -915,7 +959,7 @@ it('describes Activity and task History as plain sentences', { timeout: 120000 }
     assert.equal(await page.getByLabel('Vein', { exact: true }).inputValue(), veinId)
     assert.equal(await page.locator('.board').count(), 1, 'the vein subject shows Tasks')
 
-    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('button', { name: 'Activity', exact: true }).click()
+    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('tab', { name: 'Activity', exact: true }).click()
     await activity.locator('article button[data-task-id]').first().click()
     const history = page.locator('.side-panel section', { has: page.getByRole('heading', { name: 'History', exact: true }) })
     await history.getByRole('heading', { name: 'History', exact: true }).waitFor()
@@ -970,7 +1014,7 @@ it('filters, groups and pages the Activity feed', { timeout: 120000 }, async () 
     }
     await open()
     const views = page.getByRole('navigation', { name: 'Workspace views' })
-    await views.getByRole('button', { name: 'Activity', exact: true }).click()
+    await views.getByRole('tab', { name: 'Activity', exact: true }).click()
     const activity = page.locator('.activity')
     const articles = activity.locator('article')
     await activity.getByText(/Showing 100 of/).waitFor()
@@ -1184,7 +1228,7 @@ for (const engine of [chromium, webkit]) it(`changes a task's status in place fr
         assert.ok(Date.now() < deadline, 'the status was never saved')
         await new Promise(resolve => setTimeout(resolve, 50))
       }
-      assert.equal(await select.inputValue(), 'completed')
+      await select.locator('option:checked', { hasText: 'Completed' }).waitFor({ state: 'attached', timeout: 10000 })
       await panel.getByText(/to Completed/).first().waitFor()
       assert.equal(await page.locator('.column[aria-label="Completed"] .task-card', { hasText: 'Approve release notes' }).count(), 1)
       assert.equal(await panel.getByRole('region', { name: 'Edit task' }).count(), 0, 'no editor opens')
@@ -1432,7 +1476,7 @@ for (const engine of [chromium, webkit]) it(`closes New task when an Activity ta
   await withClientWorkspace(engine, { contextOptions: { viewport: { width: 1440, height: 900 } } }, async ({ page, operate, open }) => {
     await operate('task.create', { title: 'Activity subject' })
     await open()
-    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('button', { name: 'Activity', exact: true }).click()
+    await page.getByRole('navigation', { name: 'Workspace views' }).getByRole('tab', { name: 'Activity', exact: true }).click()
     await page.getByRole('button', { name: 'New task', exact: true }).click()
     await page.getByRole('region', { name: 'New task' }).waitFor()
     await page.locator('.activity article button[data-task-id]').first().click({ force: true })

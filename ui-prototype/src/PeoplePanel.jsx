@@ -1,8 +1,11 @@
+import { AlertDialog, AlertDialogBackdrop, AlertDialogClose, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '@ui-sdk/react/alert-dialog'
+import { DialogClose, DialogTitle } from '@ui-sdk/react/dialog'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Avatar } from './Avatar.jsx'
+import { BoardDialog } from './BoardDialog.jsx'
 import { harnessLabel } from './client-api.js'
 import { Failure } from './Failure.jsx'
-import { InvitationHistory, InviteDialog, formatTime } from './Invitations.jsx'
+import { InvitationHistory, InviteDialog, InviteMenu, formatTime } from './Invitations.jsx'
 import { createOperationId } from './operation-id.js'
 import { presenceOf } from './presence.js'
 
@@ -37,31 +40,28 @@ function machineState(machine, now) {
 
 /** A modal that states what an action does before it is taken. The safe choice has focus first. */
 function ConfirmDialog({ title, intro, consequences, confirmLabel, busyLabel, danger = true, onConfirm, onClose, returnFocus }) {
-  const dialog = useRef(null)
-  const id = useId()
-  const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState(null)
-  useEffect(() => {
-    dialog.current.showModal()
-    return () => { if (returnFocus?.isConnected) returnFocus.focus() }
-  }, [returnFocus])
   const confirm = async () => {
-    setBusy(true); setFailure(null)
-    try { await onConfirm() } catch (error) { setFailure(error); setBusy(false) }
+    setFailure(null)
+    try { await onConfirm() } catch (error) { setFailure(error); throw error }
   }
-  return <dialog ref={dialog} className="invite-dialog confirm-dialog" aria-labelledby={`${id}-title`} aria-describedby={`${id}-body`}
-    onCancel={event => { event.preventDefault(); if (!busy) onClose() }}>
-    <h2 id={`${id}-title`}>{title}</h2>
-    <div id={`${id}-body`}>
-      {intro && <p>{intro}</p>}
-      <ul className="consequences">{consequences.filter(Boolean).map(text => <li key={text}>{text}</li>)}</ul>
-    </div>
-    <Failure error={failure} />
-    <div className="actions confirm-actions">
-      <button type="button" autoFocus disabled={busy} onClick={onClose}>Cancel</button>
-      <button type="button" className={danger ? 'danger' : 'primary'} disabled={busy} onClick={confirm}>{busy ? busyLabel : confirmLabel}</button>
-    </div>
-  </dialog>
+  return <AlertDialog defaultOpen pendingAnnouncement={busyLabel} onOpenChangeComplete={open => { if (!open) onClose() }}>
+    <AlertDialogBackdrop className="board-dialog-backdrop" />
+    <AlertDialogContent className="invite-dialog confirm-dialog" finalFocus={() => returnFocus}>
+      <AlertDialogTitle>{title}</AlertDialogTitle>
+      <AlertDialogDescription render={<div />}>
+        {intro && <p>{intro}</p>}
+        <ul className="consequences">{consequences.filter(Boolean).map(text => <li key={text}>{text}</li>)}</ul>
+      </AlertDialogDescription>
+      <Failure error={failure} />
+      <div className="actions confirm-actions">
+        <AlertDialogClose>Cancel</AlertDialogClose>
+        <AlertDialogClose className={danger ? 'danger' : 'primary'} action={confirm}>
+          {({ pending }) => pending ? busyLabel : confirmLabel}
+        </AlertDialogClose>
+      </div>
+    </AlertDialogContent>
+  </AlertDialog>
 }
 
 /** A control the person may see but not use here: focusable, with the reason read out and shown. */
@@ -208,7 +208,7 @@ function MachineRow({ machine, person, now, onRemove }) {
   </li>
 }
 
-function PersonRow({ api, project, person, index, now, editing, suggestPairing, onEdit, onAction, onSaved }) {
+function PersonRow({ api, project, person, index, now, editing, suggestPairing, onEdit, onAction, onSaved, onOpenProfile, actorsById }) {
   const titleId = useId()
   const actor = { id: person.actorId, kind: 'human', displayName: person.name }
   const actions = person.actions
@@ -217,7 +217,7 @@ function PersonRow({ api, project, person, index, now, editing, suggestPairing, 
     <details className="member-details">
       <summary className="member-heading">
         <Avatar actor={actor} state={presenceOf(index, person.actorId)} />
-        <span className="member-name" id={titleId}>{person.name}{person.you && <span className="you-tag"> (you)</span>}</span>
+        <span className="member-name" id={titleId}><bdi>{person.name}</bdi>{person.you && <span className="you-tag"> (you)</span>}</span>
         <span className="role-badge" data-role={person.role}>{person.roleLabel}</span>
       </summary>
       <div className="member-content">
@@ -235,7 +235,8 @@ function PersonRow({ api, project, person, index, now, editing, suggestPairing, 
             <ul className="agent-list" aria-label={`${person.name}’s agents`}>
               {person.agents.map(agent => <li key={agent.id}>
                 <Avatar actor={{ id: agent.id, kind: 'agent', displayName: agent.name }} state={presenceOf(index, agent.id)} size="sm" />
-                <span>{agent.name}</span>
+                {actorsById[agent.id] ? <button type="button" className="link-button" onClick={event => onOpenProfile(agent.id, event.currentTarget)}>{agent.name}</button>
+                  : <span>{agent.name}</span>}
                 <span className="muted small">{[harnessLabel(agent.harness), `on ${list(agent.machines.map(machine => machine.name))}`].filter(Boolean).join(' · ')}</span>
                 {agent.stoppedHere && <span className="tag removed-tag">Stopped on this machine</span>}
                 {agent.actions?.stopHere?.allowed && <button type="button" className="danger quiet" aria-label={`Stop ${agent.name} on this machine`}
@@ -247,7 +248,8 @@ function PersonRow({ api, project, person, index, now, editing, suggestPairing, 
             <strong>Pair a second machine.</strong> If you lose every machine you own, nobody can remove or demote an admin. Only the owner can do that.
           </p>}
           {actions.note && <p className="muted small member-note">{actions.note}</p>}
-          {Object.keys(actions).some(key => key !== 'note') && <div className="actions member-actions">
+          {(actorsById[person.actorId] || Object.keys(actions).some(key => key !== 'note')) && <div className="actions member-actions">
+            {actorsById[person.actorId] && <button type="button" className="quiet" onClick={event => onOpenProfile(person.actorId, event.currentTarget)}>View profile</button>}
             {actions.editProfile && <button type="button" onClick={() => onEdit(true)}>Edit name and email</button>}
             {actions.pairMachine?.allowed && <button type="button" onClick={event => onAction({ type: 'pair', person }, event.currentTarget)}>
               {person.you ? 'Pair another machine' : `Pair a machine for ${person.name}`}</button>}
@@ -361,7 +363,7 @@ function confirmation(action, view) {
   return null
 }
 
-export function PeoplePanel({ api, project, index, returnFocus, onClose, onChanged, onRemoved }) {
+export function PeoplePanel({ api, project, index, actorsById, returnFocus, onClose, onChanged, onRemoved, onOpenProfile }) {
   const dialog = useRef(null)
   const [view, setView] = useState(null)
   const [failure, setFailure] = useState(null)
@@ -372,10 +374,6 @@ export function PeoplePanel({ api, project, index, returnFocus, onClose, onChang
   const [now, setNow] = useState(() => Date.now())
   const removed = useCallback(error => { if (error.code === 'REVOKED') onRemoved?.(); else setFailure(error) }, [onRemoved])
   const load = useCallback(() => api.people(project.id).then(next => { setView(next); setNow(Date.now()) }), [api, project.id])
-  useEffect(() => {
-    dialog.current.showModal()
-    return () => { if (returnFocus?.isConnected) returnFocus.focus() }
-  }, [returnFocus])
   useEffect(() => {
     let stopped = false
     load().catch(error => { if (!stopped) removed(error) })
@@ -392,16 +390,16 @@ export function PeoplePanel({ api, project, index, returnFocus, onClose, onChang
   const inviteAction = view?.actions.invite
   const leave = view?.actions.leave
   return <>
-    <dialog ref={dialog} className="people-panel" aria-labelledby="people-panel-title" onCancel={event => { event.preventDefault(); onClose() }}>
+    <BoardDialog ref={dialog} className="people-panel" returnFocus={returnFocus} onClose={onClose}>
       <header className="profile-heading people-heading">
         <div>
-          <h2 id="people-panel-title">People</h2>
+          <DialogTitle>People</DialogTitle>
           <p className="muted">{project.name}</p>
         </div>
         <div className="people-heading-actions">
-          {inviteAction?.allowed && <button type="button" className="people-invite"
-            onClick={event => setInvite({ purpose: 'human', returnFocus: event.currentTarget })}>Invite someone</button>}
-          <button type="button" className="close" onClick={onClose} autoFocus>Close</button>
+          {view && <InviteMenu canInvitePeople={inviteAction?.allowed} container={dialog.current}
+            onChoose={(purpose, element) => setInvite({ purpose, returnFocus: element })} />}
+          <DialogClose className="close">Close</DialogClose>
         </div>
       </header>
       <Failure error={failure} />
@@ -414,7 +412,7 @@ export function PeoplePanel({ api, project, index, returnFocus, onClose, onChang
           <ul className="member-list">
             {view.people.map(person => <PersonRow key={person.id} api={api} project={project} person={person} index={index} now={now}
               editing={person.you && editing} suggestPairing={person.you && view.suggestPairing} onEdit={setEditing} onAction={act}
-              onSaved={async () => { setEditing(false); await changed() }} />)}
+              actorsById={actorsById} onOpenProfile={onOpenProfile} onSaved={async () => { setEditing(false); await changed() }} />)}
           </ul>
         </section>
         <div className="people-secondary">
@@ -439,13 +437,12 @@ export function PeoplePanel({ api, project, index, returnFocus, onClose, onChang
           </details>
         </div>
       </>}
-    </dialog>
+    </BoardDialog>
     {confirm && <ConfirmDialog {...confirm} returnFocus={action.returnFocus} onClose={() => setAction(null)}
       onConfirm={async () => {
         await confirm.run(api)
-        setAction(null)
         if (action.type === 'leave') { onRemoved?.(); return }
-        await changed()
+        void changed()
       }} />}
     {invite && <InviteDialog api={api} project={project} purpose={invite.purpose} person={invite.person ?? null} again={invite.again ?? null}
       returnFocus={invite.returnFocus} onClose={() => { setInvite(null); void changed() }} />}
