@@ -30,6 +30,7 @@
   --radius-overlay: 10px;
   --overlay-edge: 0 0 0 1px oklch(1 0 0 / 0.08);
   --line: #343434;
+  --field-border: #666;
   --muted: #b3b3b3;
   --accent: #76dfba;
   --warning: #ffce87;
@@ -110,7 +111,7 @@ textarea,
 select {
   font-size: var(--text-ui);
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-border);
   border-radius: var(--radius-control);
   padding: 10px;
   background: #101010;
@@ -240,6 +241,8 @@ nav {
   border-color: #346c58;
   background: var(--accent-wash);
   color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 .workspace-tabs button:focus-visible {
   outline-offset: -2px;
@@ -299,6 +302,8 @@ nav select {
 }
 .task-card[aria-current] {
   border-color: var(--accent);
+  border-inline-start-width: 3px;
+  padding-inline-start: 12px;
 }
 .task-card > strong {
   width: 100%;
@@ -942,9 +947,6 @@ code, pre {
   button, input, select {
     min-height: 44px;
   }
-  input, textarea, select {
-    font-size: max(var(--text-body), 16px);
-  }
   select {
     appearance: none;
     padding-right: 32px;
@@ -1001,6 +1003,11 @@ code, pre {
   .board-content > .error,
   .board-content > .notice {
     padding: 14px 16px;
+  }
+}
+@media (max-width: 839px), (any-pointer: coarse) {
+  input, textarea, select {
+    font-size: max(var(--text-body), 16px);
   }
 }
 @media (prefers-reduced-motion: no-preference) {

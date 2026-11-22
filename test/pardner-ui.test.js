@@ -1025,6 +1025,49 @@ for (const engine of [chromium, webkit]) it(`retries a failed task read without 
   })
 })
 
+it('keeps editable fields and selection visually distinct', { timeout: 60000 }, async () => {
+  await withClientWorkspace(chromium, {}, async ({ page, newPage, operate, open }) => {
+    await operate('task.create', { title: 'Check the release notes' })
+    await operate('task.create', { title: 'A neighbouring card' })
+    await open()
+    const card = page.getByRole('button', { name: /Check the release notes/ })
+    const neighbour = page.getByRole('button', { name: /A neighbouring card/ })
+    const panel = page.getByRole('dialog', { name: 'Task details' })
+    await card.click()
+    for (const label of ['Comment', 'Link GitHub issue']) {
+      const field = panel.getByRole('textbox', { name: label, exact: true })
+      const ratio = await field.evaluate(element => {
+        const luminance = color => {
+          const [red, green, blue] = color.match(/[\d.]+/g).slice(0, 3).map(value => {
+            const channel = Number(value) / 255
+            return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+          })
+          return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+        }
+        const border = luminance(getComputedStyle(element).borderTopColor)
+        const pane = luminance(getComputedStyle(element.closest('.side-panel')).backgroundColor)
+        return (Math.max(border, pane) + 0.05) / (Math.min(border, pane) + 0.05)
+      })
+      assert.ok(ratio >= 3, `${label} border contrasts with the panel at ${ratio.toFixed(2)}:1`)
+    }
+
+    await page.emulateMedia({ forcedColors: 'active' })
+    assert.ok(await page.evaluate(() => matchMedia('(forced-colors: active)').matches))
+    const leadingEdge = locator => locator.evaluate(element => parseFloat(getComputedStyle(element).borderInlineStartWidth))
+    assert.ok(await leadingEdge(card) > await leadingEdge(neighbour), 'the current card has a distinct edge')
+    const decoration = tab => tab.evaluate(element => getComputedStyle(element).textDecorationLine)
+    assert.equal(await decoration(page.getByRole('tab', { name: 'Tasks', selected: true })), 'underline')
+    assert.equal(await decoration(page.getByRole('tab', { name: 'Goals', selected: false })), 'none')
+
+    const tablet = await newPage({ hasTouch: true, isMobile: true, viewport: { width: 1024, height: 800 } })
+    await open(tablet)
+    assert.ok(await tablet.evaluate(() => matchMedia('(any-pointer: coarse)').matches))
+    await tablet.getByRole('button', { name: /Check the release notes/ }).tap()
+    const comment = tablet.getByRole('dialog', { name: 'Task details' }).getByRole('textbox', { name: 'Comment', exact: true })
+    assert.ok(await comment.evaluate(element => parseFloat(getComputedStyle(element).fontSize)) >= 16)
+  })
+})
+
 it('describes Activity and task History as plain sentences', { timeout: 120000 }, async () => {
   await withClientWorkspace(chromium, { contextOptions: { viewport: { width: 1440, height: 900 } }, actors: [{ id: 'carol', kind: 'human', displayName: 'Carol Moreno' }, { id: 'builder', kind: 'agent', displayName: 'Builder' }] }, async ({ page, task, operate, open }) => {
     const as = (actor, type, payload) => operate(type, payload, actor)
