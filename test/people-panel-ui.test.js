@@ -91,6 +91,8 @@ for (const engine of [chromium, webkit]) it(`shows each role what it may do, cha
       await promote.getByRole('button', { name: 'Make admin' }).click()
       await member(owner, 'Carol').locator('.role-badge', { hasText: 'Admin' }).waitFor({ timeout: 30000 })
 
+      // The role badge can update before its confirmation releases keyboard input.
+      await alicePage.getByRole('alertdialog').waitFor({ state: 'hidden' })
       // Removing a machine, using the keyboard.
       const other = aliceMachines.filter({ hasNotText: 'This machine' })
       await other.getByRole('button', { name: /^Remove / }).focus()
