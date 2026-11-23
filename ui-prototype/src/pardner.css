@@ -1405,6 +1405,11 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
   border-top: 1px solid var(--line);
 }
 .people-section h3 { font-size: 15px; margin-bottom: 12px; }
+.people-section.sharing { margin-bottom: 14px; }
+.share-state { margin-left: 6px; font-size: 13px; font-weight: 500; color: var(--muted); }
+.share-state[data-state='on'] { color: var(--accent); }
+.share-state[data-state='error'] { color: var(--warning); }
+.people-section.sharing .actions { margin-top: 8px; }
 .people-section > .muted.small { margin: -4px 0 12px; }
 .member-list,
 .machine-list,

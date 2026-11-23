@@ -22,6 +22,23 @@ authentication, cross-replica presence, real agent activity, browser focus,
 transport reachability, or rendering. Those paths require real client API and
 browser exercises. Registration is not evidence that an agent is doing work.
 
+## Sharing over a managed route
+
+Run `node --test test/client-share.test.js`. It drives two real clients with a
+stand-in tunnel (`support/fake-tunnel.js`, a TCP relay between loopback ports),
+and establishes the switch, what the shared listener refuses (the operator and
+browser API, the board, projects that are not shared, escaped paths, a wrong
+host), joining and syncing through the route, sharing off and on, restart on
+both sides, and replacement of a forward nothing answers through.
+`test/people-panel-ui.test.js` covers the switch in the People panel.
+
+None of this starts tailcat. A change to `lib/tailcat.js` or to how its
+processes are started, stopped or replaced needs a real exercise: two client
+directories on one computer, `client share --on`, an invitation joined and
+approved, a task and a comment crossing in each direction, `--off` and `--on`
+again, and `pgrep tailcat` empty after both clients stop. That exercise still
+shares one network; two computers on separate networks are a separate rehearsal.
+
 ## Integrated flow evidence
 
 The [recovery guide](../../../../docs/PARDNER-CLIENT-RECOVERY.md) is exercised by
