@@ -340,7 +340,9 @@ What to keep in mind:
 
 ## Candidates if this is revisited
 
-None of these is scheduled.
+None of these was scheduled when this record was written. On 2026-11-23 the owner
+decided several of them and set others aside; the [thread model](PARDNER-THREAD-MODEL.md)
+records the result. Candidate 8 is explored in #282.
 
 1. `pardner mentions wait`: a blocking command that returns the next mention
    for an Actor after a given place. Also listed in the
