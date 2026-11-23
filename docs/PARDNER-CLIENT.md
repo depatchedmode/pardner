@@ -259,7 +259,7 @@ Start Pardner with a fresh `--data` directory.
 The project's hub is the client that created it. It is the enrollment point: it
 keeps invitations and join requests in its registry and records every admission.
 
-The board's **Invite** menu offers:
+Open **People** on the board, then choose **Invite**. The menu offers:
 
 - **Human:** another person joins with their own identity, their local client and
   setup agent. Only the owner or an admin can create one. The owner chooses the
@@ -280,17 +280,14 @@ prompt or the raw invitation. Invitations from earlier Pardner versions are
 refused with a request for a new one.
 
 Human and My device invitations are used by a client on another computer, so they
-need a route other computers can reach. A client started without `--public-url`
-refuses to issue them with `PUBLIC_URL_REQUIRED`: the message names the loopback
-address the invitation would have carried and says to restart the client with
-`pardner client serve --public-url <https origin>`. On a joined computer the
-invitation is issued by the hub, so the message asks for the hub's client to be
-restarted. Agent invitations stay available without `--public-url`, for an agent
-on the same computer. An explicit `--public-url` is always honoured, including a
-loopback relay or test gate (see
-[Connectivity and recovery boundaries](#connectivity-and-recovery-boundaries)).
-Switching on [sharing](#sharing-a-project-with-other-computers) for the project
-is the other way to give its invitations a route; the refusal names that too.
+need a route other computers can reach. If the hosting computer has no route,
+select **Turn on Tailcat** in the invitation dialog. Select **Create invitation**
+once Sharing is on. On a joined computer, invitations use the project's hub
+route. Ask the host to enable a route if needed.
+The CLI reports a missing route as `PUBLIC_URL_REQUIRED` and gives commands for
+the host. An explicit `--public-url` also works, including a loopback relay or
+test gate (see [Connectivity and recovery boundaries](#connectivity-and-recovery-boundaries)).
+Agent invitations on the same computer need no external route.
 
 During a hub outage the dialog's invitation list says it couldn't load and offers
 **Retry**; it raises no alert until the person acts. Creating an invitation then
@@ -312,6 +309,9 @@ place, so the invitation stays usable.
 Until it is approved, the joining machine receives nothing from the project. The
 browser shows **Waiting for approval**; `client join` reports `{ join: { state,
 requestId, code, … } }` and is run again with the same operation ID to continue.
+The copied setup prompt asks the receiving agent to let you know as soon as
+the request is pending, even before there is a code. Ask the approver to open
+**People** on their project board to reveal it.
 
 **Confirmation code.** When the approver opens the request, their client adds a
 fresh random nonce. Both sides then derive the same eight-digit code from the
@@ -331,7 +331,7 @@ retry. The invitation is used up; other waiting requests on it are rejected. An
 admin on another computer approves the same way: their own machine signs, and the
 hub records it.
 
-The **People** panel (below) lists join requests, with their codes, to everyone
+The **People** panel (below) shows live join requests above Members, with their codes, to everyone
 who may approve one: the owner and admins for new people, and the person's own
 machines, the owner or an admin for a new machine. The header's **People** button
 counts the requests waiting for this machine. Each request shows the name, email
@@ -420,22 +420,24 @@ browser launch; it uses its scoped agent grant to read and edit the board.
 The header's **People** button opens a panel built from this machine's own
 membership records, so it opens offline; the hub checks every action again when
 it is taken. Roles decide only who may let people in or remove them: every member
-may change anything on the board. The panel shows:
+may change anything on the board. The header offers **Invite someone** when you
+can invite people. Pending requests appear above the member roster.
 
-- **Counts** of people, machines, agents and removed entries in its heading.
-- **Each person:** their role, email and who let them in (or that they started
-  the project); their machines, with **This machine**, **Hosts the project**,
+- **Members:** names and roles. Open a person to see their email, who let them
+  in, and the actions available for that person. Their machines show
+  **This machine**, **Hosts the project**,
   **Agents only**, and online or last seen where the hub knows it (the hub keeps
   this in memory, so it resets when the hub restarts); and their agents with the
   machines they run on. A machine's short ID tells apart machines with the same
   name; a machine paired after its person joined says who paired it.
 - **Waiting to join:** join requests with the confirmation code, **Approve** and
   **Reject**, as above.
-- **Removed:** people and machines removed from the project, with who removed
+- **Membership:** leaving the project and **Removed**, which lists
+  people and machines removed from the project, with who removed
   them or that the person left, distinct from offline (#175). The board's avatar
   stack no longer lists a removed person, and their profile says they were
   removed; their earlier work keeps their name.
-- **Invitations:** newest first, with what each was for, who issued it and when,
+- **Invitation history:** newest first, with what each was for, who issued it and when,
   its state, and who used or revoked it. It shows ten at a time, up to the newest
   fifty, refreshes while open, and offers **Revoke** for unused ones (#183). The
   Invite dialog shows the same history.
@@ -484,7 +486,7 @@ machine cannot remove itself. `client role --project ID --person PERSON_ID --rol
 admin|member` is the owner's alone; each change names the role record it replaces.
 People an admin admitted stay when that admin is removed or demoted.
 
-**Leaving.** `client leave --project ID` (or **Leave project** in the panel) signs
+**Leaving.** `client leave --project ID` (or **Leave project** under **Membership**) signs
 `member.remove` for this machine's own person. All of the person's machines lose
 access, as with any removal, and the people they let in stay. The owner can't
 leave, and an agents-only machine can't leave on its person's behalf.
@@ -548,8 +550,10 @@ two computers on unrelated networks need no public address, tunnel account or
 tailcat` on macOS); Pardner refuses any other version, because tailcat promises
 no stable command line or wire format.
 
-**The switch.** Sharing is per project and off by default. The person hosting a
-project switches it in the People panel (**Sharing**) or with:
+**The switch.** Sharing is per project and off by default. Enable it from the
+invitation dialog when the project needs a route. Select **Tailcat on** in the
+board header to turn off Tailcat sharing for that project. **Project status**
+shows connected computers and sync status. The CLI can also manage sharing.
 
 ```sh
 node bin/pardner.js client share --project ID --on    # or --off; with neither flag it reports the state
@@ -592,7 +596,10 @@ minute, so reconnecting can then take up to two minutes.
 direct path exists, Tailscale's public DERP relays, which carry no uptime
 commitment. Without the route a shared project behaves as in any hub outage:
 enrolled computers reopen and save locally, and joining and new deliveries wait.
-An existing `--public-url` route keeps working beside it.
+An existing `--public-url` route keeps working beside it. On a joined computer,
+**Project status** shows the connection to the host and when the board last synced.
+Pardner retries automatically. If the route stays down, ask the person hosting
+the project to check the Tailcat control in their board header.
 
 **Not in this prototype.** The route is outside the signed offer, so nothing
 binds an invitation to its route beyond the port the offer names. There is no
@@ -623,7 +630,9 @@ author without `--actor`. A file holding only the token works with an explicit
 `--server PROJECT_API_BASE`. The [API contract](PARDNER-ONBOARDING-CONTRACT.md#browserserver-contract)
 documents operation, session, report and end routes.
 
-An avatar shows identity, human/agent kind and active, idle or offline presence.
+Hover over a board avatar to preview its name, kind and presence. Selecting a
+board avatar opens **People**, where each member’s expanded row links to their
+profile and their agents’ profiles.
 Active means connected and reporting activity; idle means connected without
 current activity; offline means no live session observed. Focus markers come
 from explicit reports. Profiles show Git details, the human relationship,

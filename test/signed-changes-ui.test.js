@@ -21,7 +21,7 @@ for (const engine of [chromium, webkit]) it(`names who made each change, lists m
       await eventually(async () => (await alice.doc()).tasks[result.taskId], 'the change never reached Alice')
       const page = await newPage()
       await alice.open(page)
-      await page.getByRole('button', { name: 'Activity', exact: true }).click()
+      await page.getByRole('tab', { name: 'Activity', exact: true }).click()
       const written = row(page, 'Written on Bob’s machine')
       await written.locator('.event-signer').getByText('Signed by Bob · Bob’s laptop').waitFor({ timeout: 30000 })
       assert.equal(await written.locator('.event-signer').getAttribute('data-tone'), 'signed')
@@ -53,7 +53,7 @@ for (const engine of [chromium, webkit]) it(`names who made each change, lists m
         assert.equal(await row(page, 'Written on Bob’s machine').count(), 0, 'only changes that need review are listed')
         // Applied, not hidden: the task is on Alice's board and, through her hub, on Bob's.
         await eventually(async () => (await bob.doc()).activity.find(entry => entry.key === unsigned.operationId)?.changes[0]?.state === 'unattributed', 'Bob never learned it is unattributed')
-        await page.getByRole('button', { name: 'Tasks', exact: true }).click()
+        await page.getByRole('tab', { name: 'Tasks', exact: true }).click()
         await page.locator('.task-card').filter({ hasText: 'Never signed' }).waitFor()
       } finally { await unsigned.repo.shutdown() }
 
@@ -63,7 +63,7 @@ for (const engine of [chromium, webkit]) it(`names who made each change, lists m
       const altered = await alterEntry({ key: bob.client.registry.machineKey, projectId: project.id, nativeUrl, boardUrl, operationId: entry.operationId,
         edit: event => { event.payload.text = new A.ImmutableString('Bob’s words') } })
       try {
-        await page.getByRole('button', { name: 'Activity', exact: true }).click()
+        await page.getByRole('tab', { name: 'Activity', exact: true }).click()
         await page.getByRole('combobox', { name: 'Show' }).selectOption('changes')
         // Shown as Alice signed it, with the alteration and the machine that made it.
         const signed = row(page, 'Alice’s own words')
@@ -102,7 +102,7 @@ for (const engine of [chromium, webkit]) it(`later changes by another member nev
         await eventually(async () => (await alice.doc()).attribution.deletions?.[doomed.commentId], 'the deletion never reached Alice')
         const page = await newPage()
         await alice.open(page)
-        await page.getByRole('button', { name: 'Activity', exact: true }).click()
+        await page.getByRole('tab', { name: 'Activity', exact: true }).click()
         // The deleted comment's entry keeps Alice's words and her signed time, and says it was deleted later, by a
         // change that needs review, naming that change's signer, never as Alice's own deletion.
         const deleted = row(page, 'Alice’s deleted words')
@@ -121,7 +121,7 @@ for (const engine of [chromium, webkit]) it(`later changes by another member nev
         // The task panel shows the comment as it is now, and says someone other than its author changed it.
         await page.getByRole('combobox', { name: 'Show' }).selectOption('changes')
         await deleted.locator('button[data-task-id]').click()
-        const panel = page.getByRole('complementary', { name: 'Task details' })
+        const panel = page.getByRole('dialog', { name: 'Task details' })
         const comment = panel.locator('article.comment', { hasText: 'Words put in Alice’s mouth' })
         await comment.getByText('Changed by someone other than its author.', { exact: false }).waitFor({ timeout: 30000 })
         assert.equal(await panel.locator('.comment-changed').count(), 1, 'only the changed comment says so')
@@ -147,7 +147,7 @@ for (const engine of [chromium, webkit]) it(`a board part a member's change rewr
         await page.getByText('Part of this board can’t be read, so what it holds isn’t shown: goals.', { exact: false }).waitFor({ timeout: 30000 })
         await page.locator('.task-card').filter({ hasText: 'Still on the board' }).waitFor()
         // The change is listed for review under its own signer.
-        await page.getByRole('button', { name: 'Activity', exact: true }).click()
+        await page.getByRole('tab', { name: 'Activity', exact: true }).click()
         await page.getByRole('combobox', { name: 'Show' }).selectOption('review')
         await page.locator('article.event .event-signer').getByText('Signed by Bob · Bob’s laptop').first().waitFor({ timeout: 30000 })
         const doc = await alice.doc()
@@ -179,7 +179,7 @@ for (const engine of [chromium, webkit]) it(`a board holding an Actor that is no
         await notice.getByText('Shown empty: tags of task “Tags soon unreadable”.', { exact: false }).waitFor()
         // The board still shows the task; its panel says what it shows empty, and its edit form opens with no tags.
         await card.click()
-        const panel = page.getByRole('complementary', { name: 'Task details' })
+        const panel = page.getByRole('dialog', { name: 'Task details' })
         await panel.getByText('Shown empty, because what this task holds there can’t be read: tags.').waitFor({ timeout: 30000 })
         await panel.getByRole('button', { name: 'Edit task', exact: true }).click()
         const tags = panel.getByRole('region', { name: 'Edit task' }).getByLabel('Tags, separated by commas')

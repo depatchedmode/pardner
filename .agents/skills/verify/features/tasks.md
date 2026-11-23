@@ -34,10 +34,52 @@ Run `node --test test/pardner-ui.test.js` after building UI for browser operatio
 The browser opens through `withClientWorkspace` (`support/client-workspace.js`) and
 uses **New task**, **Title**, **Create task**, **Comment**, **Add comment**, and **Retry saved request**. Its
 lost-response case checks identical operation attempts and exactly one comment
-through CLI readback. Its stale-write case checks a preserved draft and an
+through CLI readback. The edit retry exercise holds the saved request,
+checks keyboard focus during and after retry, and verifies the same operation is
+replayed. It also retries from the board after reloading, then saves text typed
+after the original request from the rebased draft. Its stale-write case checks a preserved draft and an
 unchanged newer task value. The focus case checks that the Task details heading
 has focus as soon as the panel opens, before a user enters a comment or issue
-reference. Inspect the resulting UI for presentation changes.
+reference. The full-width panel case holds the task read open, checks that the
+covered board is inert, walks both Tab directions, and resizes without losing a
+comment draft. It checks that wrapping reveals the focused control and that
+Close or Escape keeps the comment for the same task while the board is open.
+Both panel types cover New task without moving it or letting it take focus.
+Close restores the task card or New task button. At 320px People and New task
+stay reachable, New task floats at the bottom and a long assignee fits within
+the edit panel. The frame check scrolls the last card clear of the floating
+button on desktop and phone. A short landscape
+viewport switches to a full-width panel without losing the draft. The desktop focus case opens
+a task, then uses reverse Tab to reach and activate a card beside the panel.
+At 1024px it checks the 512px board, keeps the selected card visible on resize
+and after a lane change, and confirms that a reply does not undo manual scrolling.
+The task read recovery case drops the initial GET and its first retry, then
+checks that Retry shows loading and eventually opens the same task in place.
+The visual control case measures field border contrast, checks persistent
+selection cues in forced colors, and checks the comment field on a touch tablet.
+The inline Status case also checks its rendered height on desktop and at 375px.
+The long-discussion case opens Write comment at 320px, confirms the field is
+visible and focused, posts once, and checks that the unread stripe mirrors in RTL.
+Typing while a comment is saving keeps the newer draft when the receipt arrives.
+Inspect the resulting UI for presentation changes.
+The board view test in Chromium and WebKit uses Arrow Right, End and Home to
+move between Tasks, Goals and Activity. It verifies selection, focus and which
+content and filters are available.
+It also checks the single empty-board message, the filtered empty state and
+keyboard recovery through Clear filters, and compact defaults on task cards.
+At 320px the keyboard path opens Filters from the Tasks toolbar, reaches the
+criteria, hides the controls while keeping an active count, then clears the
+filter and returns focus to Tasks. A long linked issue stays within the
+full-width detail panel.
+The comment conflict exercise checks that the author can resolve the conflict
+and other Actors see a visible reason for the disabled controls.
+The Markdown fixture checks the shared reading and composing scale,
+comment count hierarchy and date alignment, nested list spacing,
+checklist alignment and reading order. Task instructions precede issue
+management in the Task details panel. Wide tables and code blocks are Tab stops
+and scroll with the arrow keys. A short code block adds no Tab stop.
+The read-receipt case checks that Mark all read disappears when there are no
+unread comments and returns keyboard focus to the Comments heading.
 
 ## Gotchas
 

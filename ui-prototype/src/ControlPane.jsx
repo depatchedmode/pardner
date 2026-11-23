@@ -1,4 +1,8 @@
-import { ActionButton, ActionForm } from './ControlAction.jsx'
+import { ActionButton, ActionForm, canQueueFollowUp } from './ControlAction.jsx'
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from '@ui-sdk/react/collapsible'
+import { DialogClose, DialogTitle } from '@ui-sdk/react/dialog'
+import { BoardDialog } from './BoardDialog.jsx'
+import Chevron from './Chevron.jsx'
 import CloudControl from './CloudControl.jsx'
 import { useCallback, useEffect, useState } from 'react'
 import { CANCELLABLE_EXECUTION_STATES as CANCELLABLE } from '@pardner/domain-vocab'
@@ -33,15 +37,13 @@ function Verdicts({ execution, actors }) {
   </dl>
 }
 
-function ExecutionCard({ execution, state, actors, tasks, actor, canManage, act, busy }) {
+function ExecutionCard({ execution, state, actors, actor, act, busy }) {
   const [evidence, setEvidence] = useState('')
   const [verdictKind, setVerdictKind] = useState('human')
   const [artifact, setArtifact] = useState('')
-  const task = tasks[execution.intent.taskId]
   const ended = execution.state === 'terminal' && execution.completion && execution.completion !== 'abandoned'
   return <article className="execution" aria-label={`Execution ${execution.id}`}>
     <div className="section-heading">
-      <h4>{task?.title ?? execution.intent.taskId}</h4>
       <span className={`state-label state-${execution.state}`}>{STATE_LABELS[execution.state]}{execution.outcome ? `: ${execution.outcome}` : ''}</span>
     </div>
     <p>{execution.intent.text}</p>
@@ -70,7 +72,7 @@ function ExecutionCard({ execution, state, actors, tasks, actor, canManage, act,
       </ActionButton>}
       {execution.state === 'unknown' && <ActionButton disabled={busy} onClick={() => act('/pardner/control/executions/reconcile', { id: execution.id })}>Look for this request in T3</ActionButton>}
     </div>
-    {execution.state === 'unknown' && canManage && <ActionForm onSubmit={event => act('/pardner/control/executions/resolve', { id: execution.id, decision: event.nativeEvent.submitter.value, evidence })}>
+    {execution.state === 'unknown' && <ActionForm onSubmit={event => act('/pardner/control/executions/resolve', { id: execution.id, decision: event.nativeEvent.submitter.value, evidence })}>
       <label>Reconciliation evidence<textarea required value={evidence} onChange={event => setEvidence(event.target.value)} /></label>
       <button disabled={busy} value="retry">Retry with the same request</button>
       <button disabled={busy} value="abandon">Abandon this outcome</button>
@@ -98,31 +100,32 @@ function ExecutionCard({ execution, state, actors, tasks, actor, canManage, act,
   </article>
 }
 
-function SessionCard({ session, state, actors, tasks, actor, canManage, act, busy }) {
+function SessionCard({ session, state, actors, actor, taskId, act, busy }) {
   const [text, setText] = useState('')
-  const [taskId, setTaskId] = useState(session.allowedTaskIds[0] ?? '')
   const [evidence, setEvidence] = useState('')
   const [reviewedRuns, setReviewedRuns] = useState('')
   const [acceptVersion, setAcceptVersion] = useState(false)
   const versionHeld = session.holds.some(hold => / is not qualified /.test(hold))
-  const executions = state.executions.filter(execution => execution.threadId === session.threadId)
+  const setup = taskId === undefined
+  const canQueue = !setup && canQueueFollowUp(session, taskId, actor)
+  const executions = state.executions.filter(execution => execution.threadId === session.threadId && execution.intent.taskId === taskId)
   return <section className="control-session" aria-label={`T3 thread ${session.identity.title ?? session.threadId}`}>
     <div className="section-heading">
       <h3>{session.identity.title ?? session.threadId}</h3>
       <Freshness now={state.now} observedAt={session.observedAt} stale={session.stale} unreachable={state.unreachable} />
     </div>
-    <dl className="identity">
+    {setup && <dl className="identity">
       <dt>Project</dt><dd>{session.project.name}{session.project.repository ? ` · ${session.project.repository}` : ''}</dd>
       <dt>Agent</dt><dd>{actorName(actors, session.actorId)}</dd>
       <dt>Provider</dt><dd>T3 · {session.identity.providerInstanceId ?? 'unknown'} · {session.identity.model ?? 'unknown model'} · {session.identity.runtimeMode}</dd>
       <dt>Session</dt><dd>{session.identity.link ? <a href={session.identity.link} target="_blank" rel="noreferrer">{session.threadId}</a> : session.threadId}</dd>
       <dt>Location</dt><dd>{session.location.host} · {session.location.worktreePath ?? 'project folder (T3 reports no worktree)'} · {session.location.branch ?? 'no branch reported'}</dd>
       <dt>Environment</dt><dd>{session.identity.environmentId ?? 'Not reported'}</dd>
-    </dl>
+    </dl>}
     {session.unqualified.map(note => <p key={note} className="notice">{note}</p>)}
     {session.health?.error && <p className="error" role="status">Last T3 pass failed: {session.health.error}</p>}
     {session.blocker && <p className="notice" role="status">Dispatch held: {session.blocker}</p>}
-    {session.holds.length > 0 && canManage && <ActionForm onSubmit={async () => {
+    {session.holds.length > 0 && setup && <ActionForm onSubmit={async () => {
       const runs = reviewedRuns.split(/[\s,]+/).filter(Boolean)
       await act('/pardner/control/sessions/release', { threadId: session.threadId, evidence, reviewedRuns: runs, acceptVersion })
       setEvidence('')
@@ -135,20 +138,15 @@ function SessionCard({ session, state, actors, tasks, actor, canManage, act, bus
       {versionHeld && <label className="check"><input type="checkbox" checked={acceptVersion} onChange={event => setAcceptVersion(event.target.checked)} />Accept this T3 version for this controller</label>}
       <button disabled={busy}>Release held work</button>
     </ActionForm>}
-    <ActionForm onSubmit={async () => {
+    {canQueue && <ActionForm onSubmit={async () => {
       await act('/pardner/control/executions', { id: createOperationId(), threadId: session.threadId, actorId: session.actorId, taskId, fromActorId: actor, text })
       setText('')
     }}>
-      <label>Task for this run<select aria-label="Task for this run" value={taskId} onChange={event => setTaskId(event.target.value)}>
-        {session.allowedTaskIds.map(id => <option key={id} value={id}>{tasks[id]?.title ?? id}</option>)}
-      </select></label>
       <label>Follow-up for {actorName(actors, session.actorId)}<textarea required value={text} onChange={event => setText(event.target.value)} /></label>
       <p className="muted">Saved in Pardner first; it is sent to T3 only when the thread is idle and nothing is held.</p>
       <button className="primary" disabled={busy || !actor}>Queue follow-up</button>
-    </ActionForm>
-    <h3>Runs <span>{executions.length}</span></h3>
-    {!executions.length && <p className="empty">No runs yet</p>}
-    {executions.map(execution => <ExecutionCard key={execution.id} {...{ execution, state, actors, tasks, actor, canManage, act, busy }} />)}
+    </ActionForm>}
+    {executions.map(execution => <ExecutionCard key={execution.id} {...{ execution, state, actors, actor, act, busy }} />)}
   </section>
 }
 
@@ -160,8 +158,7 @@ function Setup({ state, actors, tasks, act, busy }) {
   const [mapping, setMapping] = useState({ projectId: '', threadId: '', actorId: '', allowedTaskIds: [], allowedFromActorIds: [] })
   const toggle = (field, id) => setMapping(current => ({ ...current,
     [field]: current[field].includes(id) ? current[field].filter(value => value !== id) : [...current[field], id] }))
-  return <details className="control-setup" open={!state.sessions.length}>
-    <summary>Control settings</summary>
+  return <>
     <ActionForm onSubmit={async () => {
       await act('/pardner/control/credential', { origin, pairingCode })
       setPairingCode('')
@@ -210,10 +207,10 @@ function Setup({ state, actors, tasks, act, busy }) {
       </fieldset>
       <button disabled={busy}>Map thread</button>
     </ActionForm>
-  </details>
+  </>
 }
 
-export default function ControlPane({ request, actors, tasks, actor, canManage }) {
+function ControlPane({ request, actors, tasks, actor, taskId }) {
   const [state, setState] = useState(null)
   const [pollError, setPollError] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -236,24 +233,46 @@ export default function ControlPane({ request, actors, tasks, actor, canManage }
       await load()
     } finally { setBusy(false) }
   }
-  if (!state) return <section className="control" aria-label="Control"><p role="status">{pollError ? pollError.message : 'Opening control records…'}</p></section>
-  if (!state.enabled) return <section className="control" aria-label="Control"><p className="empty">This service is not running a control pane.</p></section>
+  const setup = taskId === undefined
+  if (!state) return <p role="status">{pollError ? pollError.message : 'Opening agent records…'}</p>
+  if (!state.enabled) return <p className="muted">Agent execution is unavailable on this computer.</p>
   const credential = state.credential
-  return <section className="control" aria-label="Control">
-    <div className="section-heading">
-      <h2>Control</h2>
-      <ActionButton disabled={busy} onClick={() => act('/pardner/control/poll', {})}>Read T3 now</ActionButton>
-    </div>
-    <p className="muted">
-      T3 credential: {credential.status}{credential.expiresAt ? ` · expires ${new Date(credential.expiresAt).toLocaleDateString()}` : ''}
-      {state.environment ? ` · T3 ${state.environment.serverVersion}` : ''} · qualified {state.qualifiedVersions.join(', ')}.
-      These records stay on this computer and are not synchronized or published to GitHub.
-    </p>
-    {['expired', 'expiring', 'rejected'].includes(credential.status) && <p className="notice" role="status">Pair T3 again before the credential stops working. Requests that may already be in T3 cannot be retried with a new credential.</p>}
+  const sessions = setup ? state.sessions : state.sessions.filter(session => canQueueFollowUp(session, taskId, actor)
+    || state.executions.some(run => run.threadId === session.threadId && run.intent.taskId === taskId))
+  return <div className="control">
+    {setup && <>
+      <p className="muted">Settings and run records stay on this computer.</p>
+      <div className="section-heading">
+        <p>T3 credential: {credential.status}{credential.expiresAt ? ` · expires ${new Date(credential.expiresAt).toLocaleDateString()}` : ''}
+          {state.environment ? ` · T3 ${state.environment.serverVersion}` : ''}</p>
+        <ActionButton disabled={busy} onClick={() => act('/pardner/control/poll', {})}>Read T3 now</ActionButton>
+      </div>
+      {['expired', 'expiring', 'rejected'].includes(credential.status) && <p className="notice" role="status">Pair T3 again before the credential stops working. Requests that may already be in T3 cannot be retried with a new credential.</p>}
+      <Setup {...{ state, actors, tasks, act, busy }} />
+    </>}
     {pollError && <div className="error" role="alert"><strong>{pollError.message}</strong></div>}
-    {canManage && <Setup {...{ state, actors, tasks, act, busy }} />}
-    {!state.sessions.length && <p className="empty">No T3 threads are mapped yet.</p>}
-    <CloudControl cloud={state.cloud} {...{ actor, act, busy, canManage }} />
-    {state.sessions.map(session => <SessionCard key={session.threadId} {...{ session, state, actors, tasks, actor, canManage, act, busy }} />)}
-  </section>
+    {!sessions.length && <p className="muted">{setup ? 'No T3 threads are mapped yet.' : 'No T3 thread is available for you to use on this task. To configure one, open Agent setup in the project menu.'}</p>}
+    {sessions.map(session => <SessionCard key={session.threadId} {...{ session, state, actors, actor, taskId, act, busy }} />)}
+    <CloudControl cloud={state.cloud} {...{ actor, taskId, act, busy }} />
+  </div>
+}
+
+export function AgentSetupDialog({ returnFocus, onClose, ...props }) {
+  return <BoardDialog className="profile-dialog agent-setup" returnFocus={returnFocus} onClose={onClose}>
+    <header className="profile-heading">
+      <DialogTitle>Agent setup</DialogTitle>
+      <DialogClose className="close">Close</DialogClose>
+    </header>
+    <ControlPane {...props} />
+  </BoardDialog>
+}
+
+export function TaskAgentRuns({ taskId, ...props }) {
+  const [opened, setOpened] = useState(false)
+  return <Collapsible className="task-agent-runs" onOpenChange={open => { if (open) setOpened(true) }}>
+    <CollapsibleTrigger>Agent runs <Chevron /></CollapsibleTrigger>
+    <CollapsiblePanel keepMounted>
+      {opened && <ControlPane {...props} taskId={taskId} />}
+    </CollapsiblePanel>
+  </Collapsible>
 }

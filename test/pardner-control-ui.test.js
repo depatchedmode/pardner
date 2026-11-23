@@ -7,13 +7,34 @@ import { FakeT3 } from '../support/fake-t3-server.js'
 
 const AGENTS = [{ id: 'builder', kind: 'agent' }, { id: 'reviewer', kind: 'agent' }]
 
+const setupDialog = page => page.getByRole('dialog', { name: 'Agent setup' })
+async function openAgentSetup(page) {
+  await page.getByRole('button', { name: /^Project: / }).click()
+  await page.getByRole('menuitem', { name: 'Agent setup' }).click()
+  return setupDialog(page)
+}
+const taskDetails = page => page.getByRole('dialog', { name: 'Task details' })
+async function openAgentRuns(page, title) {
+  await page.getByRole('button', { name: new RegExp(title) }).click()
+  const panel = taskDetails(page)
+  await panel.getByText('Agent runs', { exact: true }).click()
+  return panel
+}
+const close = surface => surface.getByRole('button', { name: 'Close', exact: true }).click()
+
 for (const engine of [chromium, webkit]) it(`shows stale reads, approval blocks, held follow-ups, cancellation output and separate verdicts in ${engine.name()}`, { timeout: 90000 }, async t => {
   const t3 = await new FakeT3().start()
   t.after(() => t3.stop().catch(() => {}))
   t3.thread('thread-ui', { title: 'Pardner control thread' })
-  await withClientWorkspace(engine, { actors: AGENTS, runtimeOptions: { control: { pollMs: 150, staleAfterMs: 1500 } } }, async ({ page, open, operate, actorId }) => {
+  await withClientWorkspace(engine, { actors: AGENTS, runtimeOptions: { control: { pollMs: 150, staleAfterMs: 1500 } } }, async ({ page, open, operate, actorId, project }) => {
     const { result: task } = await operate('task.create', { title: 'Build the control pane' })
+    await operate('task.create', { title: 'Unmapped task' })
     await open()
+    await page.evaluate(key => localStorage.setItem(key, JSON.stringify({ view: 'control' })),
+      `pardner:${project.id}:${actorId}:preferences`)
+    await page.reload()
+    await page.getByRole('tab', { name: 'Tasks', selected: true }).waitFor()
+    assert.equal(await page.getByRole('button', { name: 'Control', exact: true }).count(), 0)
 
     // Link an existing GitHub issue from the task itself.
     await page.getByRole('button', { name: /Build the control pane/ }).click()
@@ -22,7 +43,7 @@ for (const engine of [chromium, webkit]) it(`shows stale reads, approval blocks,
     await page.getByRole('link', { name: 'depatchedmode/pardner#77' }).waitFor()
     await page.getByRole('button', { name: 'Close', exact: true }).first().click()
 
-    await page.getByRole('button', { name: 'Control', exact: true }).click()
+    const setup = await openAgentSetup(page)
     await page.getByLabel('T3 address').fill(t3.origin)
     await page.getByLabel('T3 pairing code').fill(t3.issueCode())
     await page.getByRole('button', { name: 'Pair T3' }).click()
@@ -37,10 +58,20 @@ for (const engine of [chromium, webkit]) it(`shows stale reads, approval blocks,
     await page.getByRole('checkbox', { name: 'Build the control pane' }).check()
     await page.getByRole('checkbox', { name: 'Alice', exact: true }).check()
     await page.getByRole('button', { name: 'Map thread' }).click()
-    const thread = page.getByRole('region', { name: 'T3 thread Pardner control thread' })
-    await thread.waitFor()
-    await thread.getByText('project folder (T3 reports no worktree)', { exact: false }).waitFor()
+    const threadName = 'T3 thread Pardner control thread'
+    const setupThread = setup.getByRole('region', { name: threadName })
+    await setupThread.getByText('project folder (T3 reports no worktree)', { exact: false }).waitFor()
+    assert.equal(await setup.getByRole('button', { name: 'Queue follow-up' }).count(), 0)
+    await close(setup)
+    assert.equal(await page.getByRole('button', { name: /^Project: / }).evaluate(button => button === document.activeElement), true)
+    const unmapped = await openAgentRuns(page, 'Unmapped task')
+    await unmapped.getByText(/No T3 thread is available/).waitFor()
+    assert.equal(await unmapped.getByRole('button', { name: 'Queue follow-up' }).count(), 0)
+    await close(unmapped)
 
+    const taskPanel = await openAgentRuns(page, 'Build the control pane')
+    const thread = taskPanel.getByRole('region', { name: threadName })
+    assert.equal(await taskPanel.getByLabel('T3 address').count(), 0)
     const followUp = thread.getByLabel(/Follow-up for builder/)
     await followUp.fill('Implement the pane')
     await thread.getByRole('button', { name: 'Queue follow-up' }).click()
@@ -85,18 +116,20 @@ for (const engine of [chromium, webkit]) it(`shows stale reads, approval blocks,
     assert.match(verdicts, /Independent check\s+Not recorded/)
     assert.match(verdicts, /Human acceptance\s+rejected by Alice/)
 
-    await thread.getByLabel('Review evidence').fill('Confirmed the interrupted run ended')
-    await thread.getByRole('button', { name: 'Release held work' }).click()
-    await second.getByText('Running', { exact: true }).waitFor()
-    assert.equal(t3.sends.length, 2)
-    assert.deepEqual(t3.interrupts.map(entry => entry.runId), [runId])
-    await page.locator('summary').filter({ hasText: 'Register Cloud context' }).click()
+    await openAgentSetup(page)
+    await setupThread.getByLabel('Review evidence').fill('Confirmed the interrupted run ended')
+    await setupThread.getByRole('button', { name: 'Release held work' }).click()
+    await setup.locator('summary').filter({ hasText: 'Register Cloud context' }).click()
     for (const [label, value] of Object.entries({ 'Cloud context ID': 'cloud-review', 'Cloud project ID': 'pardner', 'Cloud agent Actor': 'reviewer',
       'Cloud repository URL': 'https://github.com/depatchedmode/pardner', 'Cloud starting ref': 'main',
       'Cloud authorized task IDs (comma separated)': task.taskId, 'Cloud authorized sender Actors (comma separated)': actorId })) await page.getByLabel(label, { exact: true }).fill(value)
     await page.getByRole('button', { name: 'Register Cloud context', exact: true }).click()
-    const cloud = page.getByRole('article', { name: 'Cloud context cloud-review', exact: true })
-    await cloud.waitFor()
+    await setup.getByRole('article', { name: 'Cloud context cloud-review', exact: true }).waitFor()
+    await close(setup)
+    await second.getByText('Running', { exact: true }).waitFor()
+    assert.equal(t3.sends.length, 2)
+    assert.deepEqual(t3.interrupts.map(entry => entry.runId), [runId])
+    const cloud = taskPanel.getByRole('article', { name: 'Cloud context cloud-review', exact: true })
     await cloud.getByLabel('Cloud follow-up').fill('Review the immutable attempt')
     await cloud.getByRole('button', { name: 'Save Cloud intent' }).click()
     await cloud.getByText(/submissions: 0/).waitFor()
@@ -118,8 +151,8 @@ for (const engine of [chromium, webkit]) it(`Cloud cancellation and immutable ev
     await control('/projects', { id: 'cloud-project', name: 'Cloud fixture' })
     await control('/cloud/contexts', { contextId: 'fixture', projectId: 'cloud-project', actorId: 'builder', repository: 'https://github.com/example/fixture', startingRef: 'main', allowedTaskIds: [task.taskId], allowedFromActorIds: [actorId] })
     await open()
-    await page.getByRole('button', { name: 'Control', exact: true }).click()
-    const context = page.getByRole('article', { name: 'Cloud context fixture', exact: true })
+    const panel = await openAgentRuns(page, 'Cloud fixture task')
+    const context = panel.getByRole('article', { name: 'Cloud context fixture', exact: true })
     const attempt = name => context.getByRole('region', { name: `Cloud execution ${name}`, exact: true })
     await context.getByLabel('Cloud follow-up').fill('Run fixture attempt A'); await context.getByRole('button', { name: 'Save Cloud intent' }).click()
     await context.getByText(/run-1/).waitFor()
@@ -139,8 +172,12 @@ for (const engine of [chromium, webkit]) it(`Cloud cancellation and immutable ev
     await context.getByRole('button', { name: 'Accept Cloud result' }).click(); await context.getByText(`human: accepted by ${actorId}`, { exact: false }).waitFor()
     await mkdir('output/verification/cloud-ui', { recursive: true })
     await context.screenshot({ path: `output/verification/cloud-ui/${engine.name()}-active.png` })
-    await context.getByLabel('Cloud hold review').fill('Fixture reviewed partial effects')
-    await context.getByRole('button', { name: 'Release reviewed Cloud hold' }).click(); await context.getByText(/run-2/).waitFor()
+    const setup = await openAgentSetup(page)
+    const settings = setup.getByRole('article', { name: 'Cloud context fixture', exact: true })
+    await settings.getByLabel('Cloud hold review').fill('Fixture reviewed partial effects')
+    await settings.getByRole('button', { name: 'Release reviewed Cloud hold' }).click()
+    await close(setup)
+    await context.getByText(/run-2/).waitFor()
     const settled = (await control('')).cloud.executions
     assert.equal(settled.find(row => row.executionId === second.executionId).runId, 'run-2')
     assert.equal(settled.find(row => row.executionId === first.executionId).outcome, 'CANCELLED')
@@ -155,8 +192,8 @@ for (const engine of [chromium, webkit]) it(`keeps Control errors beside the sub
   await withClientWorkspace(engine, { actors: AGENTS, contextOptions: { viewport } }, async ({ page, open, operate }) => {
     await operate('task.create', { title: 'Inspect errors' })
     await open()
-    await page.getByRole('button', { name: 'Control', exact: true }).click()
-    const formFor = name => page.locator('form').filter({ has: page.getByRole('button', { name, exact: true }) })
+    const setup = await openAgentSetup(page)
+    const formFor = name => setup.locator('form').filter({ has: page.getByRole('button', { name, exact: true }) })
     const pairing = formFor('Pair T3')
     const project = formFor('Save project')
     const mapping = formFor('Map thread')
@@ -209,7 +246,7 @@ for (const engine of [chromium, webkit]) it(`keeps Control errors beside the sub
     await message.waitFor()
     const bounds = await message.boundingBox()
     assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= viewport.height, 'the validation message is in the viewport')
-    assert.ok((await page.getByRole('heading', { name: 'Control', exact: true }).boundingBox()).y < 0)
+    assert.ok(await setup.evaluate(dialog => dialog.scrollTop > 0), 'the dialog retains its scroll position')
     await mkdir('output/verification/control-errors', { recursive: true })
     await page.screenshot({ path: `output/verification/control-errors/${engine.name()}.png` })
     await mapping.getByRole('checkbox', { name: 'Alice', exact: true }).check()

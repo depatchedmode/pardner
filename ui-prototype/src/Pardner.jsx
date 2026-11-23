@@ -1,15 +1,18 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { STATUSES } from '@pardner/domain-vocab'
+import { Tabs, TabsList, TabsPanel, TabsTab } from '@ui-sdk/react/tabs'
+import { Dialog, DialogContent } from '@ui-sdk/react/dialog'
 import ActorMarkdown from './ActorMarkdown.jsx'
+import Chevron from './Chevron.jsx'
 import './pardner.css'
 import { createOperationId } from './operation-id.js'
 import { createConnection, loadConfiguration, websocketUrl } from './connection.js'
-import ControlPane from './ControlPane.jsx'
+import { AgentSetupDialog, TaskAgentRuns } from './ControlPane.jsx'
 import ClientApp from './ClientApp.jsx'
 import { AvatarStack } from './Avatar.jsx'
 import RecordConflicts from './RecordConflicts.jsx'
 import { disputedStatusText } from './record-conflicts.js'
-import { syncStatusText } from './sync-status.js'
+import { BoardStatus, SaveStatus } from './BoardStatus.jsx'
 import { isNewComment } from './comments.js'
 import { defaultHandoffStatus } from './handoff.js'
 import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js'
@@ -41,20 +44,75 @@ const atOrAfter = (event, cutoff) => {
   const b = Date.parse(cutoff.timestamp) || 0
   return a !== b ? a > b : String(event.operationId) >= String(cutoff.operationId)
 }
-// Escape closes a panel unless a dialog owns it or typed text would be lost.
-function escapeKeepsPanel(event) {
-  if (event.defaultPrevented) return true
-  const target = event.target
-  // An open dialog (profile, invite) closes first, not the panel beneath it.
-  if (target?.closest?.('dialog') || document.querySelector('dialog[open]')) return true
+function hasTypedText(target) {
   const typed = target?.tagName === 'TEXTAREA' ||
     (target?.tagName === 'INPUT' && ['', 'text', 'search', 'url', 'email'].includes(target.getAttribute('type') ?? ''))
   return Boolean(typed && target.value.trim() !== '')
 }
+
+// Match the breakpoint where .side-panel fills the viewport.
+const fullWidthPanel = '(width < 840px), (height < 600px)'
+function useFullWidthPanel() {
+  const [modal, setModal] = useState(() => matchMedia(fullWidthPanel).matches)
+  useEffect(() => {
+    const query = matchMedia(fullWidthPanel)
+    const update = () => setModal(query.matches)
+    query.addEventListener('change', update)
+    update()
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return modal
+}
+function TaskPanel({ label, modal, onClose, children }) {
+  const panel = useRef(null)
+  const revealFocus = event => {
+    const pane = event.currentTarget
+    const target = event.target
+    if (!modal || target === pane || !pane.contains(target)) return
+    const bounds = pane.getBoundingClientRect()
+    const item = target.getBoundingClientRect()
+    if (item.top < bounds.top || item.bottom > bounds.bottom) {
+      target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+  }
+  useLayoutEffect(() => {
+    if (modal && !panel.current.contains(document.activeElement) && !document.activeElement?.closest('[aria-modal="true"]')) {
+      panel.current.focus({ preventScroll: true })
+    }
+  }, [modal])
+  useEffect(() => {
+    if (modal) return
+    // Escape still closes a desktop panel if a disappearing form briefly leaves focus on the page.
+    const escapeFromPage = event => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.target !== document.body) return
+      if (document.querySelector('[aria-modal="true"]:not([hidden])')) return
+      event.preventDefault()
+      onClose()
+    }
+    document.addEventListener('keydown', escapeFromPage, true)
+    return () => document.removeEventListener('keydown', escapeFromPage, true)
+  }, [modal, onClose])
+  return <Dialog defaultOpen modal={modal} closeOnOutsidePress={false} onOpenChange={(open, details) => {
+    if (open) return
+    if (details.reason === 'escape-key' && hasTypedText(details.event?.target)) details.cancel()
+    else onClose()
+  }}>
+    <DialogContent ref={panel} className="side-panel" inline aria-label={label} initialFocus="none" finalFocus="none" onFocusCapture={revealFocus}>
+      {children}
+    </DialogContent>
+  </Dialog>
+}
 // Task details operations whose errors render above that form's submit button.
-const FORM_SLOTS = ['task.update', 'task.handoff', 'comment.add']
+const FORM_SLOTS = ['task.update', 'task.handoff', 'comment.add', 'task.link-issue', 'task.unlink-issue']
 const labelActor = (actor) =>
   actor ? `${actor.displayName || actor.handle} · ${actor.kind}` : 'Unassigned'
+
+function BoardSelect(props) {
+  return <span className="board-select">
+    <select {...props} />
+    <Chevron />
+  </span>
+}
 
 function SelectActor({
   actors,
@@ -68,7 +126,7 @@ function SelectActor({
   return (
     <label>
       {label}
-      <select
+      <BoardSelect
         aria-label={label}
         value={value || ''}
         disabled={disabled || undefined}
@@ -80,7 +138,7 @@ function SelectActor({
             {labelActor(actor)}
           </option>
         ))}
-      </select>
+      </BoardSelect>
     </label>
   )
 }
@@ -92,7 +150,7 @@ function MarkdownBody({ children, extraPlugins = [] }) {
   )
 }
 // Buttons are type="button": the notice can sit inside the form that failed.
-function ErrorNotice({ error, retry, onDismiss }) {
+function ErrorNotice({ error, retry, busy, onDismiss }) {
   if (!error) return null
   return (
     <div className="error" role="alert">
@@ -103,7 +161,7 @@ function ErrorNotice({ error, retry, onDismiss }) {
           : 'Your last confirmed data remains available.'}
       </p>}
       {(retry || onDismiss) && <div className="actions">
-        {retry && <button type="button" onClick={retry}>Retry saved request</button>}
+        {retry && <button type="button" aria-disabled={busy} onClick={retry}>Retry saved request</button>}
         {onDismiss && <button type="button" onClick={onDismiss}>Dismiss</button>}
       </div>}
     </div>
@@ -121,7 +179,7 @@ function useRefocus() {
       const active = document.activeElement
       // Only recover lost focus: never take it back from a control the user
       // has moved to while the request was running.
-      if (active && active !== document.body) {
+      if (active && active !== document.body && !active.matches('.side-panel')) {
         wanted.current = false
         return
       }
@@ -134,21 +192,6 @@ function useRefocus() {
   })
   return [ref, useCallback(() => { wanted.current = true }, [])]
 }
-function SaveStatus({ status, connected, busy, heads }) {
-  const text = !status && connected && !busy
-    ? 'Connecting to local service'
-    : syncStatusText(status, { connected, busy, heads })
-  return (
-    <span
-      className="save-status"
-      role="status"
-      data-pending={Boolean(status?.syncPending)}
-    >
-      {text}
-    </span>
-  )
-}
-
 const CURRENT_TITLE = 'As named now: not part of what was signed'
 
 /** A name or title looked up now, marked as current. */
@@ -238,7 +281,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
   // The project grants control to people on this computer.
   const canControl = Boolean(session.canControl)
   sessionRef.current = session
-  // Task panels open below the client header so people, Invite and the project stay reachable.
+  // Desktop task panels open below the client header so project controls stay reachable.
   const headerRef = useRef(null)
   const [headerHeight, setHeaderHeight] = useState(0)
   useEffect(() => {
@@ -256,12 +299,26 @@ export function Workspace({ config, reloadConfiguration, session }) {
   const actor = config.actorId
   const [selected, setSelected] = useState(() => client.preferences().selected || null)
   const [creating, setCreating] = useState(false)
+  const [commentDrafts, setCommentDrafts] = useState(() => new Map())
+  const updateCommentDraft = (taskId, text) => setCommentDrafts(current => {
+    const next = new Map(current)
+    if (text) next.set(taskId, text)
+    else next.delete(taskId)
+    return next
+  })
+  const fullWidth = useFullWidthPanel()
+  const panelOpen = Boolean(selected || creating)
+  const modalPanel = fullWidth && panelOpen
   // In-memory New task draft ({ fields, tags }); null means the defaults. Never persisted.
   const [newTaskDraft, setNewTaskDraft] = useState(null)
-  const [view, setView] = useState(() => client.preferences().view || 'board')
+  const [view, setView] = useState(() => {
+    const saved = client.preferences().view
+    return saved === 'goals' || saved === 'activity' ? saved : 'board'
+  })
   const [filter, setFilter] = useState(() => client.preferences().filter || '')
   const [statusFilter, setStatusFilter] = useState(() => client.preferences().statusFilter || '')
   const [veinFilter, setVeinFilter] = useState(() => client.preferences().veinFilter || '')
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
   const [activityActor, setActivityActor] = useState('')
   const [activityShow, setActivityShow] = useState('changes')
   // { timestamp, operationId } of the oldest rendered row; rows at or after it always render.
@@ -272,6 +329,15 @@ export function Workspace({ config, reloadConfiguration, session }) {
   const [busy, setBusy] = useState(false)
   const [confirmedOperation, setConfirmedOperation] = useState(null)
   const [pending, setPending] = useState(() => client.pending())
+  const editDrafts = useRef(new Map())
+  const readEditDraft = useCallback(taskId => editDrafts.current.has(taskId)
+    ? editDrafts.current.get(taskId)
+    : client.draft(taskId), [client])
+  const saveEditDraft = useCallback((taskId, draft) => {
+    editDrafts.current.set(taskId, draft)
+    try { client.saveDraft(taskId, draft) } catch { /* the in-memory draft remains */ }
+  }, [client])
+  const retryFocus = useRef(null)
   const inflight = useRef(false)
   const docUpdates = useRef(0)
   const statusUpdates = useRef(0)
@@ -284,6 +350,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
   const headingFocusedFor = useRef(0)
   const newTaskButton = useRef(null)
   const viewNav = useRef(null)
+  const boardViewport = useRef(null)
   const panelWasOpen = useRef(false)
   const openPanel = (from, open) => {
     opener.current = from
@@ -419,15 +486,58 @@ export function Workspace({ config, reloadConfiguration, session }) {
   }, [connectionError])
   // Once a panel unmounts, return focus to its opener, else New task, else the current view's button.
   useEffect(() => {
-    const open = Boolean(selected || creating)
-    if (panelWasOpen.current && !open) {
+    if (panelWasOpen.current && !panelOpen) {
       const from = opener.current
       const card = from?.taskId && document.querySelector(`.task-card[data-task-id="${CSS.escape(from.taskId)}"]`)
       const usable = element => element?.isConnected && !element.disabled
-      ;[card || from, newTaskButton.current, viewNav.current?.querySelector('[aria-pressed="true"]')].find(usable)?.focus()
+      ;[card || from, newTaskButton.current, viewNav.current?.querySelector('[aria-selected="true"]')].find(usable)?.focus()
     }
-    panelWasOpen.current = open
-  }, [selected, creating])
+    panelWasOpen.current = panelOpen
+  }, [panelOpen])
+  const selectedLane = selected && doc?.tasks[selected]?.status
+  useLayoutEffect(() => {
+    const board = boardViewport.current
+    if (!board || fullWidth || view !== 'board' || !selectedLane) return
+    const revealSelection = () => {
+      const card = board.querySelector(`.task-card[data-task-id="${CSS.escape(selected)}"]`)
+      if (!card || !board.offsetWidth) return
+      const viewport = board.getBoundingClientRect()
+      const bounds = card.getBoundingClientRect()
+      const scale = viewport.width / board.offsetWidth
+      const inset = (parseFloat(getComputedStyle(board).scrollPaddingInlineStart) || 0) * scale
+      const start = bounds.left - (viewport.left + inset)
+      const end = bounds.right - (viewport.right - inset)
+      if (start < 0) board.scrollBy({ left: start / scale })
+      else if (end > 0) board.scrollBy({ left: end / scale })
+    }
+    revealSelection()
+    // Resizing the split can hide the selection again. Leave manual scrolling
+    // alone while the available width and selected lane stay the same.
+    if (typeof ResizeObserver !== 'function') return
+    let width = board.clientWidth
+    const resize = new ResizeObserver(() => {
+      if (width === board.clientWidth) return
+      width = board.clientWidth
+      revealSelection()
+    })
+    resize.observe(board)
+    return () => resize.disconnect()
+  }, [fullWidth, selected, selectedLane, view])
+  useEffect(() => {
+    if (busy || !retryFocus.current) return
+    const { button, panel, record } = retryFocus.current
+    const frame = requestAnimationFrame(() => {
+      retryFocus.current = null
+      if (button.isConnected || !document.activeElement?.matches('body, .side-panel')) return
+      const heading = panel?.isConnected && panel.querySelector('h2')
+      const status = record?.isConnected && record.querySelector(':scope > .goal-heading select, :scope > .vein-meta select')
+      const recordControl = status && !status.disabled ? status
+        : record?.isConnected && (record.querySelector(':scope > .vein-title') || record)
+      const tab = viewNav.current?.querySelector('[aria-selected="true"]')
+      ;(heading || recordControl || tab)?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  })
   const activityEvents = useMemo(() => {
     const actorId = doc?.actors?.[activityActor] ? activityActor : ''
     // Every entry is derived from one change; sorting, grouping and filtering use what that change signed.
@@ -458,7 +568,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
     focusAfterView.current = null
     focus?.()
   }, [view])
-  const submit = async (type, payload, replay = null) => {
+  const submit = async (type, payload, { replay, fromEditor } = {}) => {
     if (inflight.current) return null
     const origin = replay?.payload ?? payload
     setErrorOrigin({ type: replay?.type ?? type, taskId: origin?.taskId, recordId: origin?.veinId ?? origin?.goalId })
@@ -472,15 +582,37 @@ export function Workspace({ config, reloadConfiguration, session }) {
     let operation
     try {
       operation = replay || { operationId: createOperationId(), actorId: actor, type, payload }
+      if (fromEditor) {
+        saveEditDraft(payload.taskId, { ...readEditDraft(payload.taskId), pendingEdit: operation.operationId })
+      }
       client.savePending(operation)
     } catch (failure) { setError(failure); return null }
     setPending(operation)
     inflight.current = true
     setBusy(true)
-    setError(null)
+    if (!replay) setError(null)
     try {
       const receipt = await request('/automerge/operations', operation)
-      setConfirmedOperation(operation)
+      let editDraft
+      if (operation.type === 'task.update') {
+        const { taskId } = operation.payload
+        const current = readEditDraft(taskId)
+        if (current && (current.pendingEdit === operation.operationId || (replay && matchesLegacyEdit(current, operation.payload)))) {
+          editDraft = rebaseConfirmedEdit(current, operation.payload, receipt.operationId)
+          saveEditDraft(taskId, editDraft)
+        }
+      }
+      setConfirmedOperation({ ...operation, editDraft })
+      setError(null)
+      if (operation.type === 'comment.add') {
+        const { taskId, text } = operation.payload
+        setCommentDrafts(current => {
+          if (current.get(taskId) !== text) return current
+          const next = new Map(current)
+          next.delete(taskId)
+          return next
+        })
+      }
       if (operation.type === 'task.create') openPanel({ taskId: receipt.result.taskId }, () => {
         setCreating(false)
         setNewTaskDraft(null)
@@ -529,6 +661,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
   const veins = doc.veins
   const goals = doc.goals
   const activeVeinFilter = veins[veinFilter] ? veinFilter : ''
+  const activeFilterCount = [filter, statusFilter, activeVeinFilter].filter(Boolean).length
   const tasks = Object.values(doc.tasks).filter(
     (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter)
       && (!activeVeinFilter || task.veinIds?.includes(activeVeinFilter)),
@@ -557,7 +690,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
   const concurrentParts = rootIds(true).filter(id => !unreadableParts.includes(id))
   const unreadableRecords = unreadableLines(unreadableItems, { tasks: doc.tasks, goals, veins })
   const openVein = (_element, veinId) => {
-    focusAfterView.current = () => viewNav.current?.querySelector('[aria-pressed="true"]')?.focus()
+    focusAfterView.current = () => viewNav.current?.querySelector('[aria-selected="true"]')?.focus()
     showVein(veinId)
   }
   const openGoal = (_element, goalId) => {
@@ -575,37 +708,54 @@ export function Workspace({ config, reloadConfiguration, session }) {
     ? (errorOrigin?.taskId === selected ? errorOrigin.type : 'panel') : 'page'
   const errorNotice = <ErrorNotice
     error={error}
-    retry={pending && !busy ? () => submit(null, null, pending) : null}
+    retry={pending ? retrySavedRequest : null}
+    busy={busy}
     onDismiss={pending ? null : () => setError(null)}
   />
+  function retrySavedRequest(event) {
+    if (inflight.current) return
+    const button = event.currentTarget
+    if (document.activeElement === button) retryFocus.current = {
+      button,
+      panel: button.closest('.side-panel'),
+      record: button.closest('[data-goal-id], [data-vein-id]'),
+    }
+    void submit(null, null, { replay: pending })
+  }
   // Closing a panel clears its message but never the pending request; the page notice then offers Retry.
   const closeCreate = () => { setCreating(false); setError(null) }
   const closeDetails = () => { setSelected(null); setError(null) }
-  return (
-    <div className="app" data-client style={{ '--client-header-height': `${headerHeight}px` }}>
+  const boardContent = (
+    <div className="board-content" inert={modalPanel}>
       <header ref={headerRef} className="client-header">
-        {session.header}
-        <div className="header-controls">
-          <SaveStatus status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
-          <button
-            ref={newTaskButton}
-            className="primary"
-            disabled={busy || Boolean(pending)}
-            onClick={event => openPanel(event.currentTarget, () => {
-              setCreating(true)
-              setSelected(null)
-            })}
-          >
-            New task
-          </button>
+        <div className="client-identity">
+          {session.projectSwitcher}
+          <BoardStatus api={session.api} project={session.project} status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
         </div>
+        {session.people}
       </header>
+      <button
+        type="button"
+        ref={newTaskButton}
+        className="primary new-task-fab"
+        inert={panelOpen}
+        disabled={busy || Boolean(pending)}
+        onClick={event => openPanel(event.currentTarget, () => {
+          setCreating(true)
+          setSelected(null)
+        })}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M8 3v10M3 8h10" vectorEffect="non-scaling-stroke" />
+        </svg>
+        New task
+      </button>
       {session.notice}
       {errorSlot === 'page' && errorNotice}
       {pending && !error && (
         <div className="notice">
           A request is awaiting confirmation.{' '}
-          <button disabled={busy} onClick={() => submit(null, null, pending)}>
+          <button type="button" aria-disabled={busy} onClick={retrySavedRequest}>
             Retry saved request
           </button>
         </div>
@@ -624,49 +774,41 @@ export function Workspace({ config, reloadConfiguration, session }) {
           Review changes
         </button>}
       </div>}
-      <nav aria-label="Workspace views" ref={viewNav}>
-        <button
-          aria-pressed={view === 'board'}
-          onClick={() => setView('board')}
-        >
-          Tasks
-        </button>
-        <button
-          aria-pressed={view === 'goals'}
-          onClick={() => setView('goals')}
-        >
-          Goals
-        </button>
-        <button
-          aria-pressed={view === 'activity'}
-          onClick={() => setView('activity')}
-        >
-          Activity
-        </button>
-        {canControl && <button
-          aria-pressed={view === 'control'}
-          onClick={() => setView('control')}
-        >
-          Control
-        </button>}
+      <nav aria-label="Workspace views" data-view={view} ref={viewNav}>
+        <TabsList className="workspace-tabs" aria-label="Workspace views">
+          <TabsTab value="board">Tasks</TabsTab>
+          <TabsTab value="goals">Goals</TabsTab>
+          <TabsTab value="activity">Activity</TabsTab>
+        </TabsList>
         {view === 'board' && <>
-        <SelectActor
-          label="Assigned to"
-          emptyLabel="All Actors"
-          actors={actors}
-          value={filter}
-          onChange={setFilter}
-          optional
-        />
-        <label>Status filter<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-          <option value="">All statuses</option>
-          <StatusOptions />
-        </select></label>
-        <label>Vein<select aria-label="Vein" title={veins[activeVeinFilter]?.title ?? 'All veins'} value={activeVeinFilter} onChange={event => setVeinFilter(event.target.value)}>
-          <option value="">All veins</option>
-          {Object.values(veins).sort((a, b) => a.title.localeCompare(b.title)).map(vein =>
-            <option key={vein.id} value={vein.id}>{vein.title}</option>)}
-        </select></label>
+          <button type="button" className="workspace-filter-toggle"
+            aria-label={activeFilterCount ? `Filters, ${activeFilterCount} active` : undefined}
+            aria-expanded={filtersExpanded} aria-controls="task-board-filters"
+            onClick={() => setFiltersExpanded(open => !open)}>
+            <span>Filters</span>
+            {activeFilterCount > 0 && <span className="count" aria-hidden="true">{activeFilterCount}</span>}
+            <Chevron />
+          </button>
+          <div className="workspace-filters" id="task-board-filters" data-expanded={filtersExpanded || undefined}
+            onFocusCapture={() => setFiltersExpanded(true)}>
+            <SelectActor
+              label="Assigned to"
+              emptyLabel="All Actors"
+              actors={actors}
+              value={filter}
+              onChange={setFilter}
+              optional
+            />
+            <label>Status filter<BoardSelect aria-label="Status filter" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
+              <option value="">Any status</option>
+              <StatusOptions />
+            </BoardSelect></label>
+            <label className="vein-filter">Vein<BoardSelect aria-label="Vein" title={veins[activeVeinFilter]?.title ?? 'All veins'} value={activeVeinFilter} onChange={event => setVeinFilter(event.target.value)}>
+              <option value="">All veins</option>
+              {Object.values(veins).sort((a, b) => a.title.localeCompare(b.title)).map(vein =>
+                <option key={vein.id} value={vein.id}>{vein.title}</option>)}
+            </BoardSelect></label>
+          </div>
         </>}
         {view === 'activity' && <>
         <SelectActor
@@ -677,15 +819,27 @@ export function Workspace({ config, reloadConfiguration, session }) {
           onChange={value => { setActivityActor(value); setActivityCutoff(null) }}
           optional
         />
-        <label>Show<select aria-label="Show" value={activityShow} onChange={event => { setActivityShow(event.target.value); setActivityCutoff(null) }}>
+        <label>Show<BoardSelect aria-label="Show" value={activityShow} onChange={event => { setActivityShow(event.target.value); setActivityCutoff(null) }}>
           {ACTIVITY_SHOWS.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
-        </select></label>
+        </BoardSelect></label>
         </>}
       </nav>
       {/* Keyed by view so a view switch never inherits a stale scroll position. */}
       <main key={view}>
-        {view === 'board' ? (
-          <div className="board" data-filtered={Boolean(statusFilter)} style={{ '--columns': STATUSES.length }}>
+        <TabsPanel value="board" className="board-panel" keepMounted>
+          {view === 'board' && tasks.length === 0 && <div className="board-empty actions">
+            <p role="status">{activeFilterCount ? 'No tasks match these filters.' : 'No tasks yet. Use New task to add the first one.'}</p>
+            {activeFilterCount > 0 && <button type="button" onClick={() => {
+              showBoard({})
+              setFiltersExpanded(false)
+              viewNav.current?.querySelector('[aria-selected="true"]')?.focus()
+            }}>Clear filters</button>}
+          </div>}
+          {view === 'board' && (
+          <div className="board" ref={boardViewport} data-filtered={Boolean(statusFilter)} style={{ '--columns': STATUSES.length }}
+            onFocusCapture={event => {
+              if (event.target.matches('.task-card:focus-visible')) event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+            }}>
             {STATUSES.filter(column => !statusFilter || column === statusFilter).map((column) => (
               <section
                 className="column"
@@ -694,7 +848,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
               >
                 <h2>
                   {LABELS[column]}{' '}
-                  <span>
+                  <span className="count">
                     {tasks.filter((task) => task.status === column).length}
                   </span>
                 </h2>
@@ -715,11 +869,11 @@ export function Workspace({ config, reloadConfiguration, session }) {
                         setCreating(false)
                       })}
                     >
-                      <span className="priority">
-                        {task.priority.toUpperCase()}
-                      </span>
-                      <strong>{task.title}</strong>
-                      <span>{labelActor(actors[task.assignee])}</span>
+                      <strong><bdi>{task.title}</bdi></strong>
+                      {(task.assignee || task.priority !== 'p2') && <span className="task-meta">
+                        {task.assignee && <bdi>{labelActor(actors[task.assignee])}</bdi>}
+                        {task.priority !== 'p2' && <span className="priority">{task.priority}</span>}
+                      </span>}
                       {task.veinIds?.filter(veinId => veins[veinId]).map(veinId => (
                         <span className="vein-label" key={veinId}>{veins[veinId].title}</span>
                       ))}
@@ -731,13 +885,13 @@ export function Workspace({ config, reloadConfiguration, session }) {
                       {session.focus[task.id]?.length > 0 && <FocusMarkers session={session} actorIds={session.focus[task.id]} />}
                     </button>
                   ))}
-                {!tasks.some((task) => task.status === column) && (
-                  <p className="empty">No tasks here</p>
-                )}
               </section>
             ))}
           </div>
-        ) : view === 'goals' ? (
+          )}
+        </TabsPanel>
+        <TabsPanel value="goals" keepMounted>
+          {view === 'goals' && (
           <Goals
             goals={goals}
             veins={veins}
@@ -751,9 +905,10 @@ export function Workspace({ config, reloadConfiguration, session }) {
             errorNotice={errorSlot === 'record' && errorNotice}
             errorOrigin={errorOrigin}
           />
-        ) : view === 'control' && canControl ? (
-          <ControlPane request={request} actors={actors} tasks={doc.tasks} actor={actor} canManage={canControl} />
-        ) : (
+          )}
+        </TabsPanel>
+        <TabsPanel value="activity" keepMounted>
+          {view === 'activity' && (
           <section className="activity">
             <div className="activity-heading">
               <h2>Activity</h2>
@@ -789,47 +944,62 @@ export function Workspace({ config, reloadConfiguration, session }) {
               ? <button type="button" onClick={showOlder}>Show older activity</button>
               : <p className="muted">Start of activity</p>)}
           </section>
-        )}
+          )}
+        </TabsPanel>
       </main>
-      {creating && (
-        <TaskForm
-          actors={actors}
-          actor={actor}
-          busy={busy}
-          pending={Boolean(pending)}
-          draft={newTaskDraft}
-          onDraftChange={setNewTaskDraft}
-          notice={errorSlot === 'create' && errorNotice}
-          onClose={closeCreate}
-          onSubmit={async (fields) => {
-            return submit('task.create', fields)
-          }}
-        />
-      )}
-      {selected && (
-        <TaskDetail
-          key={`${selected}:${actor}`}
-          taskId={selected}
-          actors={actors}
-          lookups={lookups}
-          actor={actor}
-          heads={doc.heads.join(',')}
-          request={request}
-          confirmedOperation={confirmedOperation}
-          submit={submit}
-          busy={busy}
-          status={status}
-          connected={connected}
-          session={session}
-          client={client}
-          errorSlot={errorSlot}
-          errorNotice={errorNotice}
-          clearError={() => setError(null)}
-          claimHeadingFocus={claimHeadingFocus}
-          onClose={closeDetails}
-        />
-      )}
     </div>
+  )
+  return (
+    <Tabs className="app" data-client value={view} onValueChange={setView} style={{ '--client-header-height': `${headerHeight}px` }}>
+      {boardContent}
+      {creating && (
+        <TaskPanel label="New task" modal={fullWidth} onClose={closeCreate}>
+          <TaskForm
+            actors={actors}
+            actor={actor}
+            busy={busy}
+            pending={Boolean(pending)}
+            draft={newTaskDraft}
+            onDraftChange={setNewTaskDraft}
+            notice={errorSlot === 'create' && errorNotice}
+            onClose={closeCreate}
+            onSubmit={async (fields) => {
+              return submit('task.create', fields)
+            }}
+          />
+        </TaskPanel>
+      )}
+      {canControl && session.agentSetupOrigin && <AgentSetupDialog request={request} actors={actors} tasks={doc.tasks} actor={actor}
+        returnFocus={session.agentSetupOrigin} onClose={session.closeAgentSetup} />}
+      {selected && (
+        <TaskPanel key={`${selected}:${actor}`} label="Task details" modal={fullWidth} onClose={closeDetails}>
+          <TaskDetail
+            taskId={selected}
+            message={commentDrafts.get(selected) ?? ''}
+            onMessageChange={text => updateCommentDraft(selected, text)}
+            actors={actors}
+            lookups={lookups}
+            actor={actor}
+            heads={doc.heads.join(',')}
+            request={request}
+            confirmedOperation={confirmedOperation}
+            submit={submit}
+            busy={busy}
+            status={status}
+            connected={connected}
+            session={session}
+            readEditDraft={readEditDraft}
+            saveEditDraft={saveEditDraft}
+            errorSlot={errorSlot}
+            errorNotice={errorNotice}
+            clearError={() => setError(null)}
+            claimHeadingFocus={claimHeadingFocus}
+            fullWidth={fullWidth}
+            onClose={closeDetails}
+          />
+        </TaskPanel>
+      )}
+    </Tabs>
   )
 }
 
@@ -936,11 +1106,11 @@ function Goals({ goals, veins, showVein, actor, actors, attribution = null, subm
         return (
           <article className="goal" key={goal.id} aria-label={goal.title} data-goal-id={goal.id} tabIndex={-1}>
             <div className="goal-heading">
-              <h3>{goal.title}</h3>
+              <h3><bdi>{goal.title}</bdi></h3>
               {statusControl('goal', goal, GOAL_STATUSES)}
             </div>
             {recordId === goal.id && errorNotice}
-            {goal.description && <p className="muted">{goal.description}</p>}
+            {goal.description && <p className="muted goal-description" dir="auto">{goal.description}</p>}
             {conflicts('goal', goal)}
             {!goalVeins.length && <p className="muted">No veins pursue this goal yet.</p>}
             <ul>
@@ -971,6 +1141,37 @@ const EMPTY_TASK_DRAFT = {
 const draftIsDirty = ({ fields, tags }) =>
   Boolean(fields.title.trim() || fields.description.trim() || tags.trim()) ||
   fields.status !== 'backlog' || fields.priority !== 'p2' || fields.assignee !== null
+const parseTags = text => text.split(',').map(tag => tag.trim()).filter(Boolean)
+
+function matchesLegacyEdit(draft, { updates, expectedRevisions }) {
+  // Drafts from before pendingEdit was recorded can be identified by their
+  // submitted values and base revisions. Keep ambiguous drafts intact.
+  if (draft.pendingEdit || !draft.edited) return false
+  const edited = { ...draft.edited, tags: parseTags(draft.tagsText ?? draft.edited.tags.join(', ')) }
+  return Object.entries(updates).every(([field, value]) =>
+    JSON.stringify(edited[field]) === JSON.stringify(value) &&
+    JSON.stringify(draft.revisions[field]) === JSON.stringify(expectedRevisions[field]))
+}
+
+function rebaseConfirmedEdit(draft, { updates, expectedRevisions }, operationId) {
+  // Use the receipt's revision, not the latest context. Another Actor may have
+  // changed a field since this operation, including while its reply was lost.
+  const fields = { ...draft.fields }
+  const revisions = { ...draft.revisions }
+  for (const [field, value] of Object.entries(updates)) {
+    // An explicit rebase while pending may already have a newer base.
+    if (JSON.stringify(revisions[field]) !== JSON.stringify(expectedRevisions[field])) continue
+    fields[field] = field === 'tags' ? [...new Set(value)] : value
+    revisions[field] = [operationId]
+  }
+  const edited = draft.edited ?? draft.fields
+  const tags = [...new Set(parseTags(draft.tagsText ?? edited.tags.join(', ')))]
+  const dirty = Object.keys(fields).some(field =>
+    JSON.stringify(field === 'tags' ? tags : edited[field]) !== JSON.stringify(fields[field]))
+  if (!dirty) return null
+  const { pendingEdit, ...rest } = draft
+  return { ...rest, fields, revisions }
+}
 
 function TaskForm({
   actors,
@@ -994,30 +1195,26 @@ function TaskForm({
     tags: initialTags ?? (initial || EMPTY_TASK_DRAFT.fields).tags.join(', '),
   }))
   const { fields, tags } = controlled ? draft ?? EMPTY_TASK_DRAFT : local
-  const update = (patch) => (controlled ? onDraftChange({ fields, tags, ...patch }) : setLocal((current) => ({ ...current, ...patch })))
+  const update = (patch) => {
+    const next = { fields, tags, ...patch }
+    if (controlled) onDraftChange(next)
+    else {
+      setLocal(next)
+      onChange?.(next.fields, next.tags)
+    }
+  }
   const set = (field, value) => update({ fields: { ...fields, [field]: value } })
   const setTags = (value) => update({ tags: value })
-  useEffect(() => { onChange?.(fields, tags) }, [onChange, fields, tags])
   // Per control, not <fieldset disabled>: Retry inside the form must stay enabled.
   const locked = controlled && (busy || pending)
   const [titleBlank, setTitleBlank] = useState(false)
   const noActor = !editing && !actors[actor]
-  useEffect(() => {
-    if (editing) return undefined
-    const key = (event) => {
-      if (event.key !== 'Escape' || escapeKeepsPanel(event)) return
-      onClose()
-    }
-    document.addEventListener('keydown', key)
-    return () => document.removeEventListener('keydown', key)
-  }, [editing, onClose])
   // A failed submit returns focus to its button once it re-enables; the error is announced, not focused.
   const [submitButton, refocusSubmit] = useRefocus()
+  const Container = editing ? 'section' : Fragment
+  const containerProps = editing ? { className: 'editor', 'aria-label': 'Edit task' } : {}
   return (
-    <section
-      className={editing ? 'editor' : 'side-panel'}
-      aria-label={editing ? 'Edit task' : 'New task'}
-    >
+    <Container {...containerProps}>
       {!editing && (
         <div className="panel-heading">
           <h2>New task</h2>
@@ -1040,7 +1237,7 @@ function TaskForm({
             event.currentTarget.elements.namedItem('title')?.focus()
             return
           }
-          void Promise.resolve(onSubmit({ ...fields, tags: tags.split(',').map(tag => tag.trim()).filter(Boolean) }))
+          void Promise.resolve(onSubmit({ ...fields, tags: parseTags(tags) }))
             .then(receipt => { if (!receipt) refocusSubmit() })
         }}
       >
@@ -1073,18 +1270,18 @@ function TaskForm({
         <div className="form-row">
           <label>
             Status
-            <select
+            <BoardSelect
               aria-label="Status"
               disabled={locked}
               value={fields.status}
               onChange={(event) => set('status', event.target.value)}
             >
               <StatusOptions />
-            </select>
+            </BoardSelect>
           </label>
           <label>
             Priority
-            <select
+            <BoardSelect
               aria-label="Priority"
               disabled={locked}
               value={fields.priority}
@@ -1093,7 +1290,7 @@ function TaskForm({
               {['p0', 'p1', 'p2', 'p3'].map((value) => (
                 <option key={value} value={value}>{value.toUpperCase()}</option>
               ))}
-            </select>
+            </BoardSelect>
           </label>
         </div>
         <SelectActor
@@ -1138,29 +1335,29 @@ function TaskForm({
           )}
         </div>
       </form>
-    </section>
+    </Container>
   )
 }
 /** Links to existing GitHub issues. Pardner stores the reference only; GitHub status never moves the task. */
-function IssueLinks({ taskId, issues, canWrite, submit }) {
+function IssueLinks({ taskId, issues, canWrite, submit, notice }) {
   const [reference, setReference] = useState('')
   const [invalid, setInvalid] = useState(false)
   return (
     <section aria-label="GitHub issues">
       <h3>GitHub issues</h3>
-      {issues.length ? (
-        <ul className="issue-links">
+      {issues.length > 0 && (
+        <ul className="issue-links" role="list">
           {issues.map(issue => (
             <li key={`${issue.repository}#${issue.number}`}>
-              <a href={issue.url} target="_blank" rel="noreferrer">{issue.repository}#{issue.number}</a>{' '}
-              <button disabled={!canWrite} aria-label={`Unlink ${issue.repository}#${issue.number}`} onClick={() => submit('task.unlink-issue', {
+              <a href={issue.url} target="_blank" rel="noreferrer">{issue.repository}#{issue.number}</a>
+              <button className="quiet-button" disabled={!canWrite} aria-label={`Unlink ${issue.repository}#${issue.number}`} onClick={() => submit('task.unlink-issue', {
                 taskId, repository: issue.repository, number: issue.number, expectedRevisions: issue.revisions,
               })}>Unlink</button>
             </li>
           ))}
         </ul>
-      ) : <p className="muted">No linked issues. Linking does not contact GitHub.</p>}
-      <form onSubmit={async event => {
+      )}
+      <form className="issue-link-form" onSubmit={async event => {
         event.preventDefault()
         const match = /^\s*([^#\s]+\/[^#\s]+)#(\d+)\s*$/.exec(reference)
         setInvalid(!match)
@@ -1169,8 +1366,9 @@ function IssueLinks({ taskId, issues, canWrite, submit }) {
         if (receipt) setReference(current => current === reference ? '' : current)
       }}>
         <label>Link GitHub issue<input placeholder="owner/repo#123" value={reference} onChange={event => setReference(event.target.value)} /></label>
-        {invalid && <p className="error" role="alert">Name the issue as owner/repo#number.</p>}
         <button disabled={!canWrite || !reference.trim()}>Link issue</button>
+        {invalid && <p className="error" role="alert">Name the issue as owner/repo#number.</p>}
+        {notice}
       </form>
     </section>
   )
@@ -1178,6 +1376,8 @@ function IssueLinks({ taskId, issues, canWrite, submit }) {
 
 function TaskDetail({
   taskId,
+  message,
+  onMessageChange,
   actors,
   lookups,
   actor,
@@ -1189,19 +1389,23 @@ function TaskDetail({
   status,
   connected,
   session,
-  client,
+  readEditDraft,
+  saveEditDraft,
   errorSlot,
   errorNotice,
   clearError,
   claimHeadingFocus,
+  fullWidth,
   onClose,
 }) {
   const [context, setContext] = useState(null)
+  const [contextAttempt, setContextAttempt] = useState(0)
   const heading = useRef(null)
   const [editButton, refocusEdit] = useRefocus()
   const [handoffButton, refocusHandoff] = useRefocus()
   const [handoffOpener, refocusHandoffOpener] = useRefocus()
   const [commentButton, refocusComment] = useRefocus()
+  const commentsHeading = useRef(null)
   const [statusSelect, refocusStatus] = useRefocus()
   const [statusChoice, setStatusChoice] = useState(null)
   // Focus before the new controls can receive input, once per open.
@@ -1210,19 +1414,16 @@ function TaskDetail({
   }, [context, claimHeadingFocus])
   // An edit draft survives closing the panel, reloading the tab and switching
   // projects. It is stored per project, Actor and task, never sent until saved.
-  const [draft, setDraftState] = useState(() => client.draft(taskId))
-  const draftRef = useRef(draft)
+  const [draft, setDraftState] = useState(() => readEditDraft(taskId))
   const setDraft = useCallback(value => {
-    draftRef.current = value
     setDraftState(value)
-    try { client.saveDraft(taskId, value) } catch { /* the in-memory draft remains */ }
-  }, [client, taskId])
+    saveEditDraft(taskId, value)
+  }, [saveEditDraft, taskId])
   const persistDraftEdits = useCallback((edited, tagsText) => {
-    if (!draftRef.current) return
-    draftRef.current = { ...draftRef.current, edited, tagsText }
-    try { client.saveDraft(taskId, draftRef.current) } catch { /* the in-memory draft remains */ }
-  }, [client, taskId])
-  const [message, setMessage] = useState('')
+    const current = readEditDraft(taskId)
+    if (current) saveEditDraft(taskId, { ...current, edited, tagsText })
+  }, [readEditDraft, saveEditDraft, taskId])
+  const commentInput = useRef(null)
   const [commentFocused, setCommentFocused] = useState(false)
   const [to, setTo] = useState('')
   const [handoffStatus, setHandoffStatus] = useState('review')
@@ -1253,14 +1454,15 @@ function TaskDetail({
   }, [refocusHandoffOpener])
   useEffect(() => {
     if (confirmedOperation?.payload.taskId !== taskId) return
-    if (confirmedOperation.type === 'comment.add') {
-      setMessage(current => current === confirmedOperation.payload.text ? '' : current)
+    if (confirmedOperation.editDraft !== undefined && readEditDraft(taskId) === confirmedOperation.editDraft) {
+      setDraftState(confirmedOperation.editDraft)
+      if (!confirmedOperation.editDraft) refocusEdit()
     }
     if (confirmedOperation.type === 'task.handoff') {
       const { open, message: current } = handoffLive.current
       if (open && current === confirmedOperation.payload.message) finishHandoff(confirmedOperation.payload)
     }
-  }, [confirmedOperation, taskId, finishHandoff])
+  }, [confirmedOperation, taskId, finishHandoff, readEditDraft, refocusEdit])
   useEffect(() => {
     let stale = false
     request(
@@ -1278,23 +1480,33 @@ function TaskDetail({
     return () => {
       stale = true
     }
-  }, [taskId, actor, heads, request])
-  useEffect(() => {
-    const key = (event) => {
-      if (event.key !== 'Escape' || escapeKeepsPanel(event)) return
-      onClose()
-    }
-    document.addEventListener('keydown', key)
-    return () => document.removeEventListener('keydown', key)
-  }, [onClose])
+  }, [taskId, actor, heads, request, contextAttempt])
+  const panelHeading = (
+    <div className="panel-heading">
+      <h2 tabIndex={fullWidth ? 0 : -1} ref={heading}>
+        {context ? <bdi>{context.task.title}</bdi> : 'Task details'}
+      </h2>
+      <button autoFocus={!context} onClick={onClose}>Close</button>
+    </div>
+  )
+  const readError = failure && (
+    <div className="error" role="alert">
+      <strong>{context ? 'Couldn’t refresh task' : 'Couldn’t open task'}</strong>
+      <p>{failure.message}</p>
+      <button type="button" onClick={() => {
+        heading.current.focus({ preventScroll: true })
+        setFailure(null)
+        setContextAttempt(attempt => attempt + 1)
+      }}>Retry</button>
+    </div>
+  )
   if (!context)
     return (
-      <aside className="side-panel">
-        <button onClick={onClose}>Close</button>
-        <p role="status">Opening task…</p>
-        <ErrorNotice error={failure} />
+      <>
+        {panelHeading}
+        {readError || <p role="status">Opening task…</p>}
         {errorNotice}
-      </aside>
+      </>
     )
   const { task, comments, history, conflicts, revisions } = context
   // History is the task's Activity entries, each derived from the change that wrote it, newest first.
@@ -1309,8 +1521,17 @@ function TaskDetail({
   const hint = mentionHint(unmatchedHandles(message, actors, { focused: commentFocused }))
   const handoffRevisions = { assignee: revisions.assignee, status: revisions.status }
   const handoffStale = handoffBase && JSON.stringify(handoffBase) !== JSON.stringify(handoffRevisions)
+  // A receipt can arrive before the context refresh. Its previous revision
+  // is older than the rebased draft, so wait for context to catch up.
+  const previousRevisions = draft && confirmedOperation?.editDraft === draft
+    ? confirmedOperation.payload.expectedRevisions
+    : {}
   const newerFields = draft
-    ? Object.keys(draft.fields).filter(field => JSON.stringify(revisions[field]) !== JSON.stringify(draft.revisions[field]))
+    ? Object.keys(draft.fields).filter(field => {
+      const observed = JSON.stringify(revisions[field])
+      return observed !== JSON.stringify(draft.revisions[field]) &&
+        (!Object.hasOwn(previousRevisions, field) || observed !== JSON.stringify(previousRevisions[field]))
+    })
     : []
   const newerGroups = newerAuthors({ fields: newerFields, taskId, revisions, historyRows, attribution: lookups.attribution, activity: lookups.activity })
   const listFields = fields => fields.length < 2 ? fields.join('') : `${fields.slice(0, -1).join(', ')} and ${fields.at(-1)}`
@@ -1324,12 +1545,18 @@ function TaskDetail({
     : errorSlot
   const noticeFor = slot => formSlot === slot && errorNotice
   return (
-    <aside className="side-panel" aria-label="Task details">
-      <div className="panel-heading">
-        <h2 tabIndex={-1} ref={heading}>{task.title}</h2>
-        <button onClick={onClose}>Close</button>
+    <>
+      {panelHeading}
+      <div className="task-context">
+        {fullWidth && <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />}
+        <p className="muted">
+          <bdi>{labelActor(actors[task.assignee])}</bdi> · {quickStatus ? '' : `${LABELS[task.status]} · `}
+          <span className="priority">{task.priority}</span>
+        </p>
+        {context.veins?.length > 0 && (
+          <p className="muted">Veins: {context.veins.map(vein => `${vein.title} (${LABELS[vein.status]})`).join(', ')}</p>
+        )}
       </div>
-      <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />
       {emptyFields(context.unreadable, 'task', taskId).length > 0 && <p className="notice warning" role="status">
         Shown empty, because what this task holds there can’t be read: {emptyFields(context.unreadable, 'task', taskId).join(', ')}.</p>}
       {here.length > 0 && <div className="here-now">
@@ -1337,18 +1564,10 @@ function TaskDetail({
         <AvatarStack actors={here} index={session.index} max={6} size="sm" label="Here now" labelSuffix=", on this task"
           onOpen={session.onOpenProfile} />
       </div>}
-      <p className="muted">
-        {labelActor(actors[task.assignee])} · {quickStatus ? '' : `${LABELS[task.status]} · `}
-        {task.priority.toUpperCase()}
-      </p>
-      {context.veins?.length > 0 && (
-        <p className="muted">Veins: {context.veins.map(vein => `${vein.title} (${LABELS[vein.status]})`).join(', ')}</p>
-      )}
-      <ErrorNotice error={failure} />
+      {readError}
       {!FORM_SLOTS.includes(formSlot) && errorNotice}
-      <IssueLinks taskId={taskId} issues={context.issues ?? []} canWrite={canWrite} submit={submit} />
       {draft && newerFields.length > 0 && (
-        <div className="notice draft-notice" role="status">
+        <div className="notice warning draft-notice" role="status">
           <p>
             {newerNotice} since
             you started editing. Your draft is unchanged.
@@ -1357,7 +1576,7 @@ function TaskDetail({
             refused until you choose. Basing your draft on the latest version makes your save an explicit replacement.</p>
           <button type="button" onClick={() => {
             // Fields this user never touched follow the latest version; fields they changed stay as an explicit replacement.
-            const current = draftRef.current
+            const current = readEditDraft(taskId)
             const edited = current.edited ?? current.fields
             const untouched = field => JSON.stringify(edited[field]) === JSON.stringify(current.fields[field])
             const latest = Object.fromEntries(newerFields.map(field => [field, task[field]]))
@@ -1397,27 +1616,21 @@ function TaskDetail({
               refocusEdit()
               return true
             }
-            const receipt = await submit('task.update', {
+            return submit('task.update', {
               taskId,
               updates,
               expectedRevisions: Object.fromEntries(
                 Object.keys(updates).map((key) => [key, draft.revisions[key]]),
               ),
-            })
-            if (receipt) { setDraft(null); refocusEdit() }
-            return receipt
+            }, { fromEditor: true })
           }}
         />
-      ) : (
-        <>
-          <MarkdownBody>{task.description || 'No description yet.'}</MarkdownBody>
-        </>
-      )}
+      ) : <MarkdownBody>{task.description || 'No description yet.'}</MarkdownBody>}
       <div className="task-actions">
         {quickStatus && (
           <label className="status-field">
             Status
-            <select
+            <BoardSelect
               aria-label="Status"
               ref={statusSelect}
               disabled={!canWrite}
@@ -1436,48 +1649,52 @@ function TaskDetail({
               }}
             >
               <StatusOptions />
-            </select>
+            </BoardSelect>
           </label>
         )}
-        {!draft && (
-          <button
-            ref={editButton}
-            disabled={!canWrite}
-            onClick={() =>
-              setDraft({
-                fields: Object.fromEntries(
-                  [
-                    'title',
-                    'description',
-                    'status',
-                    'priority',
-                    'assignee',
-                    'tags',
-                  ].map((field) => [field, task[field]]),
-                ),
-                revisions,
-              })
-            }
-          >
-            Edit task
-          </button>
-        )}
-        {!handoffOpen && (
-          <button
-            ref={handoffOpener}
-            disabled={!canWrite}
-            onClick={() => {
-              focusRecipient.current = true
-              setHandoffDone(null)
-              setHandoffStatus(defaultHandoffStatus(task.status))
-              setHandoffStatusTouched(false)
-              setHandoffBase(handoffRevisions)
-              setHandoffOpen(true)
-            }}
-          >
-            Hand off work
-          </button>
-        )}
+        {(!draft || !handoffOpen) && <div className="actions task-secondary-actions">
+          {!draft && (
+            <button
+              className="quiet-button"
+              ref={editButton}
+              disabled={!canWrite}
+              onClick={() =>
+                setDraft({
+                  fields: Object.fromEntries(
+                    [
+                      'title',
+                      'description',
+                      'status',
+                      'priority',
+                      'assignee',
+                      'tags',
+                    ].map((field) => [field, task[field]]),
+                  ),
+                  revisions,
+                })
+              }
+            >
+              Edit task
+            </button>
+          )}
+          {!handoffOpen && (
+            <button
+              className="quiet-button"
+              ref={handoffOpener}
+              disabled={!canWrite}
+              onClick={() => {
+                focusRecipient.current = true
+                setHandoffDone(null)
+                setHandoffStatus(defaultHandoffStatus(task.status))
+                setHandoffStatusTouched(false)
+                setHandoffBase(handoffRevisions)
+                setHandoffOpen(true)
+              }}
+            >
+              Hand off work
+            </button>
+          )}
+        </div>}
         {handoffDone && (
           <p role="status" className="muted">
             Handed off to {labelActor(actors[handoffDone.to])} · {LABELS[handoffDone.status]}.
@@ -1567,7 +1784,7 @@ function TaskDetail({
           />
           <label>
             Handoff status
-            <select
+            <BoardSelect
               value={handoffStatus}
               onChange={(event) => {
                 setHandoffStatus(event.target.value)
@@ -1575,7 +1792,7 @@ function TaskDetail({
               }}
             >
               <StatusOptions />
-            </select>
+            </BoardSelect>
           </label>
           <label>
             Handoff message
@@ -1607,29 +1824,38 @@ function TaskDetail({
         </form>
       </section>
       )}
-      <section>
+      <section className="task-discussion">
         <div className="section-heading">
-          <h3>
-            Comments <span>{comments.length}</span>
+          <h3 ref={commentsHeading} tabIndex={-1}>
+            Comments{comments.length > 0 && <span className="count"> {comments.length}</span>}
             {actor && newCount > 0 && <span className="comment-new-count"> · {newCount} new</span>}
           </h3>
-          {actor && (
-            <button
-              disabled={!canWrite || !newCount}
-              onClick={() =>
-                submit('read.mark', {
-                  taskId,
-                  comments: comments.flatMap((comment) =>
-                    comment.revisionIds.map((revisionId) => ({
-                      commentId: comment.id,
-                      revisionId,
-                    })),
-                  ),
-                })
-              }
-            >
-              Mark all read
-            </button>
+          {actor && comments.length > 0 && (
+            <div className="actions">
+              <button className="quiet-button" type="button" onClick={() => {
+                const field = commentInput.current
+                field.scrollIntoView({ block: 'center', inline: 'nearest' })
+                field.focus({ preventScroll: true })
+              }}>Write comment</button>
+              {newCount > 0 && <button
+                className="quiet-button"
+                disabled={!canWrite}
+                onClick={event => {
+                  if (document.activeElement === event.currentTarget) commentsHeading.current.focus({ preventScroll: true })
+                  void submit('read.mark', {
+                    taskId,
+                    comments: comments.flatMap((comment) =>
+                      comment.revisionIds.map((revisionId) => ({
+                        commentId: comment.id,
+                        revisionId,
+                      })),
+                    ),
+                  })
+                }}
+              >
+                Mark all read
+              </button>}
+            </div>
           )}
         </div>
         {comments.map((comment) => {
@@ -1637,13 +1863,16 @@ function TaskDetail({
           return (
           <article className={isNew ? 'comment is-new' : 'comment'} key={comment.id}>
             <div className="comment-head">
-              <strong>{labelActor(actors[comment.actorId])}</strong>
-              <time dateTime={comment.timestamp}>{new Date(comment.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
+              <strong><bdi>{labelActor(actors[comment.actorId])}</bdi></strong>
+              <time dateTime={comment.timestamp} dir="auto">{new Date(comment.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
               {isNew && <span className="comment-tag">New</span>}
             </div>
             {/* The comment as it is now names its recorded author, with no signer line; a change by anyone else to it says so. */}
             {changedBySomeoneElse(lookups.attribution, comment.id) && <p className="comment-changed" role="note">Changed by someone other than its author. See Activity for who made each change.</p>}
             <MarkdownBody extraPlugins={[remarkMentionChips(deliveredFor(comment.id))]}>{comment.content}</MarkdownBody>
+            {comment.conflicts.length > 0 && comment.actorId !== actor && (
+              <p className="muted small">Only the comment author can resolve these edits.</p>
+            )}
             {comment.conflicts.map((choice) => (
               <div className="conflict" key={choice.operationId}>
                 <strong>{labelActor(actors[choice.actorId])}</strong>
@@ -1652,7 +1881,6 @@ function TaskDetail({
                 <p>{choice.value}</p>
                 <button
                   disabled={!canWrite || comment.actorId !== actor}
-                  title={comment.actorId !== actor ? 'Only the comment author may resolve it' : undefined}
                   onClick={() =>
                     submit('comment.resolve', {
                       commentId: comment.id,
@@ -1668,24 +1896,24 @@ function TaskDetail({
           </article>
           )
         })}
-        <form
+        <form className="comment-composer"
           onSubmit={async (event) => {
             event.preventDefault()
             const receipt = await submit('comment.add', {
               taskId,
               text: message,
             })
-            if (receipt) setMessage(current => current === message ? '' : current)
-            else refocusComment()
+            if (!receipt) refocusComment()
           }}
         >
           <label>
             Comment
             <textarea
+              ref={commentInput}
               aria-label="Comment"
               required
               value={message}
-              onChange={(event) => setMessage(event.target.value)}
+              onChange={(event) => onMessageChange(event.target.value)}
               onFocus={() => setCommentFocused(true)}
               onBlur={() => setCommentFocused(false)}
               aria-describedby={hint ? 'comment-mention-hint' : undefined}
@@ -1699,19 +1927,18 @@ function TaskDetail({
           </button>
         </form>
       </section>
-      <section>
+      {session.canControl && <TaskAgentRuns request={request} actors={actors} taskId={taskId} actor={actor} />}
+      <IssueLinks taskId={taskId} issues={context.issues ?? []} canWrite={canWrite} submit={submit}
+        notice={noticeFor('task.link-issue') || noticeFor('task.unlink-issue')} />
+      {context.evidence.length > 0 && <section>
         <h3>Evidence</h3>
-        {context.evidence.length ? (
-          context.evidence.map((commit, index) => (
+        {context.evidence.map((commit, index) => (
             <article key={`${commit.hash}:${index}`}>
               <code>{commit.hash}</code>
               <p>{commit.message}</p>
             </article>
-          ))
-        ) : (
-          <p className="muted">No commit evidence linked yet.</p>
-        )}
-      </section>
+          ))}
+      </section>}
       <section>
         <h3>History</h3>
         {historyRows.length > 0 && <CurrentLegend />}
@@ -1725,6 +1952,6 @@ function TaskDetail({
           />
         ))}
       </section>
-    </aside>
+    </>
   )
 }

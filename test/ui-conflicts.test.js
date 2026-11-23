@@ -25,7 +25,7 @@ it('resolves a real two-replica task status conflict through the browser', { tim
     const page = await newPage()
     await alice.open(page)
     await page.getByRole('button', { name: /Resolve together/ }).click()
-    const panel = page.getByRole('complementary', { name: 'Task details' })
+    const panel = page.getByRole('dialog', { name: 'Task details' })
     await panel.getByRole('heading', { name: 'Resolve status' }).waitFor()
     const section = panel.locator('section.conflict')
     assert.ok(await section.getByText('Alice', { exact: false }).count() >= 1, 'Alice is named')
@@ -74,9 +74,10 @@ for (const engine of [chromium, webkit]) {
         const keep = comment.getByRole('button', { name: 'Keep this comment', exact: true })
         await keep.first().waitFor()
         assert.equal(await keep.count(), 2)
+        const reason = 'Only the comment author can resolve these edits.'
+        await comment.getByText(reason, { exact: true }).waitFor()
         for (const button of await keep.all()) {
           assert.equal(await button.isDisabled(), true)
-          assert.equal(await button.getAttribute('title'), 'Only the comment author may resolve it')
         }
         assert.equal(await comment.getByRole('button', { name: /delete|edit/i }).count(), 0)
         if (process.env.PARDNER_COMMENT_SCREENSHOTS) {
@@ -87,6 +88,7 @@ for (const engine of [chromium, webkit]) {
         await author.getByRole('button', { name: /Comment permissions/ }).click()
         const authorKeep = author.getByRole('button', { name: 'Keep this comment', exact: true })
         await authorKeep.first().waitFor()
+        assert.equal(await author.getByText(reason, { exact: true }).count(), 0)
         assert.equal(await authorKeep.first().isEnabled(), true)
         await authorKeep.first().click()
         await eventually(async () => (await carol.task(taskId)).comments[0].conflicts.length === 0)

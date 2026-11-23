@@ -1,14 +1,44 @@
+import { DialogClose, DialogTitle } from '@ui-sdk/react/dialog'
+import { Menu, MenuContent, MenuItem, MenuTrigger } from '@ui-sdk/react/menu'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { BoardDialog } from './BoardDialog.jsx'
+import Chevron from './Chevron.jsx'
 import { Failure, INVITE_HINTS, failureText, withCode } from './Failure.jsx'
 import { createOperationId } from './operation-id.js'
 
-export const INVITES = {
+const INVITES = {
   human: { menu: 'Human', detail: 'A person and their agent', title: 'Invite a person',
-    body: 'For someone joining with their own identity. Their agent sets up their own board connected to this project. You approve their request after comparing a confirmation code.' },
+    body: 'They join with their own identity.' },
   agent: { menu: 'Agent', detail: 'Another agent of yours', title: 'Connect another of your agents',
-    body: 'For an agent you already run in another app. It joins as your agent; Pardner doesn’t start or instruct it. On another computer, you approve it like a new machine.' },
+    body: 'Connect an agent you run in another app.' },
   device: { menu: 'My device', detail: 'Another computer you use', title: 'Pair one of your machines',
-    body: 'For another computer you use. It joins as you rather than as a new person. You approve it from this computer after comparing a confirmation code.' },
+    body: 'Link another computer to your identity.' },
+}
+
+export function InviteMenu({ canInvitePeople, container, onChoose }) {
+  const trigger = useRef(null)
+  const choice = useRef(null)
+  // Wait for the menu to dismiss before the invitation dialog takes focus.
+  const finish = open => {
+    if (open || !choice.current) return
+    const purpose = choice.current
+    choice.current = null
+    onChoose(purpose, trigger.current)
+  }
+  return <Menu onAction={purpose => { choice.current = purpose }} onOpenChangeComplete={finish}>
+    <MenuTrigger type="button" className="invite-button people-invite" ref={trigger}>
+      Invite <Chevron />
+    </MenuTrigger>
+    <MenuContent className="board-menu" aria-label="Invite" container={container} align="end" sideOffset={6} collisionPadding={12}>
+      {Object.entries(INVITES).map(([purpose, copy]) => {
+        const disabled = purpose === 'human' && !canInvitePeople
+        return <MenuItem key={purpose} value={purpose} label={copy.menu} disabled={disabled}>
+          <span className="menu-label">{copy.menu}</span>
+          <span className="menu-detail">{disabled ? 'Owner or admin only' : copy.detail}</span>
+        </MenuItem>
+      })}
+    </MenuContent>
+  </Menu>
 }
 
 const STATE_LABELS = { issued: 'Waiting to be used', redeemed: 'Used', revoked: 'Revoked', expired: 'Expired' }
@@ -24,13 +54,13 @@ export const formatTime = value => {
   const at = timeOf(value)
   return Number.isFinite(at) ? new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null
 }
-export function formatExpiry(value, now) {
+export function formatExpiry(value, now, includeDate = true) {
   const at = timeOf(value)
   if (!Number.isFinite(at)) return 'Expiry not reported'
   const minutes = Math.round((at - now) / 60000)
   if (minutes <= 0) return `Expired ${formatTime(at)}`
   const relative = minutes < 90 ? `${minutes} min` : `${Math.round(minutes / 60)} h`
-  return `Expires in ${relative} · ${formatTime(at)}`
+  return includeDate ? `Expires in ${relative} · ${formatTime(at)}` : `Expires in ${relative}`
 }
 const kindLabel = invite => invite.purpose === 'human' ? `Person${invite.role === 'admin' ? ' · admin' : ''}`
   : invite.purpose === 'device' ? `Machine${invite.for?.name ? ` for ${invite.for.name}` : ''}` : `Agent${invite.for?.name ? ` for ${invite.for.name}` : ''}`
@@ -102,8 +132,7 @@ export function InvitationHistory({ api, projectId, excludeId = null, refresh = 
  * Creates one invitation and shows it hidden until revealed. `person` is the person a machine invitation pairs
  * for, when it is not the viewer; `again` is a removed person this Human invitation is meant for.
  */
-export function InviteDialog({ api, project, purpose, person = null, again = null, returnFocus, onClose }) {
-  const dialog = useRef(null)
+export function InviteDialog({ api, project, purpose, person = null, again = null, returnFocus, onClose, onSharingChanged }) {
   const operationId = useRef(createOperationId())
   // The owner may offer the admin role; an admin offers only the member role.
   const [role, setRole] = useState(again?.role === 'admin' && project.memberRole === 'owner' ? 'admin' : 'member')
@@ -111,6 +140,10 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
   const [refresh, setRefresh] = useState(0)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState(null)
+  const [tailcat, setTailcat] = useState(Boolean(project.share?.on))
+  const [needsSharing, setNeedsSharing] = useState(() => purpose !== 'agent' && project.role === 'hub'
+    && project.configuredRoute === false && project.share?.state === 'off')
+  const [sharingEnabled, setSharingEnabled] = useState(false)
   const [revealed, setRevealed] = useState(false)
   const [copied, setCopied] = useState(null)
   const [now, setNow] = useState(() => Date.now())
@@ -121,10 +154,20 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
     : again ? `${again.name} was removed, so they join again as a new person, from a fresh client directory on their computer. Their earlier work stays under their old entry. You approve their request after comparing a confirmation code.`
       : copy.body
   useEffect(() => {
-    dialog.current.showModal()
     const tick = setInterval(() => setNow(Date.now()), 30000)
-    return () => { clearInterval(tick); if (returnFocus?.isConnected) returnFocus.focus() }
-  }, [returnFocus])
+    return () => clearInterval(tick)
+  }, [])
+  const enableSharing = async () => {
+    setBusy(true); setFailure(null)
+    try {
+      await api.setShare(project.id, true)
+      setNeedsSharing(false)
+      setTailcat(true)
+      setSharingEnabled(true)
+      onSharingChanged?.()
+    } catch (error) { setFailure(error) }
+    finally { setBusy(false) }
+  }
   const create = async () => {
     setBusy(true); setFailure(null)
     try {
@@ -132,7 +175,8 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
         ...(person ? { personId: person.id } : {}) }))
       setRevealed(false); setCopied(null); setRefresh(value => value + 1)
     } catch (error) {
-      setFailure(error)
+      if (error.code === 'PUBLIC_URL_REQUIRED' && project.role === 'hub') setNeedsSharing(true)
+      else setFailure(error)
       if (error.code === 'OPERATION_ID_REUSED') operationId.current = createOperationId()
     } finally { setBusy(false) }
   }
@@ -159,58 +203,76 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
   }
   const createdState = created && effectiveState(created.invite, now)
   const usable = createdState === 'issued' && Boolean(shareText)
-  return <dialog ref={dialog} className="invite-dialog" aria-labelledby="invite-title"
-    onCancel={event => { event.preventDefault(); onClose() }}>
+  let createLabel = busy ? 'Creating…' : 'Create invitation'
+  if (needsSharing) createLabel = busy ? 'Turning on Tailcat…' : 'Turn on Tailcat'
+  return <BoardDialog className="invite-dialog" returnFocus={returnFocus} onClose={onClose}>
     <div className="profile-heading">
       <div>
-        <h2 id="invite-title">{title}</h2>
+        <DialogTitle>{title}</DialogTitle>
         <p className="muted">{project.name}</p>
       </div>
-      <button type="button" className="close" onClick={onClose}>Close</button>
+      <DialogClose className="close">Close</DialogClose>
     </div>
-    <p>{body}</p>
+    {!created && !needsSharing && <p className="invite-context">{body}</p>}
     {purpose === 'human' && project.memberRole === 'owner' && !created && <label className="role-choice">Role
       <select value={role} onChange={event => setRole(event.target.value)}>
         <option value="member">Member</option>
         <option value="admin">Admin: may also let people in and remove members</option>
       </select>
     </label>}
-    {!created ? <div className="actions">
-      <button className="primary" disabled={busy} onClick={create}>{busy ? 'Creating…' : 'Create invitation'}</button>
-    </div> : <section className="invite-ready" aria-label="New invitation">
-      <p className="invite-state" data-state={createdState}>
-        <strong>{STATE_LABELS[createdState]}</strong>{createdState === 'issued' && ` · ${formatExpiry(created.invite.expiresAt, now)}`}
-      </p>
+    {!created ? <>
+      {needsSharing && <p>Other computers can’t reach this project yet.</p>}
+      {!needsSharing && project.role === 'hub' && purpose !== 'agent' && (tailcat || project.configuredRoute) &&
+        <p className="muted small">{tailcat ? 'Join via Tailcat' : 'Join via the configured route'}</p>}
+      <p className="sharing-feedback muted small" role="status">{sharingEnabled ? 'Tailcat sharing is on for this project.' : ''}</p>
+      <div className="actions">
+        <button className="primary" aria-disabled={busy} onClick={() => {
+          if (!busy) void (needsSharing ? enableSharing() : create())
+        }}>
+          {createLabel}
+        </button>
+      </div>
+    </> : <section className="invite-ready" aria-label="New invitation">
+      <div className="invite-status">
+        <p className="invite-state" data-state={createdState}>
+          <strong>{createdState === 'issued' ? 'Ready to share' : STATE_LABELS[createdState]}</strong>
+          {createdState === 'issued' && formatExpiry(created.invite.expiresAt, now, false)}
+        </p>
+        {usable && <button type="button" className="quiet" disabled={busy} aria-label="Revoke this invitation"
+          onClick={() => revoke(created.invite.id)}>Revoke</button>}
+      </div>
       {usable ? <>
         <div className="actions">
           <button className="primary" onClick={copyInvite}>Copy invite</button>
           <button aria-expanded={revealed} aria-controls="invite-text" onClick={() => setRevealed(value => !value)}>
             {revealed ? 'Hide invite text' : 'Show invite text'}
           </button>
-          <button disabled={busy} aria-label="Revoke this invitation" onClick={() => revoke(created.invite.id)}>Revoke</button>
         </div>
         <p className="muted small" role="status">
-          {copied === 'done' ? 'Copied. Treat it like a password and send it privately; it works once.'
-            : copied === 'failed' ? 'This browser blocked copying. Use Show invite text and copy it manually.'
-              : revealed ? '' : 'The invitation stays hidden so it can’t be read from a shared screen.'}
+          {copied === 'done' ? 'Copied. Send it privately.'
+            : copied === 'failed' ? 'Copy blocked. Use Show invite text.'
+              : revealed ? '' : 'Send privately. One use.'}
         </p>
+        {purpose === 'human' && <p className="muted small">When they request to join, open People → Waiting to join.</p>}
         {revealed && <div id="invite-text" className="reveal">
-          <p className="warning-text">Visible on screen. Stop sharing your screen before copying.</p>
+          <p className="warning-text">Stop screen sharing before copying.</p>
           <textarea readOnly rows={5} spellCheck={false} aria-label="Invite text" value={shareText}
             onFocus={event => event.target.select()} onClick={event => event.currentTarget.select()} />
         </div>}
       </> : <>
-        <p className="muted">This invitation can no longer be used. Create a new one if you still need it.</p>
+        <p className="muted">This invitation can no longer be used.</p>
         <div className="actions">
           <button className="primary" disabled={busy} onClick={createAnother}>Create another invitation</button>
         </div>
       </>}
     </section>}
     <Failure error={failure} hints={hints} />
-    <section aria-labelledby="invite-history">
-      <h3 id="invite-history">Invitations for this project</h3>
-      <InvitationHistory api={api} projectId={project.id} excludeId={created?.invite.id ?? null} refresh={refresh}
-        emptyText={created ? 'No other invitations.' : 'None yet.'} onFailure={setFailure} hints={hints} actionFailure={failure} />
-    </section>
-  </dialog>
+    <details className="invite-history">
+      <summary>Invitation history</summary>
+      <section aria-label="Invitations for this project">
+        <InvitationHistory api={api} projectId={project.id} excludeId={created?.invite.id ?? null} refresh={refresh}
+          emptyText={created ? 'No other invitations.' : 'None yet.'} onFailure={setFailure} hints={hints} actionFailure={failure} />
+      </section>
+    </details>
+  </BoardDialog>
 }
