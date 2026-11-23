@@ -6,7 +6,7 @@ This file records decisions the owner made on 2026-11-23, after comparing Pardne
 with Vercel Board ([assessment](PARDNER-VERCEL-BOARD-LESSONS.md)). Nothing here is
 built. [README](../README.md#current-implementation) and the
 [acceptance contract](PARDNER-ACCEPTANCE.md) still describe what Pardner does, and
-they stay authoritative until this work lands.
+they stay authoritative until the work tracked in #297 lands.
 
 A line marked **Proposed** is a detail put forward in that discussion that the
 owner has not confirmed. Everything else is decided.
@@ -211,12 +211,12 @@ A task can need another task.
 Decided order of work:
 
 1. `wait`, a command that blocks until a mention, a reply or a matching change, and
-   is answered by the local replica.
-2. A reminder: a comment that mentions an Actor at a set time.
+   is answered by the local replica (#285).
+2. A reminder: a comment that mentions an Actor at a set time (#291).
 3. A worker command that runs any agent or script on the next ready task, after
    #282.
-4. A one-way notice to a person, and GitHub state arriving as labels, each after a
-   design of its own.
+4. A one-way notice to a person (#293), and GitHub state arriving as labels (#296),
+   each after a design of its own.
 
 ## 8. Decided against, or deferred
 
@@ -248,6 +248,7 @@ and the facts beneath the state, and works the state out when read.
 - **Claims on work, and whether a worker's run is its own record:** #282. Until it
   is settled, a run is recorded on the task.
 - **What stays in the Automerge board:** #283.
-- **What task branches are for** under this model.
-- **Who may record which outcome** before permissions by kind exist.
-- **How label keys that drift apart are flagged.**
+- **What task branches are for** under this model: #292.
+- **Who may record which outcome** before permissions by kind exist: followed in
+  #292, since proposing by branch is the likely answer.
+- **How label keys that drift apart are flagged:** followed in #294.
