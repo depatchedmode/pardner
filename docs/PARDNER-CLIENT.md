@@ -280,11 +280,10 @@ prompt or the raw invitation. Invitations from earlier Pardner versions are
 refused with a request for a new one.
 
 Human and My device invitations are used by a client on another computer, so they
-need a route other computers can reach. On the hosting computer, if there is no
-usable route, the invitation dialog offers **Switch sharing on and create
-invitation**. You can also switch on [sharing](#sharing-a-project-with-other-computers)
-from People before opening the dialog. On a joined computer, invitations come
-from the project's hub and the person hosting the project must enable its route.
+need a route other computers can reach. If the hosting computer has no route,
+select **Turn on Tailcat** in the invitation dialog. Select **Create invitation**
+once Sharing is on. On a joined computer, invitations use the project's hub
+route. Ask the host to enable a route if needed.
 The CLI reports a missing route as `PUBLIC_URL_REQUIRED` and gives commands for
 the host. An explicit `--public-url` also works, including a loopback relay or
 test gate (see [Connectivity and recovery boundaries](#connectivity-and-recovery-boundaries)).
@@ -551,8 +550,10 @@ two computers on unrelated networks need no public address, tunnel account or
 tailcat` on macOS); Pardner refuses any other version, because tailcat promises
 no stable command line or wire format.
 
-**The switch.** Sharing is per project and off by default. The person hosting a
-project opens **Project status** in the board header for the Sharing switch, or uses:
+**The switch.** Sharing is per project and off by default. Enable it from the
+invitation dialog when the project needs a route. Select **Tailcat on** in the
+board header to turn off Tailcat sharing for that project. **Project status**
+shows connected computers and sync status. The CLI can also manage sharing.
 
 ```sh
 node bin/pardner.js client share --project ID --on    # or --off; with neither flag it reports the state
@@ -598,7 +599,7 @@ enrolled computers reopen and save locally, and joining and new deliveries wait.
 An existing `--public-url` route keeps working beside it. On a joined computer,
 **Project status** shows the connection to the host and when the board last synced.
 Pardner retries automatically. If the route stays down, ask the person hosting
-the project to check Sharing under **Project status** on their board.
+the project to check the Tailcat control in their board header.
 
 **Not in this prototype.** The route is outside the signed offer, so nothing
 binds an invitation to its route beyond the port the offer names. There is no
