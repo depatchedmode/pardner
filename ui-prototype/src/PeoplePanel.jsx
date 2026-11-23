@@ -445,6 +445,7 @@ export function PeoplePanel({ api, project, index, actorsById, returnFocus, onCl
         void changed()
       }} />}
     {invite && <InviteDialog api={api} project={project} purpose={invite.purpose} person={invite.person ?? null} again={invite.again ?? null}
+      onSharingChanged={onChanged}
       returnFocus={invite.returnFocus} onClose={() => { setInvite(null); void changed() }} />}
   </>
 }

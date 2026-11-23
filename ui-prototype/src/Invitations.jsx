@@ -132,7 +132,7 @@ export function InvitationHistory({ api, projectId, excludeId = null, refresh = 
  * Creates one invitation and shows it hidden until revealed. `person` is the person a machine invitation pairs
  * for, when it is not the viewer; `again` is a removed person this Human invitation is meant for.
  */
-export function InviteDialog({ api, project, purpose, person = null, again = null, returnFocus, onClose }) {
+export function InviteDialog({ api, project, purpose, person = null, again = null, returnFocus, onClose, onSharingChanged }) {
   const operationId = useRef(createOperationId())
   // The owner may offer the admin role; an admin offers only the member role.
   const [role, setRole] = useState(again?.role === 'admin' && project.memberRole === 'owner' ? 'admin' : 'member')
@@ -140,7 +140,10 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
   const [refresh, setRefresh] = useState(0)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState(null)
-  const [needsSharing, setNeedsSharing] = useState(false)
+  const [tailcat, setTailcat] = useState(Boolean(project.share?.on))
+  const [needsSharing, setNeedsSharing] = useState(() => purpose !== 'agent' && project.role === 'hub'
+    && project.configuredRoute === false && project.share?.state === 'off')
+  const [sharingEnabled, setSharingEnabled] = useState(false)
   const [revealed, setRevealed] = useState(false)
   const [copied, setCopied] = useState(null)
   const [now, setNow] = useState(() => Date.now())
@@ -154,13 +157,20 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
     const tick = setInterval(() => setNow(Date.now()), 30000)
     return () => clearInterval(tick)
   }, [])
+  const enableSharing = async () => {
+    setBusy(true); setFailure(null)
+    try {
+      await api.setShare(project.id, true)
+      setNeedsSharing(false)
+      setTailcat(true)
+      setSharingEnabled(true)
+      onSharingChanged?.()
+    } catch (error) { setFailure(error) }
+    finally { setBusy(false) }
+  }
   const create = async () => {
     setBusy(true); setFailure(null)
     try {
-      if (needsSharing) {
-        await api.setShare(project.id, true)
-        setNeedsSharing(false)
-      }
       setCreated(await api.createInvite(project.id, { purpose, operationId: operationId.current, ...(purpose === 'human' ? { role } : {}),
         ...(person ? { personId: person.id } : {}) }))
       setRevealed(false); setCopied(null); setRefresh(value => value + 1)
@@ -194,7 +204,7 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
   const createdState = created && effectiveState(created.invite, now)
   const usable = createdState === 'issued' && Boolean(shareText)
   let createLabel = busy ? 'Creating…' : 'Create invitation'
-  if (needsSharing) createLabel = busy ? 'Switching sharing on…' : 'Switch sharing on and create invitation'
+  if (needsSharing) createLabel = busy ? 'Turning on Tailcat…' : 'Turn on Tailcat'
   return <BoardDialog className="invite-dialog" returnFocus={returnFocus} onClose={onClose}>
     <div className="profile-heading">
       <div>
@@ -211,9 +221,14 @@ export function InviteDialog({ api, project, purpose, person = null, again = nul
       </select>
     </label>}
     {!created ? <>
-      {needsSharing && <p role="status">This computer needs Sharing on to send a remote invite.</p>}
+      {needsSharing && <p>Other computers can’t reach this project yet.</p>}
+      {!needsSharing && project.role === 'hub' && purpose !== 'agent' && (tailcat || project.configuredRoute) &&
+        <p className="muted small">{tailcat ? 'Join via Tailcat' : 'Join via the configured route'}</p>}
+      <p className="sharing-feedback muted small" role="status">{sharingEnabled ? 'Tailcat sharing is on for this project.' : ''}</p>
       <div className="actions">
-        <button className="primary" disabled={busy} onClick={create}>
+        <button className="primary" aria-disabled={busy} onClick={() => {
+          if (!busy) void (needsSharing ? enableSharing() : create())
+        }}>
           {createLabel}
         </button>
       </div>

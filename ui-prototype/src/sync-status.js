@@ -18,7 +18,10 @@ export function replicationStatus(status, { connected = true, busy = false, head
   if (!status.savedLocally || (heads !== undefined && status.heads?.join(',') !== heads)) {
     return { state: 'pending', text: 'Saving locally…' }
   }
-  if (status.syncPending || status.hubConnected === false) return { state: 'pending', text: 'Saved locally · waiting for hub' }
+  if (status.role === 'hub') return { state: 'pending', text: 'Saved here' }
+  if (status.syncPending || (status.role !== 'replica' && status.hubConnected === false)) {
+    return { state: 'pending', text: 'Saved locally · waiting for hub' }
+  }
   return { state: 'synced', text: 'Saved locally · synced' }
 }
 

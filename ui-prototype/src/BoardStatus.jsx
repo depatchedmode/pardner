@@ -1,34 +1,30 @@
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@ui-sdk/react/popover'
-import { Switch, SwitchThumb } from '@ui-sdk/react/switch'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import Chevron from './Chevron.jsx'
 import { Failure, withCode } from './Failure.jsx'
 import { replicationStatus } from './sync-status.js'
 
 const SHARE_POLL_MS = 5000
-const sharingLabel = { on: 'On', off: 'Off', starting: 'Starting', error: 'Not running' }
-const sharingTone = { on: 'good', starting: 'warning', error: 'warning' }
-const replicationTone = { synced: 'good', pending: 'warning', warning: 'warning', error: 'error' }
+const replicationTone = { synced: 'good', warning: 'warning', error: 'warning', unknown: 'warning' }
+const warningGlyph = 'M7.1 2.8a1 1 0 0 1 1.8 0l5.4 9.6a1 1 0 0 1-.9 1.5H2.6a1 1 0 0 1-.9-1.5ZM8 6.35v3m0 2.3h.01'
 const replicationGlyph = {
-  synced: 'm5.3 8 1.8 1.8 3.6-3.6',
-  pending: 'M8 4.7V8l2.2 1.5',
-  warning: 'M8 5.2v3.1m0 2.3h.01',
-  error: 'm6 6 4 4m0-4-4 4',
-  unknown: 'M6.2 6.3a1.8 1.8 0 0 1 3.6 0c0 1.1-1.8 1.4-1.8 2.5m0 1.8h.01',
+  synced: 'm3.5 8.4 3 3 6-6',
+  pending: 'M5 7.5 3.5 10v3h9v-3L11 7.5M3.5 10h2.8l.8 1.3h1.8l.8-1.3h2.8M8 8.1V2.4m-2 2 2-2 2 2',
+  warning: warningGlyph,
+  error: warningGlyph,
+  unknown: warningGlyph,
 }
 
 function boardReplication(status, connected, busy, heads) {
   return !status && connected && !busy
-    ? { state: 'unknown', text: 'Connecting to local service' }
+    ? { state: 'unknown', text: 'Checking project status…' }
     : replicationStatus(status, { connected, busy, heads })
 }
 
-function projectConnection(status, connected, hosted) {
-  if (!connected) return { state: 'offline', text: 'Local service disconnected' }
-  if (status?.available === false) return { state: 'offline', text: 'Project service unavailable' }
-  if (status && hosted) return { state: 'online', text: 'Connected to local service' }
-  if (status?.hubConnected === true) return { state: 'online', text: 'Connected to host' }
-  if (status?.hubConnected === false) return { state: 'offline', text: 'Host disconnected' }
-  return { state: 'checking', text: 'Checking connection' }
+function peerCount(status, available, hosted) {
+  if (!available || !status) return null
+  if (hosted) return status.syncPeers ? Object.values(status.syncPeers).filter(peer => peer.connected).length : null
+  return typeof status.hubConnected === 'boolean' ? Number(status.hubConnected) : null
 }
 
 function StatusIndicator({ label, tone, children }) {
@@ -45,8 +41,8 @@ function routeError(error) {
 
 function hostConnectionText(available, share, hubConnected) {
   if (!available) return 'Connection status unavailable.'
-  if (share?.state === 'error') return <>Route down{routeError(share.error)} Saved work stays here. Pardner retries automatically. If it persists, ask the host to check Sharing on their board.</>
-  if (hubConnected === true) return share ? 'Connected through Pardner.' : 'Connected to the host.'
+  if (share?.state === 'error') return <>Route down{routeError(share.error)} Saved work stays here. Pardner retries automatically. If it persists, ask the host to check Tailcat sharing.</>
+  if (hubConnected === true) return share ? 'Connected through Tailcat.' : 'Connected through the configured route.'
   if (hubConnected === false) return 'Waiting to reconnect to the host. Saved work stays here.'
   return 'Checking the connection…'
 }
@@ -61,88 +57,101 @@ export function BoardStatus({ api, project, status, connected, busy, heads }) {
   const [share, setShare] = useState(project.share ?? null)
   const [changing, setChanging] = useState(false)
   const [failure, setFailure] = useState(null)
+  const [sharingOpen, setSharingOpen] = useState(false)
+  const statusTrigger = useRef(null)
   const projectId = project.id
   useEffect(() => {
+    if (changing) return
     let live = true
     const load = () => api.share(projectId).then(result => { if (live) setShare(result.share) }).catch(() => {})
     load()
     const timer = setInterval(load, SHARE_POLL_MS)
     return () => { live = false; clearInterval(timer) }
-  }, [api, projectId])
+  }, [api, projectId, changing, project.share?.state])
 
-  const change = async on => {
+  const stopSharing = async () => {
+    if (changing) return
     setChanging(true)
     setFailure(null)
-    try { setShare((await api.setShare(projectId, on)).share) }
-    catch (error) { setFailure(error) }
+    try {
+      setShare((await api.setShare(projectId, false)).share)
+      setSharingOpen(false)
+      requestAnimationFrame(() => statusTrigger.current?.focus())
+    } catch (error) { setFailure(error) }
     finally { setChanging(false) }
   }
 
   const hosted = project.role === 'hub'
   const available = connected && status?.available !== false
-  const shareLabel = available && share ? sharingLabel[share.state] : null
-  const peers = available && status?.syncPeers
-    ? Object.values(status.syncPeers).filter(peer => peer.connected).length
-    : null
+  const peers = peerCount(status, available, hosted)
+  const peerText = peers === null ? 'Peer count unavailable' : peers === 0 ? 'No peers connected'
+    : peers === 1 ? '1 connected computer' : `${peers.toLocaleString()} connected computers`
   const lastSynced = available && !hosted && status?.lastSyncedAt
   const replication = boardReplication(status, connected, busy, heads)
-  const connection = projectConnection(status, connected, hosted)
-  const shareState = shareLabel ? share.state : 'unknown'
-  const sharing = shareLabel ? `Sharing ${shareLabel.toLowerCase()}` : 'Sharing status unavailable'
-  const summary = [...new Set([hosted && sharing, connection.text, replication.text].filter(Boolean))].join(', ')
+  const summary = `${peerText}, ${replication.text}`
+  const checking = !status && connected && !busy
+  const sharing = hosted && share?.on
+  const sharingText = share?.state === 'error' ? 'Tailcat route down' : share?.state === 'starting' ? 'Tailcat starting' : 'Tailcat on'
 
-  return <Popover>
-    <PopoverTrigger type="button" className="board-status" aria-label={`Project status, ${summary}`} title={summary}>
-      {hosted && <StatusIndicator label={sharing} tone={sharingTone[shareState]}>
-        <circle cx="4" cy="8" r="1.7" /><circle cx="12" cy="3.5" r="1.7" /><circle cx="12" cy="12.5" r="1.7" />
-        <path d="m5.5 7.2 5-2.9m-5 4.5 5 2.9" />
-        {shareState === 'off' && <path d="M2 2l12 12" />}
-      </StatusIndicator>}
-      <StatusIndicator label={connection.text} tone={connection.state === 'online' ? 'good' : 'warning'}>
-        <circle cx="8" cy="8" r="5.5" />
-        {connection.state === 'online' && <circle cx="8" cy="8" r="2" fill="currentColor" stroke="none" />}
-        {connection.state === 'offline' && <path d="m4 4 8 8" />}
-        {connection.state === 'checking' && <path d="M6.3 8h3.4" />}
-      </StatusIndicator>
-      <StatusIndicator label={replication.text} tone={replicationTone[replication.state]}>
-        <circle cx="8" cy="8" r="6" />
-        <path d={replicationGlyph[replication.state]} />
-      </StatusIndicator>
-    </PopoverTrigger>
-    <span className="board-status-announcement" role="status">{summary}</span>
-    <PopoverContent className="board-status-popover" side="bottom" align="start" sideOffset={6} collisionPadding={12}>
-      <PopoverTitle>Project status</PopoverTitle>
-      <section aria-label="Replication">
-        <h3>Replication</h3>
-        <p>{replication.text}</p>
-        {hosted && <p className="muted small">{connection.text}. This computer hosts the project.</p>}
-        {lastSynced && <p className="muted small">Last synced {new Date(lastSynced).toLocaleString()}.</p>}
-      </section>
-      {hosted ? <section aria-label="Sharing">
-        <div className="sharing-heading">
-          <h3>Sharing{shareLabel && <span className="share-state" data-state={share.state}>{shareLabel}</span>}</h3>
-          {shareLabel && <Switch className="sharing-switch" aria-label="Project sharing" checked={share.on}
-            aria-busy={changing} aria-disabled={changing} onCheckedChange={(on, details) => {
-              if (changing) details.cancel()
-              else void change(on)
-            }}>
-            <SwitchThumb />
-          </Switch>}
-        </div>
-        {peers !== null && <p>{peers === 1 ? '1 connected computer' : `${peers} connected computers`}</p>}
+  return <div className="project-indicators">
+    <Popover>
+      <PopoverTrigger ref={statusTrigger} type="button" className="board-status"
+        aria-label={`Project status, ${summary}`} title={summary}>
+        {peers === null && replication.state === 'unknown' ?
+          <span className="status-summary-icon">
+            <StatusIndicator label={replication.text} tone={checking ? undefined : 'warning'}>
+              <path d={checking ? 'M3 8h.01m5 0h.01m5 0h.01' : warningGlyph} />
+            </StatusIndicator>
+          </span> : <>
+            <StatusIndicator label={peerText} tone={peers > 0 ? 'good' : undefined}>
+              <rect x="1.1" y="4.9" width="4.25" height="4.75" rx=".8" />
+              <rect x="10.65" y="4.9" width="4.25" height="4.75" rx=".8" />
+              <path d="M3.2 9.65v2.2m-1.5 0h3m8.05-2.2v2.2m-1.5 0h3" />
+              {peers > 0 && <path d="M5.35 7.3h5.3" />}
+            </StatusIndicator>
+            <span className="peer-count" aria-hidden="true">{peers?.toLocaleString()}</span>
+            <StatusIndicator label={replication.text} tone={replicationTone[replication.state]}>
+              <path d={replicationGlyph[replication.state]} />
+            </StatusIndicator>
+          </>}
+        <Chevron />
+      </PopoverTrigger>
+      <span className="board-status-announcement" role="status">{summary}</span>
+      <PopoverContent className="board-status-popover" side="bottom" align="start" sideOffset={6} collisionPadding={12}>
+        <PopoverTitle>Project status</PopoverTitle>
+        <dl className="status-facts">
+          <div className="status-fact">
+            <dt>Peers</dt>
+            <dd><p>{peerText}</p>
+              {!hosted && <p className="muted small" role="status">{hostConnectionText(available, share, status?.hubConnected)}</p>}
+            </dd>
+          </div>
+          <div className="status-fact">
+            <dt>Sync</dt>
+            <dd><p>{replication.text}</p>
+              {lastSynced && <p className="muted small">Last synced {new Date(lastSynced).toLocaleString()}.</p>}
+            </dd>
+          </div>
+          {hosted && project.configuredRoute && <div className="status-fact">
+            <dt>Configured route</dt><dd>Managed outside Pardner</dd>
+          </div>}
+        </dl>
+      </PopoverContent>
+    </Popover>
+    {sharing && <Popover open={sharingOpen} onOpenChange={setSharingOpen}>
+      <PopoverTrigger type="button" className="tailcat-status" data-state={share.state}>
+        <span className="route-dot" aria-hidden="true" />{sharingText}<Chevron />
+      </PopoverTrigger>
+      <PopoverContent className="board-status-popover" side="bottom" align="end" sideOffset={6} collisionPadding={12}>
+        <PopoverTitle>Tailcat sharing</PopoverTitle>
+        {share.state === 'error' && <p className="notice warning" role="status">Sharing is switched on, but its route is not running{routeError(share.error)}</p>}
+        <p>Turning it off disconnects this project’s Tailcat peers. {project.configuredRoute
+          ? 'Peers on the configured route stay connected.' : 'Peers can keep saving locally.'}</p>
+        <button type="button" className="tailcat-stop" disabled={changing} onClick={stopSharing}>
+          {changing ? 'Turning off Tailcat…' : 'Turn off Tailcat sharing'}
+        </button>
         <Failure error={failure} />
-        {!shareLabel && <p className="muted small">Sharing status unavailable.</p>}
-        {shareLabel && <>
-          {share.state === 'off' && <p className="muted small">Turn on to let other computers join and sync through Pardner.</p>}
-          {share.state === 'on' && <p className="muted small">Other computers can join and sync through Pardner.</p>}
-          {share.state === 'starting' && <p className="muted small" role="status">Starting the route to other computers…</p>}
-          {share.state === 'error' && <p className="notice warning" role="status">Sharing is switched on, but its route is not running{routeError(share.error)}</p>}
-          {changing && <p className="muted small" role="status">{share.on ? 'Switching sharing off…' : 'Switching sharing on…'}</p>}
-        </>}
-    </section> : <section aria-label="Connection to host">
-        <h3>Connection to host</h3>
-        <p role="status">{hostConnectionText(available, share, status?.hubConnected)}</p>
-      </section>}
-    </PopoverContent>
-  </Popover>
+      </PopoverContent>
+    </Popover>}
+  </div>
 }
