@@ -37,9 +37,12 @@ rules are in `test/membership.test.js` and `test/enrollment.test.js`
   owner's header; leaving at phone width; the owner nudge on the board and, once
   dismissed, in the panel until a second machine is paired; stopping one's own
   agent on this machine. Phone-width checks
-  assert no sideways scrolling. The Project status popover returns focus to its
-  trigger on Escape. Its Sharing switch responds to keyboard and pointer input,
-  exposes the current state and reports route failures without showing the address.
+  assert no sideways scrolling. The Project status indicators sit beside the
+  project selector and name sharing, connectivity and save/sync state. The
+  popover returns focus to its trigger on Escape. Its Sharing switch responds to
+  keyboard and pointer input, exposes the current state and reports route failures
+  without showing the address. A joined board shows its connection and sync
+  indicators while the host is reachable, through an outage and after recovery.
 
 Not covered: separate physical machines; last-seen times after a hub restart
 (kept in memory only); per-change signer lines and unattributed-change notices,

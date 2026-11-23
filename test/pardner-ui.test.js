@@ -9,7 +9,7 @@ import { startCliService } from '../support/cli-resources.js'
 
 for (const engine of [chromium, webkit]) it(`switches board views by keyboard in ${engine.name()}`,
   { timeout: 30000 }, async () => {
-    await withClientWorkspace(engine, {}, async ({ page, open }) => {
+    await withClientWorkspace(engine, {}, async ({ page, open, operate }) => {
       await open()
       const views = page.getByRole('tablist', { name: 'Workspace views' })
       const tasks = views.getByRole('tab', { name: 'Tasks', selected: true })
@@ -30,6 +30,39 @@ for (const engine of [chromium, webkit]) it(`switches board views by keyboard in
       await tasks.waitFor()
       await page.getByRole('tabpanel', { name: 'Tasks' }).getByRole('heading', { name: /^Backlog/ }).waitFor()
       assert.equal(await page.getByRole('tabpanel').count(), 1)
+      const board = page.getByRole('tabpanel', { name: 'Tasks' })
+      await board.getByRole('status').getByText('No tasks yet. Use New task to add the first one.', { exact: true }).waitFor()
+      await operate('task.create', { title: 'Default card' })
+      await operate('task.create', { title: 'Urgent task', priority: 'p0' })
+      await board.getByRole('button', { name: 'Default card', exact: true }).waitFor()
+      await board.getByRole('button', { name: /Urgent task.*p0/i }).waitFor()
+      assert.equal(await board.getByText('No tasks yet.').count(), 0)
+      await page.getByLabel('Status filter', { exact: true }).selectOption('completed')
+      await board.getByRole('status').getByText('No tasks match these filters.').waitFor()
+      await board.getByRole('button', { name: 'Clear filters', exact: true }).press('Enter')
+      await board.getByRole('button', { name: 'Default card', exact: true }).waitFor()
+      assert.ok(await tasks.evaluate(element => element === document.activeElement))
+
+      await page.setViewportSize({ width: 320, height: 750 })
+      const collapsed = page.getByRole('button', { name: 'Filters', expanded: false, exact: true })
+      const status = page.getByRole('combobox', { name: 'Status filter', exact: true })
+      await collapsed.waitFor()
+      assert.equal(await status.count(), 0)
+      await collapsed.press('Enter')
+      await status.waitFor()
+      await page.keyboard.press(engine === webkit ? 'Alt+Tab' : 'Tab')
+      assert.ok(await page.getByRole('combobox', { name: 'Assigned to' }).evaluate(node => node === document.activeElement))
+      await status.selectOption('completed')
+      await page.getByRole('button', { name: 'Filters, 1 active', expanded: true }).press('Enter')
+      await page.getByRole('button', { name: 'Filters, 1 active', expanded: false }).waitFor()
+      assert.equal(await status.count(), 0)
+      await board.getByRole('status').getByText('No tasks match these filters.').waitFor()
+      await board.getByRole('button', { name: 'Clear filters', exact: true }).press('Enter')
+      await collapsed.waitFor()
+      assert.ok(await tasks.evaluate(element => element === document.activeElement))
+      await page.setViewportSize({ width: 1440, height: 900 })
+      await status.waitFor()
+      assert.equal(await status.inputValue(), '')
     })
   })
 
@@ -119,11 +152,12 @@ for (const uuidAvailable of [true, false]) it(
       assert.equal(await headingText(alice), 'Comments 1', 'authors are not told their own comment is new')
       assert.equal(await alice.getByText('New', { exact: true }).count(), 0)
       assert.equal(await bob.getByText('New', { exact: true }).count(), 1)
-      assert.equal(await alice.getByRole('button', { name: 'Mark all read', exact: true }).isDisabled(), true)
-      await bob.getByRole('button', { name: 'Mark all read', exact: true }).click()
+      assert.equal(await alice.getByRole('button', { name: 'Mark all read', exact: true }).count(), 0)
+      await bob.getByRole('button', { name: 'Mark all read', exact: true }).press('Enter')
       await bob.getByText('Comments 1', { exact: true }).waitFor()
       assert.equal(await headingText(bob), 'Comments 1')
-      assert.equal(await bob.getByRole('button', { name: 'Mark all read', exact: true }).isDisabled(), true)
+      assert.equal(await bob.getByRole('button', { name: 'Mark all read', exact: true }).count(), 0)
+      assert.ok(await heading(bob).evaluate(element => element === document.activeElement))
       assert.equal(await bob.getByText('New', { exact: true }).count(), 0)
       await bob.getByLabel('Comment', { exact: true }).fill('Seen')
       await bob.getByRole('button', { name: 'Add comment', exact: true }).click()
@@ -278,11 +312,13 @@ for (const uuidAvailable of [true, false]) it(
         } else await route.continue()
       })
       await veinStatus.selectOption('proven')
-      await alice.getByRole('button', { name: 'Retry saved request', exact: true }).first().waitFor()
+      const retryVerdict = veinRow.getByRole('button', { name: 'Retry saved request', exact: true })
+      await retryVerdict.waitFor()
       assert.equal(await veinStatus.isDisabled(), true, 'pending request disables the vein select')
       assert.equal(await alice.getByLabel('Status of goal Ship the first release', { exact: true }).isDisabled(), true)
-      await alice.getByRole('button', { name: 'Retry saved request', exact: true }).first().click()
+      await retryVerdict.press('Enter')
       await goal.getByText('Ready for a verdict', { exact: true }).waitFor({ state: 'hidden' })
+      await alice.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Status of vein Evidence-first reviews')
       await alice.unroute('**/automerge/operations')
       assert.equal((await host.show('vein', vein.veinId)).vein.status, 'proven')
       assert.equal(await veinStatus.inputValue(), 'proven')
@@ -458,6 +494,22 @@ for (const engine of [chromium, webkit]) it(`gives user-authored Markdown its ow
     assert.deepEqual(await styles(comment), fromDescription, 'descriptions and comments render Markdown identically')
     const size = value => parseFloat(value)
     const section = await panel.getByRole('heading', { name: /^Comments/ }).evaluate(node => getComputedStyle(node).fontSize)
+    const discussionType = await panel.locator('.task-discussion').evaluate(node => {
+      const style = selector => getComputedStyle(node.querySelector(selector))
+      const composer = style('textarea')
+      return {
+        fontSize: composer.fontSize,
+        lineHeight: composer.lineHeight,
+        countSize: style('h3 span').fontSize,
+        countFigures: style('h3 span').fontVariantNumeric,
+        dateOffset: style('time').marginBlockStart,
+      }
+    })
+    assert.equal(discussionType.fontSize, fromDescription.prose.fontSize, 'composing and reading use the same body size')
+    assert.equal(discussionType.lineHeight, fromDescription.prose.lineHeight, 'composing and reading use the same leading')
+    assert.ok(size(discussionType.countSize) < size(section), 'count is secondary to the section heading')
+    assert.equal(discussionType.countFigures, 'tabular-nums')
+    assert.equal(discussionType.dateOffset, '0px', 'comment dates align to the author line')
     assert.ok(size(fromDescription.h1.fontSize) < size(section), `h1 ${fromDescription.h1.fontSize} is below the ${section} section heading`)
     assert.ok(size(fromDescription.h1.fontSize) >= size(fromDescription.h2.fontSize))
     assert.ok(size(fromDescription.h2.fontSize) >= size(fromDescription.h3.fontSize))
@@ -527,6 +579,18 @@ for (const engine of [chromium, webkit]) it(`gives user-authored Markdown its ow
         }
       }
     }
+    const close = panel.getByRole('button', { name: 'Close', exact: true })
+    await close.focus()
+    for (const name of ['Table', 'Code block']) {
+      await page.keyboard.press(engine === webkit ? 'Alt+Tab' : 'Tab')
+      const region = description.getByRole('region', { name, exact: true })
+      assert.ok(await region.evaluate(element => element === document.activeElement))
+      await page.keyboard.press('ArrowRight')
+      await page.waitForFunction(label => document.activeElement?.getAttribute('aria-label') === label && document.activeElement.scrollLeft > 0, name, { timeout: 3000 })
+      await page.keyboard.press('ArrowLeft')
+      await page.waitForFunction(() => document.activeElement.scrollLeft === 0, null, { timeout: 3000 })
+    }
+    assert.equal(await description.locator('pre').last().getAttribute('tabindex'), null, 'short code does not add a tab stop')
   })
 })
 
@@ -551,11 +615,11 @@ for (const engine of [chromium, webkit]) it(`keeps the app frame in the viewport
     const nav = name => page.getByRole('tablist', { name: 'Workspace views' }).getByRole('tab', { name, exact: true })
     const frame = () => page.evaluate(() => {
       const top = selector => document.querySelector(selector).getBoundingClientRect().top
-      const newTask = [...document.querySelectorAll('header button')].find(button => button.textContent === 'New task')
+      const newTask = document.querySelector('.new-task-fab').getBoundingClientRect()
       return {
         fits: document.scrollingElement.scrollHeight <= innerHeight + 1,
         scrollHeight: document.scrollingElement.scrollHeight, innerHeight,
-        scrollY, header: top('header'), nav: top('nav'), newTask: newTask.getBoundingClientRect().top,
+        scrollY, header: top('header'), nav: top('nav'), newTask: newTask.top, newTaskBottom: newTask.bottom,
       }
     })
     const assertFrame = async where => {
@@ -563,6 +627,7 @@ for (const engine of [chromium, webkit]) it(`keeps the app frame in the viewport
       assert.equal(state.fits, true, `document stays within the viewport ${where}: ${JSON.stringify(state)}`)
       assert.equal(state.scrollY, 0, `the document never scrolls ${where}`)
       assert.ok(state.header >= 0 && state.nav >= 0 && state.newTask >= 0, `header, nav and New task stay visible ${where}: ${JSON.stringify(state)}`)
+      assert.ok(state.innerHeight - state.newTaskBottom >= 16, `New task stays inset from the bottom ${where}`)
     }
     const scrollMain = () => page.locator('main').evaluate(main => { main.scrollTop = 1e6; return main.scrollTop })
 
@@ -574,6 +639,11 @@ for (const engine of [chromium, webkit]) it(`keeps the app frame in the viewport
       const backlog = page.getByRole('region', { name: 'Backlog' })
       assert.ok(await backlog.evaluate(column => { column.scrollTop = 1e6; return column.scrollTop }) > 0, `the long column scrolls inside itself ${at('Tasks')}`)
       await assertFrame(`after scrolling a column ${at('Tasks')}`)
+      assert.ok(await backlog.evaluate(column => {
+        const lastCard = column.querySelector('.task-card:last-child').getBoundingClientRect()
+        const action = document.querySelector('.new-task-fab').getBoundingClientRect()
+        return lastCard.bottom < action.top
+      }), 'the last card can scroll clear of the floating action')
       assert.equal(await backlog.getByRole('heading').evaluate(heading => {
         const column = heading.parentElement.getBoundingClientRect()
         return Math.abs(heading.getBoundingClientRect().top - column.top) < 40
@@ -607,6 +677,16 @@ for (const engine of [chromium, webkit]) it(`keeps the app frame in the viewport
         await assertFrame(`after paging ${at('Activity')}`)
       }
     }
+
+    await page.setViewportSize({ width: 320, height: 700 })
+    await nav('Tasks').click()
+    const createTask = page.getByRole('button', { name: 'New task', exact: true })
+    const initialPosition = await box(createTask)
+    await page.evaluate(() => window.scrollTo(0, document.scrollingElement.scrollHeight))
+    await page.waitForFunction(() => scrollY > 0)
+    assert.deepEqual(await box(createTask), initialPosition, 'the floating action does not move when the phone board scrolls')
+    const lastCard = page.getByRole('region', { name: 'Backlog' }).locator('.task-card:last-child')
+    assert.ok((await box(lastCard)).bottom < initialPosition.top, 'the last phone card can scroll clear of the floating action')
 
     // A request lost before the service saw it stays pending across a reload.
     await page.setViewportSize({ width: 1024, height: 700 })
@@ -816,6 +896,7 @@ for (const engine of [chromium, webkit]) it(`shows errors where the work is in $
 
     // AMBIGUOUS_ACTOR: Dismiss clears the alert and keeps the draft.
     await openTask()
+    assert.equal(await panel.getByLabel('Comment', { exact: true }).inputValue(), '', 'a successful retry from the board clears the submitted draft')
     await page.route('**/automerge/operations', route => route.fulfill({
       status: 400, contentType: 'application/json',
       body: JSON.stringify({ code: 'AMBIGUOUS_ACTOR', error: 'Ambiguous Actor: choose another reference' }),
@@ -932,11 +1013,85 @@ for (const engine of [chromium, webkit]) it(`moves focus into panels and back to
   })
 })
 
+const focusIsVisible = () => {
+  const element = document.activeElement
+  const box = element.getBoundingClientRect()
+  return element.contains(document.elementFromPoint((box.left + box.right) / 2, (box.top + box.bottom) / 2))
+}
+
+async function assertPanelCoversNewTask(panel, action, position) {
+  assert.deepEqual(await box(action), position, 'New task stays in the same corner when the panel opens')
+  assert.ok(await panel.evaluate((element, { left, right, top, bottom }) => {
+    const bounds = element.getBoundingClientRect()
+    return bounds.left <= left && bounds.right >= right && bounds.top <= top && bounds.bottom >= bottom
+      && element.contains(document.elementFromPoint((left + right) / 2, (top + bottom) / 2))
+  }, position), 'the panel covers New task and receives pointer input above it')
+  assert.equal(await action.evaluate(element => {
+    element.focus()
+    return element === document.activeElement
+  }), false, 'the covered button cannot receive keyboard focus')
+}
+
+for (const engine of [chromium, webkit]) it(`keeps focus visible beside desktop task panels in ${engine.name()}`, { timeout: 60000 }, async () => {
+  await withClientWorkspace(engine, {}, async ({ page, operate, open }) => {
+    await operate('task.create', { title: 'Read the release checklist' })
+    const { result: { taskId } } = await operate('task.create', { title: 'Archive completed release', status: 'completed' })
+    await open()
+    const card = page.getByRole('button', { name: /Read the release checklist/ })
+    const panel = page.getByRole('dialog', { name: 'Task details' })
+    const lastCard = page.getByRole('button', { name: /Archive completed release/ })
+    const action = page.locator('.new-task-fab')
+    const position = await box(action)
+    await card.press('Enter')
+    await panel.getByRole('heading', { name: 'Read the release checklist' }).focus()
+    await assertPanelCoversNewTask(panel, action, position)
+    await page.keyboard.press(engine === webkit ? 'Alt+Shift+Tab' : 'Shift+Tab')
+    assert.ok(await lastCard.evaluate(element => element === document.activeElement))
+    await page.waitForFunction(focusIsVisible, null, { timeout: 3000 })
+    assert.ok(await lastCard.evaluate(element => {
+      const card = element.getBoundingClientRect()
+      const board = element.closest('.board').getBoundingClientRect()
+      return card.left >= board.left && card.right <= board.right
+    }), 'keyboard focus reveals the full card')
+    await page.keyboard.press('Enter')
+    await panel.getByRole('heading', { name: 'Archive completed release' }).waitFor()
+
+    const selectionIsVisible = () => {
+      const card = document.querySelector('.task-card[aria-current]')
+      const bounds = card.getBoundingClientRect()
+      const board = card.closest('.board').getBoundingClientRect()
+      return bounds.left >= board.left && bounds.right <= board.right
+    }
+    await page.setViewportSize({ width: 1024, height: 768 })
+    await page.waitForFunction(selectionIsVisible, null, { timeout: 3000 })
+    const board = page.locator('.board')
+    assert.equal(await board.evaluate(element => element.clientWidth), 512)
+
+    await board.evaluate(element => { element.scrollLeft = 0 })
+    await operate('comment.add', { taskId, text: 'Keep the board wherever I scrolled it.' })
+    await panel.getByText('Keep the board wherever I scrolled it.', { exact: true }).waitFor()
+    assert.equal(await board.evaluate(element => element.scrollLeft), 0)
+
+    await panel.getByRole('combobox', { name: 'Status', exact: true }).selectOption('review')
+    await page.getByRole('region', { name: 'Review', exact: true }).getByRole('button', { name: 'Archive completed release', exact: true }).waitFor()
+    await page.waitForFunction(selectionIsVisible, null, { timeout: 3000 })
+  })
+})
+
 for (const engine of [chromium, webkit]) it(`keeps focus in full-width task panels in ${engine.name()}`, { timeout: 60000 }, async () => {
-  await withClientWorkspace(engine, { contextOptions: { viewport: { width: 320, height: 700 } } }, async ({ page, operate, open }) => {
-    await operate('task.create', { title: 'Review the release checklist' })
+  await withClientWorkspace(engine, {
+    contextOptions: { viewport: { width: 320, height: 700 } },
+    actors: [{ id: 'reviewer', displayName: 'Alexandria Montgomery with a long display name for board reviews' }],
+  }, async ({ page, operate, open }) => {
+    const { result: { taskId } } = await operate('task.create', { title: 'Review the release checklist', assignee: 'reviewer' })
+    const repository = `release-team/${'stagingbuild'.repeat(8)}`
+    await operate('task.link-issue', { taskId, repository, number: 77 })
     await operate('task.create', { title: 'A neighbouring card' })
     await open()
+    const newTask = page.getByRole('button', { name: 'New task', exact: true })
+    const newTaskBox = await box(newTask)
+    assert.equal(await page.locator('header').getByRole('button', { name: 'New task', exact: true }).count(), 0)
+    assert.ok(newTaskBox.bottom <= 684 && newTaskBox.top >= 600, 'New task is inset near the bottom at 320px')
     const card = page.getByRole('button', { name: /Review the release checklist/ })
     const panel = page.getByRole('dialog', { name: 'Task details' })
     const contextRoute = '**/automerge/task/*/context*'
@@ -949,6 +1104,7 @@ for (const engine of [chromium, webkit]) it(`keeps focus in full-width task pane
     try {
       await card.press('Enter')
       await panel.getByRole('status').getByText('Opening task…').waitFor()
+      await assertPanelCoversNewTask(panel, page.locator('.new-task-fab'), newTaskBox)
       await page.waitForFunction(() => document.activeElement?.closest('.side-panel[aria-modal="true"]'))
       await page.waitForFunction(() => document.querySelector('.task-card')?.closest('[inert]'))
     } finally {
@@ -963,12 +1119,36 @@ for (const engine of [chromium, webkit]) it(`keeps focus in full-width task pane
       await heading.focus()
       await page.keyboard.press(key)
       assert.ok(await page.evaluate(hasPanelFocus), `${key} stays within the full-width panel`)
+      await page.waitForFunction(focusIsVisible, null, { timeout: 3000 })
     }
+    const issue = panel.getByRole('textbox', { name: 'Link GitHub issue' })
+    const reference = panel.getByRole('link', { name: repository + '#77', exact: true })
+    await reference.waitFor()
+    assert.ok(await panel.evaluate(element => element.scrollWidth <= element.clientWidth), 'the full issue reference stays inside the panel')
+    await issue.focus()
+    await page.keyboard.press(keys[1])
+    assert.ok(await heading.evaluate(element => element === document.activeElement))
+    await page.waitForFunction(focusIsVisible, null, { timeout: 3000 })
+
+    await panel.getByRole('button', { name: 'Edit task', exact: true }).click()
+    const assignee = panel.getByRole('combobox', { name: 'Assignee' })
+    assert.equal(await assignee.inputValue(), 'reviewer')
+    assert.ok(await panel.evaluate(element => element.scrollWidth <= element.clientWidth), 'a long assignee does not widen the panel')
+    await panel.getByRole('button', { name: 'Cancel edit', exact: true }).click()
 
     const comment = panel.getByRole('textbox', { name: 'Comment', exact: true })
+    assert.equal(await panel.locator('.save-status').count(), 1)
     await comment.fill('A draft that stays open')
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.waitForFunction(() => !document.querySelector('.task-card')?.closest('[inert]'))
+    assert.equal(await panel.locator('.save-status').count(), 0, 'desktop uses the visible board status')
+    await page.setViewportSize({ width: 844, height: 390 })
+    await page.getByRole('dialog', { name: 'Task details' }).locator('.save-status').waitFor()
+    assert.deepEqual(await panel.evaluate(element => {
+      const bounds = element.getBoundingClientRect()
+      return [bounds.top, bounds.width, bounds.height, element.getAttribute('aria-modal')]
+    }), [0, 844, 390, 'true'], 'the landscape panel fills the viewport and makes the board inert')
+    assert.equal(await comment.inputValue(), 'A draft that stays open')
     await page.setViewportSize({ width: 839, height: 900 })
     await page.waitForFunction(() => document.activeElement?.closest('.side-panel[aria-modal="true"]'))
     await comment.press('Escape')
@@ -976,10 +1156,23 @@ for (const engine of [chromium, webkit]) it(`keeps focus in full-width task pane
     await panel.getByRole('button', { name: 'Close', exact: true }).click()
     await page.waitForFunction(() => document.activeElement?.textContent.includes('Review the release checklist'))
     assert.ok(await card.evaluate(element => element === document.activeElement))
+    await card.press('Enter')
+    assert.equal(await comment.inputValue(), 'A draft that stays open')
+    await issue.focus()
+    await page.keyboard.press('Escape')
+    await panel.waitFor({ state: 'detached' })
+    await page.getByRole('button', { name: /A neighbouring card/ }).press('Enter')
+    assert.equal(await comment.inputValue(), '', 'drafts are private to their task')
+    await panel.getByRole('button', { name: 'Close', exact: true }).click()
+    await card.press('Enter')
+    assert.equal(await comment.inputValue(), 'A draft that stays open', 'Escape outside the composer keeps its draft')
+    await panel.getByRole('button', { name: 'Close', exact: true }).click()
 
-    await page.getByRole('button', { name: 'New task', exact: true }).click()
+    const createPosition = await box(newTask)
+    await newTask.click()
     const create = page.getByRole('dialog', { name: 'New task' })
     await page.waitForFunction(() => document.activeElement?.name === 'title' && document.activeElement.closest('[aria-modal="true"]'))
+    await assertPanelCoversNewTask(create, page.locator('.new-task-fab'), createPosition)
     assert.ok(await card.evaluate(element => element.closest('[inert]') !== null))
     await create.getByRole('button', { name: 'Close', exact: true }).click()
     await page.waitForFunction(() => document.activeElement?.textContent === 'New task')
@@ -1087,9 +1280,23 @@ for (const engine of [chromium, webkit]) it(`jumps to the composer from a long d
     await shortcut.press('Enter')
     assert.ok(await comment.evaluate(element => element === document.activeElement && element.getBoundingClientRect().bottom <= innerHeight))
     await comment.fill('The staging build is ready.')
-    await panel.getByRole('button', { name: 'Add comment', exact: true }).press('Enter')
+    let release
+    const held = new Promise(resolve => { release = resolve })
+    await page.route('**/automerge/operations', async route => {
+      await held
+      await route.continue()
+    })
+    const add = panel.getByRole('button', { name: 'Add comment', exact: true })
+    try {
+      await add.press('Enter')
+      await page.waitForFunction(() => [...document.querySelectorAll('.side-panel button')].some(button => button.textContent.trim() === 'Add comment' && button.disabled))
+      await comment.fill('A second update is in progress.')
+    } finally {
+      release()
+    }
     await panel.locator('article.comment').getByText('The staging build is ready.', { exact: true }).waitFor()
     assert.equal((await task(taskId)).comments.filter(item => item.content === 'The staging build is ready.').length, 1)
+    assert.equal(await comment.inputValue(), 'A second update is in progress.', 'the receipt only clears the submitted text')
 
     const unread = panel.locator('article.comment').filter({ has: page.getByText('New', { exact: true }) })
     const borders = () => unread.evaluate(element => {
@@ -1239,7 +1446,7 @@ for (const engine of [chromium, webkit]) it(`keeps Hand off work collapsed until
     await page.getByRole('button', { name: /Hand off on request/ }).click()
     await opener.waitFor()
     assert.equal(await panel.getByLabel('Recipient', { exact: true }).count(), 0, 'the form is closed on open')
-    const commentsTop = await panel.getByRole('heading', { name: /^Comments \d/ }).evaluate(element => element.getBoundingClientRect().top)
+    const commentsTop = await panel.getByRole('heading', { name: 'Comments', exact: true }).evaluate(element => element.getBoundingClientRect().top)
     assert.ok(commentsTop < 900, `Comments are in the first screen: ${commentsTop}`)
 
     await opener.click()
@@ -1384,10 +1591,11 @@ for (const engine of [chromium, webkit]) it(`changes a task's status in place fr
       assert.equal(await select.inputValue(), 'review')
       assert.equal(await select.count(), 1)
       assert.equal(await meta.textContent().then(text => text.includes('· Review ·')), false, `the meta line drops the status at ${width}`)
+      const selectBox = await box(select)
+      assert.ok(selectBox.bottom - selectBox.top >= (width === 375 ? 44 : 40), `Status keeps its control height at ${width}px`)
       if (width === 375) {
-        const [selectBox, labelBox, panelOverflow] = [await box(select), await box(panel.locator('label.status-field')),
+        const [labelBox, panelOverflow] = [await box(panel.locator('label.status-field')),
           await panel.evaluate(element => element.scrollWidth - element.clientWidth)]
-        assert.ok(selectBox.bottom - selectBox.top >= 44, 'the select is at least 44px tall')
         assert.ok(panelOverflow <= 0, 'the panel does not overflow sideways')
         assert.ok(labelBox.bottom - labelBox.top < 70, 'the label and select share one line')
       }
@@ -1422,6 +1630,77 @@ for (const engine of [chromium, webkit]) it(`changes a task's status in place fr
     await panel.getByRole('button', { name: 'Hand off work', exact: true }).click()
     assert.equal(await select.count(), 0, 'the inline select is hidden during a handoff')
     await close()
+  })
+})
+
+for (const engine of [chromium, webkit]) it(`reconciles a retried edit and keeps later draft text in ${engine.name()}`, { timeout: 90000 }, async () => {
+  await withClientWorkspace(engine, {}, async ({ page, task, operate, open }) => {
+    const { result: { taskId } } = await operate('task.create', { title: 'Original title' })
+    await open()
+    const card = page.locator('.task-card', { hasText: 'Original title' })
+    await card.click()
+    const panel = page.getByRole('dialog', { name: 'Task details' })
+    const edit = panel.getByRole('button', { name: 'Edit task', exact: true })
+    const title = panel.getByRole('textbox', { name: 'Title', exact: true })
+    const save = panel.getByRole('button', { name: 'Save changes', exact: true })
+    const retry = page.getByRole('button', { name: 'Retry saved request', exact: true })
+    const panelRetry = panel.getByRole('button', { name: 'Retry saved request', exact: true })
+    const operations = '**/automerge/operations'
+    const attempts = []
+    let release
+    const held = new Promise(resolve => { release = resolve })
+    await page.route(operations, async route => {
+      const operation = route.request().postDataJSON()
+      attempts.push(operation)
+      if (attempts.length === 1) {
+        assert.equal((await route.fetch()).status(), 200)
+        await route.abort('failed')
+      } else {
+        await held
+        await route.continue()
+      }
+    })
+    try {
+      await edit.click()
+      await title.fill('Saved through retry')
+      await save.click()
+      await panelRetry.waitFor()
+      await panelRetry.press('Enter')
+      await panelRetry.and(page.locator('[aria-disabled="true"]')).waitFor()
+      assert.ok(await panelRetry.evaluate(node => node === document.activeElement), 'Retry keeps focus during the request')
+      await page.keyboard.press('Enter')
+    } finally { release() }
+    await panel.getByRole('heading', { name: 'Saved through retry', exact: true }).waitFor()
+    await title.waitFor({ state: 'detached' })
+    await page.waitForFunction(() => document.activeElement?.textContent === 'Edit task')
+    assert.equal(attempts.length, 2)
+    assert.deepEqual(attempts[0], attempts[1])
+    assert.equal((await task(taskId)).task.title, 'Saved through retry')
+    await page.unroute(operations)
+
+    // The pending request and the newer title both survive closing the pane and reloading.
+    await page.route(operations, route => route.abort('failed'))
+    await edit.click()
+    await title.fill('Title in the saved request')
+    await save.click()
+    await panelRetry.waitFor()
+    await title.fill('Title typed after the request')
+    await panel.getByRole('button', { name: 'Close', exact: true }).click()
+    await panel.waitFor({ state: 'detached' })
+    await page.unroute(operations)
+    await page.reload()
+    await retry.press('Enter')
+    const savedCard = page.getByRole('button', { name: 'Title in the saved request', exact: true })
+    await savedCard.waitFor()
+    await page.waitForFunction(() => document.activeElement?.textContent === 'Tasks')
+    await savedCard.click()
+    await title.waitFor()
+    assert.equal(await title.inputValue(), 'Title typed after the request')
+    assert.equal(await panel.getByText(/since you started editing/).count(), 0)
+    await save.click()
+    await panel.getByRole('heading', { name: 'Title typed after the request', exact: true }).waitFor()
+    await title.waitFor({ state: 'detached' })
+    assert.equal((await task(taskId)).task.title, 'Title typed after the request')
   })
 })
 
@@ -1597,11 +1876,14 @@ for (const engine of [chromium, webkit]) it(`closes New task with Escape without
     const focusIsNewTask = () => page.waitForFunction(() => document.activeElement?.textContent === 'New task')
 
     // 1. Empty Title + Escape closes the panel and returns focus to New task.
+    const position = await box(newTask)
     await newTask.click()
     await title.focus()
+    await assertPanelCoversNewTask(panel, page.locator('.new-task-fab'), position)
     await page.keyboard.press('Escape')
     await panel.waitFor({ state: 'detached' })
     await focusIsNewTask()
+    assert.deepEqual(await box(newTask), position)
 
     // 2. Text in Title with focus there keeps the panel.
     await newTask.click()

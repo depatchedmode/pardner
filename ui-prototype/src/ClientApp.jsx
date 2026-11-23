@@ -463,10 +463,8 @@ function ProjectView({ api, session, project, switcher, onAuthLost, refreshSessi
   const closePeople = () => setPeopleOrigin(null)
   const remotePresenceUnavailable = presence?.available === false || current.status?.hubConnected === false
   const canControl = details?.project.controlAvailable === true
-  const header = <>
-    <div className="client-identity">
-      <ProjectSwitcher {...switcher} current={current} onAgentSetup={canControl ? setAgentSetupOrigin : undefined} />
-    </div>
+  const projectSwitcher = <ProjectSwitcher {...switcher} current={current} onAgentSetup={canControl ? setAgentSetupOrigin : undefined} />
+  const people = (
     <div className="client-people">
       <div className="people-entry">
         {participants.length > 0 && <AvatarStack actors={participants} index={index} max={5} label="People in this project"
@@ -484,7 +482,7 @@ function ProjectView({ api, session, project, switcher, onAuthLost, refreshSessi
       </div>
       {remotePresenceUnavailable && <span className="muted small">Remote presence unavailable</span>}
     </div>
-  </>
+  )
   const refreshRequests = () => api.joinRequests(project.id).then(result => setWaitingRequests(result.requests.length), () => {})
   // If the owner loses every machine, nobody can remove or demote admins: suggest pairing a second one early.
   const ownMachines = details?.membership?.machines?.filter(machine => machine.personId === session.identity.id).length
@@ -514,8 +512,8 @@ function ProjectView({ api, session, project, switcher, onAuthLost, refreshSessi
     </Failure>
   </main>
   return <>
-    <Workspace key={config.workspaceId} config={config} reloadConfiguration={reloadConfiguration}
-      session={{ ...sessionProps, api, project: current, header, notice, agentSetupOrigin, closeAgentSetup: () => setAgentSetupOrigin(null) }} />
+    <Workspace key={JSON.stringify([config.workspaceId, config.actorId])} config={config} reloadConfiguration={reloadConfiguration}
+      session={{ ...sessionProps, api, project: current, projectSwitcher, people, notice, agentSetupOrigin, closeAgentSetup: () => setAgentSetupOrigin(null) }} />
     {peopleOrigin && <PeoplePanel api={api} project={current} index={index} actorsById={actorsById} returnFocus={peopleOrigin}
       onOpenProfile={(actorId, element) => openProfile(actorsById[actorId], element)}
       onClose={closePeople} onRemoved={removed} onChanged={() => { void load().catch(() => {}); void refreshRequests() }} />}

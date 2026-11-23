@@ -6,17 +6,22 @@ export function hubNotice(status) {
   return null
 }
 
-/** Shared save/sync copy for board and client headers. */
-export function syncStatusText(status, { connected = true, busy = false, heads } = {}) {
-  if (busy) return 'Saving locally…'
-  if (!connected) return 'Local service disconnected'
-  if (!status) return 'Status not reported'
-  if (status.available === false) return 'Project service unavailable'
-  if (status.storageError) return 'Local save failed'
+/** Shared save/sync state and copy for board and client headers. */
+export function replicationStatus(status, { connected = true, busy = false, heads } = {}) {
+  if (busy) return { state: 'pending', text: 'Saving locally…' }
+  if (!connected) return { state: 'unknown', text: 'Local service disconnected' }
+  if (!status) return { state: 'unknown', text: 'Status not reported' }
+  if (status.available === false) return { state: 'unknown', text: 'Project service unavailable' }
+  if (status.storageError) return { state: 'error', text: 'Local save failed' }
   const notice = hubNotice(status)
-  if (notice) return notice
-  if (!status.savedLocally) return 'Saving locally…'
-  if (heads !== undefined && status.heads?.join(',') !== heads) return 'Saving locally…'
-  if (status.syncPending || status.hubConnected === false) return 'Saved locally · waiting for hub'
-  return 'Saved locally · synced'
+  if (notice) return { state: 'warning', text: notice }
+  if (!status.savedLocally || (heads !== undefined && status.heads?.join(',') !== heads)) {
+    return { state: 'pending', text: 'Saving locally…' }
+  }
+  if (status.syncPending || status.hubConnected === false) return { state: 'pending', text: 'Saved locally · waiting for hub' }
+  return { state: 'synced', text: 'Saved locally · synced' }
+}
+
+export function syncStatusText(status, options) {
+  return replicationStatus(status, options).text
 }
