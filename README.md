@@ -177,7 +177,7 @@ Someone on another network needs a route to your computer. Switch on **Sharing**
 in the People panel, or run `pardner client share --project ID --on`, and Pardner
 runs a tailcat route for that one project. It is a
 [prototype](docs/PARDNER-CLIENT.md#sharing-a-project-with-other-computers) and
-needs tailcat v0.7.0 on both computers.
+needs tailcat v0.8.0 on both computers.
 
 ### Agents only, on one machine
 
