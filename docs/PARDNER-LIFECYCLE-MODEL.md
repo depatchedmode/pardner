@@ -843,3 +843,20 @@ outside the bounded model; `test/storage-durability.test.js` covers them. The
 default check (174614 states, 679456 transitions) and the eight-mutation
 demonstration pass as before. No power-loss or real-agent claim follows from
 this.
+
+## Local wait mapping review (#285)
+
+The `wait` route passes through the existing HTTP admission middleware and local
+API authentication. It reads from saved board heads. Its subscription observes
+`document-persisted` and schedules the check outside the persistence queue.
+`StopBegin` closes the listeners and cancels open waits before awaiting the
+listener callbacks. A wait that reaches its handler after body parsing during
+shutdown is refused. Admitted operations and acknowledgements still drain
+before `StoreCloseBegin`. The WebSocket admission and shutdown ordering stay
+the same.
+
+The model's existing actions and bounds cover operations, acknowledgements and
+upgrades. `test/lifecycle-conformance.test.js` exercises wait cancellation,
+shutdown, and the saved-heads boundary in the server. The refreshed mapping
+passes the default check with 174614 states, 679456 transitions and all ten
+witnesses reachable. See `waitReview` in the evidence JSON.

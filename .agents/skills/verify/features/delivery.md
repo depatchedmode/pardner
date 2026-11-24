@@ -35,6 +35,17 @@ and comment-delete cancellation; `test/pardner-cli-mentions.test.js` (in
 `npm run test:cli`) covers replica forwarding and `HUB_UNAVAILABLE` while
 accepted work still saves locally.
 
+`pardner wait --after VERSION` uses the local board's Automerge heads. Save
+`boardVersion` from `pardner status` before inspecting the board, then wait for an
+Actor's mentions or a task's new comments with `--task`. The command returns all
+matches through its returned board version. `pardner-cli-wait` covers catch-up across
+restart, multiple matches, filtering, and a resumable timeout with exit 2.
+`lifecycle-conformance` holds a save open, checks that a wait stays open until
+the save reaches disk, then exercises disconnect cleanup and service shutdown.
+`pardner-cli-mentions` exercises wakes from synced and offline writes through an
+agent grant, Actor binding, and client shutdown with a wait open. The wait's
+output is a notification. Claiming and acknowledging still use the hub ledger.
+
 For provider-bridge changes, inspect the relevant `test/bridge-*.test.js` and
 `test/codex-bridge-adapter.test.js` assertions; use synthetic fixtures first.
 Queued agent mentions are bound to the authorizing comment's content digest,

@@ -55,6 +55,10 @@ const groups = [
     files: names('lib/delivery-ledger.js lib/bridge-inbox.js lib/sqlite-transaction.js'),
   },
   {
+    name: 'workspace-wait', scripts: ['test:runtime', 'test:cli'],
+    files: names('lib/board-version.js lib/workspace-wait.js lib/wait-client.js'),
+  },
+  {
     name: 'domain', scripts: ['test:runtime', 'test:qualification', 'test:cli'],
     files: names('lib/workspace.js lib/workspace-commands.js lib/workspace-schema.js lib/workspace-values.js lib/operation-identity.js shared/domain-vocab.js support/plain-value-assertions.js support/workspace-test.js'),
   },

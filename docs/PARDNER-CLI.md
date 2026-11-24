@@ -296,6 +296,59 @@ concurrent moves are kept as alternatives until `vein resolve --field goalId`.
 Task branches start without veins, and merging a branch never changes the
 parent's veins.
 
+## Wait for a mention or a task comment
+
+`pardner wait` holds a connection to the local service until a matching record
+is saved on this machine. It makes no model requests. Without `--task`, it waits
+for mentions of the selected Actor. Use `--actor` (Actor ID or, in standalone
+mode, handle), `PARDNER_ACTOR`, or an agent grant from `--token-file`. With
+`--task TASK`, it waits for new comments on that task, including handoff comments.
+
+Save the **board version** before looking at the board. Pass it to `--after` at
+the end of the turn to catch matching records that arrived while you worked.
+
+```sh
+version=$(pardner --token-file builder.json status | jq -er '.boardVersion')
+pardner --token-file builder.json show "$task"
+# Do the work for this turn, then let the harness await the next event.
+pardner --token-file builder.json wait --after "$version" --timeout 600
+# To wait for new comments on one task instead:
+pardner --token-file builder.json wait --task "$task" --after "$version"
+```
+
+Board reads return `boardVersion`, including `status`, `show`, `comments`, `tasks`,
+`branches`, `actors list`, `goals`, `goal show`, `veins`, `vein show`, `activity`,
+`timeline`, `diff`, `trace task`, and `mentions pending`. The value is an opaque
+string that encodes the project ID and its Automerge heads. `status` reads the
+local replica, including while the hub is unreachable. `mentions pending` reads
+the local version before querying the delivery ledger. A board version survives
+a restart when its heads are on disk. A version from a different project fails
+with `WORKSPACE_MISMATCH`. If this replica lacks the heads, wait reports
+`UNKNOWN_BOARD_VERSION`. Retry on the replica that provided the version or once
+this replica has synced. Omitting `--after` starts at the locally saved heads
+when the service receives the wait.
+
+A match exits 0 with `reason: "matched"`, a batch of `events`, and the
+`boardVersion` at the end of the scan. Resume the same filter from that version
+after handling the whole batch. A mention event has `type: "mention"` and
+`mention` metadata. A comment event has `type: "comment"` and `comment` metadata with its
+ID, task, author and timestamp. Use `show` for current comment text. These
+notifications report newly recorded IDs, including ones later deleted or removed
+from a comment. An edit that introduces a new mention ID can wake a mention wait.
+Edits of an existing comment do not wake a task comment wait.
+
+`--timeout` takes a positive duration in seconds and accepts fractions up to
+`2147483.647` seconds. When it elapses without a match, wait exits 2 with
+`success: true`, `reason: "timeout"`, `events: []`, and a `boardVersion` you can
+resume from. Omit `--timeout` to wait until a match or a service failure. If the
+local service stops, wait exits 1 with `SERVICE_STOPPING` or
+`LOCAL_SERVICE_UNAVAILABLE`.
+
+During a hub outage, wait can report what is saved on the local replica.
+Changes on other machines become eligible once they sync here. Wait writes no
+read receipt, claim, or acknowledgement. Use `mentions claim-next` when you need
+a delivery lease, which still requires the hub.
+
 ## Agent delivery
 
 ```sh
@@ -320,10 +373,10 @@ not an exactly-once execution guarantee.
 ## Results and verification
 
 Coordination commands emit exactly one JSON value on stdout, including failures.
-Diagnostics and Git output go to stderr. Successful commands exit 0; errors exit
-1 and expose `error.code`, `error.message`, and `error.details`. A Git commit whose
-task link fails returns the existing commit hash and recovery instructions; use
-`link-commit` to finish the link without making another Git commit.
+Diagnostics and Git output go to stderr. Successful commands exit 0. Errors exit
+1 and expose `error.code`, `error.message`, and `error.details`. A wait timeout
+exits 2. A Git commit whose task link fails returns the existing commit hash and
+recovery instructions. Use `link-commit` to finish the link with that commit.
 
 `savedLocally` confirms the acknowledged operation crossed the local disk barrier.
 `syncPending` clears only after an explicit hub persistence acknowledgement covers

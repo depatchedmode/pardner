@@ -18,6 +18,8 @@ import AutomergeSyncServer from '../automerge-sync-server.js'
 import { WorkspaceRuntime } from '../lib/workspace-runtime.js'
 import { generateMachineKey } from '../lib/machine-key.js'
 import { agentNameRecord } from '../lib/enrollment.js'
+import { requestWorkspaceWait } from '../lib/wait-client.js'
+import { cli } from '../support/cli-resources.js'
 import { testGenesis } from '../support/genesis.js'
 
 const actors = [{ id: 'alice', handle: 'alice', kind: 'human' }]
@@ -156,6 +158,70 @@ it('does not acknowledge heads the hub does not hold', async () => {
     assert.equal(receipt.hubHeads, undefined)
   } finally {
     await runtime.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+it('wakes live waits after the local save and cancels them on disconnect or service stop', { timeout: 20000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-lifecycle-wait-'))
+  const hub = new AutomergeSyncServer({ store: hubRuntime(root), env: {}, apiToken: token, httpPort: 0, wsPort: 0, logger: {}, control: false })
+  let release
+  try {
+    await hub.start()
+    const url = `http://127.0.0.1:${hub.httpPort}`
+    const run = (...args) => cli(root, [...args, '--server', url, '--token', token])
+    const write = (type, payload) => hub.store.execute({ operationId: randomUUID(), actorId: 'alice', type, payload })
+    const { result: { taskId } } = await write('task.create', { title: 'Live wait' })
+    const { result: { boardVersion } } = await run('status')
+    const storage = instrumentStorage(hub.store)
+    const controller = new AbortController()
+    const begin = options => requestWorkspaceWait(url, { taskId, ...options }, { token, signal: controller.signal })
+    const watching = begin({ after: boardVersion })
+    watching.catch(() => {})
+    await eventually(() => hub.waits.waiters.size === 1, 'the wait request to be admitted')
+
+    release = storage.hold()
+    const comment = write('comment.add', { taskId, text: 'This comment is behind the local save barrier' })
+    await eventually(() => storage.writes.length, 'the comment to reach the local save barrier')
+    assert.equal(await settled(watching), 'pending')
+    const { result: observed } = await run('status')
+    assert.equal(observed.savedLocally, false)
+    const later = begin({ after: observed.boardVersion })
+    later.catch(() => {})
+    await eventually(() => hub.waits.waiters.size === 2, 'the wait from in-memory heads to be admitted')
+    release()
+    const { result: { commentId } } = await comment
+    assert.deepEqual((await watching).events.map(event => event.comment.id), [commentId])
+    assert.equal(await settled(later), 'pending', 'the board version already includes the first comment')
+    const next = await write('comment.add', { taskId, text: 'The next saved reply' })
+    assert.deepEqual((await later).events.map(event => event.comment.id), [next.result.commentId])
+
+    const disconnected = begin({})
+    disconnected.catch(() => {})
+    await eventually(() => hub.waits.waiters.size === 1, 'the wait without a cursor to be admitted')
+    controller.abort()
+    await assert.rejects(disconnected, { name: 'AbortError' })
+    await eventually(() => hub.waits.waiters.size === 0, 'the disconnected wait to be released')
+
+    const connectionLost = run('wait', '--task', taskId)
+    await eventually(() => hub.waits.waiters.size === 1, 'the wait before a connection loss to be admitted')
+    hub.httpServer.closeAllConnections()
+    const lost = await connectionLost
+    assert.equal(lost.code, 1)
+    assert.equal(lost.result.error.code, 'LOCAL_SERVICE_UNAVAILABLE')
+    await eventually(() => hub.waits.waiters.size === 0, 'the closed connection to release its wait')
+
+    const whenStopping = run('wait', '--task', taskId)
+    await eventually(() => hub.waits.waiters.size === 1, 'the CLI wait to be admitted')
+    await hub.stop()
+    const stopped = await whenStopping
+    assert.equal(stopped.code, 1)
+    assert.equal(stopped.result.error.code, 'SERVICE_STOPPING')
+    assert.match(stopped.result.error.message, /local Pardner service stopped while waiting/)
+    assert.equal(hub.store.closed, true)
+  } finally {
+    release?.()
+    await hub.stop()
     await rm(root, { recursive: true, force: true })
   }
 })

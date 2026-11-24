@@ -397,14 +397,16 @@ it('stops while a replica acknowledgement is still being answered', { timeout: 3
     release = gate.resolve
     hub.store.acknowledge = async (...args) => { entered.resolve(); await gate.promise; return acknowledge(...args) }
     const requestHub = replica.requestHub.bind(replica)
-    const receipts = []
+    let pendingReceipt
     replica.requestHub = (path, ...rest) => {
       const response = requestHub(path, ...rest)
-      if (path === '/automerge/sync-ack') receipts.push(response)
+      if (path === '/automerge/sync-ack') pendingReceipt = response
       return response
     }
     const created = await replica.execute({ operationId: randomUUID(), actorId: 'builder', type: 'task.create', payload: { title: 'Acknowledged during shutdown' } })
     await entered.promise
+    const admittedReceipt = pendingReceipt
+    assert.ok(admittedReceipt, 'the hub admitted the replica request')
     await eventually(() => Boolean(hub.store.getDoc().tasks[created.result.taskId]))
     // The acknowledgement covers the change's signature too, which travels in the signature document.
     await eventually(() => hasHeads(hub.store.workspace.signatures.doc(), replica.status().signatures.heads))
@@ -412,9 +414,7 @@ it('stops while a replica acknowledgement is still being answered', { timeout: 3
     release()
     const stopped = await Promise.race([stopping.then(() => true), delay(3000, false)])
     assert.equal(stopped, true, 'hub.stop() must not wait on a connection whose response finished during shutdown')
-    // The acknowledgement that was already accepted still reaches the replica; later retries may fail.
-    assert.equal(receipts.length, 1)
-    assert.equal((await receipts[0]).acknowledged, true)
+    assert.equal((await admittedReceipt).acknowledged, true, 'the admitted acknowledgement reaches the replica')
   } finally {
     release?.()
     await replica?.close()
