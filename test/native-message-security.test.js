@@ -101,7 +101,14 @@ it('accepts every repository message shape supported by the pinned protocol', ()
   adapter.peerId = 'server'
   const delivered = []
   adapter.on('message', message => delivered.push(message))
-  const socket = { readyState: 1, close() { assert.fail('Valid message rejected') } }
+  const replies = []
+  const socket = {
+    readyState: 1,
+    send(bytes) { replies.push(cbor.decode(new Uint8Array(bytes))) },
+    close() { assert.fail('Valid message rejected') },
+  }
+  adapter.receiveMessage(cbor.encode(join), socket)
+  assert.deepEqual(replies.map(reply => reply.type), ['peer'])
   const messages = [
     ...['sync', 'request'].map(type => ({ ...envelope, type, data: new Uint8Array([1]) })),
     { ...envelope, type: 'doc-unavailable' },
