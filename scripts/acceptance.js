@@ -104,6 +104,8 @@ async function runSeed(seed) {
     const machine = docs.map(doc => doc.attribution.machineId)
     const personOf = id => docs[0].attribution.machines[id]?.personId
     const person = { alice: personOf(machine[0]), bob: personOf(machine[2]) }
+    assert.equal(person.alice, machine[0], 'Alice uses the DID of her first machine')
+    assert.equal(person.bob, machine[2], 'Bob uses the DID of his first machine')
     const personOfActor = { [actors.alice]: person.alice, [actors.builder]: personOf(machine[1]), [actors.bob]: person.bob, [actors.reviewer]: personOf(machine[2]) }
     assert.equal(personOf(machine[1]), person.alice, 'Alice’s laptop is Alice’s machine')
     // An expected record names sides, people and Actors of the harness; these are their IDs in this run.
@@ -114,9 +116,10 @@ async function runSeed(seed) {
     const names = { [person.alice]: 'Alice', [person.bob]: 'Bob' }
     const registration = id => {
       for (const personId of [person.alice, person.bob]) {
-        if (id === actorFor(personId)) return { id, handle: `human-${personId}`, kind: 'human', displayName: names[personId] }
+        const handleKey = createHash('sha256').update(personId).digest('hex').slice(0, 20)
+        if (id === actorFor(personId)) return { id, handle: `human-${handleKey}`, kind: 'human', displayName: names[personId] }
         for (const harness of [AGENT_HARNESS, SETUP_HARNESS]) {
-          if (id === actorFor(personId, harness)) return { id, handle: `agent-${createHash('sha256').update(personId).digest('hex').slice(0, 20)}-${harness}`, kind: 'agent', displayName: harness }
+          if (id === actorFor(personId, harness)) return { id, handle: `agent-${handleKey}-${harness}`, kind: 'agent', displayName: harness }
         }
       }
       return null
