@@ -355,6 +355,30 @@ test('pardner up reports PORT_IN_USE for a stale port held by another process an
   } finally { other.close(); await rm(directory, { recursive: true, force: true }) }
 })
 
+test('pardner up refuses a running pre-DID client before issuing a browser grant', { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-legacy-service-'))
+  const requests = []
+  const legacy = createServer((req, res) => {
+    requests.push(req.url)
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({ device: { machineId: 'machine-eh7ddx5bksrgcytl7bkai36se4' } }))
+  })
+  try {
+    await new Promise(resolve => legacy.listen(0, '127.0.0.1', resolve))
+    const url = `http://127.0.0.1:${legacy.address().port}`
+    await writeFile(join(directory, 'client-connection.json'), JSON.stringify({ url, token: 'legacy-test-token' }), { mode: 0o600 })
+    const error = await pardnerFailure(['up', '--data', directory, '--output-file', join(directory, 'launch.txt')])
+    assert.equal(error.code, 'INCOMPATIBLE_SCHEMA')
+    assert.match(error.message, /left unchanged.*fresh data directory/)
+    assert.deepEqual(requests, ['/pardner/client/v1/session'])
+    await assert.rejects(stat(join(directory, 'launch.txt')), { code: 'ENOENT' })
+    await assert.rejects(stat(join(directory, 'client.log')), { code: 'ENOENT' })
+  } finally {
+    legacy.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('pardner up surfaces why a started client service exited', { timeout: 30000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-in-use-'))
   const lease = await acquireStorageLease(directory)

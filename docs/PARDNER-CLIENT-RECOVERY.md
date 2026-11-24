@@ -86,11 +86,11 @@ Keep an independent backup. Synchronization can propagate deletion or corruption
    node bin/pardner.js client serve --data /private/path/restored-client
    # In another terminal:
    node bin/pardner.js client list --data /private/path/restored-client
-   node bin/pardner.js client open --data /private/path/restored-client
+   node bin/pardner.js up --data /private/path/restored-client
    ```
 
    The saved port is reused. A non-authority client may choose another local port
-   with `--http-port`; issue a fresh `client open` link there. Do not initialize a
+   with `--http-port`; issue a fresh `pardner up` link there. Do not initialize a
    new identity or create replacement projects in restored data. Incompatible
    formats fail instead of migrating old installations automatically. Clients
    require registry version 5 and board schema 12 for DID-based identity. Pardner
