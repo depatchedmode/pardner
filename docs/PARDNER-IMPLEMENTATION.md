@@ -368,7 +368,7 @@ a member's key. The rest of the trust rollout remains a
 
 The [local client onboarding preview](PARDNER-CLIENT.md) adds a private
 identity and project registry, isolated project runtimes, Start/Join, purpose-specific
-invitations with approval, and authenticated Actor sessions. `pardner open` (or a bare `pardner`)
+invitations with approval, and authenticated Actor sessions. `pardner up` (or a bare `pardner`)
 starts the client service when it is not running and signs the local browser in
 through a one-time link, with no token screen or Actor picker. Git supplies profile defaults; the session
 determines authorship. The browser can switch projects and show reported Actor
@@ -381,7 +381,7 @@ The standalone service (`pardner serve`) is an agent and integration service: on
 project on this computer whose attributed operation API agents and integrations use
 through the `pardner` CLI. It serves no other machine, and its data is separate from
 the client's projects. Its `/pardner/` page serves no board; it points people to
-`pardner open`. Only the client hosts a project for other machines or joins one.
+`pardner up`. Only the client hosts a project for other machines or joins one.
 Each service owns a persisted Automerge replica; a hub relays changes and owns a
 transactional SQLite delivery ledger. Actor identity is separate from replica
 identity, so the same Actor can work from more than one machine.

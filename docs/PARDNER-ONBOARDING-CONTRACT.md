@@ -67,7 +67,7 @@ worker's checkout. Report source changes and limits, not invented evidence.
 New local client mode serves the same UI at `/pardner/`. Its public
 `GET /pardner/config` returns `{ mode: "client", clientApiBase: "/pardner/client/v1" }`.
 Standalone services keep their existing config contract, but their `/pardner/`
-page serves no board and points people to `pardner open`.
+page serves no board and points people to `pardner up`.
 
 Browser calls use a remembered HttpOnly SameSite session cookie. An agent-led
 `client open` creates a short-lived single-use browser grant, opens the URL with

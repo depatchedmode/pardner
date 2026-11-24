@@ -176,7 +176,7 @@ readiness; `cli(directory, ['status'])` is the read-only doctor. Compare the
 returned `workspaceId` to the launch result and inspect `savedLocally` and
 `storageError`. Repeat the doctor whenever a drive looks wrong. The standalone
 service's `/pardner/` page serves no board; it only points people to `pardner
-open`. For a browser, start a disposable local client with `pardner client open
+open`. For a browser, start a disposable local client with `pardner client up
 --data <scratch dir> --output-file <file>` (it starts the client if needed) and
 open the one-time grant URL from that file within a minute, or use
 `withClientWorkspace`/`withClientReplicas` from

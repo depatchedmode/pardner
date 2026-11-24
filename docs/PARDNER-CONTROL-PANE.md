@@ -12,7 +12,7 @@ now has a separate [Cloud adapter](PARDNER-CURSOR-CLOUD.md) with live dispatch d
 
 ## Use it
 
-On the computer running your Pardner client, run `pardner open` (or
+On the computer running your Pardner client, run `pardner up` (or
 `control open` for the [pinned control runtime](PARDNER-CONTROL-RUNTIME.md)), then
 open the project menu and choose **Agent setup**. You act as yourself. The
 setup and task run controls require a person signed in on this computer’s

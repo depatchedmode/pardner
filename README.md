@@ -54,7 +54,7 @@ with no account, hosted service or paid tier.
 | | |
 | --- | --- |
 | **Works today** | The board, the CLI, projects shared between machines by invitation, signed history, mention delivery to agents |
-| **Not yet** | Agents allocating work on their own, the UI SDK, peer-to-peer sync, phone access, `pardner up` |
+| **Not yet** | Agents allocating work on their own, the UI SDK, peer-to-peer sync, phone access |
 
 Pardner is at version 0.1.0. Expect storage formats to change; see
 [Limitations](#limitations).
@@ -65,7 +65,7 @@ There are two ways to run Pardner. Most people want the first.
 
 | | Client | Standalone service |
 | --- | --- | --- |
-| Start it with | `pardner open` | `pardner serve` |
+| Start it with | `pardner up` | `pardner serve` |
 | For | People and their agents | Agents and scripts only |
 | Board in the browser | Yes | No |
 | Shares a project with other machines | Yes | No |
@@ -84,14 +84,14 @@ npm run ui:build
 
 Nothing has put `pardner` on your PATH yet. Every example below writes
 `pardner`; from a checkout, type `node bin/pardner.js` in its place, so
-`pardner open` becomes `node bin/pardner.js open`.
+`pardner up` becomes `node bin/pardner.js up`.
 
 Other Node versions are not supported; npm warns about a mismatch at install.
 
 ### Open the board
 
 ```sh
-pardner open --harness openai-codex --name Alpha
+pardner up --harness openai-codex --name Alpha
 ```
 
 This starts Pardner in the background and opens the board in your browser. Then:
@@ -108,10 +108,10 @@ as “Maya’s Codex”.
 Data lives in `~/.pardner/client` unless you pass `--data`.
 `pardner client stop` stops the background service.
 
-**Without a browser.** On a machine with no screen, always run `open` with
+**Without a browser.** On a machine with no screen, always run `up` with
 `--output-file FILE`. It prints the board's address as `localUrl` and writes the
 private sign-in link to the file. The link expires 60 seconds after it is issued.
-Without the flag `open` still starts the service, but it either exits with
+Without the flag `up` still starts the service, but it either exits with
 `LAUNCH_UNAVAILABLE` or reports success with no browser to show. You can also do
 both setup steps from the CLI:
 
@@ -130,7 +130,7 @@ pardner client list
 pardner client agent-grant --project ID --output-file alpha.json
 ```
 
-The credential is for the agent you named when you ran `open`, here Alpha. Keep
+The credential is for the agent you named when you ran `up`, here Alpha. Keep
 the file private and hand its path to the agent. Every command the agent
 runs with `--token-file` is recorded as that agent's work:
 
@@ -204,7 +204,7 @@ pardner tasks --assignee builder --json
 The CLI finds `.pardner` in the directory you run it from. From anywhere else,
 without `PARDNER_DATA_DIR` or `--data`, commands fail with `AUTH_REQUIRED`.
 It syncs with no other machine and keeps its data apart from projects you open
-with `pardner open`.
+with `pardner up`.
 
 ## Using Pardner
 
@@ -344,7 +344,7 @@ Member machines sync only through the hub, never directly with each other. The
 standalone service is not in this picture: it runs on one computer and syncs
 with nobody.
 
-- **Your project lives on your machine.** `pardner open` runs a client service on
+- **Your project lives on your machine.** `pardner up` runs a client service on
   this computer's loopback and signs your browser in through a one-time link.
   The service owns the replica; the browser holds no database of its own.
 - **Acknowledged work is saved work.** A write is acknowledged only after it
@@ -489,7 +489,7 @@ has 100 tasks, 400 comments and 200 scripted updates:
 ### UI development
 
 ```sh
-pardner client open --data DIR --output-file FILE
+pardner client up --data DIR --output-file FILE
 PARDNER_CLIENT_URL=<URL from DIR/client-connection.json> npm run dev --prefix ui-prototype
 ```
 

@@ -8,7 +8,7 @@ Reopen locally saved state after a service restart.
 
 ## How to get to it (user POV)
 
-Run `pardner client open --data <scratch dir> --output-file <file>` and open the
+Run `pardner client up --data <scratch dir> --output-file <file>` and open the
 one-time grant URL from that file (the signed-in person is the author; there is no
 Actor picker), start or join a project, then use **New task** or open a task. The
 CLI exposes `task create`, `show`, `update`, and `comment`; mutations need

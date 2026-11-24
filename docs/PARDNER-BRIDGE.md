@@ -79,7 +79,7 @@ the Codex endpoint as a trusted local control interface; do not expose it public
 
 ### Attaching to a client project
 
-A bridge can also wake an agent Actor of a project opened through `pardner open`.
+A bridge can also wake an agent Actor of a project opened through `pardner up`.
 Write the agent credential with
 `pardner client agent-grant --project PROJECT_ID --output-file /absolute/path/agent.json`
 (the [client guide](PARDNER-CLIENT.md) describes agent grants), then name it with

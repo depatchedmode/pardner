@@ -3,8 +3,8 @@
 ## Product vision
 
 This is product direction, not a list of shipped capabilities. Autonomous work
-allocation, the UI SDK, peer-to-peer transport and `pardner up` are aspirations;
-today, open the client with `pardner open` or bare `pardner`. See
+allocation, the UI SDK and peer-to-peer transport are aspirations; today,
+`pardner up` (or bare `pardner`) starts the client and opens the board. See
 [Current implementation](README.md#current-implementation) for supported behavior.
 
 **Let Pardner hold the work.**
