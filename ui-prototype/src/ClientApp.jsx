@@ -123,9 +123,9 @@ function RemovedProject({ project, switcher }) {
       <section aria-labelledby="removed-back">
         <h2 id="removed-back">To come back</h2>
         {machine ? <p>Ask for a My device invitation from one of your other machines in the project, or from the owner or an admin.
-          Then start Pardner on this computer with a fresh client directory, for example <code>pardner open --data ~/.pardner/client-2</code>, and join from there.
+          Then start Pardner on this computer with a fresh client directory, for example <code>pardner up --data ~/.pardner/client-2</code>, and join from there.
           This computer then joins as a new machine of yours.</p>
-          : <p>Ask the owner or an admin for a new invitation. Then start Pardner with a fresh client directory, for example <code>pardner open --data ~/.pardner/client-2</code>,
+          : <p>Ask the owner or an admin for a new invitation. Then start Pardner with a fresh client directory, for example <code>pardner up --data ~/.pardner/client-2</code>,
           and join from there. You join as a new person; your earlier work stays under your old entry.</p>}
       </section>
       <section aria-labelledby="removed-copy">
@@ -149,7 +149,7 @@ function SignedOut({ failure, retry }) {
     {failure && <div className="notice inline-notice" role="status">
       <p>This sign-in link was already used or is more than 60 seconds old. Links work once.</p>
     </div>}
-    <p>Run <code>pardner open</code> on this computer, or ask your agent to. It signs this browser in without showing you a key.</p>
+    <p>Run <code>pardner up</code> on this computer, or ask your agent to. It signs this browser in without showing you a key.</p>
     <button onClick={retry}>Check again</button>
   </main>
 }

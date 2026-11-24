@@ -146,7 +146,7 @@ from one change. The change's decoded operations say only which keys of which of
 board's top-level maps it wrote; every value shown is what Automerge itself reads at
 that key as of that change (with `getAll`, `keys` and `length` at the change's own
 head, which `test/automerge-history-reads.test.js` pins as faithful in Automerge
-3.2.3), so an entry holds exactly what that change put there and nothing later. A
+3.5.0), so an entry holds exactly what that change put there and nothing later. A
 value is accepted only as plain JSON, and a key such as `__proto__` is ordinary
 data: a change holding several values at one key in its own state, text, a counter,
 bytes, a date, a number JSON cannot hold exactly, or nesting deeper than 32 is
@@ -368,7 +368,7 @@ a member's key. The rest of the trust rollout remains a
 
 The [local client onboarding preview](PARDNER-CLIENT.md) adds a private
 identity and project registry, isolated project runtimes, Start/Join, purpose-specific
-invitations with approval, and authenticated Actor sessions. `pardner open` (or a bare `pardner`)
+invitations with approval, and authenticated Actor sessions. `pardner up` (or a bare `pardner`)
 starts the client service when it is not running and signs the local browser in
 through a one-time link, with no token screen or Actor picker. Git supplies profile defaults; the session
 determines authorship. The browser can switch projects and show reported Actor
@@ -381,7 +381,7 @@ The standalone service (`pardner serve`) is an agent and integration service: on
 project on this computer whose attributed operation API agents and integrations use
 through the `pardner` CLI. It serves no other machine, and its data is separate from
 the client's projects. Its `/pardner/` page serves no board; it points people to
-`pardner open`. Only the client hosts a project for other machines or joins one.
+`pardner up`. Only the client hosts a project for other machines or joins one.
 Each service owns a persisted Automerge replica; a hub relays changes and owns a
 transactional SQLite delivery ledger. Actor identity is separate from replica
 identity, so the same Actor can work from more than one machine.

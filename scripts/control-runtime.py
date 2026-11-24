@@ -344,7 +344,7 @@ class Controller:
         return path, api_base
 
     def cli(self, argv, agent):
-        if not argv or argv[0].startswith('--') or argv[0] in ['serve', 'bridge', 'client', 'open']:
+        if not argv or argv[0].startswith('--') or argv[0] in ['serve', 'bridge', 'client', 'up']:
             raise ControlUsageError('Supply a coordination command; lifecycle, client and bridge commands are not Actor entrypoints')
         protected = {'--data', '--server', '--token', '--token-file', '--actor', '--agent', '--role', '--http-port', '--ws-port'}
         if protected.intersection(argv):
@@ -364,7 +364,7 @@ class Controller:
         if argv and (len(argv) != 2 or argv[0] != '--output-file'):
             raise ControlUsageError('open accepts only --output-file FILE')
         self.require_service()
-        self.exec_node(['client', 'open', '--data', str(self.data), *argv], environment(self.config['node']))
+        self.exec_node(['client', 'up', '--data', str(self.data), *argv], environment(self.config['node']))
 
     def seal(self):
         job = self.job()

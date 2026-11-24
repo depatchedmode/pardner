@@ -257,7 +257,7 @@ export default function Pardner() {
   if (!config) return <main className="connection">
     <h1>Pardner</h1>
     <p role="status">{failure ? failure.message : 'Opening your workspace…'}</p>
-    {failure && <><p>Check that Pardner is running on your computer. Start it with <code>pardner open</code>, then retry.</p>
+    {failure && <><p>Check that Pardner is running on your computer. Start it with <code>pardner up</code>, then retry.</p>
       <button onClick={() => reload().catch(setFailure)}>Retry connection</button></>}
   </main>
   if (config.mode === 'client') return <ClientApp config={config} />
@@ -265,7 +265,7 @@ export default function Pardner() {
   return <main className="connection">
     <h1>Pardner</h1>
     <p>This is the standalone agent and integration service, for agents and scripts on this computer. It serves no other machine.</p>
-    <p>People use the Pardner client: run <code>pardner open</code>. The client keeps its own projects, so this service’s tasks do not appear there.</p>
+    <p>People use the Pardner client: run <code>pardner up</code>. The client keeps its own projects, so this service’s tasks do not appear there.</p>
   </main>
 }
 

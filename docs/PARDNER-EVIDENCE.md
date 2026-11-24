@@ -3,7 +3,7 @@
 > **Superseded browser entry.** The standalone browser connection screen (local
 > service token, pairing code, Actor picker, Pair another device and Forget this
 > workspace) described or exercised here was removed; people open the board with
-> `pardner open` ([client guide](PARDNER-CLIENT.md)); phone access is not
+> `pardner up` ([client guide](PARDNER-CLIENT.md)); phone access is not
 > currently offered and is planned through the hub over HTTPS. The evidence below is unchanged.
 
 This records completed checks, not milestone completion. The accepted goal remains

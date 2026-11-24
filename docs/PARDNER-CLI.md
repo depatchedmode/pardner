@@ -6,7 +6,7 @@ agent Actors author through the same local HTTP operations. See the
 
 ## Open the local UI
 
-People open Pardner with `pardner` (or `pardner open`). It uses the
+People open Pardner with `pardner` (or `pardner up`). It uses the
 [local client](PARDNER-CLIENT.md) in the per-user directory `~/.pardner/client`
 (override with `--data`). If no client service answers there, it starts
 `pardner client serve` in the background, logging to `client.log` (mode 0600) in
@@ -73,7 +73,7 @@ Build the browser client with `npm ci --prefix ui-prototype` and `npm run ui:bui
 before opening it. The board is signed in by the client session: the signed-in
 Actor authors every change, and filters are remembered per project and Actor. No
 token is entered in or compiled into the browser. The standalone service's
-`/pardner/` page serves no board; it points people to `pardner open`.
+`/pardner/` page serves no board; it points people to `pardner up`.
 
 Phone access is not currently offered; it is planned through the hub over HTTPS.
 
@@ -105,7 +105,7 @@ equivalent environment variables are `PARDNER_DATA_DIR`, `PARDNER_LOCAL_URL`, an
 `PARDNER_API_TOKEN`. `npm run sync` also starts this runtime.
 
 The standalone service is **not** the client. It keeps its own data, so its tasks do
-not appear in `pardner open`, and the client's projects do not appear here. It serves
+not appear in `pardner up`, and the client's projects do not appear here. It serves
 no other machine: it signs its project genesis with a one-time key that it does not
 keep, so no machine can ever be admitted to it. Use the
 [local client](PARDNER-CLIENT.md) for a project that people open or that other
