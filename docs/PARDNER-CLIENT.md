@@ -21,10 +21,10 @@ npm run ui:build
 Open Pardner with its setup agent's actual harness and name:
 
 ```sh
-node bin/pardner.js open --harness openai-codex --name Alpha --managed-by T3
+node bin/pardner.js up --harness openai-codex --name Alpha --managed-by T3
 ```
 
-`pardner open` (or a bare `pardner`) reuses the client service already running for
+`pardner up` (or a bare `pardner`) reuses the client service already running for
 its data directory. If none answers, it starts a detached `client serve` with the
 same setup flags, waits up to 15 s, and logs to `client.log` (mode 0600) in that
 directory. The directory is the per-user `~/.pardner/client` unless you pass
@@ -42,7 +42,7 @@ Supported harness IDs are `openai-codex`, `anthropic-claude-code` and `cursor`.
 Supply `--model` when the agent knows its active model. T3 is management metadata,
 not an execution harness.
 
-`open` launches a short-lived, one-time browser link without printing its
+`up` launches a short-lived, one-time browser link without printing its
 credential. The UI clears the fragment and remembers an HttpOnly session cookie.
 If a platform has no supported browser launcher, `--output-file FILE` writes the
 private launch URL for the local operator. Normal command output has no grant.

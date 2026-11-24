@@ -16,7 +16,7 @@ The CLI reads its protected `connection.json`. Set `PARDNER_ACTOR` or pass
 `--actor` explicitly; the Actor must already be registered. Actor identity is
 separate from replica identity. A local wrapper may supply these options.
 
-For a project opened through the local client (`pardner open`), the local
+For a project opened through the local client (`pardner up`), the local
 operator writes a private agent credential with `pardner client agent-grant
 --project ID --output-file FILE`. Pass `--token-file FILE` instead of `--data`
 and `--actor`: the CLI then calls the file's `apiBase` and acts as its Actor.

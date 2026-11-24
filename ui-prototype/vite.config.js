@@ -10,7 +10,7 @@ const uiRoot = fileURLToPath(new URL('.', import.meta.url))
 const sharedRoot = fileURLToPath(new URL('../shared', import.meta.url))
 
 // Development against a local client:
-//   pardner client open --data <dir> --output-file <file>   (starts the client if needed;
+//   pardner client up --data <dir> --output-file <file>   (starts the client if needed;
 //                                                              its URL is in <dir>/client-connection.json)
 //   PARDNER_CLIENT_URL=<that URL> npm run dev --prefix ui-prototype
 // then open the one-time grant URL from <file> with its origin replaced by this dev

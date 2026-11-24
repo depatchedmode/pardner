@@ -1,7 +1,7 @@
 # Two-machine rehearsal
 
 > **Superseded.** The standalone service no longer serves a human board: its
-> `/pardner/` page now points people to `pardner open`, and the token entry and
+> `/pardner/` page now points people to `pardner up`, and the token entry and
 > Actor selection in the browser steps below were removed. Use the
 > [client onboarding rehearsal](PARDNER-CLIENT-REHEARSAL.md). This page is kept as
 > the historical standalone procedure; its recorded evidence is unchanged. The

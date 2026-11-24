@@ -165,7 +165,7 @@ publish only sanitized observations.
 "$PARDNER_CONTROL_HOME/control" open
 ```
 
-`open` verifies the managed service, then runs `pardner client open` against this
+`open` verifies the managed service, then runs `pardner client up` against this
 installation's data. The browser receives a one-time grant and signs in as the
 client's person; there is no token to read or Actor to choose. `-- --output-file
 FILE` writes the private launch URL to a file instead. `open` never starts a
@@ -200,7 +200,7 @@ file to request a fresh grant.
 The canonical CLI checks the selected managed service, forces its configured URL
 and data path, and uses an allowlisted environment. Caller proxy, Node and Git
 injection settings cannot redirect the connection or revision checks. It rejects
-`serve`, `bridge`, `client`, `open`, `--actor` and connection overrides. Coordination failures retain one JSON
+`serve`, `bridge`, `client`, `up`, `--actor` and connection overrides. Coordination failures retain one JSON
 error envelope on stdout, with diagnostics on stderr. Agent Actor selection does not launch
 an agent or authorize work. Harness ownership and approvals remain separate.
 Historical checkout aliases are conveniences; update them to the selected home
