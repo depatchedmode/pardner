@@ -238,7 +238,7 @@ class ControllerTests(unittest.TestCase):
             command.assert_not_called()
 
     def test_actor_entrypoints_reject_lifecycle_and_connection_overrides(self):
-        for args, agent in [(['serve'], AGENT), (['bridge', 'run'], AGENT), (['client', 'open'], AGENT), (['open'], AGENT),
+        for args, agent in [(['serve'], AGENT), (['bridge', 'run'], AGENT), (['client', 'up'], AGENT), (['up'], AGENT),
                             (['--actor', 'alice', 'serve'], AGENT), (['tasks', '--server', 'http://elsewhere'], AGENT),
                             (['tasks', '--token-file', '/tmp/other'], AGENT), (['comment', 'T', 'x', '--actor', 'someone'], AGENT),
                             (['tasks'], None), (['tasks'], 'unlisted-harness')]:

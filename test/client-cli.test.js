@@ -87,7 +87,7 @@ test('CLI performs real identity/create/agent save and writes private launch/inv
     assert.equal(invitationData(invitation).projectId, project.id)
     assert.ok(!stdout.includes(invitation)); assert.equal((await stat(output)).mode & 0o777, 0o600)
     const launch = join(directory, 'launch.txt')
-    const opened = await run(['open', '--output-file', launch])
+    const opened = await run(['up', '--output-file', launch])
     assert.ok((await readFile(launch, 'utf8')).includes('#grant=')); assert.ok(!opened.stdout.includes('#grant='))
     assert.equal(opened.value.outputFile, launch); assert.equal(opened.value.expiresInSeconds, 60)
     assert.ok(!opened.stderr.includes('ExperimentalWarning'), opened.stderr)
@@ -303,13 +303,13 @@ test('bare pardner starts a detached client service, writes the launch grant to 
   } finally { await stopSpawned(data); await rm(directory, { recursive: true, force: true }) }
 })
 
-test('pardner open reuses the running client in the per-user default directory', { timeout: 60000 }, async () => {
+test('pardner up reuses the running client in the per-user default directory', { timeout: 60000 }, async () => {
   const home = await mkdtemp(join(tmpdir(), 'pardner-home-'))
   const data = join(home, '.pardner', 'client'), env = { HOME: home }
   try {
-    await pardner(['open', '--output-file', join(home, 'first.txt')], env)
+    await pardner(['up', '--output-file', join(home, 'first.txt')], env)
     const first = await connectionOf(data)
-    await pardner(['open', '--output-file', join(home, 'second.txt')], env)
+    await pardner(['up', '--output-file', join(home, 'second.txt')], env)
     assert.equal((await connectionOf(data)).pid, first.pid)
     const log = await readFile(join(data, 'client.log'), 'utf8')
     assert.equal(log.match(/"serving":true/g).length, 1, 'only one client service was started')
@@ -340,14 +340,14 @@ test('client shutdown accepts only the operator token, never a browser session',
   } finally { await client?.stop(); await rm(directory, { recursive: true, force: true }) }
 })
 
-test('pardner open reports PORT_IN_USE for a stale port held by another process and starts nothing', { timeout: 30000 }, async () => {
+test('pardner up reports PORT_IN_USE for a stale port held by another process and starts nothing', { timeout: 30000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-stale-'))
   const other = createServer((_req, res) => res.writeHead(401).end())
   try {
     await new Promise(resolve => other.listen(0, '127.0.0.1', resolve))
     const url = `http://127.0.0.1:${other.address().port}`
     await writeFile(join(directory, 'client-connection.json'), JSON.stringify({ url, token: 'stale-token' }), { mode: 0o600 })
-    const error = await pardnerFailure(['open', '--data', directory, '--output-file', join(directory, 'launch.txt')])
+    const error = await pardnerFailure(['up', '--data', directory, '--output-file', join(directory, 'launch.txt')])
     assert.equal(error.code, 'PORT_IN_USE'); assert.ok(error.message.includes(url))
     assert.equal((await pardnerFailure(['client', 'stop', '--data', directory])).code, 'PORT_IN_USE')
     await assert.rejects(stat(join(directory, 'client.log')), { code: 'ENOENT' })
@@ -355,13 +355,22 @@ test('pardner open reports PORT_IN_USE for a stale port held by another process 
   } finally { other.close(); await rm(directory, { recursive: true, force: true }) }
 })
 
-test('pardner open surfaces why a started client service exited', { timeout: 30000 }, async () => {
+test('pardner up surfaces why a started client service exited', { timeout: 30000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-in-use-'))
   const lease = await acquireStorageLease(directory)
   try {
-    const error = await pardnerFailure(['open', '--data', directory, '--output-file', join(directory, 'launch.txt')])
+    const error = await pardnerFailure(['up', '--data', directory, '--output-file', join(directory, 'launch.txt')])
     assert.equal(error.code, 'STORAGE_IN_USE')
   } finally { lease.close(); await stopSpawned(directory); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('pardner open is no longer a command and starts nothing', { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-open-removed-'))
+  try {
+    const error = await pardnerFailure(['open', '--data', directory, '--output-file', join(directory, 'launch.txt')])
+    assert.equal(error.code, 'INVALID_ARGUMENT'); assert.equal(error.message, 'Unknown command: open')
+    await assert.rejects(stat(join(directory, 'client.log')), { code: 'ENOENT' })
+  } finally { await rm(directory, { recursive: true, force: true }) }
 })
 
 test('client people lists people, machines, agents and removed entries in words; leave and invites work from the CLI', { timeout: 90000 }, async () => {

@@ -734,8 +734,8 @@ it('explains sign-in, the Git prefill, invitation follow-up and People focus in 
   // Signed out: the person can run the command; a reused link says why it failed.
   const { url: openUrl } = await call('/open', {})
   await page.goto(openUrl.split('#')[0])
-  await page.getByText('Run pardner open on this computer, or ask your agent to.', { exact: false }).waitFor()
-  assert.equal(await page.getByText('pardner client open').count(), 0)
+  await page.getByText('Run pardner up on this computer, or ask your agent to.', { exact: false }).waitFor()
+  assert.equal(await page.getByText('pardner client up').count(), 0)
   await page.goto(openUrl)
   await page.getByRole('button', { name: /^Continue as/ }).waitFor()
   const stranger = await (await browser.newContext()).newPage()
