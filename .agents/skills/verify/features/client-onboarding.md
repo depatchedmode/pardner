@@ -77,6 +77,12 @@ The shutdown regressions pause a WebSocket upgrade at its upstream ticket, send
 a late upgrade on an accepted TCP connection, retain a rejected upgrade, and
 finish an admitted HTTP request after shutdown starts. Shutdown must close the
 connections, deliver the admitted response and stop the persisted runtime.
+The client CLI checks an authenticated `HEAD /session` for both registry and
+board schema versions before sending a client command. `test/client-cli.test.js`
+checks that a pre-DID service and mismatched registry or board versions receive
+only that probe when asked to issue a browser grant, confirm identity or create
+a project. Compatible services still launch and accept commands. An operator can
+stop an older service from the newer CLI.
 Agent-grant checks preserve separate harness reporting
 defaults, and agent-only clients reject human browser launch before issuing a link.
 

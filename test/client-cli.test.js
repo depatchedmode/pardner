@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startClient } from '../lib/client-service.js'
 import { invitationData } from '../lib/client-invites.js'
+import { REGISTRY_VERSION } from '../lib/client-registry.js'
+import { SCHEMA_VERSION } from '../lib/workspace-schema.js'
 import { acquireStorageLease } from '../lib/storage-lease.js'
 import { joinApproved } from '../support/enrollment.js'
 import { eventually, sameComputerRoute } from '../support/client-workspace.js'
@@ -355,26 +357,44 @@ test('pardner up reports PORT_IN_USE for a stale port held by another process an
   } finally { other.close(); await rm(directory, { recursive: true, force: true }) }
 })
 
-test('pardner up refuses a running pre-DID client before issuing a browser grant', { timeout: 30000 }, async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'pardner-legacy-service-'))
+for (const { name, machineId, versions } of [
+  { name: 'pre-DID', machineId: 'machine-eh7ddx5bksrgcytl7bkai36se4' },
+  { name: 'different board schema', machineId: 'did:key:z6MktwupdmLXVVqTzCw4i46r4uGyosGXRnR3XjN4Zq7oMMsw',
+    versions: [REGISTRY_VERSION, SCHEMA_VERSION + 1] },
+  { name: 'different registry version', machineId: 'did:key:z6MktwupdmLXVVqTzCw4i46r4uGyosGXRnR3XjN4Zq7oMMsw',
+    versions: [REGISTRY_VERSION + 1, SCHEMA_VERSION] },
+]) test(`the client CLI refuses a running service with ${name} before sending writes`, { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-incompatible-service-'))
   const requests = []
-  const legacy = createServer((req, res) => {
-    requests.push(req.url)
+  const service = createServer((req, res) => {
+    requests.push([req.method, req.url])
+    if (versions) {
+      res.setHeader('X-Pardner-Registry-Version', versions[0])
+      res.setHeader('X-Pardner-Schema-Version', versions[1])
+    }
     res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ device: { machineId: 'machine-eh7ddx5bksrgcytl7bkai36se4' } }))
+    res.end(JSON.stringify({ device: { machineId }, url: 'http://127.0.0.1:1/pardner/' }))
   })
   try {
-    await new Promise(resolve => legacy.listen(0, '127.0.0.1', resolve))
-    const url = `http://127.0.0.1:${legacy.address().port}`
+    await new Promise(resolve => service.listen(0, '127.0.0.1', resolve))
+    const url = `http://127.0.0.1:${service.address().port}`
+    const output = join(directory, 'launch.txt')
     await writeFile(join(directory, 'client-connection.json'), JSON.stringify({ url, token: 'legacy-test-token' }), { mode: 0o600 })
-    const error = await pardnerFailure(['up', '--data', directory, '--output-file', join(directory, 'launch.txt')])
-    assert.equal(error.code, 'INCOMPATIBLE_SCHEMA')
-    assert.match(error.message, /left unchanged.*fresh data directory/)
-    assert.deepEqual(requests, ['/pardner/client/v1/session'])
-    await assert.rejects(stat(join(directory, 'launch.txt')), { code: 'ENOENT' })
+    const commands = [
+      ['up', '--output-file', output],
+      ['client', 'identity', '--name', 'Alice', '--email', 'alice@example.test'],
+      ['client', 'create', '--name', 'Refused project'],
+    ]
+    for (const args of commands) {
+      const error = await pardnerFailure([...args, '--data', directory])
+      assert.equal(error.code, 'INCOMPATIBLE_SCHEMA')
+      if (!versions) assert.match(error.message, /left unchanged.*fresh data directory/)
+    }
+    assert.deepEqual(requests, commands.map(() => ['HEAD', '/pardner/client/v1/session']))
+    await assert.rejects(stat(output), { code: 'ENOENT' })
     await assert.rejects(stat(join(directory, 'client.log')), { code: 'ENOENT' })
   } finally {
-    legacy.close()
+    service.close()
     await rm(directory, { recursive: true, force: true })
   }
 })

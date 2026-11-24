@@ -253,7 +253,9 @@ Current clients use registry version 5 and board schema 12. Membership records
 and join requests use version 3 and carry public keys in machine DIDs. Pardner
 refuses older directories and preserves their registry, keys and project data.
 It can create an empty lock file when checking an older directory. Start with a
-fresh `--data` directory.
+fresh `--data` directory. The client CLI also checks a running service's registry
+and board schema versions before sending client commands. Use `client stop` to
+stop an older running service.
 
 ## Invite and join
 
