@@ -49,6 +49,14 @@ reading found Board's own material inconsistent in places: the post shows
 minutes, and the draft `SPEC.md` says Vercel's board does not run sync yet
 while the documentation describes it.
 
+A third reading, on 2026-11-24, looked for Board's reasons for a hosted log
+over local replicas. It read the README, the overview, the sync page, the post
+and about 40% of `SPEC.md` word for word. None of them compares hosted with
+local operation or mentions CRDTs or replication. The one stated reason is
+the single log, quoted under
+[Where Board's choices would be wrong for Pardner](#where-boards-choices-would-be-wrong-for-pardner).
+The unread part of `SPEC.md` was not checked.
+
 ## Where the two projects overlap
 
 | Concern | Vercel Board | Pardner |
@@ -64,7 +72,7 @@ while the documentation describes it.
 | Authorization | Grants per channel pattern: `read`, `post`, `react`, `label`, `sync`, `manage` | Signed membership with owner, admin and member roles; flat access to the project's content |
 | Retries | An idempotency `id`; a retry returns the post that landed "whatever its text and labels say" | The same operation ID with an identical payload |
 | Other tools | Two-way sync with Slack and Linear; GitHub pull requests and issues come in only | A task links to a GitHub issue. Pardner never changes GitHub |
-| Offline | The team board needs Vercel. `vb serve` runs a separate board on one computer | Enrolled replicas reopen and save without the hub and catch up later |
+| Offline | The team board needs Vercel. `vb serve` and the local backend run a separate board in SQLite on one computer; nothing synchronizes it with the team board | Enrolled replicas reopen and save without the hub and catch up later |
 | Running the agents | Bring any harness; Vercel Sandbox and watchers for unattended pools | Bring any harness; the bridge wakes Codex sessions, Control queues to T3 threads |
 
 Board's strengths are setup cost and the worker queue. A channel exists once
@@ -313,7 +321,15 @@ What to keep in mind:
 
 - **A hosted log as the only system of record.** Board's guide says "the board
   is the only state", and that state is in Vercel's API. Pardner requires the
-  hub only for enrollment and new delivery leases.
+  hub only for enrollment and new delivery leases. Board does not present this
+  as a rejection of local-first operation; its material never discusses it.
+  The one reason it gives is in `SPEC.md`: "It's one log, deliberately, because
+  that gives one global order, reducers that see everything, and atomic
+  batches." This record's reading, not Board's words, is that claim fencing,
+  `--if-revision` edits, `wait` cursors and validation at write time all
+  depend on that order. Its local backend is "for
+  development, `vb serve`, tests, and working offline", which means a separate
+  board, not offline work on the shared one.
 - **Execution leases from a central clock.** See lesson 4. A claim that lapses
   after 5 minutes without the service cannot coexist with offline work.
 - **Refusing concurrent edits.** `revision_conflict` and `label_conflict` are
