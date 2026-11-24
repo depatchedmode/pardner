@@ -14,7 +14,7 @@ const row = (page, text) => page.locator('article.event').filter({ hasText: text
 
 for (const engine of [chromium, webkit]) it(`names who made each change, lists membership records, announces an unsigned change, and shows an altered entry as it was signed in ${engine.name()}`,
   { timeout: 180000 }, async () => {
-    await withClientReplicas(engine, { humans: ['Alice', 'Bob'] }, async ({ people, newPage, eventually, project }) => {
+    await withClientReplicas(engine, { humans: ['Alice', 'Bob'], hubRuntimeOptions: { attribution: { catchUpMs: 1500 } } }, async ({ people, newPage, eventually, project }) => {
       const [alice, bob] = people
       // A change Bob's machine made, relayed to Alice by her own hub.
       const { result } = await bob.operate('task.create', { title: 'Written on Bob’s machine' })

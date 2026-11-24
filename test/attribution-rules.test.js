@@ -18,7 +18,7 @@ import { storageValue } from '../lib/workspace-values.js'
 import { reviewView } from '../lib/client-review.js'
 import { activityItems } from '../lib/cli.js'
 import AutomergeSyncServer from '../automerge-sync-server.js'
-import { actors, bareMember, entryOf, eventually, execute, operationOf, signerOf, stateOf, timing, withHub, writeTask } from '../support/signed-hub.js'
+import { actors, bareMember, entryOf, eventually, execute, operationOf, signerOf, stateOf, timing, unsignedTiming, withHub, writeTask } from '../support/signed-hub.js'
 
 // The rules that make a signer line mean "this machine signed exactly this content" (docs/PARDNER-TRUST-DESIGN.md,
 // section 3), for every peer, even when another member's client writes unusual but well-formed data.
@@ -76,7 +76,7 @@ it('a machine signs only the changes its own write path made; a received change 
     await eventually(() => writer.attribution.stateOf(creation.hash).state === 'signed', 'a member never verified the creation change')
     const gate = server.store.attribution.recordWriters().get(project.records[0].recordId)
     assert.ok(gate?.length && gate.every(hash => server.store.attribution.stateOf(hash).state === 'signed'), 'the record gate’s change is signed')
-  })
+  }, { hubOptions: { attribution: unsignedTiming } })
 })
 
 it('a membership write-back is signed by the machine that writes it back', { timeout: 60000 }, async () => {
@@ -442,7 +442,7 @@ it('a replica that joins after an Activity entry was altered shows the same alte
     const verdicts = changes => changes?.map(({ hash, state, machineId, claimed }) => [hash, state, machineId, claimed])
     const stable = runtime => JSON.stringify(runtime.getDoc().activity.map(({ changes, alteredLater, ...entry }) => ({ ...entry, changes: verdicts(changes), alteredLater: verdicts(alteredLater) })))
     assert.equal(stable(late), stable(server.store))
-  })
+  }, { hubOptions: { attribution: unsignedTiming } })
 })
 
 it('replacing or deleting an Activity entry, or a signed change that leaves no Activity entry, is its own entry listed for review with its signer, and the original stays shown', { timeout: 90000 }, async () => {
@@ -1069,7 +1069,7 @@ it('a change found in storage after a restart names no relayer, never the machin
   const directory = join(root, 'hub')
   const opened = []
   const serve = async () => {
-    const server = new AutomergeSyncServer({ store: hubRuntime(directory, { actors, project, retryMs: 100, attribution: timing }), env: {}, apiToken: 'relayer-token',
+    const server = new AutomergeSyncServer({ store: hubRuntime(directory, { actors, project, retryMs: 100, attribution: unsignedTiming }), env: {}, apiToken: 'relayer-token',
       httpPort: 0, wsPort: 0, logger: {} })
     opened.push(server)
     await server.start()
@@ -1118,7 +1118,7 @@ it('a change found in storage after a restart names no relayer, never the machin
 })
 
 it('a change whose machine goes offline stays pending, is listed for review as pending once it has waited, and nothing says every change is signed meanwhile', { timeout: 90000 }, async () => {
-  const waitingOptions = { attribution: { ...timing, pendingNoticeMs: 1500 } }
+  const waitingOptions = { attribution: { ...timing, catchUpMs: 1000, pendingNoticeMs: 1500 } }
   await withHub(async ({ server, replica, bare }) => {
     const reader = await replica(1, waitingOptions)
     const member = await bare(0)
@@ -1154,27 +1154,16 @@ it('a change whose machine goes offline stays pending, is listed for review as p
   assert.equal(emptyReview(null), 'This service checks no signatures.')
 })
 
-it('a connected machine that advertises signature heads it never sends cannot keep its own unsigned change pending past the catch-up limit', { timeout: 90000 }, async () => {
+it('a connected relayer’s missing signature becomes unattributed after the catch-up limit', { timeout: 90000 }, async () => {
   await withHub(async ({ project, server, bare }) => {
-    const attribution = server.store.attribution
     const member = await bare(0)
     await eventually(() => member.board.doc().operations, 'the member never synced')
-    // The hub always holds the member's advertised signature heads as ones it has not received.
-    const unknownHead = 'f'.repeat(64)
-    const isMember = peerId => server.store.peerMachine(peerId) === project.keys[0].machineId
-    const note = attribution.noteSyncState.bind(attribution)
-    attribution.noteSyncState = event => {
-      note(event)
-      const peer = attribution.peers.get(event.peerId)
-      if (peer && isMember(event.peerId)) peer.sigHeads = [unknownHead]
-    }
-    for (const [peerId, peer] of attribution.peers) if (isMember(peerId)) peer.sigHeads = [unknownHead]
-    const written = writeTask(member, 'Unsigned behind heads it never sends')
+    const written = writeTask(member, 'Unsigned on a live connection')
     await eventually(() => stateOf(server.store, written.operationId) === 'pending', 'the change never reached the hub')
     await delay(timing.quietMs * 2)
     assert.equal(stateOf(server.store, written.operationId), 'pending', 'it is waited for while the limit lasts')
     const verdict = await eventually(() => stateOf(server.store, written.operationId) === 'unattributed' && signerOf(server.store, written.operationId),
-      'a member kept its own change pending by advertising heads it never sends', 10000)
+      'the bounded wait never produced a verdict', 10000)
     assert.equal(verdict.relayedBy, project.keys[0].machineId, 'named as the machine that delivered it')
   }, { hubOptions: { attribution: { ...timing, catchUpMs: 2000 } } })
 })

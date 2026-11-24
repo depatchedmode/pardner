@@ -142,7 +142,7 @@ export async function withClientWorkspace(engine, options, body) {
  * the hub on the same port and waits until all replicas have synced and `converged()` holds.
  */
 export async function withClientReplicas(engine, options, body) {
-  const { humans = ['Alice', 'Bob'], actors = [], contextOptions = { viewport: { width: 1440, height: 900 } }, projectName = 'Shared board' } = options ?? {}
+  const { humans = ['Alice', 'Bob'], actors = [], contextOptions = { viewport: { width: 1440, height: 900 } }, projectName = 'Shared board', hubRuntimeOptions } = options ?? {}
   const root = await mkdtemp(join(tmpdir(), 'pardner-client-replicas-'))
   const people = []
   let browser
@@ -150,7 +150,7 @@ export async function withClientReplicas(engine, options, body) {
   try {
     const entries = humans.map(entry => typeof entry === 'string' ? { name: entry } : entry)
     const hubEntry = entries[0]
-    let hubPerson = await participant(join(root, 'hub'), hubEntry.name)
+    let hubPerson = await participant(join(root, 'hub'), hubEntry.name, { runtimeOptions: hubRuntimeOptions })
     await hubPerson.call('/identity', { name: hubEntry.name, email: email(hubEntry.name), operationId: 'identity' })
     const { project } = await hubPerson.call('/projects', { name: projectName, operationId: 'create' })
     await registerActors(hubPerson, project, actors)
@@ -179,7 +179,7 @@ export async function withClientReplicas(engine, options, body) {
         return true
       }, 'Replicas did not report the hub as disconnected')
       await writes()
-      const restarted = await participant(join(root, 'hub'), hubEntry.name, { port })
+      const restarted = await participant(join(root, 'hub'), hubEntry.name, { port, runtimeOptions: hubRuntimeOptions })
       hubPerson.client = restarted.client
       hubPerson.call = restarted.call
       await eventually(async () => await settled() && await converged(), 'Replicas did not converge after the hub returned')

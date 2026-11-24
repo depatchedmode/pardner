@@ -26,7 +26,7 @@ gate.
   flagged and listed for review; one claiming the machine's own person's Actor
   is not.
 - **Pending, then unattributed.** A bare peer that never signs: every node holds
-  the change, shows it pending first and unattributed after, names the machine that
+  the change, shows it pending first and unattributed after the bounded wait, names the machine that
   relayed it, and lists it for review; the peers converge. A late signature turns
   pending into signed on the hub and on a reader. A signature made by another key,
   and random bytes, are flagged `invalid`.
@@ -34,7 +34,9 @@ gate.
   after the change reached the hub, the hub and a reader stay pending, never
   unattributed, for four quiet periods, and sign it once the link returns. With
   every frame delayed by more than the quiet period, no change is ever
-  unattributed.
+  unattributed. A queued signature frame keeps the already-saved edit pending
+  past the quiet period on a live connection. Releasing it lets both peers
+  verify the signature.
 - **Hub acknowledgement.** A write while the hub is unreachable is saved and
   signed locally. With the signature document's frames held back, the hub has the
   change but not the signature, and the writer stays `syncPending`; once they flow
