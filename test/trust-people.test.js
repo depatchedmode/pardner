@@ -125,6 +125,21 @@ test('the People view shows each person’s role, machines, agents and who let t
   assert.match(listing, /Alice laptop \[Machine ID [1-9A-HJ-NP-Za-km-z]{6}\] · this machine · hosts the project/)
 })
 
+test('the People view attributes a person removal separately from their first machine removal', { timeout: 180000 }, async t => {
+  const { alice, bob, desktop, project } = await team(t)
+  const revoke = `/projects/${project.id}/revoke`
+  assert.equal(bob.personId, bob.machineId)
+  await desktop.call(revoke, { kind: 'machine', id: bob.machineId, operationId: 'remove-first-machine' })
+  const afterMachine = await people(alice, project)
+  assert.deepEqual(afterMachine.removed.machines.find(machine => machine.id === bob.machineId).removedBy.map(entry => entry.name), ['Bob'])
+  assert.ok(row(afterMachine, 'Bob'))
+  await alice.call(revoke, { kind: 'member', id: bob.personId, operationId: 'remove-bob' })
+  const afterPerson = await people(alice, project)
+  const removed = afterPerson.removed.people.find(person => person.id === bob.personId)
+  assert.deepEqual(removed.removedBy.map(entry => entry.name), ['Alice'])
+  assert.match(peopleListing(afterPerson), /^  Bob · was admin · removed by Alice · machines:/m)
+})
+
 test('removal is shown as removed, with who removed it, to everyone and to the removed party', { timeout: 180000 }, async t => {
   const { alice, bob, carol, desktop, project } = await team(t)
   // Bob removes his own desktop; the owner removes Carol.
