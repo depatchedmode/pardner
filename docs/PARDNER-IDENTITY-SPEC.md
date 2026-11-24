@@ -109,15 +109,15 @@ The [freeq device-key vector](https://github.com/freeq-irc/freeq/blob/36fca961d3
 
 ```
 0100000000000000000000000000000000000000000000000000000000000000   small order 1 (the identity)
-ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f   small order 2
+ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f   small order 2
 0000000000000000000000000000000000000000000000000000000000000000   small order 4
 0000000000000000000000000000000000000000000000000000000000000080   small order 4
 26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05   small order 8
 26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85   small order 8
 c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a   small order 8
 c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa   small order 8
-edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f   not canonical (y = p)
-eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f   not canonical (y = p + 1)
+edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f   not canonical (y = p)
+eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f   not canonical (y = p + 1)
 0100000000000000000000000000000000000000000000000000000000000080   x = 0 with the sign bit set
 ```
 
