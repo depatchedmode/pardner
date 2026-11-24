@@ -503,7 +503,7 @@ Keep runtime data outside `ui-prototype`, including its `public` directory.
 
 ### Dependencies
 
-Automerge **3.2.3** and Repo/network **2.5.1** are pinned. `npm run sync` starts
+Automerge **3.5.0** and Repo/network **2.5.6** are pinned. `npm run sync` starts
 the standalone service directly.
 
 ## Documentation

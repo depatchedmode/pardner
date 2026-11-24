@@ -146,7 +146,7 @@ from one change. The change's decoded operations say only which keys of which of
 board's top-level maps it wrote; every value shown is what Automerge itself reads at
 that key as of that change (with `getAll`, `keys` and `length` at the change's own
 head, which `test/automerge-history-reads.test.js` pins as faithful in Automerge
-3.2.3), so an entry holds exactly what that change put there and nothing later. A
+3.5.0), so an entry holds exactly what that change put there and nothing later. A
 value is accepted only as plain JSON, and a key such as `__proto__` is ordinary
 data: a change holding several values at one key in its own state, text, a counter,
 bytes, a date, a number JSON cannot hold exactly, or nesting deeper than 32 is

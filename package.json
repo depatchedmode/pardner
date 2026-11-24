@@ -37,9 +37,9 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@automerge/automerge": "3.2.3",
-    "@automerge/automerge-repo": "2.5.1",
-    "@automerge/automerge-repo-network-websocket": "2.5.1",
+    "@automerge/automerge": "3.5.0",
+    "@automerge/automerge-repo": "2.5.6",
+    "@automerge/automerge-repo-network-websocket": "2.5.6",
     "express": "^4.18.2",
     "ws": "^8.14.2"
   },
