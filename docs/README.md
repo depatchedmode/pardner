@@ -2,6 +2,7 @@
 
 - [Product vision: Let Pardner hold the work](../PRODUCT.md#product-vision)
 - [CLI and Actor workflows](PARDNER-CLI.md)
+- [Board storage and first-download decision (#283)](research/283-storage-decision.md)
 - [Thread model: decided, not implemented](PARDNER-THREAD-MODEL.md)
 - [Event-driven agent bridge](PARDNER-BRIDGE.md)
 - [Real-agent bridge rehearsal](PARDNER-BRIDGE-REHEARSAL.md)
