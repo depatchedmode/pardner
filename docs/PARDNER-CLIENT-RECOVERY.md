@@ -202,8 +202,11 @@ recovery decision.
 
 ## Lost or removed machine
 
-On a surviving machine of the same person, use `client show` to select the lost
-machine's **machine ID** (the full DID) or the device ID its profile lists.
+On a surviving machine of the same person, run `client people --project
+PROJECT_ID --json`. Find the person under `people.people[]`, select the lost
+machine under `machines[]`, and copy that machine's full DID from its `id`
+field. The board and the text roster show the last six characters of that DID.
+`client show` also lists full machine DIDs under `membership.machines[].id`.
 
 ```sh
 node bin/pardner.js client revoke --data /private/path/surviving-client \
