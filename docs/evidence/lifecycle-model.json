@@ -2004,5 +2004,17 @@
       "controls": "all eight passed"
     },
     "review": "Merging the updated UX pass (#189, now carrying main's #236) into client mode: automerge-sync-server.js keeps client mode's removal of the standalone LAN listeners and takes the ports and paths from lib/sync-protocol.js; lib/workspace-runtime.js and lib/durable-repo.js are #236's. No guard, effect, anchor, atomicity assumption, invariant, witness or mutation text changed."
+  },
+  "waitReview": {
+    "issue": 285,
+    "baseRevision": "53a6dd29c23a9149ef235028aad5b28699a38af9",
+    "serverSha256": "e7dbe8b1376688ddea2430b8fce10345856b9b7c200f00c2ac30c26b91f60246",
+    "node": "v24.11.1",
+    "command": "npm run verify:model -- --json",
+    "states": 174614,
+    "transitions": 679456,
+    "witnessesReached": 10,
+    "violation": null,
+    "review": "Open waits are cancelled before listener drain. A late wait is refused. Operations and acknowledgements still drain before store close. Waits are exercised separately by the implementation checks."
   }
 }

@@ -14,6 +14,7 @@
 import { WebSocketServer } from 'ws'
 import { ValidatedWebSocketServerAdapter } from './lib/validated-websocket-server-adapter.js'
 import { WorkspaceRuntime } from './lib/workspace-runtime.js'
+import { WorkspaceWaits } from './lib/workspace-wait.js'
 import express from 'express'
 import crypto from 'crypto'
 import { createServer } from 'node:http'
@@ -178,6 +179,7 @@ class AutomergeSyncServer {
     this.logger.log?.('🚀 Starting Automerge Sync Server...')
 
     await this.store.init()
+    this.waits = new WorkspaceWaits(this.store)
     this.onDocumentChange = () => this.broadcastDocumentUpdate()
     this.onRuntimeStatus = status => this.broadcastMessage({ type: 'sync-status', status })
     this.onMembership = () => this.enforceMembership()
@@ -272,6 +274,7 @@ class AutomergeSyncServer {
     const listenersClosed = Promise.allSettled([
       this.closeServer(this.wsHttpServer), this.closeServer(this.httpServer),
     ])
+    this.waits?.close()
     // A client that opened a connection and never sent a request (an aborted fetch leaves one in its pool for
     // seconds) would otherwise hold the listener open; such a connection carries no admitted request.
     for (const socket of this.unusedSockets ?? []) socket.destroy()
@@ -711,6 +714,7 @@ class AutomergeSyncServer {
     this.setupControlAPI()
     const commands = new Set([
       AUTOMERGE_PATHS.operations, AUTOMERGE_PATHS.syncAck, '/automerge/attribution', AUTOMERGE_PATHS.wsTicket, '/automerge/membership/records',
+      AUTOMERGE_PATHS.wait,
       AUTOMERGE_PATHS.deliveriesClaim, AUTOMERGE_PATHS.deliveriesAck, AUTOMERGE_PATHS.deliveriesRelease, '/automerge/machine/verify', '/automerge/hub/resume',
     ])
     this.app.use((req, res, next) => {
@@ -743,7 +747,7 @@ class AutomergeSyncServer {
     const operationFailure = (res, error) => {
       const statuses = { NOT_FOUND: 404, STALE_UPDATE: 409, OPERATION_ID_REUSED: 409, OPERATION_INTEGRITY_CONFLICT: 409,
         CONFLICT_REQUIRES_RESOLUTION: 409, WORKSPACE_MISMATCH: 409, STORAGE_FAILED: 507,
-        LOCAL_SERVICE_UNAVAILABLE: 503, HUB_UNAVAILABLE: 503, HUB_REQUIRED: 409, STALE_CLAIM: 409, AUTH_REQUIRED: 401, RECORD_REFUSED: 403 }
+        LOCAL_SERVICE_UNAVAILABLE: 503, SERVICE_STOPPING: 503, HUB_UNAVAILABLE: 503, HUB_REQUIRED: 409, STALE_CLAIM: 409, AUTH_REQUIRED: 401, RECORD_REFUSED: 403 }
       res.status(statuses[error.code] ?? (error.code ? 400 : 500)).json({
         success: false, error: error.message, code: error.code ?? 'INTERNAL_ERROR', details: error.details ?? null,
       })
@@ -757,6 +761,19 @@ class AutomergeSyncServer {
 
     this.app.get(AUTOMERGE_PATHS.status, (req, res) => {
       res.json(this.store.status())
+    })
+
+    this.app.post(AUTOMERGE_PATHS.wait, async (req, res) => {
+      res.set('Cache-Control', 'no-store')
+      // A request can reach this route after its body finished parsing or its caller disconnected.
+      if (res.destroyed) return
+      if (this.stopping) res.set('Connection', 'close')
+      const controller = new AbortController()
+      res.once('close', () => controller.abort())
+      try {
+        const result = await this.waits.wait(req.body, controller.signal)
+        if (!res.destroyed) res.json(result)
+      } catch (error) { if (!res.destroyed) operationFailure(res, error) }
     })
 
     this.app.get('/automerge/membership', (req, res) => {

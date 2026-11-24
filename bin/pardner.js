@@ -8,9 +8,11 @@ process.emitWarning = (warning, ...rest) => {
   return emitWarning.call(process, warning, ...rest)
 }
 const { runCommand } = await import('../lib/cli.js')
+const { WAIT_TIMEOUT_EXIT_CODE } = await import('../lib/board-version.js')
 
 try {
   const result = await runCommand(process.argv.slice(2))
+  if (result.reason === 'timeout') process.exitCode = WAIT_TIMEOUT_EXIT_CODE
   // Help and listings are text for people; --json prints the result as data, without the listing text.
   if ((result.help || result.listing) && !process.argv.includes('--json')) process.stdout.write(result.help ?? result.listing)
   else {

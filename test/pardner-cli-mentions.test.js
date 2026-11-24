@@ -1,5 +1,6 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
+import { once } from 'node:events'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -51,11 +52,24 @@ it('claims, releases, and acknowledges hub deliveries through a joined machineâ€
       handle = (await alice.call(`/projects/${project.id}`)).actors.find(actor => actor.id === grant.actorId)?.handle
       if (!handle) await delay(50)
     }
+    const watch = async (boardVersion, timeout = ['--timeout', '8']) => {
+      const incoming = once(bob.client.server, 'request', { signal: AbortSignal.timeout(5000) })
+      const output = cli(bob.directory, ['wait', '--after', boardVersion, ...timeout, '--token-file', grantFile])
+      output.catch(() => {})
+      const [request] = await incoming
+      assert.equal(request.url, `/pardner/client/v1/projects/${project.id}/api/automerge/wait`)
+      return { output }
+    }
+    const connected = await watch((await run(['status'])).boardVersion)
     await alice.call(`/projects/${project.id}/api/automerge/operations`, { type: 'comment.add', operationId: 'mention', payload: { taskId, text: `@${handle} please work on this` } })
+    const notified = await connected.output
+    assert.equal(notified.code, 0, notified.stdout + notified.stderr)
+    assert.equal(notified.result.events[0].mention.toActorId, grant.actorId)
     const deadline = Date.now() + 10000
     let pending = await run(['mentions', 'pending'])
     while (!pending.mentions.length && Date.now() < deadline) { await delay(50); pending = await run(['mentions', 'pending']) }
     assert.equal(pending.mentions.length, 1)
+    assert.deepEqual(notified.result.events.map(event => event.mention.id), [pending.mentions[0].id])
     const claim = await run(['mentions', 'claim-next', '--request-id', 'first-claim'])
     assert.equal(claim.claimed, true)
     assert.equal((await run(['mentions', 'pending'])).mentions.length, 0)
@@ -80,6 +94,26 @@ it('claims, releases, and acknowledges hub deliveries through a joined machineâ€
     assert.equal(progress.syncPending, true)
     const context = await run(['show', taskId])
     assert.ok(context.comments.some(comment => comment.content === 'Accepted work continues while offline'))
+
+    const mismatch = await cli(bob.directory, ['wait', '--actor', project.actorId, '--after', context.boardVersion, '--timeout', '1', '--token-file', grantFile])
+    assert.equal(mismatch.code, 1)
+    assert.equal(mismatch.result.error.code, 'ACTOR_MISMATCH')
+    const offline = await watch(context.boardVersion)
+    const offlineMention = await bob.call(`/projects/${project.id}/api/automerge/operations`, {
+      type: 'comment.add', operationId: 'offline-mention', payload: { taskId, text: `@${handle} saved on this replica` },
+    })
+    assert.equal(offlineMention.savedLocally, true)
+    assert.equal(offlineMention.syncPending, true)
+    const offlineAnswer = await offline.output
+    assert.equal(offlineAnswer.code, 0, offlineAnswer.stdout + offlineAnswer.stderr)
+    assert.deepEqual(offlineAnswer.result.events.map(event => event.mention.id), offlineMention.result.mentionIds)
+    assert.equal((await run(['status'])).boardVersion, offlineAnswer.result.boardVersion)
+
+    const whenStopping = await watch(offlineAnswer.result.boardVersion, [])
+    await bob.client.stop()
+    const stopped = await whenStopping.output
+    assert.equal(stopped.code, 1)
+    assert.equal(stopped.result.error.code, 'SERVICE_STOPPING')
   } finally {
     await bob?.client.stop()
     await alice?.client.stop()
