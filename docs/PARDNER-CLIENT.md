@@ -546,7 +546,7 @@ profile.
 This is a prototype of [#251](https://github.com/depatchedmode/pardner/issues/251):
 Pardner runs a [tailcat](https://github.com/tailscale/tailcat) route itself, so
 two computers on unrelated networks need no public address, tunnel account or
-`--public-url`. Both computers need tailcat **v0.7.0** installed (`brew install
+`--public-url`. Both computers need tailcat **v0.8.0** installed (`brew install
 tailcat` on macOS); Pardner refuses any other version, because tailcat promises
 no stable command line or wire format.
 
