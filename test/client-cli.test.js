@@ -434,7 +434,8 @@ test('client review lists the changes whose signer could not be confirmed, in wo
   try {
     const start = async (name, deviceName) => {
       const directory = join(root, name)
-      const client = await startClient({ directory, ...await sameComputerRoute(), deviceName, gitDirectory: root })
+      const client = await startClient({ directory, ...await sameComputerRoute(), deviceName, gitDirectory: root,
+        runtimeOptions: { attribution: { catchUpMs: 1500 } } })
       clients.push(client)
       const call = async (path, body) => {
         const response = await fetch(`${client.url}/pardner/client/v1${path}`, { method: body === undefined ? 'GET' : 'POST',

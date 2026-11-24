@@ -15,7 +15,7 @@ import { DurableRepo } from '../lib/durable-repo.js'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
 import { storedSignatures } from '../lib/change-signatures.js'
 import { hubRuntime, testProject } from '../support/machines.js'
-import { actors, eventually, execute, operationOf, relay, sampler, signerOf, stateOf, timing, withHub, writeTask } from '../support/signed-hub.js'
+import { actors, eventually, execute, operationOf, relay, sampler, signerOf, stateOf, timing, unsignedTiming, withHub, writeTask } from '../support/signed-hub.js'
 
 // Every change a machine makes is signed and every peer checks it (docs/PARDNER-TRUST-DESIGN.md, section 3).
 // Changes are applied first and checked after; none is refused, dropped or hidden.
@@ -100,7 +100,7 @@ it('a change with no signature is applied everywhere, pending, then unattributed
     assert.equal(reader.getDoc().tasks[written.taskId].title, 'Never signed')
     await eventually(() => A.getHeads(reader.docHandle.doc()).join() === A.getHeads(server.store.docHandle.doc()).join(), 'the peers did not converge')
     assert.ok(reader.getDoc().attribution.review.some(entry => entry.change === written.hash && entry.state === 'unattributed'))
-  })
+  }, { hubOptions: { attribution: unsignedTiming } })
 })
 
 it('a signature that arrives after its change turns pending into attributed, and a bad one is flagged', { timeout: 60000 }, async () => {
@@ -125,7 +125,7 @@ it('a signature that arrives after its change turns pending into attributed, and
     const junk = writeTask(member, 'Junk signature')
     member.signatures.change(doc => { doc[shardOf(junk.hash)][junk.hash] = new Uint8Array(randomBytes(64)) })
     await eventually(() => signerOf(server.store, junk.operationId)?.reason === 'invalid' && stateOf(server.store, junk.operationId) === 'unattributed', 'junk never flagged')
-  })
+  }, { hubOptions: { attribution: unsignedTiming } })
 })
 
 it('a signature entry deleted from the shared document stays attributed where it was seen, and is written back', { timeout: 60000 }, async () => {
@@ -194,6 +194,51 @@ it('a writer’s cut link keeps its change pending for the outage, everywhere, a
       }
     } finally { await path.close() }
   })
+})
+
+it('keeps a signed change pending while the signature frame is queued on a live link', { timeout: 30000 }, async () => {
+  let now = Date.now()
+  await withHub(async ({ project, server, replica }) => {
+    const link = await relay(server, project.projectId)
+    const { promise: releaseFrame, resolve: release } = Promise.withResolvers()
+    try {
+      const hub = server.store
+      const writer = await replica(0, { hubWsUrl: link.url })
+      const reader = await replica(1)
+      writer.attribution.holdOutbox = true
+      const { operationId, savedLocally } = await execute(writer, 'Signed before its frame arrived')
+      assert.equal(savedLocally, true)
+      assert.equal(stateOf(writer, operationId), 'signed')
+      await eventually(() => [hub, reader].every(node => stateOf(node, operationId) === 'pending'),
+        'the board change did not reach both peers')
+
+      const previousHeads = A.getHeads(writer.workspace.signatures.doc())
+      let signatureHeads, intercepted = false
+      link.state.beforeSignature = async data => {
+        const { heads, changes } = A.decodeSyncMessage(data)
+        if (!signatureHeads?.every(head => heads.includes(head)) || !changes.length) return
+        intercepted = true
+        await releaseFrame
+      }
+      writer.attribution.holdOutbox = false
+      writer.attribution.flushOutbox()
+      signatureHeads = A.getHeads(writer.workspace.signatures.doc())
+      assert.notDeepEqual(signatureHeads, previousHeads)
+      await eventually(() => intercepted, 'the signature frame was never queued')
+
+      now += timing.quietMs * 2
+      await hub.attribution.resolve()
+      await reader.attribution.resolve()
+      assert.deepEqual([hub, reader].map(node => stateOf(node, operationId)), ['pending', 'pending'])
+
+      release()
+      await eventually(() => [hub, reader].every(node => stateOf(node, operationId) === 'signed'),
+        'both peers must verify the delayed signature')
+    } finally {
+      release()
+      await link.close()
+    }
+  }, { hubOptions: { attribution: { ...timing, now: () => now } } })
 })
 
 it('a write is acknowledged locally with the hub unreachable; the hub’s acknowledgement waits for its signature too', { timeout: 90000 }, async () => {

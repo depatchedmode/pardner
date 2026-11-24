@@ -18,8 +18,9 @@ import { admitMembers, advertiseRoutes, hubRuntime, memberAdapter, replicaRuntim
 
 const token = 'signed-changes-token'
 export const actors = [{ id: 'alice', handle: 'alice', kind: 'human' }, { id: 'builder', handle: 'builder', kind: 'agent' }]
-// Short waits keep the pending rule observable in tests; the defaults are a second.
+// Short quiet and polling intervals make attribution observable in tests.
 export const timing = { quietMs: 400, pollMs: 100 }
+export const unsignedTiming = { ...timing, catchUpMs: 1500 }
 
 export async function eventually(check, message, timeout = 20000) {
   const deadline = Date.now() + timeout
@@ -123,6 +124,10 @@ export async function relay(server, projectId) {
           if (state.delayMs) await delay(state.delayMs)
           if (up && binary && state.holdSignatures) {
             try { if (cbor.decode(data)?.documentId === signaturesId) return } catch { /* Not an Automerge frame. */ }
+          }
+          if (up && binary && state.beforeSignature) {
+            const frame = cbor.decode(data)
+            if (frame?.type === 'sync' && frame.documentId === signaturesId) await state.beforeSignature(frame.data)
           }
           if (to.readyState === WebSocket.OPEN) to.send(data, { binary })
         })
