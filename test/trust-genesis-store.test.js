@@ -83,7 +83,7 @@ test('a storage directory from an earlier schema is refused and left byte-identi
   // Schema 7 is the last before person IDs were derived from keys and certifications carried their machine's consent;
   // schema 8 the last before every change was signed; schema 9 the last whose signature cache held no equivocation reports;
   // schema 10 the last whose signature cache kept no proof with them.
-  for (const schemaVersion of [6, 7, 8, 9, 10]) {
+  for (const schemaVersion of [6, 7, 8, 9, 10, 11]) {
     const storage = await mkdtemp(join(tmpdir(), 'pardner-prior-storage-'))
     try {
       ;(await acquireStorageLease(storage)).close()
@@ -114,8 +114,9 @@ test('the record store keeps valid records, refuses tampered and foreign ones, a
   const add = trust.admit(owner, member)
   const forged = { ...buildRecord(owner, { projectId, kind: 'agent.name', subject: 'agent-1', machineId: owner.machineId, displayName: 'Codex', harness: 'openai-codex' }), displayName: 'Forged' }
   const elsewhere = testGenesis(generateMachineKey())
-  const foreign = buildRecord(owner, { projectId: elsewhere.projectId, kind: 'profile', subject: 'test-owner', displayName: 'Elsewhere', email: '' })
-  const unsigned = buildRecord(generateMachineKey(), { projectId, kind: 'profile', subject: 'stranger', displayName: 'Stranger', email: '' })
+  const foreign = buildRecord(owner, { projectId: elsewhere.projectId, kind: 'profile', subject: owner.machineId, displayName: 'Elsewhere', email: '' })
+  const stranger = generateMachineKey()
+  const unsigned = buildRecord(stranger, { projectId, kind: 'profile', subject: stranger.machineId, displayName: 'Stranger', email: '' })
   const records = () => plain(runtime.docHandle.doc().membership ?? {})
   const reasons = () => Object.fromEntries(runtime.membership().notStored.map(entry => [entry.recordId, entry.reason]))
   let runtime = new WorkspaceRuntime({ directory, genesis, actors })

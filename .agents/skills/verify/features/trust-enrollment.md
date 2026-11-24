@@ -8,10 +8,10 @@ People panel) cover the same flows
 through the existing public paths, and `npm run test:acceptance -- --seed 1`
 enrolls the acceptance topology through approvals.
 
-- **Library.** Offers verify only under their issuing machine's key; a join
-  request verifies under its own key and its MAC only under the invitation
-  secret, names the hash of its offer, and for a new person names the person ID
-  derived from its key; codes are eight digits that change with the offer, the key
+- **Library.** Offers verify only under their issuing machine's key; a version 3 join
+  request verifies under the public key in its machine DID and its MAC only under the invitation
+  secret, names the hash of its offer, and for a new person uses its machine DID as the person ID. Codes are eight digits
+  that change with the offer, the joiner’s DID
   and the nonce. An approved request becomes a certification embedding the offer
   and the joiner's consent. Agents-only machines act only as agents they named for
   their own person and sign no other kind of record. The gate's refusal reasons,
@@ -30,6 +30,10 @@ enrolls the acceptance topology through approvals.
   start a project or join another as a new person. A machine paired with no agent
   name labels its agent with the name it was enrolled under
   (`test/client-onboarding.test.js`).
+- **DID continuity.** Pairing and first-machine removal preserve the person and
+  Actor IDs. Returning on a fresh Human invitation after key loss or person
+  removal uses a new DID and Actor IDs. Offline reopen keeps both DIDs, and the
+  replica persists the signed hub checkpoint under the hub machine's DID.
 - **Roles.** A member cannot invite people, an admin cannot offer the admin role,
   only the owner changes roles, and a demoted admin cannot admit anyone.
 - **Removal.** The hub refuses the removed machine's signed requests and handshake,

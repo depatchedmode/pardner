@@ -1811,6 +1811,7 @@ li .invite-state[data-state='issued'] { color: var(--accent); }
 .agent-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 4px 0; font-size: var(--text-ui); }
 .member-actions { margin: 14px 0 0 52px; }
 .member-note { margin: 12px 0 0 52px; }
+.person-id { overflow-wrap: anywhere; }
 .unavailable { display: inline-flex; flex-direction: column; gap: 4px; max-width: 32ch; }
 button[aria-disabled='true'] { opacity: 0.5; cursor: default; }
 

@@ -49,3 +49,6 @@ rules are in `test/membership.test.js` and `test/enrollment.test.js`
 Not covered: separate physical machines; last-seen times after a hub restart
 (kept in memory only); per-change signer lines and unattributed-change notices,
 which need signed changes (#197).
+
+The board labels the full Person ID and each Machine ID suffix. The CLI people
+listing labels the same IDs, and CLI status and JSON preserve full machine DIDs.

@@ -400,11 +400,20 @@ test('client people lists people, machines, agents and removed entries in words;
     // The listing is plain text by default, and the same view as data with --json.
     const listing = await alice.text(['people', '--project', project.id])
     assert.match(listing, /^CLI people: 2 people, 2 machines, 2 agents\n/)
-    assert.match(listing, /\nAlice \(you\) · Owner · alice@example\.test\n {2}Started the project\n {2}Machines:\n {4}Studio \[[a-z2-7]{6}\] · this machine · hosts the project\n/)
-    assert.match(listing, /\nBob · Member · bob@example\.test\n {2}Let in by Alice\n {2}Machines:\n {4}Workshop \[[a-z2-7]{6}\] · /)
-    assert.ok(!listing.includes('machine-'), 'machine IDs appear only as their short form')
+    assert.match(listing, /\nAlice \(you\) · Owner · alice@example\.test\n {2}Started the project\n {2}Machines:\n {4}Studio \[Machine ID [1-9A-HJ-NP-Za-km-z]{6}\] · this machine · hosts the project\n/)
+    assert.match(listing, /\nBob · Member · bob@example\.test\n {2}Let in by Alice\n {2}Machines:\n {4}Workshop \[Machine ID [1-9A-HJ-NP-Za-km-z]{6}\] · /)
     const data = await alice.json(['people', '--project', project.id])
     assert.deepEqual(data.people.people.map(person => person.name), ['Alice', 'Bob'])
+    const aliceStatus = await alice.json(['status'])
+    for (const person of data.people.people) {
+      const [machine] = person.machines
+      assert.equal(person.id, machine.id)
+      assert.equal(machine.shortId, machine.id.slice(-6))
+      assert.ok(listing.includes(`Person ID: ${person.id}`))
+      assert.ok(listing.includes(`[Machine ID ${machine.id.slice(-6)}]`))
+    }
+    assert.equal(aliceStatus.device.machineId, data.people.people[0].machines[0].id)
+    assert.equal(aliceStatus.identity.id, data.people.people[0].id)
     assert.equal(data.listing, undefined)
     // Invitations are listed, newest first, with who issued and used each, and can be revoked.
     await alice.json(['invite', '--project', project.id, '--purpose', 'device', '--operation-id', 'invite-device', '--output-file', join(root, 'device.txt')])
@@ -470,7 +479,7 @@ test('client review lists the changes whose signer could not be confirmed, in wo
       const text = await alice.text(['review', '--project', project.id])
       return text.startsWith('CLI review: 1 change needs review') && text
     }, 'the unsigned change was never listed', 30000)
-    assert.match(listing, /\nUnattributed: no signature arrived · relayed by Bob · Workshop \[[a-z2-7]{6}\]\n {2}Bob: task\.create “Never signed” at /)
+    assert.match(listing, /\nUnattributed: no signature arrived · relayed by Bob · Workshop \[[1-9A-HJ-NP-Za-km-z]{6}\]\n {2}Bob: task\.create “Never signed” at /)
     assert.match(listing, /\n {2}Change [a-f0-9]{64}/, 'the change hash only as a detail')
     const data = await alice.json(['review', '--project', project.id])
     assert.equal(data.changes.length, 1)

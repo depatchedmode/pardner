@@ -2,6 +2,7 @@ import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium, webkit } from 'playwright'
 import { withClientReplicas, withClientWorkspace } from '../support/client-workspace.js'
+import { isPersonId } from '../shared/identity.js'
 import { fakeTunnel } from '../support/fake-tunnel.js'
 
 // The People panel (#198) and the removed state (#154) on real clients, in Chromium and WebKit. The first human
@@ -54,7 +55,11 @@ for (const engine of [chromium, webkit]) it(`shows each role what it may do, cha
       const hub = aliceMachines.filter({ hasText: 'This machine' })
       assert.equal(await hub.getByText('Hosts the project', { exact: true }).count(), 1)
       await hub.getByText('Hosts the project, so it can’t be removed.').waitFor()
-      assert.equal(await owner.getByText(/ID [a-z2-7]{6}/).count() >= 4, true)
+      const personId = await member(owner, 'Alice').locator('.person-id bdi').textContent()
+      assert.ok(isPersonId(personId))
+      assert.ok(await member(owner, 'Alice').getByText(`Person ID ${personId}`, { exact: true }).isVisible())
+      await hub.getByText(`Machine ID ${personId.slice(-6)}`, { exact: true }).waitFor()
+      assert.equal(new Set(await aliceMachines.locator('.machine-id').allTextContents()).size, 2)
 
       // The admin: lets members in and out, but has no controls on the owner and can't change roles.
       const admin = await openPanel(bobPage)

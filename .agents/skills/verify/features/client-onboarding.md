@@ -110,3 +110,7 @@ Security coverage elsewhere: `test/markdown-privacy.test.js` (persisted images,
 CSP, referrer-free links, `test:ui`), `test/framing.test.js` (headers and iframe
 rejection) and `test/vite-security.test.js` (development listener) run through
 full test discovery.
+
+The pre-DID registry refusal exercise checks both stopped-client `pardner up`
+and service startup. The fixtures include a version 4 registry with a lock and
+a version 4 registry with a WAL and no lock. All original bytes survive refusal.

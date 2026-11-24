@@ -132,7 +132,7 @@ test('a refusal reaches the initiator with its code once it has proved its key, 
 })
 
 function sessions(project, { now = () => 0 } = {}) {
-  const live = new Map(project.all.filter(record => record.kind === 'member.add').map(record => [record.machineId, record.publicKey]))
+  const live = new Map(project.keys.map(key => [key.machineId, key.publicKey]))
   live.set(project.owner.machineId, project.owner.publicKey)
   const route = 'https://hub.example/pardner/client/v1/replica/p'
   const removed = new Set()
@@ -216,7 +216,7 @@ test('a hub checkpoint is signed, bound to its project and hub, and shows when a
   const project = testProject()
   const run = newRun()
   const checkpoint = signCheckpoint(project.owner, { projectId: project.projectId, run, starts: 3, records: 4 })
-  const context = { projectId: project.projectId, hub: project.owner.machineId, publicKey: project.owner.publicKey }
+  const context = { projectId: project.projectId, hub: project.owner.machineId }
   assert.equal(checkpointValid(checkpoint, context), true)
   assert.equal(checkpointValid({ ...checkpoint, records: 5 }, context), false)
   assert.equal(checkpointValid(checkpoint, { ...context, projectId: testProject().projectId }), false)

@@ -6,7 +6,7 @@ import {
   agentNameRecord, buildJoinRequest, buildOffer, certificationFields, collidingCodes, confirmationCode, decodeInvitation, encodeInvitation, joinRequestRefusal,
   machineAccess, macMatches, newNonce, newSecret, offerRefusal, recordRefusal, requestRecordRefusal, sameCode,
 } from '../lib/enrollment.js'
-import { generateMachineKey, personIdFor } from '../lib/machine-key.js'
+import { generateMachineKey } from '../lib/machine-key.js'
 import { buildRecord, computeMembership, mayAuthor, maySign, offerHash } from '../lib/membership.js'
 import { trustProject } from '../support/trust-records.js'
 
@@ -14,7 +14,7 @@ function project() {
   const p = trustProject(), joiner = generateMachineKey()
   const offer = buildOffer(p.owner, { projectId: p.projectId, offerId: randomUUID(), purpose: 'human', role: 'member',
     routes: ['https://hub.example.test/pardner/client/v1/enroll'], expiresAt: Date.now() + 60000 })
-  return { ...p, joiner, bob: personIdFor(joiner.publicKey), offer }
+  return { ...p, joiner, bob: joiner.machineId, offer }
 }
 const identity = { name: 'Bob', email: 'bob@example.test' }
 const device = { id: randomUUID(), name: 'Bob laptop' }
@@ -22,10 +22,10 @@ const agent = { harnessId: 'openai-codex', name: 'Bob agent' }
 
 test('offers are signed by their issuing machine and carry the role or the person they link', () => {
   const { owner, joiner, offer, genesis } = project()
-  assert.equal(offerRefusal(offer, owner.publicKey), null)
-  assert.equal(offerRefusal(offer, joiner.publicKey), 'Offer signer is not a machine of this project')
-  assert.equal(offerRefusal({ ...offer, role: 'admin' }, owner.publicKey), 'Invalid offer signature')
-  assert.equal(offerRefusal({ ...offer, expiresAt: offer.expiresAt + 1 }, owner.publicKey), 'Invalid offer signature')
+  assert.equal(offerRefusal(offer, owner.machineId), null)
+  assert.equal(offerRefusal(offer, joiner.machineId), 'Offer signer is not a machine of this project')
+  assert.equal(offerRefusal({ ...offer, role: 'admin' }, owner.machineId), 'Invalid offer signature')
+  assert.equal(offerRefusal({ ...offer, expiresAt: offer.expiresAt + 1 }, owner.machineId), 'Invalid offer signature')
   const { v, signer, signature, ...fields } = offer
   assert.throws(() => buildOffer(owner, { ...fields, role: 'owner' }), /admin or member role/)
   assert.throws(() => buildOffer(owner, { projectId: genesis.projectId, offerId: randomUUID(), purpose: 'device', routes: offer.routes, expiresAt: 1 }), /names the person/)
@@ -41,19 +41,20 @@ test('a join request proves its key and the invitation secret, and must match it
   const secret = newSecret()
   const { request, mac } = buildJoinRequest(joiner, secret, { offer, personId: bob, identity, device, agent })
   assert.equal(joinRequestRefusal(request, offer), null)
-  assert.equal(request.v, 2)
+  assert.equal(request.v, 3)
   assert.equal(request.offerHash, offerHash(offer), 'the request names the whole offer it answers')
   assert.equal(macMatches(secret, request, mac), true)
   assert.equal(macMatches(newSecret(), request, mac), false, 'another secret does not key this request')
   assert.equal(macMatches(secret, { ...request, personId: 'mallory' }, mac), false)
   assert.equal(joinRequestRefusal({ ...request, profile: { name: 'Mallory', email: 'mallory@example.test' } }, offer), 'Invalid join request signature')
-  assert.equal(joinRequestRefusal({ ...request, personId: 'mallory' }, offer), 'A new person’s ID must be derived from the key they join with')
+  assert.equal(joinRequestRefusal({ ...request, personId: 'mallory' }, offer), 'Invalid join request person ID')
   const other = generateMachineKey()
-  assert.equal(joinRequestRefusal({ ...request, publicKey: other.publicKey }, offer), 'The join request machine ID does not match its key')
+  assert.equal(joinRequestRefusal({ ...request, publicKey: other.publicKey }, offer), 'The join request carries the key in the machine ID')
+  assert.equal(joinRequestRefusal({ ...request, machineId: other.machineId, personId: other.machineId }, offer), 'Invalid join request signature')
   assert.equal(joinRequestRefusal(request, { ...offer, offerId: randomUUID() }), 'The join request does not match its invitation')
   assert.equal(joinRequestRefusal(request, { ...offer, expiresAt: offer.expiresAt + 1 }), 'The join request does not match its invitation', 'another offer, another hash')
-  const misnamed = buildJoinRequest(joiner, secret, { offer, personId: personIdFor(other.publicKey), identity, device, agent }).request
-  assert.equal(joinRequestRefusal(misnamed, offer), 'A new person’s ID must be derived from the key they join with')
+  const misnamed = buildJoinRequest(joiner, secret, { offer, personId: other.machineId, identity, device, agent }).request
+  assert.equal(joinRequestRefusal(misnamed, offer), 'A new person’s ID must match the machine ID they join with')
   const label = agentNameRecord(joiner, offer.projectId, bob, agent)
   assert.equal(requestRecordRefusal(label, request), null)
   assert.equal(requestRecordRefusal(agentNameRecord(joiner, offer.projectId, 'someone-else', agent), request), 'The agent label names another person’s agent')
@@ -81,11 +82,11 @@ test('an approved request becomes a certification that embeds the offer and the 
 test('confirmation codes are eight digits that change with the offer, key and nonce, and collisions are found', () => {
   const { joiner, offer } = project()
   const nonce = newNonce()
-  const code = confirmationCode(offer, joiner.publicKey, nonce)
+  const code = confirmationCode(offer, joiner.machineId, nonce)
   assert.match(code, /^\d{4} \d{4}$/)
   assert.equal(sameCode(code, code.replace(' ', '')), true)
   assert.equal(sameCode(code, code.slice(0, 4)), false)
-  const codes = new Set(Array.from({ length: 200 }, () => confirmationCode(offer, joiner.publicKey, newNonce())))
+  const codes = new Set(Array.from({ length: 200 }, () => confirmationCode(offer, joiner.machineId, newNonce())))
   assert.ok(codes.size >= 199, 'fresh nonces give fresh codes')
   assert.deepEqual([...collidingCodes([{ id: 'a', code: '1' }, { id: 'b', code: '2' }, { id: 'c', code: '1' }, { id: 'd', code: null }])].sort(), ['a', 'c'])
 })
@@ -113,7 +114,7 @@ test('machine access comes from the records: agents-only machines act only as th
 
 test('the gate refuses records a signer may not author now, with reasons a person can act on', () => {
   const p = project(), { owner, joiner, genesis, bob } = p
-  const pid = genesis.projectId, admin = generateMachineKey(), adminId = personIdFor(admin.publicKey), ownerId = p.ownerId
+  const pid = genesis.projectId, admin = generateMachineKey(), adminId = admin.machineId, ownerId = p.ownerId
   const records = [genesis, p.admit(owner, admin, { role: 'admin' }), p.admit(admin, joiner)]
   const membership = computeMembership(records)
   const record = (key, fields) => buildRecord(key, { projectId: pid, ...fields })

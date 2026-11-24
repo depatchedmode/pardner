@@ -782,7 +782,7 @@ test('identity, harness and revocation refusals name the actual problem', { time
 })
 
 test('enrollment normalises agent and device metadata at the boundary and leaves a refused invitation usable', { timeout: 30000 }, async t => {
-  const { generateMachineKey, personIdFor } = await import('../lib/machine-key.js')
+  const { generateMachineKey } = await import('../lib/machine-key.js')
   const { JOIN_DOMAIN, agentNameRecord, joinMac } = await import('../lib/enrollment.js')
   const { offerHash } = await import('../lib/membership.js')
   const { invitationData } = await import('../lib/client-invites.js')
@@ -795,10 +795,10 @@ test('enrollment normalises agent and device metadata at the boundary and leaves
     const response = await fetch(`${alice.client.url}${CLIENT_API}/enroll`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request', ...body }) })
     return { status: response.status, result: await response.json() }
   }
-  const key = generateMachineKey(), personId = personIdFor(key.publicKey)
+  const key = generateMachineKey(), personId = key.machineId
   // A request signed and keyed correctly, but with metadata the joining client did not normalise.
   const signed = fields => {
-    const request = { v: 2, projectId: offer.projectId, offerId: offer.offerId, offerHash: offerHash(offer), purpose: 'human', personId, machineId: key.machineId, publicKey: key.publicKey,
+    const request = { v: 3, projectId: offer.projectId, offerId: offer.offerId, offerHash: offerHash(offer), purpose: 'human', personId, machineId: key.machineId,
       device: { id: '66666666-7777-4888-9999-aaaaaaaaaaaa', name: 'Carol laptop' }, agent: setupAgent({ harnessId: 'openai-codex', name: 'Beta' }),
       profile: { name: 'Carol', email: 'carol@example.test' }, ...fields }
     const body = { ...request, signature: key.sign(JOIN_DOMAIN, Buffer.from(canonical(request))).toString('base64url') }

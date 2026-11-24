@@ -9,7 +9,6 @@ import { eventually, execute, withHub } from '../support/signed-hub.js'
 import { everyOperationVia } from '../support/activity-fixture.js'
 import { ChangeEncoder } from '../support/change-encoder.js'
 import { OPERATION_TYPES, prepareOperation } from '../lib/workspace-commands.js'
-import { personIdFor } from '../lib/machine-key.js'
 import { actorId as actorFor } from '../lib/client-identity.js'
 
 // A signer line means "this machine signed exactly this content" (docs/PARDNER-TRUST-DESIGN.md, section 3). These
@@ -157,7 +156,7 @@ it('an edit inside another person’s signed entry changes nothing shown under t
 it('every ordinary operation type and every record flow is shown on every peer as one signed entry of its own change, with nothing flagged', { timeout: 120000 }, async () => {
   // Each machine acts as its own person's Actor, which it is certified for: the hub's owner registers itself first.
   await withHub(async ({ project, server, replica }) => {
-    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey))
+    const owner = actorFor(project.owner.machineId), member = actorFor(project.keys[0].machineId)
     const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
     await register({ id: owner, handle: 'owner', kind: 'human', displayName: 'Owner' })
     await register({ id: member, handle: 'member-zero', kind: 'human', displayName: 'Member Zero' })
@@ -191,7 +190,7 @@ it('every ordinary operation type and every record flow is shown on every peer a
 
 it('a field alternative another member’s change wrote in someone else’s name is said to be changed by someone else; the real author’s is not', { timeout: 90000 }, async () => {
   await withHub(async ({ project, server, replica, bare }) => {
-    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey))
+    const owner = actorFor(project.owner.machineId), member = actorFor(project.keys[0].machineId)
     const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
     await register({ id: owner, handle: 'owner', kind: 'human' })
     await register({ id: member, handle: 'member-zero', kind: 'human' })
@@ -223,7 +222,7 @@ it('a field alternative another member’s change wrote in someone else’s name
 
 it('a comment entry whose change writes other words into the comment than the entry says is listed as not matching what it did, with both, under its own signer', { timeout: 90000 }, async () => {
   await withHub(async ({ project, server, replica, bare }) => {
-    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey)), bobActor = actorFor(personIdFor(project.keys[1].publicKey))
+    const owner = actorFor(project.owner.machineId), member = actorFor(project.keys[0].machineId), bobActor = actorFor(project.keys[1].machineId)
     const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
     await register({ id: owner, handle: 'owner', kind: 'human' })
     await register({ id: member, handle: 'member-zero', kind: 'human' })
@@ -287,7 +286,7 @@ it('a change whose time no date can show reaches every peer without stopping Act
 
 it('a deletion of a comment that claims its author’s name is listed with its own signer and review state, so no note credits the author', { timeout: 90000 }, async () => {
   await withHub(async ({ project, server, replica, bare }) => {
-    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey))
+    const owner = actorFor(project.owner.machineId), member = actorFor(project.keys[0].machineId)
     const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
     await register({ id: owner, handle: 'owner', kind: 'human' })
     await register({ id: member, handle: 'member-zero', kind: 'human' })
@@ -315,7 +314,7 @@ it('a deletion of a comment that claims its author’s name is listed with its o
 
 it('an edit inside a list of another Actor’s field value is counted against that value, so it says it was changed by someone else', { timeout: 90000 }, async () => {
   await withHub(async ({ project, server, replica, bare }) => {
-    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey))
+    const owner = actorFor(project.owner.machineId), member = actorFor(project.keys[0].machineId)
     const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
     await register({ id: owner, handle: 'owner', kind: 'human' })
     await register({ id: member, handle: 'member-zero', kind: 'human' })
@@ -353,7 +352,7 @@ it('an edit inside a list of another Actor’s field value is counted against th
 
 it('a field value without alternatives that another change wrote or wrote into is listed, so the edit form does not credit its recorded Actor', { timeout: 90000 }, async () => {
   await withHub(async ({ project, server, replica, bare }) => {
-    const owner = actorFor(personIdFor(project.owner.publicKey)), member = actorFor(personIdFor(project.keys[0].publicKey))
+    const owner = actorFor(project.owner.machineId), member = actorFor(project.keys[0].machineId)
     const register = payload => server.store.execute({ operationId: randomUUID(), actorId: owner, type: 'actor.register', payload })
     await register({ id: owner, handle: 'owner', kind: 'human' })
     await register({ id: member, handle: 'member-zero', kind: 'human' })

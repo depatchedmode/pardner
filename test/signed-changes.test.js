@@ -10,7 +10,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import * as A from '@automerge/automerge'
 import { actorPrefix, machineActor, machinePrefix, shardOf, signChange, signaturesDocumentUrl } from '../lib/change-signatures.js'
 import { actorId as actorFor } from '../lib/client-identity.js'
-import { machineKeyPem, personIdFor } from '../lib/machine-key.js'
+import { machineKeyPem } from '../lib/machine-key.js'
 import { DurableRepo } from '../lib/durable-repo.js'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
 import { storedSignatures } from '../lib/change-signatures.js'
@@ -50,7 +50,7 @@ it('every change carries its machine’s actor prefix, the creation change inclu
 it('a change relayed by the hub to another member shows its original signer there, and an Actor its machine may not act as is flagged', { timeout: 60000 }, async () => {
   await withHub(async ({ project, server, replica }) => {
     // Member 0's own human Actor, as the client registers it, and member 1's.
-    const own = actorFor(personIdFor(project.keys[0].publicKey)), other = actorFor(personIdFor(project.keys[1].publicKey))
+    const own = actorFor(project.keys[0].machineId), other = actorFor(project.keys[1].machineId)
     for (const [id, handle] of [[own, 'member-zero'], [other, 'member-one']]) {
       await server.store.execute({ operationId: randomUUID(), actorId: 'alice', type: 'actor.register', payload: { id, handle, kind: 'human' } })
     }

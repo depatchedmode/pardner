@@ -22,18 +22,18 @@ const alice = n => `${ALICE}${String(n).padStart(2, '0').repeat(8)}`
 const view = doc => activityView({ entries: deriveAll(doc).values(), stateOf: signedByActor(doc), actorsOf, recordValid: () => true })
 const entryOf = (doc, hash) => view(doc).find(entry => entry.changes.some(change => change.hash === hash))
 
-test('each machine label preserves its fallback and truncation for malformed IDs', () => {
-  const machineId = 'machine-abcdefghijklmnopqrstuvwxyz'
+test('each machine label shows the last six characters and keeps the unknown-machine fallback', () => {
+  const machineId = 'did:key:z6MktwupdmLXVVqTzCw4i46r4uGyosGXRnR3XjN4Zq7oMMsw'
   const cases = [
-    [machineId, 'abcdef', 'abcdef'],
+    [machineId, '7oMMsw', '7oMMsw'],
     [[machineId], null, null],
     [12345678901234, null, null],
     ['', '', null],
-    ['abcdefghijklmnopqrstuvwxyz', 'ijklmn', 'ijklmn'],
-    ['short', '', ''],
-    ['machine-ab', 'ab', 'ab'],
-    [machineId.toUpperCase(), 'ABCDEF', 'ABCDEF'],
-    ['person-abcdefghijklmnopqrstuvwxyz', 'bcdefg', 'bcdefg'],
+    ['abcdefghijklmnopqrstuvwxyz', 'uvwxyz', 'uvwxyz'],
+    ['short', 'short', 'short'],
+    ['machine-ab', 'ine-ab', 'ine-ab'],
+    [machineId.toUpperCase(), '7OMMSW', '7OMMSW'],
+    ['person-abcdefghijklmnopqrstuvwxyz', 'uvwxyz', 'uvwxyz'],
   ]
   for (const [value, shortId, labelId] of cases) {
     const change = { state: 'signed', machineId: value }

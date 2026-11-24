@@ -26,11 +26,12 @@ signature refusal, and rejection by `verifyRecord`, `joinRequestRefusal` and
 `readHello`. It also checks that freshly generated keys keep their bytes and
 verify signatures.
 
-`personIdFor(publicKey)` is `person-` and 26 base32 characters of
-sha256("pardner/person/v1" ‖ raw key). `buildRecord(key, fields)` assigns metadata
-(records are version 2) and signs canonical JSON; it refuses a certification
-without its machine's consent or with a person ID not derived from its key.
-`verifyRecord(record, projectId, signerPublicKey)` checks authenticity and consent, not authority;
+DID tests reproduce the RFC, did:key specification and freeq vectors. Both
+identity kinds use the canonical Ed25519 DID profile. `buildRecord(key, fields)`
+signs version 3 canonical JSON. The first certification requires the person and
+machine DIDs to match. Pairing carries a separate person DID. The signed record
+and its embedded join request carry their keys in their DIDs.
+`verifyRecord(record, projectId, certifiedSigner)` checks authenticity and consent;
 genesis needs only projectId. `computeMembership(records, { projectId }?)` returns
 sorted active people, machines, agent names, removal IDs and rejected record IDs
 with reasons. It also reports who admitted each person and machine (`admittedBy`,

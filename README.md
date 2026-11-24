@@ -404,6 +404,12 @@ from making one.
 The [full list](docs/PARDNER-IMPLEMENTATION.md#what-is-not-enforced) has the
 rest. The remaining trust work is a [plan](docs/PARDNER-TRUST-PLAN.md).
 
+Machine IDs use the canonical Ed25519 `did:key` format. A person's ID is the
+DID of the machine they first started or joined a project with. Pairing another
+machine keeps the same person and Actors. Signed membership records and join
+requests use version 3 and carry the verification key in the machine DID.
+[Identity specification](docs/PARDNER-IDENTITY-SPEC.md)
+
 ### What to plan around
 
 - **One machine hosts each project.** Others sync through it. While it is
@@ -428,7 +434,7 @@ rest. The remaining trust work is a [plan](docs/PARDNER-TRUST-PLAN.md).
 ## Your data
 
 Everything lives in the data directory: `~/.pardner/client` for the client, or
-the `--data` path you chose. A schema 11 directory holds workspace metadata,
+the `--data` path you chose. A schema 12 directory holds workspace metadata,
 Automerge storage (the board and its signature document), the membership record
 store, the signature cache (`signatures.sqlite`), a service lock and local
 connection settings. The hub also holds the SQLite delivery ledger and

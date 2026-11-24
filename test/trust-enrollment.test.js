@@ -1,16 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { startClient } from '../lib/client-service.js'
-import { CLIENT_API, secret } from '../lib/client-identity.js'
+import { CLIENT_API, actorId, secret } from '../lib/client-identity.js'
 import { invitationData } from '../lib/client-invites.js'
 import { agentNameRecord, buildJoinRequest, confirmationCode, OFFER_TTL_MS } from '../lib/enrollment.js'
-import { generateMachineKey, personIdFor } from '../lib/machine-key.js'
-import { buildRecord } from '../lib/membership.js'
+import { generateMachineKey } from '../lib/machine-key.js'
+import { buildRecord, verifyRecord } from '../lib/membership.js'
 import { joinApproved } from '../support/enrollment.js'
 import { forge } from '../support/trust-records.js'
 import { sameComputerRoute } from '../support/client-workspace.js'
@@ -71,7 +71,7 @@ const operation = (person, project, title = 'Work') => person.client.runtime(per
 /** A join request from a throwaway machine key, as a stranger holding a leaked invitation would send it. */
 function strangerRequest(invitation, name = 'Mallory') {
   const { offer, secret: invitationSecret } = invitationData(invitation)
-  const key = generateMachineKey(), personId = offer.purpose === 'human' ? personIdFor(key.publicKey) : offer.personId
+  const key = generateMachineKey(), personId = offer.purpose === 'human' ? key.machineId : offer.personId
   const { request, mac } = buildJoinRequest(key, invitationSecret, { offer, personId, identity: { name, email: `${name.toLowerCase()}@example.test` },
     device: { id: randomUUID(), name: `${name} laptop` }, agent: { harnessId: 'openai-codex', name: `${name} agent` } })
   return { key, offer, body: { action: 'request', request, mac, records: [agentNameRecord(key, offer.projectId, personId, { harnessId: 'openai-codex', name: `${name} agent` })], recipientProof: secret() } }
@@ -103,6 +103,17 @@ test('a Human invitation: the joiner waits, both screens show one code, and the 
   await alice.call(`/projects/${project.id}/join-requests/${request.id}/approve`, { code: request.code })
   const { project: joined } = await bob.call('/join', { invitation, operationId: 'join' })
   assert.equal(joined.id, project.id)
+  const replica = bob.client.project(project.id)
+  const saved = await readFile(join(bob.directory, 'projects', replica.key, 'workspace.json'), 'utf8')
+  assert.equal(JSON.parse(saved).hubCheckpoint.hub, alice.machineId)
+  const { records: signedRecords } = await (await alice.client.runtime(alice.client.project(project.id))).request('/automerge/membership/log')
+  const genesis = signedRecords.find(record => record.kind === 'project.genesis')
+  const admission = signedRecords.find(record => record.kind === 'member.add')
+  assert.deepEqual([genesis.v, genesis.signer, genesis.subject, genesis.machineId], [3, alice.machineId, alice.machineId, alice.machineId])
+  assert.deepEqual([admission.v, admission.signer, admission.subject, admission.machineId], [3, alice.machineId, bob.machineId, bob.machineId])
+  assert.deepEqual([admission.joinRequest.v, admission.joinRequest.personId, admission.joinRequest.machineId], [3, bob.machineId, bob.machineId])
+  for (const record of [genesis, admission, admission.joinRequest]) assert.equal(Object.hasOwn(record, 'publicKey'), false)
+  assert.equal(verifyRecord(admission, project.id, alice.machineId).valid, true)
   const records = await membership(alice, project)
   const bobPerson = records.people.find(person => person.id === bob.personId)
   assert.equal(bobPerson.role, 'member')
@@ -207,6 +218,8 @@ test('pairing: a person’s own machine or an admin approves, and nobody else ca
   const afterOwn = await membership(alice, project)
   assert.equal(afterOwn.machines.find(machine => machine.id === desktop.machineId).personId, bob.personId)
   assert.equal(afterOwn.people.length, 3, 'pairing never creates a second person')
+  assert.notEqual(desktop.machineId, desktop.personId)
+  assert.equal(bob.personId, bob.machineId)
 
   // Bob loses every machine; the owner pairs a new one for him.
   const replacement = await participant(t, 'Bob replacement', { identity: false })
@@ -221,8 +234,8 @@ test('pairing: a person’s own machine or an admin approves, and nobody else ca
   assert.equal(offered.error, 'Only that person, the owner or an admin can pair a machine into their identity')
   const intruder = generateMachineKey()
   // Signed by Carol's machine, without any consent from the intruder's key.
-  const forged = forge(carol.client.registry.machineKey, { v: 2, projectId: project.id, kind: 'machine.add', subject: intruder.machineId,
-    personId: bob.personId, publicKey: intruder.publicKey, offer: {}, joinRequest: {}, approval: {} })
+  const forged = forge(carol.client.registry.machineKey, { v: 3, projectId: project.id, kind: 'machine.add', subject: intruder.machineId,
+    personId: bob.personId, offer: {}, joinRequest: {}, approval: {} })
   const submitted = await signed(carol, project, '/records', { records: [forged] })
   assert.equal(submitted.status, 403)
   assert.equal(submitted.result.error, 'Admissions enter only through an approved join request')
@@ -340,15 +353,59 @@ test('re-admission: a removed machine returns as a new key through pairing, a re
   await approve(returning, alice, back.invitation, 'back')
   const records = await membership(alice, project)
   assert.notEqual(returning.personId, bob.personId, 're-admission mints a new person ID')
+  assert.equal(returning.personId, returning.machineId)
+  for (const harness of [undefined, 'openai-codex']) {
+    assert.notEqual(actorId(returning.personId, harness), actorId(bob.personId, harness))
+  }
   assert.ok(records.removedPeople.includes(bob.personId))
   assert.deepEqual(records.people.filter(person => person.displayName === 'Bob').map(person => person.id), [returning.personId])
   assert.equal((await operation(returning, project, 'Back again')).result.savedLocally, true)
+})
+
+test('a paired machine keeps the person DID and Actors after the first machine is removed', { timeout: 90000 }, async t => {
+  const alice = await participant(t, 'Alice'), bob = await participant(t, 'Bob')
+  const { project } = await alice.call('/projects', { name: 'Paired identity', operationId: 'create' })
+  await approve(bob, alice, (await invite(alice, project, 'human')).invitation)
+  const desktop = await participant(t, 'Bob desktop', { identity: false })
+  await approve(desktop, bob, (await invite(bob, project, 'device')).invitation, 'pair')
+  await desktop.call(`/projects/${project.id}/revoke`, { kind: 'machine', id: bob.machineId, operationId: 'remove-first-machine' })
+  const members = await membership(alice, project)
+  assert.ok(members.removedMachines.includes(bob.machineId))
+  assert.equal(members.removedPeople.includes(bob.personId), false)
+  assert.equal(members.machines.find(machine => machine.id === desktop.machineId).personId, bob.machineId)
+  const saved = await operation(desktop, project, 'Same person')
+  assert.equal(saved.result.savedLocally, true)
+  const { actors } = await desktop.call(`/projects/${project.id}`)
+  for (const harness of [undefined, 'openai-codex']) {
+    assert.equal(actors.find(actor => actor.id === actorId(bob.personId, harness))?.humanId, bob.personId)
+  }
+})
+
+test('a Human invitation after the only machine is lost gives the returning person a new DID and Actors', { timeout: 90000 }, async t => {
+  const alice = await participant(t, 'Alice'), bob = await participant(t, 'Bob')
+  const { project } = await alice.call('/projects', { name: 'Lost key', operationId: 'create' })
+  await approve(bob, alice, (await invite(alice, project, 'human')).invitation)
+  const oldPersonId = bob.personId, lostMachineId = bob.machineId
+  await bob.client.stop()
+  await alice.call(`/projects/${project.id}/revoke`, { kind: 'machine', id: lostMachineId, operationId: 'remove-lost-key' })
+  const returning = await participant(t, 'Bob')
+  await approve(returning, alice, (await invite(alice, project, 'human')).invitation, 'return')
+  assert.equal(returning.personId, returning.machineId)
+  assert.notEqual(returning.personId, oldPersonId)
+  const { actors } = await alice.call(`/projects/${project.id}`)
+  for (const harness of [undefined, 'openai-codex']) {
+    const oldActor = actorId(oldPersonId, harness), newActor = actorId(returning.personId, harness)
+    assert.notEqual(oldActor, newActor)
+    assert.equal(actors.find(actor => actor.id === oldActor)?.humanId, oldPersonId)
+    assert.equal(actors.find(actor => actor.id === newActor)?.humanId, returning.personId)
+  }
 })
 
 test('an enrolled replica reopens offline after approval and keeps saving locally', { timeout: 90000 }, async t => {
   const alice = await participant(t, 'Alice'), bob = await participant(t, 'Bob')
   const { project } = await alice.call('/projects', { name: 'Offline', operationId: 'create' })
   await approve(bob, alice, (await invite(alice, project, 'human')).invitation)
+  const original = await bob.call('/session')
   await alice.client.stop()
   await bob.client.stop()
   const reopened = await startClient({ directory: bob.directory, port: 0 })
@@ -361,6 +418,8 @@ test('an enrolled replica reopens offline after approval and keeps saving locall
     const saved = await response.json()
     assert.equal(response.status, 200, JSON.stringify(saved))
     assert.equal(saved.savedLocally, true); assert.equal(saved.syncPending, true)
+    assert.equal(reopened.registry.read().identity.id, original.identity.id)
+    assert.equal(reopened.registry.machineKey.machineId, original.device.machineId)
     const records = await (await reopened.runtime(reopened.project(project.id))).request('/automerge/membership')
     assert.ok(records.machines.some(machine => machine.id === reopened.registry.machineKey.machineId), 'the replica holds its own admission record offline')
   } finally {
@@ -372,10 +431,10 @@ test('confirmation codes depend on the offer, the joiner’s key and the nonce',
   const offer = { v: 1, projectId: 'a'.repeat(64), offerId: 'offer-identifier-1', signature: 'x' }
   const one = generateMachineKey(), two = generateMachineKey()
   const nonce = secret()
-  assert.equal(confirmationCode(offer, one.publicKey, nonce), confirmationCode(offer, one.publicKey, nonce))
-  assert.notEqual(confirmationCode(offer, one.publicKey, nonce), confirmationCode(offer, two.publicKey, nonce))
-  assert.notEqual(confirmationCode(offer, one.publicKey, nonce), confirmationCode(offer, one.publicKey, secret()))
-  assert.notEqual(confirmationCode(offer, one.publicKey, nonce), confirmationCode({ ...offer, offerId: 'offer-identifier-2' }, one.publicKey, nonce))
+  assert.equal(confirmationCode(offer, one.machineId, nonce), confirmationCode(offer, one.machineId, nonce))
+  assert.notEqual(confirmationCode(offer, one.machineId, nonce), confirmationCode(offer, two.machineId, nonce))
+  assert.notEqual(confirmationCode(offer, one.machineId, nonce), confirmationCode(offer, one.machineId, secret()))
+  assert.notEqual(confirmationCode(offer, one.machineId, nonce), confirmationCode({ ...offer, offerId: 'offer-identifier-2' }, one.machineId, nonce))
 })
 
 test('the hub’s routes for other machines take no bearer token, serve no stranger and refuse a route they never advertised', { timeout: 60000 }, async t => {

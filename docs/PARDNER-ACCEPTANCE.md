@@ -13,7 +13,7 @@ From a fresh checkout using Node 24.11.1:
 ```sh
 npm ci
 npm ci --prefix ui-prototype
-npx playwright install chromium
+npx playwright install chromium webkit
 npm run verify
 npm run test:acceptance -- --repeat 20 --seed 1
 ```
@@ -140,11 +140,19 @@ replica, created task count, final task fields, comment contents/cardinality, an
 handoff comment/mention effects.
 
 As it enrolls, pairs and names agents, the runner also records the membership
-records each action must produce: creating the project, the genesis and the
+records each action must produce. The signer and person in attributed changes
+must be canonical Ed25519 DIDs. Creating or admitting a person uses their
+first machine's DID, and pairing Alice's other machine keeps her person DID.
+The expected records are: creating the project, the genesis and the
 creator's setup-agent label, by Alice's desktop; pairing Alice's laptop, its
 certification by the desktop and the laptop's own setup-agent label; admitting Bob,
 his certification by the desktop and his laptop's setup-agent label; and Builder's
 and Reviewer's labels, each by the laptop it runs on.
+
+The focused identity tests cover version 3 membership and join requests,
+reopening an enrolled replica offline, refusing and preserving pre-DID data,
+and the identities used after loss or removal. The CLI and browser suites
+check the labels and machine DID suffixes people see.
 
 Within ten seconds of convergence (`attribution` in the timings), every replica
 must have derived and checked every board change, show every one in an Activity

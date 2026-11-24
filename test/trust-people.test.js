@@ -122,7 +122,7 @@ test('the People view shows each person’s role, machines, agents and who let t
   const listing = peopleListing(owner)
   assert.match(listing, /^People: 3 people, 4 machines, 3 agents\n/)
   assert.match(listing, /Carol · Member · carol@example\.test\n {2}Let in by Bob\n/)
-  assert.match(listing, /Alice laptop \[[a-z2-7]{6}\] · this machine · hosts the project/)
+  assert.match(listing, /Alice laptop \[Machine ID [1-9A-HJ-NP-Za-km-z]{6}\] · this machine · hosts the project/)
 })
 
 test('removal is shown as removed, with who removed it, to everyone and to the removed party', { timeout: 180000 }, async t => {

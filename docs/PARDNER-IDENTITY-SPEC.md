@@ -1,11 +1,7 @@
 # Pardner identity specification: did:key and key validity
 
-Status: **decided; partly implemented.**
-
-- **Key validity** (section 3) is implemented (#253).
-- **did:key identifiers** (sections 1, 2, 4 and 5) are decided and not yet implemented (#254). Until they land, machine and person IDs have the form described in [the trust design](PARDNER-TRUST-DESIGN.md#1-machine-keys), and [README](../README.md#current-implementation) says what is enforced.
-
-This file is the rule #254 implements. An implementation in any language must accept and refuse exactly what it says, and reproduce the vectors in section 7.
+This specification defines Pardner's implemented identity format. An
+implementation in any language must reproduce the vectors in section 7.
 
 ## Why
 
@@ -46,7 +42,7 @@ The parser returns the key or refuses. It never repairs its input: no trimming, 
 
 ## 3. Key validity
 
-Implemented in `rawPublicKey()` in `lib/machine-key.js` (#253).
+The shared Ed25519 check serves both `rawPublicKey()` and the DID parser.
 
 A 32-byte Ed25519 public key is refused when either of these holds. Clear the top bit of the last byte, and read the 32 bytes as a little-endian integer `y`; `p` is 2^255 − 19.
 
@@ -59,7 +55,7 @@ c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a
 ```
 
 - **Why.** Against a small-order key, a signature anyone can write verifies. Node 24.11.1, which the acceptance contract pins, accepts those keys; Node 24.22.1 refuses them. The rule therefore does not rely on the runtime.
-- **Where.** Wherever a key enters: records, join requests, the handshake and the registry. All of them go through the one function.
+- **Where.** Wherever a key enters: records, join requests, the handshake and the registry. All of them use the shared key validity check.
 - **Not covered.** Mixed-order keys. They do not allow a forgery without the private key.
 
 ## 4. Person DID
@@ -76,7 +72,7 @@ c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a
 |---|---|
 | A second machine | It joins the person by `machine.add`. The person's DID does not change |
 | The first machine is removed or lost | The person keeps their DID and membership through their other machines. Outside Pardner that DID is still controlled by the old key: a did:key cannot be revoked or updated. Pardner's removal covers Pardner only |
-| The only machine is lost | The person is re-admitted as a new person, with a new DID and new Actor IDs |
+| The only machine is lost | Re-admission through a Human invitation gives the person a new DID and new Actor IDs. An authorized Device invitation can pair a replacement into a person who still belongs to the project |
 | A person is removed and later re-admitted | A removal is permanent for that DID. They return as a new person |
 
 ## 5. Records and derived IDs
@@ -91,7 +87,7 @@ c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a
 
 ## 6. Compatibility
 
-- **Storage-breaking.** Record, join request, registry and schema versions rise.
+- **Storage-breaking.** Membership records and join requests use version 3, client registries use version 5, and boards use schema 12.
 - **Prior installs are refused and preserved.** A client directory made before the change is refused with the existing message. Its registry and data are left unchanged; the refusal can add an empty lock file. Nothing is migrated or deleted.
 - People start a fresh client directory and new projects.
 
@@ -106,6 +102,8 @@ c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a
 | Machine DID | `did:key:z6MktwupdmLXVVqTzCw4i46r4uGyosGXRnR3XjN4Zq7oMMsw` | `did:key:z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp` |
 | Short form | `7oMMsw` | `mDooWp` |
 | Automerge actor prefix, hex | `21fe31dfa154a261626bf854046fd227` | `139e3940e64b5491722088d9a0d74162` |
+
+The [freeq device-key vector](https://github.com/freeq-irc/freeq/blob/36fca961d38fd07a7c43eb8bcf505cd43d596a20/spec/identity-record-vectors.json) with a seed of 32 bytes of `0x01` yields `did:key:z6Mkon3Necd6NkkyfoGoHxid2znGc59LU3K7mubaRcFbLfLX`.
 
 **Refused keys** (32 bytes, hex)
 

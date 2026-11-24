@@ -51,8 +51,7 @@ The local client is the only way people open the board; the standalone
 
 Confirm the profile suggested by the local Git configuration. Git name and email
 are profile defaults, not proof of identity; Pardner generates the identity and
-does not edit Git settings. The identity's person ID is derived from this client
-directory's machine key: a person belongs to the machine they first start or join
+does not edit Git settings. Your person ID is the Ed25519 `did:key` of the machine you first start or join
 a project with. Start a project or join one. The setup agent becomes
 an Actor with the first project. Registration alone does not show it as active.
 
@@ -73,7 +72,9 @@ Automerge database and needs its local client service to stay available.
 
 The first `client serve` creates `machine-key.pem` (mode 0600), an Ed25519 key
 that makes this directory one machine. `client status` reports its machine ID as
-`device.machineId`. The key itself is never shown or given to a browser or agent.
+`device.machineId` and your person DID as `identity.id`. The machine DID carries
+the public key. Pardner keeps the private key in the client directory and its
+local runtimes.
 Later starts load the same key. A key that is missing, unreadable, linked,
 readable by others, or from another directory stops the client with a clear
 error. Pardner never creates a replacement key for an existing directory.
@@ -112,9 +113,9 @@ replica keeps a removed admin's earlier admissions.
 
 ## Signed changes
 
-Every Automerge change this machine makes carries an actor ID that begins with its
-machine ID's digest and ends with 8 random bytes drawn each time a project's
-documents are loaded. The project runtime signs each change its own write path
+Every Automerge change carries an actor ID with the first 16 bytes of the
+SHA-256 of the machine's raw public key, followed by 8 random bytes drawn each
+time the project's documents are loaded. The project runtime signs each change its own write path
 makes (operations, the record gate, record write-backs and the board's creation)
 at once with the machine key, over the project ID and the change's hash; it never
 signs a change because of the actor it carries. It saves the signature
@@ -248,11 +249,11 @@ signature document. The member asks only once every signature it made is written
 into the signature document whose heads it sends, so each of its acknowledged
 changes has its signature on the hub's disk too.
 
-Directories made before machine keys are refused, whether a client directory
-without `machine-key.pem` or a storage directory with an earlier schema. Schema 11
-storage, with signed changes and equivocation reports kept with their proof, and version 4 client
-directories are the current ones. Earlier directories are left byte-for-byte unchanged and are never migrated.
-Start Pardner with a fresh `--data` directory.
+Current clients use registry version 5 and board schema 12. Membership records
+and join requests use version 3 and carry public keys in machine DIDs. Pardner
+refuses older directories and preserves their registry, keys and project data.
+It can create an empty lock file when checking an older directory. Start with a
+fresh `--data` directory.
 
 ## Invite and join
 
@@ -510,6 +511,14 @@ browser shows **You were removed from “…”**, **This computer was removed f
 and the export command. It never shows the signed-out screen for a removal, and it
 offers no Retry: removal is permanent for that machine and person.
 
+A paired machine has its own machine DID and acts for the existing person DID.
+If the first machine is lost or removed, other paired machines keep that
+person's project membership and Actors. Outside Pardner, whoever has the first
+machine's private key can still use its DID. A Human invitation after the loss
+of the only machine gives the returning person a new DID and new Actors. If
+the person still belongs to the project, an authorized Device invitation can
+instead pair a replacement with their existing DID.
+
 Removals are permanent for that machine key and person ID. A key that was ever
 certified for two different people is removed too. A removed machine
 returns as a new machine: start Pardner with a fresh `--data` directory on that
@@ -534,7 +543,7 @@ After creating a project, Pardner suggests pairing a second machine: if the owne
 loses every machine, nobody can remove or demote admins any more.
 
 `client people --project ID` prints the panel's facts as text: each person with
-their role, who let them in, machines (with short IDs and online or last seen),
+their role, who let them in, machines (with the final six characters of each machine DID and online or last seen),
 agents and person ID, then removed entries. `--json` prints the same view as data.
 `client invites --project ID [--limit N] [--offset N]` lists invitations newest
 first, `client revoke-invite --project ID --invite INVITE_ID` revokes one, and

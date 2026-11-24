@@ -53,6 +53,12 @@ admission middleware and that it closes after `listenersClosed` and before `stor
 mapped file; `npm run verify:model` fails with exit code 2 when any of those
 files changes or when an anchor string no longer occurs exactly once.
 
+The #254 mapping review covered the standalone genesis identity and the key
+used to verify a hub checkpoint. The changes leave the modeled request,
+persistence and shutdown order intact. The check reached all ten witnesses
+across 174,614 states. Checkpoint signature verification has its own runtime
+tests.
+
 State abstraction. Document heads are a pair `{r, h}`: the number of
 replica-authored edits and hub-authored operations the document contains. Each
 side authors edits sequentially, so Automerge `hasHeads(doc, heads)` is the
