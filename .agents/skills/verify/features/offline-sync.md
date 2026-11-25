@@ -86,11 +86,17 @@ are refused without changing their bytes.
 `test/storage-durability.test.js` covers the direct loader and its save path.
 The reopened board has the upstream loader's heads and view, through kills
 during and just after open, with Activity equal once it is derived again;
-overlapping snapshots with concurrent incremental tails load whole. A read-only
-reopen writes nothing, for a board and for its signature document. The first
-edit adds one small chunk, compaction follows the upstream rule and naming, and
-the upstream loader reads the result. A failed save and a compaction whose
-removal fails are retried and are not reported as persisted early. A damaged
+overlapping snapshots with concurrent incremental tails load whole. An intact
+read-only reopen writes neither document. A published replacement can finish
+cleanup when it reopens, and a persistent unlink failure allows later saves.
+The first edit adds a small chunk. Small documents compact to a full snapshot. Large
+documents pack incremental chunks in bounded batches and keep the existing
+snapshot. Both use Repo's chunk naming and can be read by the upstream loader.
+Tests exercise failures before publication and during cleanup, reopening exact
+heads, and a checkpoint pinned before compaction. A failed save does not
+advance the heads reported as persisted. The operation-count regression
+checks packing on a reopened document and refusal before the first write
+on an oversized new document. A damaged
 stored chunk refuses to open at the repo and at the runtime with
 `DAMAGED_STORAGE`, every stored file keeps its bytes, and the restored chunk
 opens the whole board. The open is checked not to announce every patch of the
