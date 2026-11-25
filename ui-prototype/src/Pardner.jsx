@@ -603,7 +603,6 @@ export function Workspace({ config, reloadConfiguration, session }) {
         }
       }
       setConfirmedOperation({ ...operation, editDraft })
-      setError(null)
       if (operation.type === 'comment.add') {
         const { taskId, text } = operation.payload
         setCommentDrafts(current => {
@@ -619,8 +618,9 @@ export function Workspace({ config, reloadConfiguration, session }) {
         setSelected(receipt.result.taskId)
       })
       client.savePending(null)
-      setPending(null)
-      await refresh()
+      // Keep the retry disabled until the view can reflect the confirmed write.
+      try { await refresh() } finally { setPending(null) }
+      setError(null)
       return receipt
     } catch (failure) {
       setError(failure)

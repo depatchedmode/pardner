@@ -477,52 +477,173 @@ it('saves a reopened document\'s edits as small chunks, compacts them as Repo do
   })
 })
 
-it('keeps an edit whose compaction could not remove the chunks it replaced, and removes them at the next one', async () => {
+it('reopens a published snapshot and saves later edits while obsolete files cannot be removed', async () => {
   const A = await import('@automerge/automerge')
   await withStorage(async directory => {
-    const writer = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
-    let url, documentId
-    try {
-      // Under 1,024 bytes of snapshot, so every changed save is a compaction.
-      const handle = writer.create({ value: 'saved' });
-      ({ url, documentId } = handle)
-      await writer.flush()
-    } finally { await writer.shutdown() }
-    const [original] = await storedChunks(directory, documentId)
-    const storage = new NodeFSStorageAdapter(directory)
-    const remove = storage.remove.bind(storage)
-    let fail = true
-    storage.remove = async (...args) => {
-      if (fail) throw Object.assign(new Error('injected removal failure'), { code: 'EIO' })
-      return remove(...args)
+    const storageWithBlockedRemoval = () => {
+      const storage = new NodeFSStorageAdapter(directory)
+      storage.remove = async () => { throw Object.assign(new Error('injected removal failure'), { code: 'EIO' }) }
+      return storage
     }
-    const reader = new DurableRepo({ storage })
+    const writer = new DurableRepo({ storage: storageWithBlockedRemoval() })
+    const handle = writer.create({ count: 0 })
+    const { url, documentId } = handle
+    await writer.flush()
+    const [original] = await storedChunks(directory, documentId)
     try {
-      const handle = await reader.find(url)
-      await reader.flush()
-      const before = reader.persistedHeads.get(documentId)
-      handle.change(doc => { doc.value = 'edited' })
-      await assert.rejects(reader.flush(), { code: 'EIO' })
-      assert.deepEqual(reader.persistedHeads.get(documentId), before, 'a failed save was reported as persisted')
-      const interrupted = await storedChunks(directory, documentId)
-      assert.equal(interrupted.length, 2)
-      assert.ok(interrupted.includes(original))
-      // Both snapshots on disk, as after a crash between the write and the removal: a new process reads the edit.
-      const crashed = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
-      try { assert.equal((await crashed.find(url)).doc().value, 'edited') } finally { await crashed.shutdown() }
+      handle.change(doc => { doc.count++ })
+      await writer.flush()
+      assert.deepEqual(writer.persistedHeads.get(documentId), A.getHeads(handle.doc()))
+      assert.equal((await storedChunks(directory, documentId)).length, 2)
+    } finally { await writer.shutdown() }
 
-      fail = false
-      await reader.flush()
-      assert.deepEqual(reader.persistedHeads.get(documentId), A.getHeads(handle.doc()))
-      assert.deepEqual(await storedChunks(directory, documentId), interrupted, 'the retry wrote the document again')
-      handle.change(doc => { doc.value = 'edited again' })
-      await reader.flush()
-      const compacted = await storedChunks(directory, documentId)
-      assert.equal(compacted.length, 1)
-      assert.ok(!interrupted.includes(compacted[0]))
-    } finally { fail = false; await reader.shutdown() }
-    const final = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
-    try { assert.equal((await final.find(url)).doc().value, 'edited again') } finally { await final.shutdown() }
+    const reopened = new DurableRepo({ storage: storageWithBlockedRemoval() })
+    let expected
+    try {
+      const doc = await reopened.find(url)
+      await reopened.flush()
+      assert.equal(doc.doc().count, 1)
+      assert.deepEqual(reopened.persistedHeads.get(documentId), A.getHeads(doc.doc()))
+      for (let edit = 0; edit < 2; edit++) {
+        doc.change(value => { value.count++ })
+        await reopened.flush()
+        expected = A.getHeads(doc.doc())
+        assert.deepEqual(reopened.persistedHeads.get(documentId), expected)
+      }
+      assert.equal((await storedChunks(directory, documentId)).length, 4)
+    } finally { await reopened.shutdown() }
+
+    const unreadableJournal = new NodeFSStorageAdapter(directory)
+    const load = unreadableJournal.load.bind(unreadableJournal)
+    unreadableJournal.load = async key => {
+      if (key[1] === 'incremental-compaction') throw Object.assign(new Error('injected journal read failure'), { code: 'EIO' })
+      return load(key)
+    }
+    const recoveredWithUnreadableJournal = new DurableRepo({ storage: unreadableJournal })
+    try {
+      const found = await recoveredWithUnreadableJournal.find(url)
+      await recoveredWithUnreadableJournal.flush()
+      assert.equal(found.doc().count, 3)
+      assert.deepEqual(recoveredWithUnreadableJournal.persistedHeads.get(documentId), expected)
+    } finally { await recoveredWithUnreadableJournal.shutdown() }
+
+    const adapter = new NodeFSStorageAdapter(directory)
+    const final = new DurableRepo({ storage: adapter })
+    try {
+      const doc = await final.find(url)
+      await final.flush()
+      assert.equal(doc.doc().count, 3)
+      assert.deepEqual(final.persistedHeads.get(documentId), expected)
+      const cleaned = await storedChunks(directory, documentId)
+      assert.equal(cleaned.length, 3)
+      assert.ok(!cleaned.includes(original))
+      assert.equal(await adapter.load([documentId, 'incremental-compaction']), undefined)
+    } finally { await final.shutdown() }
+  })
+})
+
+it('rejects an oversized first save before publishing any history', async () => {
+  await withStorage(async directory => {
+    const repo = new DurableRepo({ storage: new NodeFSStorageAdapter(directory), snapshotMaxOps: 1 })
+    const handle = repo.create({ left: 1, right: 2 })
+    try {
+      await assert.rejects(repo.flush(), { code: 'INITIAL_DOCUMENT_TOO_LARGE' })
+      assert.equal(repo.persistedHeads.has(handle.documentId), false)
+      assert.deepEqual(await storedChunks(directory, handle.documentId), [])
+    } finally {
+      await assert.rejects(repo.shutdown(), { code: 'INITIAL_DOCUMENT_TOO_LARGE' })
+    }
+  })
+})
+
+it('reopens both sides of interrupted incremental packing and preserves a pinned checkpoint', async () => {
+  const A = await import('@automerge/automerge')
+  const { createHash } = await import('node:crypto')
+  const { Repo, generateAutomergeUrl, parseAutomergeUrl } = await import('@automerge/automerge-repo')
+  await withStorage(async directory => {
+    const url = generateAutomergeUrl()
+    const { documentId } = parseAutomergeUrl(url)
+    const adapter = new NodeFSStorageAdapter(directory)
+    const digest = bytes => createHash('sha256').update(bytes).digest('hex')
+    let doc = A.from({ count: 0 })
+    const snapshot = A.save(doc)
+    assert.ok(snapshot.length < 1024)
+    await adapter.save([documentId, 'snapshot', digest(A.getHeads(doc).join(''))], snapshot)
+    const append = async change => {
+      const heads = A.getHeads(doc)
+      doc = A.change(doc, change)
+      const delta = A.saveSince(doc, heads)
+      await adapter.save([documentId, 'incremental', digest(delta)], delta)
+    }
+    for (let index = 0; index < 8; index++) await append(value => { value.count++ })
+    const acknowledged = A.getHeads(doc)
+    const original = await storedChunks(directory, documentId)
+    A.free(doc)
+
+    const pin = join(directory, 'pinned')
+    const checkpoint = new NodeFSStorageAdapter(pin)
+    for (const kind of ['snapshot', 'incremental']) {
+      for (const { key } of await adapter.loadRange([documentId, kind])) {
+        const target = checkpoint.getFilePath(key)
+        await fs.mkdir(join(target, '..'), { recursive: true })
+        await fs.link(adapter.getFilePath(key), target)
+      }
+    }
+    const run = async (failure, expectedHeads, expectedCount) => {
+      const storage = new NodeFSStorageAdapter(directory)
+      const save = storage.save.bind(storage)
+      const remove = storage.remove.bind(storage)
+      let removed = 0
+      if (failure === 'publish') storage.save = async (key, data) => {
+        if (key[1] === 'incremental') throw Object.assign(new Error('before pack publication'), { code: 'EIO' })
+        return save(key, data)
+      }
+      if (failure === 'cleanup') storage.remove = async key => {
+        if (key[1] === 'incremental' && removed++ > 0) throw Object.assign(new Error('during pack cleanup'), { code: 'EIO' })
+        return remove(key)
+      }
+      const repo = new DurableRepo({ storage, snapshotMaxOps: 8 })
+      try {
+        const handle = await repo.find(url)
+        await repo.flush()
+        assert.equal(handle.doc().count, expectedCount)
+        assert.deepEqual(repo.persistedHeads.get(documentId), expectedHeads)
+        if (!failure) return
+        handle.change(value => { value.count++ })
+        if (failure === 'publish') {
+          await assert.rejects(repo.flush(), { code: 'EIO' })
+          assert.deepEqual(repo.persistedHeads.get(documentId), expectedHeads)
+        } else {
+          await repo.flush()
+          assert.deepEqual(repo.persistedHeads.get(documentId), A.getHeads(handle.doc()))
+          assert.ok(removed > 1, 'cleanup stopped after replacing at least one input')
+        }
+        return A.getHeads(handle.doc())
+      } finally {
+        await repo.shutdown().catch(error => {
+          if (!failure || error.code !== 'EIO') throw error
+        })
+      }
+    }
+    await run('publish', acknowledged, 8)
+    assert.deepEqual(await storedChunks(directory, documentId), original)
+    const staged = await new NodeFSStorageAdapter(directory).load([documentId, 'incremental-compaction'])
+    assert.ok(staged, 'publication stopped after the cleanup plan was saved')
+    const recoveredHeads = await run('cleanup', acknowledged, 8)
+    await run(null, recoveredHeads, 9)
+    const compacted = await storedChunks(directory, documentId)
+    assert.equal(compacted.length, 2, 'the original snapshot and the new pack')
+    assert.equal(await adapter.load([documentId, 'incremental-compaction']), undefined)
+    const stock = new Repo({ storage: new NodeFSStorageAdapter(directory) })
+    const pinned = new DurableRepo({ storage: checkpoint })
+    try {
+      assert.deepEqual(A.getHeads((await stock.find(url)).doc()), recoveredHeads)
+      assert.deepEqual(await storedChunks(pin, documentId), original)
+      assert.deepEqual(A.getHeads((await pinned.find(url)).doc()), acknowledged)
+    } finally {
+      await stock.shutdown()
+      await pinned.shutdown()
+    }
   })
 })
 

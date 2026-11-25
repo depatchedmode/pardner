@@ -887,8 +887,24 @@ for (const engine of [chromium, webkit]) it(`shows errors where the work is in $
     assert.notEqual(slot.position, 'fixed', 'the page error is in normal flow')
     assert.ok(slot.top >= slot.header - 1, `the page error sits under the header: ${JSON.stringify(slot)}`)
     assert.equal(await page.getByRole('button', { name: 'Dismiss', exact: true }).count(), 0)
-    await page.getByRole('button', { name: 'Retry saved request', exact: true }).click()
-    await page.getByRole('button', { name: 'Retry saved request', exact: true }).waitFor({ state: 'hidden' })
+    const retry = page.getByRole('button', { name: 'Retry saved request', exact: true })
+    const { promise: refreshReleased, resolve: releaseRefresh } = Promise.withResolvers()
+    const holdRefresh = async route => {
+      await refreshReleased
+      await route.continue()
+    }
+    await page.route('**/automerge/doc', holdRefresh)
+    try {
+      const refreshing = page.waitForRequest('**/automerge/doc')
+      await retry.click()
+      await refreshing
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+      assert.equal(await retry.isVisible(), true, 'retry stays visible while the confirmed board is loading')
+    } finally {
+      releaseRefresh()
+      await page.unroute('**/automerge/doc', holdRefresh)
+    }
+    await retry.waitFor({ state: 'hidden' })
     assert.equal((await task(taskId)).comments.filter(comment => comment.content === 'Replay this comment once').length, 1)
     assert.equal(attempts.length, 3)
     assert.deepEqual(attempts[0], attempts[2])

@@ -247,7 +247,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: true,
     maps: [
       { file: REPO, anchor: 'const result = this.persistenceQueue.then(operation)', note: 'one job at a time, FIFO' },
-      { file: REPO, anchor: 'await this.saveDocument(documentId, doc)', note: 'persistDocument reads the current document' },
+      { file: REPO, anchor: 'await this.saveDocument(documentId, doc)', note: 'waits for durable publication; cleanup failures leave the published heads eligible for acknowledgement' },
       { file: REPO, anchor: 'this.persistedHeads.set(documentId, heads)' },
       { file: REPO, anchor: 'this.storageError = error\n        throw error', note: 'flush failure propagates to the caller' },
     ],

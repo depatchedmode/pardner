@@ -248,6 +248,13 @@ test('a profile edit renames the person on every member’s board; agent names s
   assert.equal(row(await people(alice, project), 'Robert').email, 'robert@example.test')
   const agent = Object.values(aliceBoard).find(actor => actor.kind === 'agent' && actor.humanId === bob.personId)
   assert.ok(agent && agent.displayName !== 'Robert', 'agent names are fixed at registration')
+  await alice.call(`/projects/${project.id}/profile`, { name: 'Alicia', email: 'alicia@example.test', operationId: 'rename-owner' })
+  const renamed = await eventually(async () => {
+    const { doc } = await bob.call(`/projects/${project.id}/api/automerge/doc`)
+    const actor = Object.values(doc.actors).find(actor => actor.kind === 'human' && actor.humanId === alice.personId)
+    return actor?.displayName === 'Alicia' && actor
+  }, 'Bob’s board never picked up the signed rename')
+  assert.equal(renamed.gitIdentity.email, 'alicia@example.test')
   // Only the person's own machines set their profile.
   const forged = await alice.fail(`/projects/${project.id}/profile`, { name: '', email: 'x@example.test', operationId: 'blank' })
   assert.equal(forged.error, 'Supply a name')

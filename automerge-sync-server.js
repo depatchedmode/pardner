@@ -37,6 +37,7 @@ const REQUEST_LIMIT = '100kb'
 const MACHINE_ROUTES = new Set([AUTOMERGE_PATHS.syncAck, '/automerge/attribution'])
 /** How long a second sync session for one machine waits for the first to answer a ping before the first is presumed gone. */
 const DUPLICATE_PROBE_MS = 3000
+const DOCUMENT_UPDATE_WINDOW_MS = 50
 const HUB_WAITING_MESSAGE = 'This hub was restored or fell behind, and waits to catch up with a current member machine before it serves another machine. '
   + 'If no machine holds newer state, its operator can run pardner client resume --project ID on the hub.'
 
@@ -107,6 +108,7 @@ class AutomergeSyncServer {
       role: 'hub', actors: options.actors ?? [],
     })
     this.connectedClients = new Set()
+    this.documentUpdateTimer = null
     this.app = express()
     this.wssJson = null
     this.nativeWsServer = null
@@ -180,7 +182,7 @@ class AutomergeSyncServer {
 
     await this.store.init()
     this.waits = new WorkspaceWaits(this.store)
-    this.onDocumentChange = () => this.broadcastDocumentUpdate()
+    this.onDocumentChange = () => this.scheduleDocumentUpdate()
     this.onRuntimeStatus = status => this.broadcastMessage({ type: 'sync-status', status })
     this.onMembership = () => this.enforceMembership()
     this.store.docHandle.on('change', this.onDocumentChange)
@@ -269,6 +271,8 @@ class AutomergeSyncServer {
 
   async stop() {
     this.stopping = true
+    clearTimeout(this.documentUpdateTimer)
+    this.documentUpdateTimer = null
     this.sessions?.clear()
     // Stop both listeners before draining upgraded sockets and in-flight requests.
     const listenersClosed = Promise.allSettled([
@@ -1075,6 +1079,19 @@ class AutomergeSyncServer {
     }
   }
   
+  scheduleDocumentUpdate() {
+    if (this.stopping || this.connectedClients.size === 0 || this.documentUpdateTimer) return
+    // Start the window at the first update so continuous sync cannot postpone publication.
+    this.documentUpdateTimer = setTimeout(() => {
+      this.documentUpdateTimer = null
+      try {
+        this.broadcastDocumentUpdate()
+      } catch (error) {
+        this.logger.error?.('Could not publish board update', error)
+      }
+    }, DOCUMENT_UPDATE_WINDOW_MS)
+  }
+
   broadcastDocumentUpdate() {
     if (this.connectedClients.size === 0) return
     this.broadcastMessage({

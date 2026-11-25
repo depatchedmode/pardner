@@ -81,7 +81,7 @@ and one WebSocket upgrade. Each request records its connection (`none`, `active`
 | `IdleConnectionEnds` | no | client closes a keep-alive socket, or Node's `keepAliveTimeout` fires | neither is assumed to happen (unfair), so the model cannot rely on the 5 s timeout |
 | `Handle(op)` | yes | `WorkspaceRuntime.execute` (refuses after `stopController.abort()`), `Workspace.apply`: `handle.change`, then `repo.flush` enqueued. The hub's membership record gate (`WorkspaceRuntime.addRecords`, `POST /automerge/membership/records`) is the same kind of request: it joins the operation queue, saves the records to the record store, makes one `handle.change` and answers after `repo.flush` | the change and the flush enqueue are one step; `STORAGE_FAILED` is the failure outcome of the flush |
 | `Handle(ack)` | yes | `WorkspaceRuntime.acknowledge` (no readiness guard), `Workspace.acknowledge`: `hasHeads` check, then `repo.flush` | same |
-| `PersistRun` | yes | `DurableRepo.enqueue` chain runs one job at a time; `persistDocument` saves the current document and updates `persistedHeads`; a failing flush rethrows | a job's save is atomic and either persists the whole current document or nothing. `storageFailures` bounds how many jobs may fail |
+| `PersistRun` | yes | `DurableRepo.enqueue` runs one job at a time. `persistDocument` updates `persistedHeads` after publication. A publication failure is returned to the caller | The model advances acknowledged storage heads in one step on success. Cleanup is best effort after publication and does not change the model's heads. `storageFailures` bounds publication failures |
 | `Respond` | yes | `res.json(...)` of the receipt or acknowledgement; `res.once('finish')` | writing the response and the socket becoming idle (keep-alive) or closed are one step |
 | `ReclaimIdle` | yes | `listen()` finish hook: `if (this.stopping) setImmediate(() => server.closeIdleConnections())` | the `setImmediate` callback eventually runs (fair); modeled for any idle connection while stopping, which also covers the idle connections `server.close()` closed itself |
 | `ListenerClosed` | yes | `server.close` callbacks settle (`listenersClosed`) | fires once no connection is active, idle or upgraded; one listener stands for the HTTP and WebSocket listeners, which `stop()` closes together with `Promise.allSettled` |
@@ -866,3 +866,31 @@ upgrades. `test/lifecycle-conformance.test.js` exercises wait cancellation,
 shutdown, and the saved-heads boundary in the server. The refreshed mapping
 passes the default check with 174614 states, 679456 transitions and all ten
 witnesses reachable. See `waitReview` in the evidence JSON.
+
+## Large-board compaction mapping review (#305)
+
+`SyncUp` schedules a background save on the shared board and signature queue.
+Signature background saves run at most once per second. Explicit flushes
+bypass that pacing.
+
+`PersistRun` waits for durable publication. Before replacing either a pack
+or a snapshot, the writer records the cleanup intent. The replacement reaches
+disk before any input is unlinked. Publication failure prevents the heads
+from advancing. Cleanup failure leaves a readable store and later edits can
+publish loose deltas. On restart the loader validates the Automerge files and
+checks the recorded replacement before it resumes cleanup. The model covers
+the acknowledgement boundary. Storage tests exercise interrupted publication,
+restart cleanup, and later saves during a persistent unlink failure.
+
+`StoreCloseBegin` refuses new background saves once the repo is closing.
+`StoreCloseComplete` waits for the queue to drain before releasing the
+storage lease. The existing model actions cover these boundaries.
+
+## Reconnect browser update mapping review
+
+Board and attribution notifications schedule one browser update per 50 ms
+window. Each update uses the latest board and attribution state. An initial
+subscription still gets a full view immediately. `StopBegin` cancels the
+pending update before closing listeners. Browser publication does not admit
+requests or acknowledge persistence. The modeled action guards and ordering
+still apply, and the WebSocket regression covers publication outside the model.

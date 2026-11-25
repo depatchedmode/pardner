@@ -2028,5 +2028,40 @@
     "witnessesReached": 10,
     "violation": null,
     "review": "Standalone genesis uses the machine DID as the person ID, and hub checkpoint verification derives its key from the hub DID. Genesis setup and checkpoint checks precede the modeled request handling. The adapter and membership write-back, operation queue and flush, head capture and acknowledgement guards, and shutdown drain all keep their existing ordering and atomicity assumptions."
+  },
+  "largeBoardCompactionReview": {
+    "issue": 305,
+    "node": "v24.11.1",
+    "mapping": {
+      "revision": "3754f9ca12c9c9f58e7d7c54c953058609353a82",
+      "files": {
+        "automerge-sync-server.js": "e7dbe8b1376688ddea2430b8fce10345856b9b7c200f00c2ac30c26b91f60246",
+        "lib/durable-repo.js": "0a5697df8f34bfc835dec869271b54de1dc833669714b9d01eecef9393974c27",
+        "lib/workspace-runtime.js": "c5c0f1adab6a9b78431e8248c7fee672a53492610b7679351640ee2fed7de3cc",
+        "lib/workspace.js": "d016e7b3e36b1bd5a951ab122ddcc5cce1f4e31f225ddd3a3007bfa08abda25a"
+      }
+    },
+    "command": "npm run verify:model -- --json",
+    "bounds": {
+      "replicaEdits": 2,
+      "hubOps": 1,
+      "ackAttempts": 1,
+      "storageFailures": 1
+    },
+    "states": 174614,
+    "transitions": 679456,
+    "witnessesReached": 10,
+    "violation": null,
+    "review": "Durable publication advances acknowledged heads. Snapshot and incremental pack journals preserve cleanup intent across restart, and an unlink failure never invalidates a published document. The model abstracts durable publication as atomic. Storage tests cover restart and actual filesystem interruption boundaries."
+  },
+  "reconnectBrowserUpdateReview": {
+    "node": "v24.11.1",
+    "serverSha256": "210bc73042f2aa74d3088289ae04e12d0d0d02e28ed82c688cddc179a57401cd",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "witnessesReached": 10,
+    "violation": null,
+    "review": "The browser broadcast timer is canceled synchronously at StopBegin. Admission, listener drain, persistence and acknowledgement retain their modeled boundaries. The model does not cover browser publication latency."
   }
 }
