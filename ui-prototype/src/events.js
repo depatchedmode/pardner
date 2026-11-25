@@ -1,15 +1,13 @@
+import { STATE_LABELS } from '../../shared/domain-vocab.js'
 import { machineLabel } from './attribution.js'
 
 /** A lookup table read with keys from the board: no prototype, so a status such as `__proto__` names nothing. */
 export const table = entries => Object.freeze(Object.assign(Object.create(null), entries))
 
-export const STATUS_LABELS = table({
-  backlog: 'Backlog', 'up-next': 'Up next', 'in-progress': 'In progress', review: 'Review', completed: 'Completed',
-  'dead-end': 'Dead end', abandoned: 'Abandoned', open: 'Open', proven: 'Proven', achieved: 'Achieved',
-})
+export const OUTCOME_LABELS = table(STATE_LABELS)
 
 const own = (map, key) => (map && typeof key === 'string' && Object.hasOwn(map, key) ? map[key] : null)
-const statusLabel = value => (typeof value === 'string' && Object.hasOwn(STATUS_LABELS, value) ? STATUS_LABELS[value] : String(value ?? ''))
+const outcomeLabel = value => (typeof value === 'string' && Object.hasOwn(OUTCOME_LABELS, value) ? OUTCOME_LABELS[value] : String(value ?? ''))
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 const quote = value => `“${value}”`
 const DELETED_NOTE = 'This comment was later deleted'
@@ -29,7 +27,7 @@ const actorPart = (actors, id) => (own(actors, id) ? current(actorName(actors, i
 
 function formatValue(field, value, lookups) {
   switch (field) {
-    case 'status': return statusLabel(value)
+    case 'outcome': return value === null ? 'No outcome' : outcomeLabel(value)
     case 'assignee': return value ? actorName(lookups.actors, value) : 'Unassigned'
     case 'priority': return String(value ?? '').toUpperCase()
     case 'title': return quote(value ?? '')
@@ -64,7 +62,7 @@ function meaningfulChanges(event) {
   return rest.length ? rest : changes
 }
 
-const DETAIL_ORDER = ['status', 'assignee', 'priority', 'title', 'tags', 'description', 'type', 'goalId']
+const DETAIL_ORDER = ['outcome', 'assignee', 'priority', 'title', 'tags', 'description', 'type', 'goalId']
 
 /** The detail line of an entry's field changes, as parts. */
 function detailParts(changes, lookups) {
@@ -76,7 +74,8 @@ function detailParts(changes, lookups) {
     else if (field === 'tags') lines.push([`Tags: ${formatValue('tags', change.new, lookups)}`])
     else if (field === 'type') lines.push(verifiedOld(change) ? [`Type: ${change.old ?? ''} → ${change.new ?? ''}`] : [`Type: ${change.new ?? ''}`])
     else {
-      const label = field === 'goalId' ? 'Goal' : field[0].toUpperCase() + field.slice(1)
+      const name = fieldName(field)
+      const label = name[0].toUpperCase() + name.slice(1)
       // A previous value the board did not hold then is not shown: only the value its change wrote.
       if (!verifiedOld(change)) lines.push([`${label}: `, formatPart(field, change.new, lookups)])
       else {
@@ -160,11 +159,10 @@ function describeEventParts(event, lookups = {}, { within = null } = {}) {
   }
   const vein = named('vein', lookups.veins, 'an unknown vein')
   const goal = named('goal', lookups.goals, 'an unknown goal')
-  const status = key => ({ status: key, label: statusLabel(key) })
+  const outcome = key => ({ status: key, label: outcomeLabel(key) })
   const plainTitle = (map, id, fallback) => own(map, id)?.title ?? fallback
 
   const changes = meaningfulChanges(event)
-  const changeOf = field => changes.find(change => change.field === field)
   const only = field => changes.length === 1 && changes[0].field === field ? changes[0] : null
 
   let parts = []
@@ -180,7 +178,7 @@ function describeEventParts(event, lookups = {}, { within = null } = {}) {
       const veinIds = Array.isArray(result.veinIds) ? result.veinIds : Array.isArray(payload.veinIds) ? payload.veinIds : []
       say(' created ', task(event.taskId))
       detail = [
-        [statusLabel(pick('status') ?? 'backlog')],
+        [outcomeLabel(pick('outcome') ?? 'open')],
         [String(pick('priority') ?? 'p2').toUpperCase()],
         pick('assignee') ? ['Assigned to ', actorPart(lookups.actors, pick('assignee'))] : ['Unassigned'],
         ...veinIds.map(id => ['Vein: ', own(lookups.veins, id) ? current(lookups.veins[id].title) : 'an unknown vein']),
@@ -191,7 +189,10 @@ function describeEventParts(event, lookups = {}, { within = null } = {}) {
       const [first] = changes
       if (!changes.length) say(' saved ', task(event.taskId), ' with no changes')
       else if (changes.length > 1) { say(' edited ', task(event.taskId)); detail = detailLine(changes, lookups) }
-      else if (first.field === 'status') say(' moved ', task(event.taskId), ' to ', status(first.new))
+      else if (first.field === 'outcome') {
+        if (first.new === null) say(' reopened ', task(event.taskId))
+        else say(' marked ', task(event.taskId), ' ', outcome(first.new))
+      }
       else if (first.field === 'assignee') {
         if (first.new) say(' assigned ', task(event.taskId), ' to ', actorPart(lookups.actors, first.new))
         else say(' unassigned ', task(event.taskId))
@@ -220,10 +221,15 @@ function describeEventParts(event, lookups = {}, { within = null } = {}) {
       const assignee = (Array.isArray(event.changes) ? event.changes : []).find(change => change.field === 'assignee')
       const recipientId = assignee?.new
       const recipient = recipientId && own(lookups.actors, recipientId) ? current(actorName(lookups.actors, recipientId)) : String(payload.to ?? (recipientId ?? 'someone'))
-      const moved = changeOf('status')
-      say(' handed ', task(event.taskId), ' to ', recipient, ...(moved ? [' and set it to ', status(moved.new)] : []))
+      say(' handed ', task(event.taskId), ' to ', recipient)
       break
     }
+    case 'todo.add':
+      say(' assigned a to-do on ', task(event.taskId), ...(payload.to ? [' to ', actorPart(lookups.actors, payload.to)] : []))
+      break
+    case 'todo.complete':
+      say(' completed a to-do on ', task(event.taskId))
+      break
     case 'task.branch':
       say(` started branch ${quote(payload.name ?? '')} from `, task(event.taskId))
       break
@@ -273,7 +279,10 @@ function describeEventParts(event, lookups = {}, { within = null } = {}) {
       break
     case 'goal.update': {
       const [first] = changes
-      if (changes.length === 1 && first.field === 'status') say(' marked goal ', goal(result.goalId), ' ', status(first.new))
+      if (changes.length === 1 && first.field === 'outcome') {
+        if (first.new === null) say(' reopened goal ', goal(result.goalId))
+        else say(' marked goal ', goal(result.goalId), ' ', outcome(first.new))
+      }
       else if (changes.length === 1 && first.field === 'title') { say(' renamed goal ', goal(result.goalId)); detail = verifiedOld(first) ? [`Was ${quote(first.old ?? '')}`] : [`Now ${quote(first.new ?? '')}`] }
       else if (changes.length === 1 && first.field === 'description') say(' edited the description of goal ', goal(result.goalId))
       else { say(' edited goal ', goal(result.goalId)); detail = detailLine(changes, lookups) }
@@ -284,7 +293,10 @@ function describeEventParts(event, lookups = {}, { within = null } = {}) {
       break
     case 'vein.update': {
       const [first] = changes
-      if (changes.length === 1 && first.field === 'status') say(' marked vein ', vein(result.veinId), ' ', status(first.new))
+      if (changes.length === 1 && first.field === 'outcome') {
+        if (first.new === null) say(' reopened vein ', vein(result.veinId))
+        else say(' marked vein ', vein(result.veinId), ' ', outcome(first.new))
+      }
       else if (changes.length === 1 && first.field === 'goalId') say(' moved vein ', vein(result.veinId), ' to goal ', goal(first.new))
       else if (changes.length === 1 && first.field === 'title') say(' renamed vein ', vein(result.veinId))
       else if (changes.length === 1 && first.field === 'description') say(' edited the description of vein ', vein(result.veinId))
@@ -304,7 +316,7 @@ function describeEventParts(event, lookups = {}, { within = null } = {}) {
       say(` recorded ${event.type}`, ...(event.taskId ? [' on ', task(event.taskId)] : []))
   }
 
-  if (['comment.add', 'comment.edit', 'comment.resolve', 'task.handoff'].includes(event.type)) {
+  if (['comment.add', 'comment.edit', 'comment.resolve', 'task.handoff', 'todo.add'].includes(event.type)) {
     const found = excerptOf(event, lookups)
     excerpt = found.excerpt
     if (found.deleted) detail = deletedNote(found.deleted, lookups)
@@ -319,12 +331,12 @@ export function eventText(description) {
   return [sentence, description.detail, description.excerpt].filter(Boolean).join(' — ')
 }
 
-const hasStatusChange = event => (Array.isArray(event.changes) ? event.changes : []).some(change => change?.field === 'status' && !unchanged(change))
+const changedWork = event => (Array.isArray(event.changes) ? event.changes : []).some(change => change?.field === 'outcome' && !unchanged(change))
 
 export function eventGroup(event) {
   const type = String(event?.type ?? '')
-  if (type === 'task.handoff') return 'status'
-  if (['task.update', 'task.resolve', 'task.merge', 'vein.update', 'vein.resolve', 'goal.update', 'goal.resolve'].includes(type) && hasStatusChange(event)) return 'status'
+  if (['task.handoff', 'todo.add', 'todo.complete'].includes(type)) return 'work'
+  if (['task.update', 'task.resolve', 'task.merge', 'vein.update', 'vein.resolve', 'goal.update', 'goal.resolve'].includes(type) && changedWork(event)) return 'work'
   if (type.startsWith('comment.')) return 'comments'
   if (['task.link-commit', 'task.branch', 'task.merge'].includes(type)) return 'commits'
   if (type.startsWith('goal.') || type.startsWith('vein.') || type === 'task.link-vein' || type === 'task.unlink-vein') return 'plans'

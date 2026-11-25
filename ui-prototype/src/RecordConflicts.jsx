@@ -4,14 +4,14 @@ import { FIELD_LABELS, conflictGroups } from './record-conflicts.js'
 // Every distinct value gets one Keep button; nothing is dropped until one is chosen.
 export default function RecordConflicts({ kind, record, actors, goals, labels, labelActor, submit, disabled, onDone, changedBy = () => false }) {
   const fields = Object.keys(record.conflicts)
-  const valueText = (field, value) => field === 'status' ? (labels[value] ?? String(value))
+  const valueText = (field, value) => field === 'outcome' ? (labels[value] ?? 'No outcome')
     : field === 'goalId' ? (goals[value]?.title ?? 'Unknown goal') : String(value ?? '')
   const keep = async (event, field, group) => {
     const button = event.currentTarget
     const receipt = await submit(`${kind}.resolve`, {
       [`${kind}Id`]: record.id, field, value: group.value, expectedRevisions: record.revisions[field],
     })
-    // Success moves focus to the record's status control; a failure returns it to this button.
+    // Success moves focus to the record's outcome control; a failure returns it to this button.
     onDone(receipt ? { kind, record, field, value: group.value } : { element: button })
   }
   return (
@@ -25,7 +25,7 @@ export default function RecordConflicts({ kind, record, actors, goals, labels, l
             {conflictGroups(record.conflicts[field]).map(group => {
               const authors = group.actorIds.map(id => labelActor(actors[id])).join(' and ')
               const value = valueText(field, group.value)
-              const visible = field === 'status' || field === 'goalId' ? `Keep ${value}` : `Keep ${authors}'s ${label}`
+              const visible = field === 'outcome' || field === 'goalId' ? `Keep ${value}` : `Keep ${authors}'s ${label}`
               return (
                 <div className="record-choice" key={group.operationIds[0]}>
                   <strong>{authors}</strong>

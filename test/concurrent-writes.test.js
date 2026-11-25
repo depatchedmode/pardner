@@ -8,12 +8,12 @@ it('two agents concurrently update independent fields without losing either chan
     const taskId = await create()
     const { revisions } = await context(taskId)
     const receipts = await Promise.all([
-      operation('task.update', { taskId, updates: { status: 'in-progress' }, expectedRevisions: { status: revisions.status } }, 'builder'),
+      operation('task.update', { taskId, updates: { outcome: 'dead-end' }, expectedRevisions: { outcome: revisions.outcome } }, 'builder'),
       operation('task.update', { taskId, updates: { assignee: 'reviewer' }, expectedRevisions: { assignee: revisions.assignee } }, 'reviewer'),
     ])
     assert.ok(receipts.every(receipt => receipt.savedLocally))
     const result = await context(taskId)
-    assert.equal(result.task.status, 'in-progress')
+    assert.equal(result.task.outcome, 'dead-end')
     assert.equal(result.task.assignee, 'reviewer')
     for (const receipt of receipts) assert.equal(result.history.filter(event => event.operationId === receipt.operationId).length, 1)
   })
@@ -23,16 +23,16 @@ it('concurrent writes to one local field acknowledge one winner and explicitly r
   await withWorkspaceServer(async ({ create, context, operation }) => {
     const taskId = await create()
     const { revisions } = await context(taskId)
-    const receipts = await Promise.all(['in-progress', 'review'].map((status, index) =>
-      operation('task.update', { taskId, updates: { status }, expectedRevisions: { status: revisions.status } }, index ? 'reviewer' : 'builder')))
+    const receipts = await Promise.all(['dead-end', 'abandoned'].map((outcome, index) =>
+      operation('task.update', { taskId, updates: { outcome }, expectedRevisions: { outcome: revisions.outcome } }, index ? 'reviewer' : 'builder')))
     const accepted = receipts.filter(receipt => receipt.httpStatus === 200)
     const rejected = receipts.filter(receipt => receipt.code === 'STALE_UPDATE')
     assert.equal(accepted.length, 1)
     assert.equal(rejected.length, 1)
     const result = await context(taskId)
     assert.equal(result.history.length, 2)
-    assert.deepEqual(result.revisions.status, [accepted[0].operationId])
-    assert.equal(result.task.status, result.history.find(event => event.operationId === accepted[0].operationId).payload.updates.status)
+    assert.deepEqual(result.revisions.outcome, [accepted[0].operationId])
+    assert.equal(result.task.outcome, result.history.find(event => event.operationId === accepted[0].operationId).payload.updates.outcome)
   })
 })
 
@@ -91,7 +91,7 @@ it('mixed concurrent operations each appear once in the shared activity record',
   await withWorkspaceServer(async ({ create, update, operation, context, server }) => {
     const taskId = await create()
     const receipts = await Promise.all([
-      update(taskId, { status: 'in-progress' }, 'builder'),
+      update(taskId, { outcome: 'dead-end' }, 'builder'),
       operation('comment.add', { taskId, text: 'Concurrent comment' }, 'reviewer'),
     ])
     assert.ok(receipts.every(receipt => receipt.savedLocally))

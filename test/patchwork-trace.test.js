@@ -33,12 +33,12 @@ it('preserves multiple commits, optional diff statistics, and ordinary task hist
       { hash: 'c'.repeat(40), message: 'Commit without diff' },
     ]
     for (const commit of commits) assert.equal((await operation('task.link-commit', { taskId, commit }, 'builder')).httpStatus, 200)
-    await update(taskId, { status: 'completed' }, 'alice')
+    await update(taskId, { outcome: 'completed' }, 'alice')
     const result = await context(taskId)
     assert.deepEqual(result.evidence, commits)
     assert.equal(result.history.length, 4)
     assert.equal(result.history.filter(event => event.type === 'task.update').length, 1)
-    assert.equal(result.task.status, 'completed')
+    assert.equal(result.task.outcome, 'completed')
   })
 })
 

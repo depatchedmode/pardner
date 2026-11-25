@@ -130,7 +130,7 @@ it('UC4: a persisted replica reopens offline and merges with work completed at t
     const receipt = await edit(replicas[0], taskId, { description: 'Durable offline edit' }, 'builder')
     assert.equal(receipt.savedLocally, true)
     const identity = replicas[0].manifest.replicaId
-    await update(taskId, { status: 'review' })
+    await update(taskId, { outcome: 'abandoned' })
     assert.notEqual((await context(taskId)).task.description, 'Durable offline edit')
     await replicas[0].close()
     const started = Date.now()
@@ -142,7 +142,7 @@ it('UC4: a persisted replica reopens offline and merges with work completed at t
     await converge()
     for (const result of [await context(taskId), ...replicas.map(replica => replica.workspace.taskContext(taskId))]) {
       assert.equal(result.task.description, 'Durable offline edit')
-      assert.equal(result.task.status, 'review')
+      assert.equal(result.task.outcome, 'abandoned')
       assert.equal(result.history.filter(event => event.operationId === receipt.operationId).length, 1)
     }
   })

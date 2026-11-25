@@ -4,7 +4,7 @@ import { withWorkspaceServer } from '../support/workspace-test.js'
 
 it('creates every task field with human attribution and an atomic operation record', async () => {
   await withWorkspaceServer(async ({ operation, context }) => {
-    const fields = { title: 'Complete task', description: 'Full description', priority: 'p1', status: 'up-next', assignee: 'builder', tags: ['release', 'offline'], order: 10, type: 'task' }
+    const fields = { title: 'Complete task', description: 'Full description', priority: 'p1', outcome: null, assignee: 'builder', tags: ['release', 'offline'], order: 10, type: 'task' }
     const receipt = await operation('task.create', fields)
     assert.equal(receipt.savedLocally, true)
     const result = await context(receipt.result.taskId)
@@ -15,7 +15,7 @@ it('creates every task field with human attribution and an atomic operation reco
     assert.equal(result.history[0].changes.length, Object.keys(fields).length)
   })
 })
-for (const [field, value] of Object.entries({ title: 'Changed title', description: 'Changed description', priority: 'p0', assignee: 'reviewer', status: 'review', tags: ['tested'] })) {
+for (const [field, value] of Object.entries({ title: 'Changed title', description: 'Changed description', priority: 'p0', assignee: 'reviewer', outcome: 'abandoned', tags: ['tested'] })) {
   it(`updates ${field} with expected revisions and agent provenance`, async () => {
     await withWorkspaceServer(async ({ create, update, context }) => {
       const taskId = await create()
@@ -31,15 +31,16 @@ for (const [field, value] of Object.entries({ title: 'Changed title', descriptio
     })
   })
 }
-it('normalizes old status vocabulary and follows the full task lifecycle', async () => {
+it('derives open and ended from authored outcomes', async () => {
   await withWorkspaceServer(async ({ create, update, context }) => {
-    const taskId = await create({ status: 'todo' })
-    assert.equal((await context(taskId)).task.status, 'backlog')
-    for (const [input, expected] of [['up-next', 'up-next'], ['in-progress', 'in-progress'], ['in-review', 'review'], ['completed', 'completed']]) {
-      assert.equal((await update(taskId, { status: input })).httpStatus, 200)
-      assert.equal((await context(taskId)).task.status, expected)
-    }
-    assert.equal((await context(taskId)).history.length, 5)
+    const taskId = await create()
+    assert.equal((await context(taskId)).task.state, 'open')
+    await update(taskId, { assignee: 'alice' })
+    assert.equal((await context(taskId)).task.state, 'open')
+    await update(taskId, { outcome: 'completed' })
+    assert.equal((await context(taskId)).task.state, 'ended')
+    await update(taskId, { outcome: null })
+    assert.equal((await context(taskId)).task.state, 'open')
   })
 })
 it('safe replay adds no second history entry and stale writes leave intervening work intact', async () => {

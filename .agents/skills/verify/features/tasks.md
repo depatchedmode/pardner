@@ -17,6 +17,10 @@ CLI exposes `task create`, `show`, `update`, and `comment`; mutations need
 different payload fails with `OPERATION_ID_REUSED`; without the flag every
 invocation gets a fresh ID, so an unflagged retry is not deduplicated.
 
+Use `todo add`, `todos`, and `todo complete` to assign, find and finish a review
+in the original discussion. Check one item and one mention after a retry. The
+named Actor completes it, and Activity identifies the operation and signer.
+
 ## Driving it with CLI and Playwright
 
 `npm run verify:smoke` launches a disposable real service, checks readiness with
@@ -30,6 +34,18 @@ candidate, and cleanup results and remains after scratch deletion.
 Run `node --test test/pardner-cli-workflow.test.js` for the fuller CLI workflow.
 `test/workspace-operations.test.js` (in `npm run test:runtime`) holds the
 in-process replay, stale-revision, and storage-failure cases.
+`test/ui-conflicts.test.js` exercises **My to-dos** and completion in Chromium
+and WebKit. Open an ended task with a review assigned to you, check it off
+below the description. Confirm the activity entry in Comments jumps to the
+checklist item and shows who finished it and when. The checklist appends the
+underlined Actor handle to the instruction, including after a Markdown list.
+The browser exercise fails the completion request on a
+narrow viewport, checks that Retry is visible in the checklist, and verifies that
+retry sends the same saved request. The checklist announces the confirmed
+completion. The assigner sees the same checked item after sync. The runtime
+partition case checks independent to-do creation and completion alongside a task
+outcome.
+
 Run `node --test test/pardner-ui.test.js` after building UI for browser operations.
 The browser opens through `withClientWorkspace` (`support/client-workspace.js`) and
 uses **New task**, **Title**, **Create task**, **Comment**, **Add comment**, and **Retry saved request**. Its
@@ -42,8 +58,10 @@ unchanged newer task value. The focus case checks that the Task details heading
 has focus as soon as the panel opens, before a user enters a comment or issue
 reference. The full-width panel case holds the task read open, checks that the
 covered board is inert, walks both Tab directions, and resizes without losing a
-comment draft. It checks that wrapping reveals the focused control and that
-Close or Escape keeps the comment for the same task while the board is open.
+comment draft. It opens the **Task actions** disclosure to edit and
+checks that Cancel returns focus to it. It also checks that wrapping reveals
+the focused control and that Close or Escape keeps the comment for the same
+task while the board is open.
 Both panel types cover New task without moving it or letting it take focus.
 Close restores the task card or New task button. At 320px People and New task
 stay reachable, New task floats at the bottom and a long assignee fits within
@@ -57,9 +75,15 @@ The task read recovery case drops the initial GET and its first retry, then
 checks that Retry shows loading and eventually opens the same task in place.
 The visual control case measures field border contrast, checks persistent
 selection cues in forced colors, and checks the comment field on a touch tablet.
-The inline Status case also checks its rendered height on desktop and at 375px.
-The long-discussion case opens Write comment at 320px, confirms the field is
-visible and focused, posts once, and checks that the unread stripe mirrors in RTL.
+The Outcome case checks the current result in the header, then opens **Task
+actions** and checks the select under **Set outcome** on desktop and at 375px.
+The long-discussion case checks that the title and Close stay above the content
+and the comment field and submit button stay below it as users scroll on
+desktop, at 320px, and in short landscape. At 320px the title and Close share
+a row, and Tab reaches the composer before wrapping. The case posts once,
+checks that the unread stripe
+mirrors in RTL, and confirms that marking read preserves the comment text edge
+and width.
 Typing while a comment is saving keeps the newer draft when the receipt arrives.
 Inspect the resulting UI for presentation changes.
 The board view test in Chromium and WebKit uses Arrow Right, End and Home to
@@ -73,8 +97,8 @@ filter and returns focus to Tasks. A long linked issue stays within the
 full-width detail panel.
 The comment conflict exercise checks that the author can resolve the conflict
 and other Actors see a visible reason for the disabled controls.
-The Markdown fixture checks the shared reading and composing scale,
-comment count hierarchy and date alignment, nested list spacing,
+The Markdown fixture checks a 1.25rem task title and 1rem throughout the rest
+of the sheet, with muted counts and timestamps, authored heading weights and nested list spacing,
 checklist alignment and reading order. Task instructions precede issue
 management in the Task details panel. Wide tables and code blocks are Tab stops
 and scroll with the arrow keys. A short code block adds no Tab stop.

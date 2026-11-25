@@ -8,7 +8,7 @@ it('all task activity uses canonical taskId and task context excludes unrelated 
     const taskId = await create({ title: 'Parent' })
     const unrelatedId = await create({ title: 'Unrelated' })
     await operation('comment.add', { taskId, text: '@builder review this' })
-    await update(taskId, { status: 'in-progress' }, 'builder')
+    await update(taskId, { outcome: 'dead-end' }, 'builder')
     const branch = await operation('task.branch', { taskId, name: 'experiment' }, 'builder')
     await operation('task.merge', { branchId: branch.result.branchId, expectedRevisions: (await context(taskId)).revisions }, 'reviewer')
     await operation('task.link-commit', { taskId, commit: { hash: 'abc1234', message: 'Complete evidence' } }, 'builder')

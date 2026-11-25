@@ -3,26 +3,20 @@
 // Schema 9: every change carries a machine-prefixed actor and is signed in the project's signature document.
 // Schema 10: the signature cache also keeps equivocation reports.
 // Schema 11: the signature cache also keeps the signatures that prove each equivocation report.
-export const SCHEMA_VERSION = 12
-export const TASK_FIELDS = ['title', 'description', 'status', 'priority', 'assignee', 'tags', 'order', 'type']
-export const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']
-export const CLOSED_TASK_STATUSES = ['completed', 'dead-end', 'abandoned']
-export const GOAL_FIELDS = ['title', 'description', 'status']
-export const GOAL_STATUSES = ['open', 'achieved', 'abandoned']
-export const VEIN_FIELDS = ['title', 'description', 'status', 'goalId']
-export const VEIN_STATUSES = ['open', 'proven', 'dead-end', 'abandoned']
-
-export const STATUS_LABELS = {
-  backlog: 'Backlog',
-  'up-next': 'Up next',
-  'in-progress': 'In progress',
-  review: 'Review',
+// Schema 12: machine and person identities use did:key.
+// Schema 13: tasks, veins and goals share outcomes, and task threads carry assigned to-dos.
+export const SCHEMA_VERSION = 13
+export const TASK_FIELDS = ['title', 'description', 'outcome', 'priority', 'assignee', 'tags', 'order', 'type']
+export const GOAL_FIELDS = ['title', 'description', 'outcome']
+export const VEIN_FIELDS = ['title', 'description', 'outcome', 'goalId']
+export const OUTCOMES = ['completed', 'dead-end', 'abandoned']
+export const WORK_STATES = ['open', 'ended']
+export const STATE_LABELS = {
+  open: 'Open',
+  ended: 'Ended',
   completed: 'Completed',
   'dead-end': 'Dead end',
   abandoned: 'Abandoned',
-  open: 'Open',
-  proven: 'Proven',
-  achieved: 'Achieved',
 }
 
 /** Execution states that still accept cancel from the control UI. */

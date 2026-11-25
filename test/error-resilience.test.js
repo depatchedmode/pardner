@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { withWorkspaceServer } from '../support/workspace-test.js'
 
 for (const [type, payload] of [
-  ['task.update', { taskId: 'missing', updates: { status: 'review' }, expectedRevisions: {} }],
+  ['task.update', { taskId: 'missing', updates: { outcome: 'abandoned' }, expectedRevisions: {} }],
   ['task.link-commit', { taskId: 'missing', commit: { hash: 'abc1234', message: 'Test' } }],
   ['task.branch', { taskId: 'missing', name: 'experiment' }],
   ['task.merge', { branchId: 'missing', expectedRevisions: {} }],

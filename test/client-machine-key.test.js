@@ -83,8 +83,8 @@ test('client directories from earlier versions, including the version before DID
       return directory
     }
     // A version 2 client directory, with its machine key, from before person IDs were derived from machine keys,
-    // and a version 3 one from before every change was signed.
-    const versionTwo = async (name, unclean = false, version = 2) => {
+    // version 3 from before signed changes, and version 4 from before DIDs.
+    const keyedPrior = async (name, unclean = false, version = 2) => {
       const directory = await prior(name, unclean)
       const donor = join(root, `${name}-donor`)
       await (await operatorClient(donor)).service.stop()
@@ -98,7 +98,7 @@ test('client directories from earlier versions, including the version before DID
       spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', script], { stdio: 'ignore' })
       return directory
     }
-    const beforeDids = [await versionTwo('version-four', false, 4), await versionTwo('version-four-unclean', true, 4)]
+    const beforeDids = [await keyedPrior('version-four', false, 4), await keyedPrior('version-four-unclean', true, 4)]
     for (const directory of beforeDids) {
       await writeFile(join(directory, 'projects', 'old', 'workspace.json'), JSON.stringify({ schemaVersion: 11, role: 'hub', workspaceId: 'a'.repeat(64) }))
     }
@@ -118,13 +118,21 @@ test('client directories from earlier versions, including the version before DID
       assert.deepEqual(after, before)
     }
     await rm(join(beforeDids[1], lock))
-    const directories = [await prior('clean'), await prior('unclean', true), await versionTwo('version-two'), await versionTwo('version-two-unclean', true),
-      await versionTwo('version-three', false, 3), await versionTwo('version-three-unclean', true, 3)]
+    const beforeOutcomes = join(root, 'version-five')
+    await (await operatorClient(beforeOutcomes)).service.stop()
+    const rewriteVersion = `import { DatabaseSync } from 'node:sqlite'
+      const database = new DatabaseSync(${JSON.stringify(join(beforeOutcomes, 'client.sqlite'))})
+      database.prepare('UPDATE registry SET value = json_set(value, ?, 5) WHERE id = 1').run('$.version')
+      database.close()`
+    const patched = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', rewriteVersion], { encoding: 'utf8' })
+    assert.equal(patched.status, 0, patched.stderr)
+    const directories = [await prior('clean'), await prior('unclean', true), await keyedPrior('version-two'), await keyedPrior('version-two-unclean', true),
+      await keyedPrior('version-three', false, 3), await keyedPrior('version-three-unclean', true, 3)]
     assert.ok((await readdir(directories[1])).includes('client.sqlite-wal'), 'the unclean registry keeps its write-ahead log')
     assert.ok((await readdir(directories[3])).includes('client.sqlite-wal'), 'the unclean version 2 registry keeps its write-ahead log')
     assert.ok((await readdir(directories[5])).includes('client.sqlite-wal'), 'the unclean version 3 registry keeps its write-ahead log')
     assert.ok((await readdir(beforeDids[1])).includes('client.sqlite-wal'), 'the no-lock version 4 registry still has its write-ahead log')
-    for (const directory of [...directories, ...beforeDids]) {
+    for (const directory of [...directories, ...beforeDids, beforeOutcomes]) {
       const before = await snapshot(directory)
       await assert.rejects(startClient({ directory, port: 0 }), { code: 'INCOMPATIBLE_SCHEMA', message: /left unchanged.*fresh data directory/s })
       const after = await snapshot(directory)

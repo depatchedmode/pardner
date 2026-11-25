@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { STATUSES } from '@pardner/domain-vocab'
+import { OUTCOMES, STATE_LABELS as LABELS, WORK_STATES } from '@pardner/domain-vocab'
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@ui-sdk/react/tabs'
 import { Dialog, DialogContent } from '@ui-sdk/react/dialog'
 import ActorMarkdown from './ActorMarkdown.jsx'
@@ -11,21 +11,22 @@ import { AgentSetupDialog, TaskAgentRuns } from './ControlPane.jsx'
 import ClientApp from './ClientApp.jsx'
 import { AvatarStack } from './Avatar.jsx'
 import RecordConflicts from './RecordConflicts.jsx'
-import { disputedStatusText } from './record-conflicts.js'
-import { BoardStatus, SaveStatus } from './BoardStatus.jsx'
+import { disputedOutcomeText } from './record-conflicts.js'
+import { BoardStatus, PendingReplication } from './BoardStatus.jsx'
 import { isNewComment } from './comments.js'
-import { defaultHandoffStatus } from './handoff.js'
 import { mentionHint, remarkMentionChips, unmatchedHandles } from './mentions.js'
-import { quickStatusEditable } from './task-status.js'
-import { GOAL_STATUSES, VEIN_STATUSES } from './record-status.js'
-import { STATUS_LABELS as LABELS, describeEvent, eventGroup, sortEvents } from './events.js'
+import { presenceOf } from './presence.js'
+import { describeEvent, eventGroup, sortEvents } from './events.js'
 import { boardData, dictionary } from './board-data.js'
 import { emptyFields, unreadableLines } from './unreadable.js'
 import { activityRows, alternativeChangedBySomeoneElse, changedBySomeoneElse, describeChange, describeRecord, emptyReview, needsReview, newerAuthors, reviewNotice, signerLine, taskRows, waitingLong } from './attribution.js'
 
-const StatusOptions = ({ values = STATUSES }) => values.map(value => <option key={value} value={value}>{LABELS[value]}</option>)
+const OutcomeOptions = () => <><option value="">No outcome</option>{OUTCOMES.map(value =>
+  <option key={value} value={value}>{LABELS[value]}</option>)}</>
+const openTodoLabel = count => `${count} open ${count === 1 ? 'to-do' : 'to-dos'}`
+const actorName = (actors, id) => actors[id]?.displayName || actors[id]?.handle || id
 const ACTIVITY_SHOWS = [
-  ['changes', 'All changes'], ['review', 'Needs review'], ['status', 'Status changes and handoffs'], ['comments', 'Comments'],
+  ['changes', 'All changes'], ['review', 'Needs review'], ['work', 'Assignments, to-dos and outcomes'], ['comments', 'Comments'],
   ['commits', 'Commits and branches'], ['plans', 'Goals and veins'], ['members', 'People and machines'], ['actors', 'Actors registered'], ['reads', 'Read receipts'],
 ]
 const ACTIVITY_PAGE = 100
@@ -69,7 +70,8 @@ function TaskPanel({ label, modal, onClose, children }) {
     const pane = event.currentTarget
     const target = event.target
     if (!modal || target === pane || !pane.contains(target)) return
-    const bounds = pane.getBoundingClientRect()
+    const viewport = target.closest('.task-panel-body') ?? pane
+    const bounds = viewport.getBoundingClientRect()
     const item = target.getBoundingClientRect()
     if (item.top < bounds.top || item.bottom > bounds.bottom) {
       target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
@@ -102,8 +104,15 @@ function TaskPanel({ label, modal, onClose, children }) {
     </DialogContent>
   </Dialog>
 }
+function TaskPanelClose({ onClose, autoFocus }) {
+  return <button type="button" className="task-panel-close" aria-label="Close" title="Close" autoFocus={autoFocus} onClick={onClose}>
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="m4 4 8 8M12 4l-8 8" />
+    </svg>
+  </button>
+}
 // Task details operations whose errors render above that form's submit button.
-const FORM_SLOTS = ['task.update', 'task.handoff', 'comment.add', 'task.link-issue', 'task.unlink-issue']
+const FORM_SLOTS = ['task.update', 'task.handoff', 'todo.add', 'comment.add', 'task.link-issue', 'task.unlink-issue']
 const labelActor = (actor) =>
   actor ? `${actor.displayName || actor.handle} · ${actor.kind}` : 'Unassigned'
 
@@ -142,10 +151,10 @@ function SelectActor({
     </label>
   )
 }
-function MarkdownBody({ children, extraPlugins = [] }) {
+function MarkdownBody({ children, extraPlugins = [], labelFor, assigneeHandle }) {
   return (
     <div className="markdown">
-      <ActorMarkdown extraPlugins={extraPlugins}>{children}</ActorMarkdown>
+      <ActorMarkdown extraPlugins={extraPlugins} labelFor={labelFor} assigneeHandle={assigneeHandle}>{children}</ActorMarkdown>
     </div>
   )
 }
@@ -316,7 +325,8 @@ export function Workspace({ config, reloadConfiguration, session }) {
     return saved === 'goals' || saved === 'activity' ? saved : 'board'
   })
   const [filter, setFilter] = useState(() => client.preferences().filter || '')
-  const [statusFilter, setStatusFilter] = useState(() => client.preferences().statusFilter || '')
+  const [stateFilter, setStateFilter] = useState(() => WORK_STATES.includes(client.preferences().stateFilter) ? client.preferences().stateFilter : '')
+  const [todoFilter, setTodoFilter] = useState('')
   const [veinFilter, setVeinFilter] = useState(() => client.preferences().veinFilter || '')
   const [filtersExpanded, setFiltersExpanded] = useState(false)
   const [activityActor, setActivityActor] = useState('')
@@ -364,9 +374,9 @@ export function Workspace({ config, reloadConfiguration, session }) {
   }, [])
   useEffect(() => {
     try {
-      client.savePreferences({ filter, statusFilter, veinFilter, view, selected })
+      client.savePreferences({ filter, stateFilter, veinFilter, view, selected })
     } catch (failure) { setError(failure) }
-  }, [client, filter, statusFilter, veinFilter, view, selected])
+  }, [client, filter, stateFilter, veinFilter, view, selected])
   const onFocusChange = session.onFocusChange
   useEffect(() => { onFocusChange?.(selected ? [selected] : []) }, [onFocusChange, selected])
   const requestedTask = session.requestedTask
@@ -494,7 +504,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
     }
     panelWasOpen.current = panelOpen
   }, [panelOpen])
-  const selectedLane = selected && doc?.tasks[selected]?.status
+  const selectedLane = selected && doc?.tasks[selected]?.state
   useLayoutEffect(() => {
     const board = boardViewport.current
     if (!board || fullWidth || view !== 'board' || !selectedLane) return
@@ -525,7 +535,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
   }, [fullWidth, selected, selectedLane, view])
   useEffect(() => {
     if (busy || !retryFocus.current) return
-    const { button, panel, record } = retryFocus.current
+    const { button, panel, record, todo } = retryFocus.current
     const frame = requestAnimationFrame(() => {
       retryFocus.current = null
       if (button.isConnected || !document.activeElement?.matches('body, .side-panel')) return
@@ -534,7 +544,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
       const recordControl = status && !status.disabled ? status
         : record?.isConnected && (record.querySelector(':scope > .vein-title') || record)
       const tab = viewNav.current?.querySelector('[aria-selected="true"]')
-      ;(heading || recordControl || tab)?.focus()
+      ;(todo?.isConnected ? todo : heading || recordControl || tab)?.focus()
     })
     return () => cancelAnimationFrame(frame)
   })
@@ -570,8 +580,11 @@ export function Workspace({ config, reloadConfiguration, session }) {
   }, [view])
   const submit = async (type, payload, { replay, fromEditor } = {}) => {
     if (inflight.current) return null
-    const origin = replay?.payload ?? payload
-    setErrorOrigin({ type: replay?.type ?? type, taskId: origin?.taskId, recordId: origin?.veinId ?? origin?.goalId })
+    const requestOrigin = replay ?? (pending?.type === 'todo.complete' ? pending : { type, payload })
+    const origin = requestOrigin.payload
+    const todoId = requestOrigin.type === 'todo.complete' ? origin.commentId : null
+    setErrorOrigin({ type: requestOrigin.type, taskId: todoId ? doc.comments[todoId]?.taskId : origin?.taskId,
+      recordId: origin?.veinId ?? origin?.goalId, todoId })
     if (pending && !replay) {
       setError({
         message: 'Resolve the saved request before starting another change.',
@@ -636,6 +649,9 @@ export function Workspace({ config, reloadConfiguration, session }) {
           'INVALID_ARGUMENT',
           'AMBIGUOUS_ACTOR',
           'NOT_FOUND',
+          'FORBIDDEN',
+          'ALREADY_COMPLETED',
+          'REVISION_REQUIRED',
           'OPERATION_ID_REUSED',
         ].includes(failure.code)
       ) {
@@ -648,8 +664,8 @@ export function Workspace({ config, reloadConfiguration, session }) {
     }
   }
   // Each board preset sets every filter, so a stale one never hides its tasks.
-  const showBoard = ({ assignee = '', status = '', vein = '' }) => {
-    setFilter(assignee); setStatusFilter(status); setVeinFilter(vein); setView('board')
+  const showBoard = ({ assignee = '', state = '', vein = '', todoFor = '' }) => {
+    setFilter(assignee); setStateFilter(state); setVeinFilter(vein); setTodoFilter(todoFor); setView('board')
   }
   const retryConnection = () => setRetryGeneration(value => value + 1)
   if (!doc) return <main className="connection">
@@ -665,10 +681,18 @@ export function Workspace({ config, reloadConfiguration, session }) {
   const veins = doc.veins
   const goals = doc.goals
   const activeVeinFilter = veins[veinFilter] ? veinFilter : ''
-  const activeFilterCount = [filter, statusFilter, activeVeinFilter].filter(Boolean).length
+  const openTodos = new Map()
+  for (const comment of Object.values(doc.comments)) {
+    if (!comment.todo || comment.todo.completion) continue
+    const list = openTodos.get(comment.taskId) ?? []
+    list.push(comment.todo.assignee)
+    openTodos.set(comment.taskId, list)
+  }
+  const activeFilterCount = [filter, stateFilter, activeVeinFilter, todoFilter].filter(Boolean).length
   const tasks = Object.values(doc.tasks).filter(
-    (task) => (!filter || task.assignee === filter) && (!statusFilter || task.status === statusFilter)
-      && (!activeVeinFilter || task.veinIds?.includes(activeVeinFilter)),
+    (task) => (!filter || task.assignee === filter) && (!stateFilter || task.state === stateFilter)
+      && (!activeVeinFilter || task.veinIds?.includes(activeVeinFilter))
+      && (!todoFilter || openTodos.get(task.id)?.includes(todoFilter)),
   )
   const showVein = (veinId) => showBoard({ vein: veinId })
   const shownActivityActor = actors[activityActor] ? activityActor : ''
@@ -716,6 +740,14 @@ export function Workspace({ config, reloadConfiguration, session }) {
     busy={busy}
     onDismiss={pending ? null : () => setError(null)}
   />
+  const pendingTodoId = pending?.type === 'todo.complete' && doc.comments[pending.payload.commentId]?.taskId === selected
+    ? pending.payload.commentId : null
+  const pendingNotice = pending && !error && <div className="notice">
+    A request is awaiting confirmation.{' '}
+    <button type="button" aria-disabled={busy} onClick={retrySavedRequest}>Retry saved request</button>
+  </div>
+  const todoNotice = errorSlot === 'todo.complete' ? { id: errorOrigin.todoId, content: errorNotice }
+    : pendingTodoId && !error && !busy ? { id: pendingTodoId, content: pendingNotice } : null
   function retrySavedRequest(event) {
     if (inflight.current) return
     const button = event.currentTarget
@@ -723,6 +755,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
       button,
       panel: button.closest('.side-panel'),
       record: button.closest('[data-goal-id], [data-vein-id]'),
+      todo: button.closest('.task-todo-row'),
     }
     void submit(null, null, { replay: pending })
   }
@@ -734,7 +767,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
       <header ref={headerRef} className="client-header">
         <div className="client-identity">
           {session.projectSwitcher}
-          <BoardStatus api={session.api} project={session.project} status={status} connected={connected} busy={busy} heads={doc.heads.join(',')} />
+          <BoardStatus api={session.api} project={session.project} status={status} connected={connected} heads={doc.heads.join(',')} />
         </div>
         {session.people}
       </header>
@@ -756,14 +789,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
       </button>
       {session.notice}
       {errorSlot === 'page' && errorNotice}
-      {pending && !error && (
-        <div className="notice">
-          A request is awaiting confirmation.{' '}
-          <button type="button" aria-disabled={busy} onClick={retrySavedRequest}>
-            Retry saved request
-          </button>
-        </div>
-      )}
+      {!pendingTodoId && pendingNotice}
       {connectionError && <div className="notice" role="status"><p>{connectionError.message}</p>
         <button onClick={retryConnection}>Retry connection</button>
       </div>}
@@ -785,6 +811,8 @@ export function Workspace({ config, reloadConfiguration, session }) {
           <TabsTab value="activity">Activity</TabsTab>
         </TabsList>
         {view === 'board' && <>
+          {actor && <button type="button" className="quiet-button my-todos" aria-pressed={todoFilter === actor}
+            onClick={() => showBoard({ todoFor: todoFilter === actor ? '' : actor })}>My to-dos</button>}
           <button type="button" className="workspace-filter-toggle"
             aria-label={activeFilterCount ? `Filters, ${activeFilterCount} active` : undefined}
             aria-expanded={filtersExpanded} aria-controls="task-board-filters"
@@ -803,10 +831,12 @@ export function Workspace({ config, reloadConfiguration, session }) {
               onChange={setFilter}
               optional
             />
-            <label>Status filter<BoardSelect aria-label="Status filter" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-              <option value="">Any status</option>
-              <StatusOptions />
+            <label>State<BoardSelect aria-label="State filter" value={stateFilter} onChange={event => setStateFilter(event.target.value)}>
+              <option value="">Any state</option>
+              {WORK_STATES.map(state => <option key={state} value={state}>{LABELS[state]}</option>)}
             </BoardSelect></label>
+            <SelectActor label="Open to-dos for" emptyLabel="All tasks" actors={actors}
+              value={todoFilter} onChange={setTodoFilter} optional />
             <label className="vein-filter">Vein<BoardSelect aria-label="Vein" title={veins[activeVeinFilter]?.title ?? 'All veins'} value={activeVeinFilter} onChange={event => setVeinFilter(event.target.value)}>
               <option value="">All veins</option>
               {Object.values(veins).sort((a, b) => a.title.localeCompare(b.title)).map(vein =>
@@ -832,7 +862,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
       <main key={view}>
         <TabsPanel value="board" className="board-panel" keepMounted>
           {view === 'board' && tasks.length === 0 && <div className="board-empty actions">
-            <p role="status">{activeFilterCount ? 'No tasks match these filters.' : 'No tasks yet. Use New task to add the first one.'}</p>
+            <p role="status">{todoFilter ? 'No open to-dos match these filters.' : activeFilterCount ? 'No tasks match these filters.' : 'No tasks yet. Use New task to add the first one.'}</p>
             {activeFilterCount > 0 && <button type="button" onClick={() => {
               showBoard({})
               setFiltersExpanded(false)
@@ -840,11 +870,11 @@ export function Workspace({ config, reloadConfiguration, session }) {
             }}>Clear filters</button>}
           </div>}
           {view === 'board' && (
-          <div className="board" ref={boardViewport} data-filtered={Boolean(statusFilter)} style={{ '--columns': STATUSES.length }}
+          <div className="board" ref={boardViewport} data-filtered={Boolean(stateFilter)} style={{ '--columns': WORK_STATES.length }}
             onFocusCapture={event => {
               if (event.target.matches('.task-card:focus-visible')) event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
             }}>
-            {STATUSES.filter(column => !statusFilter || column === statusFilter).map((column) => (
+            {WORK_STATES.filter(column => !stateFilter || column === stateFilter).map((column) => (
               <section
                 className="column"
                 key={column}
@@ -853,11 +883,11 @@ export function Workspace({ config, reloadConfiguration, session }) {
                 <h2>
                   {LABELS[column]}{' '}
                   <span className="count">
-                    {tasks.filter((task) => task.status === column).length}
+                    {tasks.filter((task) => task.state === column).length}
                   </span>
                 </h2>
                 {tasks
-                  .filter((task) => task.status === column)
+                  .filter((task) => task.state === column)
                   .sort(
                     (a, b) =>
                       a.priority.localeCompare(b.priority) || a.order - b.order,
@@ -877,6 +907,11 @@ export function Workspace({ config, reloadConfiguration, session }) {
                       {(task.assignee || task.priority !== 'p2') && <span className="task-meta">
                         {task.assignee && <bdi>{labelActor(actors[task.assignee])}</bdi>}
                         {task.priority !== 'p2' && <span className="priority">{task.priority}</span>}
+                      </span>}
+                      {task.state === 'ended' && <span className="task-meta">{task.conflicts.outcome
+                        ? 'Outcome disputed' : LABELS[task.outcome]}</span>}
+                      {openTodos.has(task.id) && <span className="task-meta">
+                        {openTodoLabel(openTodos.get(task.id).length)}
                       </span>}
                       {task.veinIds?.filter(veinId => veins[veinId]).map(veinId => (
                         <span className="vein-label" key={veinId}>{veins[veinId].title}</span>
@@ -899,6 +934,7 @@ export function Workspace({ config, reloadConfiguration, session }) {
           <Goals
             goals={goals}
             veins={veins}
+            openTodos={openTodos}
             showVein={showVein}
             actor={actor}
             actors={actors}
@@ -996,9 +1032,10 @@ export function Workspace({ config, reloadConfiguration, session }) {
             saveEditDraft={saveEditDraft}
             errorSlot={errorSlot}
             errorNotice={errorNotice}
+            todoNotice={todoNotice}
+            pendingTodoId={pendingTodoId}
             clearError={() => setError(null)}
             claimHeadingFocus={claimHeadingFocus}
-            fullWidth={fullWidth}
             onClose={closeDetails}
           />
         </TaskPanel>
@@ -1019,51 +1056,50 @@ function FocusMarkers({ session, actorIds }) {
   </span>
 }
 
-// One goal or vein status control: a select for an Actor, else the read-only pill.
-function RecordStatusSelect({ kind, record, statuses, submit, disabled }) {
+function RecordOutcomeSelect({ kind, record, submit, disabled }) {
   const [choice, setChoice] = useState(null)
   const [select, refocus] = useRefocus()
   return (
     <select
       ref={select}
-      aria-label={`Status of ${kind} ${record.title}`}
-      value={choice ?? record.status}
+      aria-label={`Outcome of ${kind} ${record.title}`}
+      value={choice ?? record.outcome ?? ''}
       disabled={disabled}
       onChange={async event => {
         const next = event.target.value
-        if (next === record.status) return
+        if ((next || null) === record.outcome) return
         setChoice(next)
         await submit(`${kind}.update`, {
           [`${kind}Id`]: record.id,
-          updates: { status: next },
-          expectedRevisions: { status: record.revisions.status },
+          updates: { outcome: next || null },
+          expectedRevisions: { outcome: record.revisions.outcome },
         })
         setChoice(null)
         refocus()
       }}
     >
-      <StatusOptions values={statuses} />
+      <OutcomeOptions />
     </select>
   )
 }
 
-function Goals({ goals, veins, showVein, actor, actors, attribution = null, submit, busy, pending, errorNotice, errorOrigin }) {
+function Goals({ goals, veins, openTodos, showVein, actor, actors, attribution = null, submit, busy, pending, errorNotice, errorOrigin }) {
   const list = Object.values(goals).sort((a, b) =>
-    GOAL_STATUSES.indexOf(a.status) - GOAL_STATUSES.indexOf(b.status) || a.created_at.localeCompare(b.created_at))
+    Number(a.state === 'ended') - Number(b.state === 'ended') || a.created_at.localeCompare(b.created_at))
   // Keyed by board data: a Map, so a goal ID such as __proto__ is only a key.
   const veinsByGoal = new Map()
   for (const vein of Object.values(veins).sort((a, b) => a.created_at.localeCompare(b.created_at))) {
     for (const goalId of vein.goalIds) veinsByGoal.set(goalId, [...(veinsByGoal.get(goalId) ?? []), vein])
   }
   const disabled = busy || Boolean(pending)
-  // A disputed status names every alternative instead of the merge's pick, and offers no select.
-  const statusControl = (kind, record, statuses) =>
-    record.conflicts.status
-      ? <span className="record-status" data-status="disputed">{disputedStatusText(record.conflicts.status, LABELS)}</span>
-      : quickStatusEditable({ actor, conflicts: record.conflicts })
-        ? <RecordStatusSelect kind={kind} record={record} statuses={statuses} submit={submit} disabled={disabled} />
-        : <span className="record-status" data-status={record.status}>{LABELS[record.status]}</span>
-  // After a Keep, focus goes to the record's status control (or the vein's button) once the snapshot shows it.
+  const outcomeControl = (kind, record) =>
+    record.conflicts.outcome
+      ? <span className="record-status" data-status="disputed">{disputedOutcomeText(record.conflicts.outcome, LABELS)}</span>
+      : <div className="record-outcome">
+          <span className="record-status" data-status={record.state}>{LABELS[record.state]}</span>
+          {actor ? <RecordOutcomeSelect kind={kind} record={record} submit={submit} disabled={disabled} />
+            : record.outcome && <span>{LABELS[record.outcome]}</span>}
+        </div>
   const focusAfter = useRef(null)
   const [focusTick, setFocusTick] = useState(0)
   const keptRecord = target => { focusAfter.current = target; setFocusTick(tick => tick + 1) }
@@ -1111,25 +1147,29 @@ function Goals({ goals, veins, showVein, actor, actors, attribution = null, subm
           <article className="goal" key={goal.id} aria-label={goal.title} data-goal-id={goal.id} tabIndex={-1}>
             <div className="goal-heading">
               <h3><bdi>{goal.title}</bdi></h3>
-              {statusControl('goal', goal, GOAL_STATUSES)}
+              {outcomeControl('goal', goal)}
             </div>
             {recordId === goal.id && errorNotice}
             {goal.description && <p className="muted goal-description" dir="auto">{goal.description}</p>}
             {conflicts('goal', goal)}
             {!goalVeins.length && <p className="muted">No veins pursue this goal yet.</p>}
             <ul>
-              {goalVeins.map(vein => (
+              {goalVeins.map(vein => {
+                const openCount = vein.taskIds.reduce((total, taskId) => total + (openTodos.get(taskId)?.length ?? 0), 0)
+                return (
                 <li key={vein.id} data-vein-id={vein.id}>
                   <button className="vein-title" onClick={() => showVein(vein.id)}>{vein.title}</button>
                   <div className="vein-meta">
-                    {statusControl('vein', vein, VEIN_STATUSES)}
+                    {outcomeControl('vein', vein)}
                     <span className="muted">{vein.taskIds.length} {vein.taskIds.length === 1 ? 'task' : 'tasks'}</span>
                     {vein.readyForVerdict && <span className="verdict-label">Ready for a verdict</span>}
+                    {vein.readyForVerdict && openCount > 0 && <span className="muted">{openTodoLabel(openCount)}</span>}
                   </div>
                   {conflicts('vein', vein)}
                   {recordId === vein.id && noticeGoal === goal.id && errorNotice}
                 </li>
-              ))}
+                )
+              })}
             </ul>
           </article>
         )
@@ -1139,12 +1179,12 @@ function Goals({ goals, veins, showVein, actor, actors, attribution = null, subm
 }
 
 const EMPTY_TASK_DRAFT = {
-  fields: { title: '', description: '', priority: 'p2', status: 'backlog', assignee: null, tags: [] },
+  fields: { title: '', description: '', priority: 'p2', outcome: null, assignee: null, tags: [] },
   tags: '',
 }
 const draftIsDirty = ({ fields, tags }) =>
   Boolean(fields.title.trim() || fields.description.trim() || tags.trim()) ||
-  fields.status !== 'backlog' || fields.priority !== 'p2' || fields.assignee !== null
+  fields.outcome !== null || fields.priority !== 'p2' || fields.assignee !== null
 const parseTags = text => text.split(',').map(tag => tag.trim()).filter(Boolean)
 
 function matchesLegacyEdit(draft, { updates, expectedRevisions }) {
@@ -1222,7 +1262,7 @@ function TaskForm({
       {!editing && (
         <div className="panel-heading">
           <h2>New task</h2>
-          <button onClick={onClose}>Close</button>
+          <TaskPanelClose onClose={onClose} />
         </div>
       )}
       {!editing && (
@@ -1273,14 +1313,14 @@ function TaskForm({
         </label>
         <div className="form-row">
           <label>
-            Status
+            Outcome
             <BoardSelect
-              aria-label="Status"
+              aria-label="Outcome"
               disabled={locked}
-              value={fields.status}
-              onChange={(event) => set('status', event.target.value)}
+              value={fields.outcome ?? ''}
+              onChange={(event) => set('outcome', event.target.value || null)}
             >
-              <StatusOptions />
+              <OutcomeOptions />
             </BoardSelect>
           </label>
           <label>
@@ -1397,21 +1437,28 @@ function TaskDetail({
   saveEditDraft,
   errorSlot,
   errorNotice,
+  todoNotice,
+  pendingTodoId,
   clearError,
   claimHeadingFocus,
-  fullWidth,
   onClose,
 }) {
   const [context, setContext] = useState(null)
   const [contextAttempt, setContextAttempt] = useState(0)
   const heading = useRef(null)
-  const [editButton, refocusEdit] = useRefocus()
+  const [actionSummary, refocusActions] = useRefocus()
   const [handoffButton, refocusHandoff] = useRefocus()
-  const [handoffOpener, refocusHandoffOpener] = useRefocus()
   const [commentButton, refocusComment] = useRefocus()
   const commentsHeading = useRef(null)
-  const [statusSelect, refocusStatus] = useRefocus()
-  const [statusChoice, setStatusChoice] = useState(null)
+  const [outcomeChoice, setOutcomeChoice] = useState(null)
+  const [outcomeSelect, refocusOutcome] = useRefocus()
+  const [todoOpener, refocusTodoOpener] = useRefocus()
+  const failedTodoId = errorSlot === 'todo.complete' ? todoNotice?.id : null
+  useLayoutEffect(() => {
+    if (!failedTodoId) return
+    const row = document.getElementById(`todo-check-${failedTodoId}`)?.closest('.task-todo-row')
+    if (row === document.activeElement) row.querySelector(':scope > [role="alert"]')?.scrollIntoView({ block: 'nearest' })
+  }, [failedTodoId])
   // Focus before the new controls can receive input, once per open.
   useLayoutEffect(() => {
     if (context && heading.current && claimHeadingFocus()) heading.current.focus()
@@ -1427,46 +1474,45 @@ function TaskDetail({
     const current = readEditDraft(taskId)
     if (current) saveEditDraft(taskId, { ...current, edited, tagsText })
   }, [readEditDraft, saveEditDraft, taskId])
-  const commentInput = useRef(null)
   const [commentFocused, setCommentFocused] = useState(false)
   const [to, setTo] = useState('')
-  const [handoffStatus, setHandoffStatus] = useState('review')
-  const [handoffStatusTouched, setHandoffStatusTouched] = useState(false)
   const [handoffMessage, setHandoffMessage] = useState('')
   const [failure, setFailure] = useState(null)
   const [handoffBase, setHandoffBase] = useState(null)
-  const [handoffOpen, setHandoffOpen] = useState(false)
+  const [handoffMode, setHandoffMode] = useState(null)
+  const handoffOpen = handoffMode !== null
+  const assigningTodo = handoffMode === 'todo'
   const [handoffDone, setHandoffDone] = useState(null)
   const handoffForm = useRef(null)
   const focusRecipient = useRef(false)
   // Latest values for async completions, which must not act on a stale closure.
   const handoffLive = useRef({})
-  handoffLive.current = { open: handoffOpen, message: handoffMessage }
+  handoffLive.current = { mode: handoffMode, message: handoffMessage, to }
   useEffect(() => {
     if (!handoffOpen || !focusRecipient.current) return
     focusRecipient.current = false
     handoffForm.current?.querySelector('select')?.focus()
   }, [handoffOpen])
-  const finishHandoff = useCallback(({ to: sentTo, status }) => {
-    setHandoffOpen(false)
+  const finishHandoff = useCallback((mode, sentTo) => {
+    setHandoffMode(null)
     setTo('')
     setHandoffMessage('')
     setHandoffBase(null)
-    setHandoffStatusTouched(false)
-    setHandoffDone({ to: sentTo, status })
-    refocusHandoffOpener()
-  }, [refocusHandoffOpener])
+    setHandoffDone({ to: sentTo, mode })
+    if (mode === 'todo') heading.current?.focus({ preventScroll: true })
+    else refocusActions()
+  }, [refocusActions])
   useEffect(() => {
     if (confirmedOperation?.payload.taskId !== taskId) return
     if (confirmedOperation.editDraft !== undefined && readEditDraft(taskId) === confirmedOperation.editDraft) {
       setDraftState(confirmedOperation.editDraft)
-      if (!confirmedOperation.editDraft) refocusEdit()
+      if (!confirmedOperation.editDraft) refocusActions()
     }
-    if (confirmedOperation.type === 'task.handoff') {
-      const { open, message: current } = handoffLive.current
-      if (open && current === confirmedOperation.payload.message) finishHandoff(confirmedOperation.payload)
-    }
-  }, [confirmedOperation, taskId, finishHandoff, readEditDraft, refocusEdit])
+    const { mode, message: current } = handoffLive.current
+    const { type, payload } = confirmedOperation
+    if (mode === 'transfer' && type === 'task.handoff' && current === payload.message && handoffLive.current.to === payload.to) finishHandoff(mode, payload.to)
+    if (mode === 'todo' && type === 'todo.add' && current === payload.text && handoffLive.current.to === payload.to) finishHandoff(mode, payload.to)
+  }, [confirmedOperation, taskId, finishHandoff, readEditDraft, refocusActions])
   useEffect(() => {
     let stale = false
     request(
@@ -1486,11 +1532,17 @@ function TaskDetail({
     }
   }, [taskId, actor, heads, request, contextAttempt])
   const panelHeading = (
-    <div className="panel-heading">
-      <h2 tabIndex={fullWidth ? 0 : -1} ref={heading}>
+    <div className="panel-heading task-panel-heading">
+      <h2 className={context ? 'task-title' : undefined} tabIndex={0} ref={heading} onKeyDown={event => {
+        const title = event.currentTarget
+        if (title.scrollHeight <= title.clientHeight || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+        event.preventDefault()
+        title.scrollBy({ top: title.clientHeight / 2 * (event.key === 'ArrowDown' ? 1 : -1) })
+      }}>
         {context ? <bdi>{context.task.title}</bdi> : 'Task details'}
       </h2>
-      <button autoFocus={!context} onClick={onClose}>Close</button>
+      <TaskPanelClose autoFocus={!context} onClose={onClose} />
     </div>
   )
   const readError = failure && (
@@ -1508,23 +1560,39 @@ function TaskDetail({
     return (
       <>
         {panelHeading}
-        {readError || <p role="status">Opening task…</p>}
-        {errorNotice}
+        <div className="task-panel-body">
+          {readError || <p role="status">Opening task…</p>}
+          {todoNotice?.content ?? errorNotice}
+        </div>
       </>
     )
-  const { task, comments, history, conflicts, revisions } = context
+  const { task, comments, conflicts, revisions } = context
+  const todos = comments.filter(comment => comment.todo)
+  const inlineTodoNotice = !draft && todos.some(comment => comment.id === todoNotice?.id)
+  const confirmedTodo = confirmedOperation?.type === 'todo.complete' && todos.some(comment =>
+    comment.id === confirmedOperation.payload.commentId && comment.todo.completion)
   // History is the task's Activity entries, each derived from the change that wrote it, newest first.
   const historyRows = sortEvents(taskRows({ activity: lookups.activity, attribution: lookups.attribution }, taskId).filter(row => row.type !== 'comment.add'))
   const canWrite = Boolean(actor) && !busy
-  const quickStatus = quickStatusEditable({ actor, editing: Boolean(draft), handingOff: handoffOpen, conflicts })
   const newCount = actor ? comments.filter(comment => isNewComment(comment, actor)).length : 0
   // Lowercase handle -> "Name · kind" for Actors a comment actually notified.
   const deliveredFor = (commentId) => new Map(context.mentions
     .filter(mention => mention.commentId === commentId && actors[mention.toActorId])
     .map(mention => [String(actors[mention.toActorId].handle).toLowerCase(), labelActor(actors[mention.toActorId])]))
   const hint = mentionHint(unmatchedHandles(message, actors, { focused: commentFocused }))
-  const handoffRevisions = { assignee: revisions.assignee, status: revisions.status }
-  const handoffStale = handoffBase && JSON.stringify(handoffBase) !== JSON.stringify(handoffRevisions)
+  const handoffRevisions = { assignee: revisions.assignee }
+  const openHandoff = mode => {
+    actionSummary.current?.parentElement.removeAttribute('open')
+    focusRecipient.current = true
+    setHandoffDone(null)
+    setHandoffBase(mode === 'transfer' ? handoffRevisions : null)
+    setHandoffMode(mode)
+  }
+  const showTodos = !draft && (todos.length > 0 || assigningTodo)
+  const assignTodo = !handoffOpen && <button type="button" className="quiet-button" ref={todos.length > 0 ? todoOpener : undefined}
+    disabled={!canWrite} onClick={() => openHandoff('todo')}>Assign to-do</button>
+  const statusLabel = conflicts.outcome ? 'Outcome disputed' : LABELS[task.outcome ?? task.state]
+  const handoffStale = handoffBase && JSON.stringify(handoffBase.assignee) !== JSON.stringify(revisions.assignee)
   // A receipt can arrive before the context refresh. Its previous revision
   // is older than the rebased draft, so wait for context to catch up.
   const previousRevisions = draft && confirmedOperation?.editDraft === draft
@@ -1544,32 +1612,179 @@ function TaskDetail({
   const here = session.focus[taskId] ? focusedActors(session, session.focus[taskId]) : []
   // An edit error falls back to the panel top once its form has closed.
   // A handoff error does too while its form is closed, so Retry stays visible.
-  const formSlot = (errorSlot === 'task.update' && !draft) || (errorSlot === 'task.handoff' && !handoffOpen)
+  const formSlot = (errorSlot === 'task.update' && !draft) || (['task.handoff', 'todo.add'].includes(errorSlot) && !handoffOpen)
     ? 'panel'
     : errorSlot
   const noticeFor = slot => formSlot === slot && errorNotice
-  return (
-    <>
-      {panelHeading}
-      <div className="task-context">
-        {fullWidth && <SaveStatus status={status} connected={connected} busy={busy} heads={heads} />}
-        <p className="muted">
-          <bdi>{labelActor(actors[task.assignee])}</bdi> · {quickStatus ? '' : `${LABELS[task.status]} · `}
-          <span className="priority">{task.priority}</span>
-        </p>
-        {context.veins?.length > 0 && (
-          <p className="muted">Veins: {context.veins.map(vein => `${vein.title} (${LABELS[vein.status]})`).join(', ')}</p>
+  const handoffEditor = handoffOpen && (
+    <form
+      ref={handoffForm}
+      onFocusCapture={() => {
+        if (!assigningTodo) setHandoffBase(current => current ?? handoffRevisions)
+      }}
+      onSubmit={async (event) => {
+        event.preventDefault()
+        const sent = assigningTodo
+          ? { taskId, to, text: handoffMessage }
+          : { taskId, to, message: handoffMessage, expectedRevisions: handoffBase }
+        const receipt = await submit(assigningTodo ? 'todo.add' : 'task.handoff', sent)
+        const { mode, message: current, to: recipient } = handoffLive.current
+        if (!receipt) refocusHandoff()
+        else if (mode === handoffMode && current === handoffMessage && recipient === to) finishHandoff(mode, to)
+      }}
+    >
+      {handoffStale && (
+        <div className="notice" role="status">
+          <p>This task changed while you were writing: now {labelActor(actors[task.assignee])} · {LABELS[task.state]}. Your draft is preserved.</p>
+          <button
+            type="button"
+            disabled={!canWrite}
+            onClick={() => {
+              setHandoffBase(handoffRevisions)
+            }}
+          >
+            Use latest task details
+          </button>
+        </div>
+      )}
+      <SelectActor
+        label="Recipient"
+        actors={actors}
+        value={to}
+        onChange={setTo}
+      />
+      <label>
+        {assigningTodo ? 'To-do' : 'Handoff message'}
+        <textarea
+          aria-label={assigningTodo ? 'To-do' : 'Handoff message'}
+          required
+          value={handoffMessage}
+          onChange={(event) => setHandoffMessage(event.target.value)}
+        />
+      </label>
+      {noticeFor(assigningTodo ? 'todo.add' : 'task.handoff')}
+      <div className="actions">
+        <button className="primary" ref={handoffButton} disabled={!canWrite || !to || handoffStale || !handoffMessage.trim()}>{assigningTodo ? 'Assign to-do' : 'Hand off'}</button>
+        <button
+          type="button"
+          onClick={() => {
+            setHandoffMode(null)
+            setTo('')
+            setHandoffMessage('')
+            setHandoffBase(null)
+            clearError()
+            if (assigningTodo && todos.length > 0) refocusTodoOpener()
+            else refocusActions()
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+  const details = (
+    <div className="task-panel-body">
+      <div className="task-overview">
+        <div className="task-context">
+          <div className="task-meta">
+            <p className="task-identifiers">
+              <strong>{statusLabel}</strong>
+              <span><bdi>{labelActor(actors[task.assignee])}</bdi>{' · '}<span className="priority">{task.priority}</span></span>
+            </p>
+            {here.length > 0 && <div className="here-now">
+              <span className="muted">Here now</span>
+              <AvatarStack actors={here} index={session.index} max={6} size="sm" label="Here now" labelSuffix=", on this task"
+                onOpen={session.onOpenProfile} />
+            </div>}
+          </div>
+          {context.veins?.length > 0 && <p className="muted">Veins: {context.veins.map(vein => vein.title).join(', ')}</p>}
+        </div>
+        {!draft && actor && (
+          <details className="task-action-disclosure">
+            <summary className="quiet-button" ref={actionSummary}>Task actions <Chevron /></summary>
+            <div className="task-secondary-actions">
+              {!handoffOpen && !conflicts.outcome && (
+                <label className="status-field">
+                  Set outcome
+                  <BoardSelect aria-label="Outcome" ref={outcomeSelect} disabled={!canWrite} value={outcomeChoice ?? task.outcome ?? ''}
+                    onChange={async event => {
+                      const next = event.target.value
+                      if ((next || null) === task.outcome) return
+                      setOutcomeChoice(next)
+                      await submit('task.update', { taskId, updates: { outcome: next || null }, expectedRevisions: { outcome: revisions.outcome } })
+                      setOutcomeChoice(null)
+                      refocusOutcome()
+                    }}>
+                    <OutcomeOptions />
+                  </BoardSelect>
+                </label>
+              )}
+              <div className="actions">
+                <button type="button" className="quiet-button" disabled={!canWrite} onClick={() => setDraft({
+                  fields: Object.fromEntries(
+                    ['title', 'description', 'outcome', 'priority', 'assignee', 'tags'].map(field => [field, task[field]]),
+                  ),
+                  revisions,
+                })}>Edit task</button>
+                {!handoffOpen && <button type="button" className="quiet-button" disabled={!canWrite || Boolean(conflicts.assignee)}
+                  onClick={() => openHandoff('transfer')}>Hand off work</button>}
+                {todos.length === 0 && assignTodo}
+              </div>
+            </div>
+          </details>
         )}
       </div>
+      {handoffDone && (
+        <p role="status" className="muted">
+          {handoffDone.mode === 'todo' ? 'To-do assigned to' : 'Handed off to'} {actorName(actors, handoffDone.to)}.
+        </p>
+      )}
       {emptyFields(context.unreadable, 'task', taskId).length > 0 && <p className="notice warning" role="status">
         Shown empty, because what this task holds there can’t be read: {emptyFields(context.unreadable, 'task', taskId).join(', ')}.</p>}
-      {here.length > 0 && <div className="here-now">
-        <span className="muted">Here now</span>
-        <AvatarStack actors={here} index={session.index} max={6} size="sm" label="Here now" labelSuffix=", on this task"
-          onOpen={session.onOpenProfile} />
-      </div>}
       {readError}
-      {!FORM_SLOTS.includes(formSlot) && errorNotice}
+      {!inlineTodoNotice && !FORM_SLOTS.includes(formSlot) && (todoNotice?.content ?? errorNotice)}
+      {(context.integrityConflicts ?? []).map(group => (
+        <section className="conflict integrity-conflict" key={group.requestId} aria-label="Operation integrity conflict">
+          <h3>Unresolved operation ID conflict</h3>
+          <p>Retry key {group.requestId} acknowledged different requests. Both are preserved. Inspection does not replay or repair them.</p>
+          {group.variants.map(variant => (
+            <details key={variant.fingerprint}>
+              <summary>{variant.type} by {variant.actorId} — {variant.fingerprint}</summary>
+              <pre>{JSON.stringify(variant, null, 2)}</pre>
+            </details>
+          ))}
+        </section>
+      ))}
+      {Object.entries(conflicts).map(([field, choices]) => (
+        <section className="conflict" key={field}>
+          <h3>Resolve {field}</h3>
+          <p>Both edits are preserved. Choose the value to keep.</p>
+          {choices.map((choice) => (
+            <div key={choice.operationId}>
+              <strong>{labelActor(actors[choice.actorId])}</strong>
+              {alternativeChangedBySomeoneElse(lookups.attribution, 'taskFields', `${taskId}:${field}`, choice.operationId)
+                && <p className="comment-changed" role="note">Changed by someone other than {labelActor(actors[choice.actorId])}. See Activity.</p>}
+              <p>
+                {field === 'outcome' ? LABELS[choice.value] ?? 'No outcome'
+                  : typeof choice.value === 'string' ? choice.value : JSON.stringify(choice.value)}
+              </p>
+              <button
+                disabled={!canWrite}
+                onClick={() =>
+                  submit('task.resolve', {
+                    taskId,
+                    field,
+                    value: choice.value,
+                    expectedRevisions: revisions[field],
+                  })
+                }
+              >
+                Keep this {field}
+              </button>
+            </div>
+          ))}
+        </section>
+      ))}
       {draft && newerFields.length > 0 && (
         <div className="notice warning draft-notice" role="status">
           <p>
@@ -1607,7 +1822,7 @@ function TaskDetail({
           initialTags={draft.tagsText}
           onChange={persistDraftEdits}
           notice={noticeFor('task.update')}
-          onClose={() => { setDraft(null); clearError(); refocusEdit() }}
+          onClose={() => { setDraft(null); clearError(); refocusActions() }}
           onSubmit={async (fields) => {
             const updates = Object.fromEntries(
               Object.entries(fields).filter(
@@ -1617,345 +1832,217 @@ function TaskDetail({
             )
             if (!Object.keys(updates).length) {
               setDraft(null)
-              refocusEdit()
+              refocusActions()
               return true
             }
             return submit('task.update', {
               taskId,
               updates,
               expectedRevisions: Object.fromEntries(
-                Object.keys(updates).map((key) => [key, draft.revisions[key]]),
+                Object.keys(updates).map(key => [key, draft.revisions[key]]),
               ),
             }, { fromEditor: true })
           }}
         />
       ) : <MarkdownBody>{task.description || 'No description yet.'}</MarkdownBody>}
-      <div className="task-actions">
-        {quickStatus && (
-          <label className="status-field">
-            Status
-            <BoardSelect
-              aria-label="Status"
-              ref={statusSelect}
-              disabled={!canWrite}
-              value={statusChoice ?? task.status}
-              onChange={async (event) => {
-                const next = event.target.value
-                if (next === task.status) return
-                setStatusChoice(next)
-                await submit('task.update', {
-                  taskId,
-                  updates: { status: next },
-                  expectedRevisions: { status: revisions.status },
-                })
-                setStatusChoice(null)
-                refocusStatus()
-              }}
-            >
-              <StatusOptions />
-            </BoardSelect>
-          </label>
-        )}
-        {(!draft || !handoffOpen) && <div className="actions task-secondary-actions">
-          {!draft && (
-            <button
-              className="quiet-button"
-              ref={editButton}
-              disabled={!canWrite}
-              onClick={() =>
-                setDraft({
-                  fields: Object.fromEntries(
-                    [
-                      'title',
-                      'description',
-                      'status',
-                      'priority',
-                      'assignee',
-                      'tags',
-                    ].map((field) => [field, task[field]]),
-                  ),
-                  revisions,
-                })
-              }
-            >
-              Edit task
-            </button>
-          )}
-          {!handoffOpen && (
-            <button
-              className="quiet-button"
-              ref={handoffOpener}
-              disabled={!canWrite}
-              onClick={() => {
-                focusRecipient.current = true
-                setHandoffDone(null)
-                setHandoffStatus(defaultHandoffStatus(task.status))
-                setHandoffStatusTouched(false)
-                setHandoffBase(handoffRevisions)
-                setHandoffOpen(true)
-              }}
-            >
-              Hand off work
-            </button>
-          )}
-        </div>}
-        {handoffDone && (
-          <p role="status" className="muted">
-            Handed off to {labelActor(actors[handoffDone.to])} · {LABELS[handoffDone.status]}.
-          </p>
-        )}
-      </div>
-      {(context.integrityConflicts ?? []).map(group => (
-        <section className="conflict integrity-conflict" key={group.requestId} aria-label="Operation integrity conflict">
-          <h3>Unresolved operation ID conflict</h3>
-          <p>Retry key {group.requestId} acknowledged different requests. Both are preserved. Inspection does not replay or repair them.</p>
-          {group.variants.map(variant => (
-            <details key={variant.fingerprint}>
-              <summary>{variant.type} by {variant.actorId} — {variant.fingerprint}</summary>
-              <pre>{JSON.stringify(variant, null, 2)}</pre>
-            </details>
-          ))}
-        </section>
-      ))}
-      {Object.entries(conflicts).map(([field, choices]) => (
-        <section className="conflict" key={field}>
-          <h3>Resolve {field}</h3>
-          <p>Both edits are preserved. Choose the value to keep.</p>
-          {choices.map((choice) => (
-            <div key={choice.operationId}>
-              <strong>{labelActor(actors[choice.actorId])}</strong>
-              {alternativeChangedBySomeoneElse(lookups.attribution, 'taskFields', `${taskId}:${field}`, choice.operationId)
-                && <p className="comment-changed" role="note">Changed by someone other than {labelActor(actors[choice.actorId])}. See Activity.</p>}
-              <p>
-                {typeof choice.value === 'string'
-                  ? choice.value
-                  : JSON.stringify(choice.value)}
-              </p>
-              <button
-                disabled={!canWrite}
-                onClick={() =>
-                  submit('task.resolve', {
-                    taskId,
-                    field,
-                    value: choice.value,
-                    expectedRevisions: revisions[field],
-                  })
-                }
-              >
-                Keep this {field}
-              </button>
-            </div>
-          ))}
-        </section>
-      ))}
-      {handoffOpen && (
-      <section>
-        <h3>Hand off work</h3>
-        <form
-          ref={handoffForm}
-          onFocusCapture={() => {
-            setHandoffBase(current => current ?? handoffRevisions)
-          }}
-          onSubmit={async (event) => {
-            event.preventDefault()
-            const sent = { taskId, to, status: handoffStatus, message: handoffMessage }
-            const receipt = await submit('task.handoff', { ...sent, expectedRevisions: handoffBase })
-            const { open, message: current } = handoffLive.current
-            if (!receipt) refocusHandoff()
-            else if (open && current === sent.message) finishHandoff(sent)
-          }}
-        >
-          {handoffStale && (
-            <div className="notice" role="status">
-              <p>This task changed while you were writing: now {labelActor(actors[task.assignee])} · {LABELS[task.status]}. Your draft is preserved.</p>
-              <button
-                type="button"
-                disabled={!canWrite}
-                onClick={() => {
-                  setHandoffBase(handoffRevisions)
-                  if (!handoffStatusTouched) setHandoffStatus(defaultHandoffStatus(task.status))
-                }}
-              >
-                Use latest task details
-              </button>
-            </div>
-          )}
-          <SelectActor
-            label="Recipient"
-            actors={actors}
-            value={to}
-            onChange={setTo}
-          />
-          <label>
-            Handoff status
-            <BoardSelect
-              value={handoffStatus}
-              onChange={(event) => {
-                setHandoffStatus(event.target.value)
-                setHandoffStatusTouched(true)
-              }}
-            >
-              <StatusOptions />
-            </BoardSelect>
-          </label>
-          <label>
-            Handoff message
-            <textarea
-              aria-label="Handoff message"
-              required
-              value={handoffMessage}
-              onChange={(event) => setHandoffMessage(event.target.value)}
-            />
-          </label>
-          {noticeFor('task.handoff')}
-          <div className="actions">
-            <button className="primary" ref={handoffButton} disabled={!canWrite || !to || handoffStale || !handoffMessage.trim()}>Hand off</button>
-            <button
-              type="button"
-              onClick={() => {
-                setHandoffOpen(false)
-                setTo('')
-                setHandoffMessage('')
-                setHandoffBase(null)
-                setHandoffStatusTouched(false)
-                clearError()
-                refocusHandoffOpener()
-              }}
-            >
-              Cancel handoff
-            </button>
+      {showTodos && (
+        <section className="task-todos" aria-labelledby="task-todos-heading">
+          <div className="section-heading">
+            <h3 id="task-todos-heading">To-dos</h3>
+            {assignTodo}
           </div>
-        </form>
-      </section>
+          <div className="task-todo-status muted small" role="status">
+            {confirmedTodo && <span key={confirmedOperation.operationId}>To-do marked done.</span>}
+          </div>
+          {todos.length > 0 && <ul role="list">
+            {todos.map(({ id, content, todo }) => (
+              <li key={id} id={`todo-item-${id}`} className="task-todo-row" tabIndex={-1}>
+                <label className="task-todo-control">
+                  <input
+                    id={`todo-check-${id}`}
+                    type="checkbox"
+                    aria-labelledby={`todo-text-${id}`}
+                    checked={Boolean(todo.completion)}
+                    disabled={!canWrite || pendingTodoId === id || todo.assignee !== actor || Boolean(todo.completion)}
+                    onChange={event => {
+                      event.currentTarget.closest('li').focus({ preventScroll: true })
+                      void submit('todo.complete', { commentId: id })
+                    }}
+                  />
+                </label>
+                <div>
+                  <div id={`todo-text-${id}`}>
+                    <MarkdownBody labelFor={`todo-check-${id}`} assigneeHandle={actors[todo.assignee]?.handle || todo.assignee}
+                      extraPlugins={[remarkMentionChips(deliveredFor(id))]}>{content}</MarkdownBody>
+                  </div>
+                  {todo.completion && <p className="task-todo-done muted"><strong>Done</strong></p>}
+                </div>
+                {id === todoNotice?.id && todoNotice.content}
+              </li>
+            ))}
+          </ul>}
+          {assigningTodo && handoffEditor}
+        </section>
+      )}
+      {!draft && handoffMode === 'transfer' && (
+        <section className="task-handoff">
+          <h3>Hand off work</h3>
+          {handoffEditor}
+        </section>
       )}
       <section className="task-discussion">
         <div className="section-heading">
-          <h3 ref={commentsHeading} tabIndex={-1}>
-            Comments{comments.length > 0 && <span className="count"> {comments.length}</span>}
-            {actor && newCount > 0 && <span className="comment-new-count"> · {newCount} new</span>}
-          </h3>
-          {actor && comments.length > 0 && (
-            <div className="actions">
-              <button className="quiet-button" type="button" onClick={() => {
-                const field = commentInput.current
-                field.scrollIntoView({ block: 'center', inline: 'nearest' })
-                field.focus({ preventScroll: true })
-              }}>Write comment</button>
-              {newCount > 0 && <button
-                className="quiet-button"
-                disabled={!canWrite}
-                onClick={event => {
-                  if (document.activeElement === event.currentTarget) commentsHeading.current.focus({ preventScroll: true })
-                  void submit('read.mark', {
-                    taskId,
-                    comments: comments.flatMap((comment) =>
-                      comment.revisionIds.map((revisionId) => ({
-                        commentId: comment.id,
-                        revisionId,
-                      })),
-                    ),
-                  })
-                }}
-              >
-                Mark all read
-              </button>}
-            </div>
+          <div className="discussion-title">
+            <h3 ref={commentsHeading} tabIndex={-1}>
+              Comments{comments.length > 0 && <span className="count"> {comments.length}</span>}
+              {actor && newCount > 0 && <span className="comment-new-count"> · {newCount} new</span>}
+            </h3>
+            <PendingReplication status={status} connected={connected} heads={heads} />
+          </div>
+          {newCount > 0 && (
+            <button
+              className="quiet-button"
+              disabled={!canWrite}
+              onClick={event => {
+                if (document.activeElement === event.currentTarget) commentsHeading.current.focus({ preventScroll: true })
+                void submit('read.mark', {
+                  taskId,
+                  comments: comments.flatMap((comment) =>
+                    comment.revisionIds.map((revisionId) => ({
+                      commentId: comment.id,
+                      revisionId,
+                    })),
+                  ),
+                })
+              }}
+            >
+              Mark all read
+            </button>
           )}
         </div>
         {comments.map((comment) => {
           const isNew = isNewComment(comment, actor)
+          const todo = comment.todo
+          const completion = todo?.completion
+          const hasConflict = comment.conflicts.length > 0
+          const distinctAuthors = comment.conflicts.some(choice => choice.actorId !== comment.actorId)
           return (
-          <article className={isNew ? 'comment is-new' : 'comment'} key={comment.id}>
-            <div className="comment-head">
-              <strong><bdi>{labelActor(actors[comment.actorId])}</bdi></strong>
-              <time dateTime={comment.timestamp} dir="auto">{new Date(comment.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
-              {isNew && <span className="comment-tag">New</span>}
-            </div>
-            {/* The comment as it is now names its recorded author, with no signer line; a change by anyone else to it says so. */}
-            {changedBySomeoneElse(lookups.attribution, comment.id) && <p className="comment-changed" role="note">Changed by someone other than its author. See Activity for who made each change.</p>}
-            <MarkdownBody extraPlugins={[remarkMentionChips(deliveredFor(comment.id))]}>{comment.content}</MarkdownBody>
-            {comment.conflicts.length > 0 && comment.actorId !== actor && (
-              <p className="muted small">Only the comment author can resolve these edits.</p>
-            )}
-            {comment.conflicts.map((choice) => (
-              <div className="conflict" key={choice.operationId}>
-                <strong>{labelActor(actors[choice.actorId])}</strong>
-                {alternativeChangedBySomeoneElse(lookups.attribution, 'commentBodies', comment.id, choice.operationId)
-                  && <p className="comment-changed" role="note">Changed by someone other than {labelActor(actors[choice.actorId])}. See Activity.</p>}
-                <p>{choice.value}</p>
-                <button
-                  disabled={!canWrite || comment.actorId !== actor}
-                  onClick={() =>
-                    submit('comment.resolve', {
-                      commentId: comment.id,
-                      text: choice.value,
-                      expectedRevisions: comment.revisionIds,
-                    })
-                  }
-                >
-                  Keep this comment
-                </button>
+            <article className={`comment${todo ? ' todo-activity' : ''}${isNew ? ' is-new' : ''}`} key={comment.id}>
+              <div className="comment-head">
+                <div className="comment-byline">
+                  <strong><bdi>{labelActor(actors[comment.actorId])}</bdi></strong>
+                  {isNew && <span className="comment-tag">New</span>}
+                </div>
+                <time dateTime={comment.timestamp} dir="auto">{new Date(comment.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
               </div>
-            ))}
-          </article>
+              {/* The comment as it is now names its recorded author, with no signer line; a change by anyone else to it says so. */}
+              {changedBySomeoneElse(lookups.attribution, comment.id) && <p className="comment-changed" role="note">Changed by someone other than its author. See Activity for who made each change.</p>}
+              {!todo && !hasConflict && (
+                <MarkdownBody extraPlugins={[remarkMentionChips(deliveredFor(comment.id))]}>{comment.content}</MarkdownBody>
+              )}
+              {todo && <div className="comment-todo">
+                {showTodos ? (
+                  <button type="button" className="quiet-button todo-activity-link" aria-describedby={`todo-text-${comment.id}`} onClick={() => {
+                    const item = document.getElementById(`todo-item-${comment.id}`)
+                    item.scrollIntoView({ block: 'center' })
+                    item.focus({ preventScroll: true })
+                  }}>To-do for <bdi>{actorName(actors, todo.assignee)}</bdi></button>
+                ) : <span>To-do for <bdi>{actorName(actors, todo.assignee)}</bdi></span>}
+                {completion && <div><span>Done by <bdi>{actorName(actors, completion.actorId)}</bdi></span> · <time dateTime={completion.timestamp} dir="auto">
+                  {new Date(completion.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                </time></div>}
+              </div>}
+              {hasConflict && comment.actorId !== actor && (
+                <p className="muted small">Only the comment author can resolve these edits.</p>
+              )}
+              {hasConflict && (
+                <div className="conflict comment-conflict" role="group" aria-label="Competing comment edits">
+                  {comment.conflicts.map(choice => (
+                    <div key={choice.operationId}>
+                      {distinctAuthors && <strong><bdi>{labelActor(actors[choice.actorId])}</bdi></strong>}
+                      {alternativeChangedBySomeoneElse(lookups.attribution, 'commentBodies', comment.id, choice.operationId)
+                        && <p className="comment-changed" role="note">Changed by someone other than {labelActor(actors[choice.actorId])}. See Activity.</p>}
+                      <MarkdownBody>{choice.value}</MarkdownBody>
+                      <button
+                        disabled={!canWrite || comment.actorId !== actor}
+                        onClick={() =>
+                          submit('comment.resolve', {
+                            commentId: comment.id,
+                            text: choice.value,
+                            expectedRevisions: comment.revisionIds,
+                          })
+                        }
+                      >
+                        Keep this comment
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
           )
         })}
-        <form className="comment-composer"
-          onSubmit={async (event) => {
-            event.preventDefault()
-            const receipt = await submit('comment.add', {
-              taskId,
-              text: message,
-            })
-            if (!receipt) refocusComment()
-          }}
-        >
-          <label>
-            Comment
-            <textarea
-              ref={commentInput}
-              aria-label="Comment"
-              required
-              value={message}
-              onChange={(event) => onMessageChange(event.target.value)}
-              onFocus={() => setCommentFocused(true)}
-              onBlur={() => setCommentFocused(false)}
-              aria-describedby={hint ? 'comment-mention-hint' : undefined}
-              placeholder="Share progress or mention an Actor with @handle"
+      </section>
+      <div className="task-supporting">
+        {session.canControl && <TaskAgentRuns request={request} actors={actors} taskId={taskId} actor={actor} />}
+        <IssueLinks taskId={taskId} issues={context.issues ?? []} canWrite={canWrite} submit={submit}
+          notice={noticeFor('task.link-issue') || noticeFor('task.unlink-issue')} />
+        {context.evidence.length > 0 && <section>
+          <h3>Evidence</h3>
+          {context.evidence.map((commit, index) => (
+              <article key={`${commit.hash}:${index}`}>
+                <code>{commit.hash}</code>
+                <p>{commit.message}</p>
+              </article>
+            ))}
+        </section>}
+        <section>
+          <h3>History</h3>
+          {historyRows.length > 0 && <CurrentLegend />}
+          {historyRows.map(event => (
+            <EventRow
+              key={event.operationId}
+              event={event}
+              lookups={lookups}
+              within={taskId}
+              formatTime={when => when.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
             />
-          </label>
-          {hint && <p id="comment-mention-hint" className="muted mention-hint">{hint}</p>}
-          {noticeFor('comment.add')}
-          <button className="primary" ref={commentButton} disabled={!canWrite || !message.trim()}>
-            Add comment
-          </button>
-        </form>
-      </section>
-      {session.canControl && <TaskAgentRuns request={request} actors={actors} taskId={taskId} actor={actor} />}
-      <IssueLinks taskId={taskId} issues={context.issues ?? []} canWrite={canWrite} submit={submit}
-        notice={noticeFor('task.link-issue') || noticeFor('task.unlink-issue')} />
-      {context.evidence.length > 0 && <section>
-        <h3>Evidence</h3>
-        {context.evidence.map((commit, index) => (
-            <article key={`${commit.hash}:${index}`}>
-              <code>{commit.hash}</code>
-              <p>{commit.message}</p>
-            </article>
           ))}
-      </section>}
-      <section>
-        <h3>History</h3>
-        {historyRows.length > 0 && <CurrentLegend />}
-        {historyRows.map(event => (
-          <EventRow
-            key={event.operationId}
-            event={event}
-            lookups={lookups}
-            within={taskId}
-            formatTime={when => when.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+        </section>
+      </div>
+    </div>
+  )
+  return (
+    <>
+      {panelHeading}
+      {details}
+      <form className="comment-composer"
+        onSubmit={async (event) => {
+          event.preventDefault()
+          const receipt = await submit('comment.add', { taskId, text: message })
+          if (!receipt) refocusComment()
+        }}
+      >
+        <label>
+          Comment
+          <textarea
+            aria-label="Comment"
+            rows={2}
+            required
+            value={message}
+            onChange={(event) => onMessageChange(event.target.value)}
+            onFocus={() => setCommentFocused(true)}
+            onBlur={() => setCommentFocused(false)}
+            aria-describedby={hint ? 'comment-mention-hint' : undefined}
+            placeholder="Share progress or mention an Actor with @handle"
           />
-        ))}
-      </section>
+        </label>
+        {hint && <p id="comment-mention-hint" className="muted mention-hint">{hint}</p>}
+        {noticeFor('comment.add')}
+        <button className={draft || handoffOpen ? undefined : 'primary'} ref={commentButton} disabled={!canWrite || !message.trim()}>
+          Add comment
+        </button>
+      </form>
     </>
   )
 }

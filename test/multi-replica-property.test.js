@@ -27,7 +27,7 @@ const REPLICAS = [
   { name: 'bob-desktop', actor: `${BOB}${'22'.repeat(8)}`, actorIds: ['bob'] },
 ]
 const HANDLES = ['alice', 'bob', 'builder', 'scout', 'scouter']
-const STATUSES = ['backlog', 'up-next', 'in-progress', 'review', 'completed']
+const OUTCOMES = [null, 'completed', 'dead-end', 'abandoned']
 const WORDS = ['plan', 'draft', 'check', 'ship', 'review', 'fix', 'note', 'idea']
 
 /** One replica's history: its own document, its Automerge actor, the Actors it acts as, and whether it is online. */
@@ -57,8 +57,8 @@ function requests(rand) {
     if (tasks.length) {
       const taskId = busy(tasks)
       const state = taskState(doc, taskId)
-      const field = rand() < 0.5 ? pick(['title', 'status']) : pick(['title', 'description', 'status', 'priority', 'assignee', 'tags', 'order'])
-      const value = { title: `Title ${words()}`, description: words(4), status: pick(STATUSES), priority: pick(['p0', 'p1', 'p2', 'p3']),
+      const field = rand() < 0.5 ? pick(['title', 'outcome']) : pick(['title', 'description', 'outcome', 'priority', 'assignee', 'tags', 'order'])
+      const value = { title: `Title ${words()}`, description: words(4), outcome: pick(OUTCOMES), priority: pick(['p0', 'p1', 'p2', 'p3']),
         assignee: rand() < 0.2 ? null : pick(HANDLES), tags: [pick(WORDS), pick(WORDS)], order: Math.floor(rand() * 1000) }[field]
       // A conflict is usually resolved when it is seen: to a new value, or to the one shown.
       if (Object.hasOwn(state.conflicts, field)) {
@@ -69,8 +69,8 @@ function requests(rand) {
         choices.push(() => ({ type: 'task.update', payload: { taskId, updates: { [field]: value }, expectedRevisions: { [field]: state.revisions[field] } } }))
         choices.push(() => ({ type: 'task.update', payload: { taskId, updates: { [field]: state.task[field] }, expectedRevisions: { [field]: state.revisions[field] } } }))
       }
-      choices.push(() => ({ type: 'task.handoff', payload: { taskId, to: pick(HANDLES), status: pick(STATUSES), message: `Over to you${mention()}`,
-        expectedRevisions: { assignee: state.revisions.assignee, status: state.revisions.status } } }))
+      choices.push(() => ({ type: 'task.handoff', payload: { taskId, to: pick(HANDLES), message: `Over to you${mention()}`,
+        expectedRevisions: { assignee: state.revisions.assignee } } }))
       choices.push(() => ({ type: 'comment.add', payload: { taskId, text: `${words(3)}${mention()}` } }))
       choices.push(() => ({ type: 'task.link-commit', payload: { taskId, commit: { hash: 'abcdef1234567'.slice(0, 7 + Math.floor(rand() * 6)), message: words(3) } } }))
       choices.push(() => ({ type: 'task.link-issue', payload: { taskId, repository: 'example/pardner', number: 1 + Math.floor(rand() * 3) } }))
@@ -103,9 +103,9 @@ function requests(rand) {
       if (!list.length) continue
       const id = busy(list)
       const state = recordState(doc, kind, id)
-      const field = pick(kind === 'goal' ? ['title', 'status', 'description'] : ['title', 'status', 'description', 'goalId'])
+      const field = pick(kind === 'goal' ? ['title', 'outcome', 'description'] : ['title', 'outcome', 'description', 'goalId'])
       if (field === 'goalId' && !goals.length) continue
-      const value = { title: `${kind} ${words()}`, description: words(4), status: kind === 'goal' ? pick(['open', 'achieved', 'abandoned']) : pick(['open', 'proven', 'abandoned']), goalId: pick(goals) }[field]
+      const value = { title: `${kind} ${words()}`, description: words(4), outcome: pick(OUTCOMES), goalId: pick(goals) }[field]
       if (Object.hasOwn(state.conflicts, field)) {
         const resolve = { type: `${kind}.resolve`, payload: { [`${kind}Id`]: id, field, value: rand() < 0.5 ? value : state.record[field], expectedRevisions: state.revisions[field] } }
         if (rand() < 0.7) return { ...resolve, actorId }

@@ -1,12 +1,10 @@
 # Pardner thread model: threads, kinds, state and outcome
 
-Status: **decided; not implemented.**
+Status: **decided, with implementation tracked by #297.**
 
 This file records decisions the owner made on 2026-11-23, after comparing Pardner
-with Vercel Board ([assessment](PARDNER-VERCEL-BOARD-LESSONS.md)). Nothing here is
-built. [README](../README.md#current-implementation) and the
-[acceptance contract](PARDNER-ACCEPTANCE.md) still describe what Pardner does, and
-they stay authoritative until the work tracked in #297 lands.
+with Vercel Board ([assessment](PARDNER-VERCEL-BOARD-LESSONS.md)). [README](../README.md#current-implementation) and the
+[acceptance contract](PARDNER-ACCEPTANCE.md) describe what Pardner does today.
 
 A line marked **Proposed** is a detail put forward in that discussion that the
 owner has not confirmed. Everything else is decided.
@@ -45,9 +43,9 @@ A thread has a **kind**, which is one of four:
 | Kind | What it is | Its vocabulary |
 | --- | --- | --- |
 | Plain thread | A question or a conversation | Unsettled or settled |
-| Task | A piece of work | Waiting, ready, in progress or blocked, then an outcome |
-| Vein | One approach toward a goal | Ready, in progress, then an outcome |
-| Goal | The state being pursued | Ready, in progress, then an outcome |
+| Task | A piece of work | Open, then an outcome |
+| Vein | One approach toward a goal | Open, then an outcome |
+| Goal | The state being pursued | Open, then an outcome |
 
 ```mermaid
 flowchart LR
@@ -75,50 +73,23 @@ nobody is able to check.
 
 A mention can point at a thread of any kind.
 
-## 2. Tasks: state is worked out, not stored
+## 2. Tasks: responsibility and follow-up
 
-A task has no stored status. Its state is the first of these that applies:
+The assignee is responsible for the task. A handoff changes that assignment,
+records an explanation in the task discussion, and mentions the recipient.
+A task shows **Open** until it has an outcome, then shows **Ended**. Concurrent
+outcomes remain visible until someone resolves them.
 
-1. It has an outcome: **ended**.
-2. It has a hold: **blocked**.
-3. It needs a task that is not completed: **waiting**.
-4. Someone started it: **in progress**.
-5. Otherwise: **ready**.
+An ordinary mention asks for someone's attention. An assigned to-do adds an
+open item to the same task discussion when completion matters. Its assignee
+can complete it under their own name and reply with their findings in the
+thread. Open to-dos stay discoverable on ended tasks. They and their parent
+have independent completion. Two distinct to-dos add two items even when
+created offline. The same operation retried adds one item and one mention.
 
-Nothing stores the state, so two replicas cannot hold contradictory ones. Each fact
-underneath is a field or a relation that already merges or keeps competing values.
-
-**Starting is explicit.** The Actor that begins writes a start marker. Starting is
-one operation, and it sets the assignee when there is none. Two machines that start
-the same task leave two competing markers, shown like any competing edit. Stopping
-without finishing clears the marker.
-
-**The assignee says who may start.**
-
-| Assigned to | Who may start it |
-| --- | --- |
-| A person | That person, or any of their agents |
-| One agent | Only that agent |
-| Nobody | Anyone |
-
-A start by an Actor outside that group is refused on the machine that tries it and
-flagged in Activity when it arrives from another machine. It cannot be refused
-across machines.
-
-**A hold blocks a task.** A hold names the Actor it waits on, a kind and a reason.
-Review is a kind of hold, and so are a question, an approval and a worker that gave
-up. Releasing the hold returns the task to the state underneath it. Holds apply to
-tasks only; a vein or a goal shows a hold through its tasks.
-
-**A handoff takes one of two forms**, each a single operation:
-
-- Passing the work on changes the assignee and clears the start marker, so the task
-  is ready and assigned to the new Actor.
-- Asking for review adds a hold and leaves the marker alone.
-
-**Proposed.** A start marker can go stale when an agent stops without clearing it.
-Until #282 settles claims, show the marker beside the starter's presence, and let
-any member clear it.
+Genuine blockers concern work that cannot advance. How a blocker is recorded
+and cleared is a separate product decision. Start controls, review holds and
+claim leases are outside this milestone.
 
 ## 3. Outcomes
 
@@ -134,15 +105,11 @@ and goals:
 No outcome means the thread is open. Clearing an outcome reopens it. A vein's
 outcome is its verdict.
 
-**`failed` is not an outcome.** On Board, `failed` means "a worker gave up on it,
-with a reason", which describes one try and not the work. Pardner records that as a
-hold of kind "gave up" on the person responsible, so it appears with everything
-else waiting on someone, and releasing it makes the task ready again. Work that
-cannot or should not be done is a `dead-end` or `abandoned`. A worker that crashed
-records nothing.
-
-**Veins and goals** are ready when they exist and in progress when something under
-them is. A vein keeps its prompt for a verdict, worked out from its tasks as today.
+A worker who stops can explain what happened in a comment and hand off the
+work if someone else needs to take over. `dead-end` and `abandoned` are
+judgments about the work itself. Veins and goals carry their own outcomes.
+A vein prompts for a verdict when every linked task's current alternatives
+have outcomes.
 
 ## 4. Plain threads: settled
 
@@ -150,9 +117,7 @@ A plain thread is **unsettled** or **settled**. Settling is cheap and can be und
 The list of unsettled threads shows where attention is needed, including for people
 who were not mentioned.
 
-A task that is waiting for an answer carries the hold. The question itself lives on
-a plain thread about that task. When the answer arrives, the thread is settled and
-the hold released.
+Follow-up for a task lives in its discussion. Assign a to-do when someone owes an answer.
 
 **Proposed.** A new comment un-settles a thread. The settle marker records the last
 comment it covers, so a thread with anything newer reads as unsettled, and a comment
@@ -165,7 +130,7 @@ underneath: one signed, mergeable record per value.
 
 | | Examples | What is checked on read |
 | --- | --- | --- |
-| **Field** | Assignee, start marker, hold, outcome | The value is one the field allows |
+| **Field** | Assignee, outcome | The value is one the field allows |
 | **Relation** (`rel`) | Serves, pursues, needs, about | The target exists and is the right kind |
 | **Label** | `area=sync`, `risk=high` | Nothing |
 
@@ -231,22 +196,17 @@ Decided order of work:
 
 | Board | Pardner |
 | --- | --- |
-| `waiting` | Waiting |
-| `ready` | Ready |
-| `claimed` | In progress |
-| `blocked` | Blocked |
+| `ready` | Open |
 | `completed` | `completed` |
-| `failed` | A hold of kind "gave up" |
+| `failed` | A comment explaining what happened |
 | `canceled` | `abandoned` |
 | (none) | `dead-end` |
 
-Board stores one status and is the only writer of it. Pardner stores the outcome
-and the facts beneath the state, and works the state out when read.
+Board stores one status and is the only writer of it. Pardner derives Open or Ended from the outcome.
 
 ## 10. Open questions
 
-- **Claims on work, and whether a worker's run is its own record:** #282. Until it
-  is settled, a run is recorded on the task.
+- **Claims on work, and whether a worker's run is its own record:** #282. Execution tracking remains a separate design question.
 - **What stays in the Automerge board:** #283.
 - **What task branches are for** under this model: #292.
 - **Who may record which outcome** before permissions by kind exist: followed in

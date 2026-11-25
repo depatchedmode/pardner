@@ -1,7 +1,7 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium, webkit } from 'playwright'
-import { withClientReplicas } from '../support/client-workspace.js'
+import { withClientReplicas, showTaskActions } from '../support/client-workspace.js'
 import * as A from '@automerge/automerge'
 import { alterEntry, signedWrite, unsignedWrite } from '../support/unsigned-peer.js'
 
@@ -181,6 +181,7 @@ for (const engine of [chromium, webkit]) it(`a board holding an Actor that is no
         await card.click()
         const panel = page.getByRole('dialog', { name: 'Task details' })
         await panel.getByText('Shown empty, because what this task holds there can’t be read: tags.').waitFor({ timeout: 30000 })
+        await showTaskActions(panel)
         await panel.getByRole('button', { name: 'Edit task', exact: true }).click()
         const tags = panel.getByRole('region', { name: 'Edit task' }).getByLabel('Tags, separated by commas')
         await tags.waitFor()

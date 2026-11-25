@@ -368,11 +368,15 @@ function ProjectSwitcher({ projects, current, onSelect, onStartOrJoin, onAgentSe
     </h1>
     <MenuContent className="project-menu board-menu" aria-label="Projects" align="start" sideOffset={6} collisionPadding={12}>
       <MenuRadioGroup value={current.id} onValueChange={id => { afterClose.current = () => onSelect(id) }}>
-        {ordered.map(project => <MenuRadioItem key={project.id} value={project.id} label={project.name} closeOnSelect>
-          <span className="menu-label"><bdi>{project.name}</bdi></span>
-          <span className="menu-detail">{project.removed ? (project.removal?.left ? 'You left · no longer syncs' : 'Removed · no longer syncs')
-            : `${syncLabel(project.status)}${hasPendingRequest(project) ? ' · unconfirmed change' : ''}`}</span>
-        </MenuRadioItem>)}
+        {ordered.map(project => {
+          const detail = project.removed
+            ? (project.removal?.left ? 'You left · no longer syncs' : 'Removed · no longer syncs')
+            : [syncLabel(project.status), hasPendingRequest(project) && 'Unconfirmed change'].filter(Boolean).join(' · ')
+          return <MenuRadioItem key={project.id} value={project.id} label={project.name} closeOnSelect>
+            <span className="menu-label"><bdi>{project.name}</bdi></span>
+            {detail && <span className="menu-detail">{detail}</span>}
+          </MenuRadioItem>
+        })}
       </MenuRadioGroup>
       <MenuSeparator className="menu-separator" />
       {onAgentSetup && <MenuItem value="agent-setup" onSelect={() => { afterClose.current = () => onAgentSetup(trigger.current) }}>
@@ -462,6 +466,7 @@ function ProjectView({ api, session, project, switcher, onAuthLost, refreshSessi
   const openPeople = element => setPeopleOrigin(element)
   const closePeople = () => setPeopleOrigin(null)
   const remotePresenceUnavailable = presence?.available === false || current.status?.hubConnected === false
+  const presenceAvailable = Boolean(presence && !remotePresenceUnavailable)
   const canControl = details?.project.controlAvailable === true
   const projectSwitcher = <ProjectSwitcher {...switcher} current={current} onAgentSetup={canControl ? setAgentSetupOrigin : undefined} />
   const people = (
@@ -497,10 +502,10 @@ function ProjectView({ api, session, project, switcher, onAuthLost, refreshSessi
     </div>
   </div> : null
   const sessionProps = useMemo(() => ({
-    actorsById, index, focus: focusByTask(index), onOpenProfile: openProfile, requestedTask,
+    actorsById, index, presenceAvailable, focus: focusByTask(index), onOpenProfile: openProfile, requestedTask,
     onFocusChange: taskIds => reporter.current?.setFocus(taskIds),
     onTasks: setTasks, onAuthLost, onRemoved: removed, canControl,
-  }), [actorsById, index, openProfile, requestedTask, onAuthLost, removed, canControl])
+  }), [actorsById, index, presenceAvailable, openProfile, requestedTask, onAuthLost, removed, canControl])
   if (!details) return <main className="connection">
     <h1>{project.name}</h1>
     <p role="status">{failure ? 'This project didn’t open.' : 'Opening project…'}</p>

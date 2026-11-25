@@ -39,13 +39,15 @@ rules are in `test/membership.test.js` and `test/enrollment.test.js`
   owner's header; leaving at phone width; the owner nudge on the board and, once
   dismissed, in the panel until a second machine is paired; stopping one's own
   agent on this machine. Phone-width checks
-  assert no sideways scrolling. Project status shows connected computers and
-  save/sync state beside the project selector. Its popover returns focus on
+  assert no sideways scrolling. Project status shows connected computers and a
+  replication icon while locally saved changes await host acknowledgement.
+  Its popover returns focus on
   Escape. The separate Tailcat control reports route failures without showing
   the address. Closing the route from that control moves focus to Project status
   and disconnects Tailcat peers while a configured-route peer stays connected.
-  A joined board preserves its confirmed sync state through an outage, reports
-  pending after a local edit, and recovers. An invite with no route offers Tailcat
+  A joined board shows no pending icon from an outage alone. An offline save
+  adds the icon to Project status and the task discussion. Host acknowledgement
+  clears it. An invite with no route offers Tailcat
   setup before creating the invitation and keeps keyboard focus on the action.
 
 Not covered: separate physical machines; last-seen times after a hub restart

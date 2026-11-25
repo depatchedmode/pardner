@@ -114,28 +114,57 @@ describe('shared workspace operations', () => {
         command(workspace, 'task.create', { title: 'One logical task' }, 'alice', 'shared-create')))
       const taskId = receipts[0].result.taskId
       assert.ok(receipts.every(receipt => receipt.savedLocally && receipt.result.taskId === taskId))
-      const leftEdit = await command(left, 'task.update', updatePayload(left, taskId, { description: 'Left description', status: 'review' }), 'alice', 'edit-a')
-      const rightEdit = await command(right, 'task.update', updatePayload(right, taskId, { priority: 'p0', status: 'completed' }), 'bob', 'edit_a')
+      const leftEdit = await command(left, 'task.update', updatePayload(left, taskId, { description: 'Left description', outcome: 'abandoned' }), 'alice', 'edit-a')
+      const rightEdit = await command(right, 'task.update', updatePayload(right, taskId, { priority: 'p0', outcome: 'completed' }), 'bob', 'edit_a')
       left.handle.merge(right.handle)
       right.handle.merge(left.handle)
       const context = left.taskContext(taskId)
       assert.equal(context.task.description, 'Left description')
       assert.equal(context.task.priority, 'p0')
-      assert.deepEqual(Object.keys(context.conflicts), ['status'])
-      assert.deepEqual(context.revisions.status, [leftEdit.operationId, rightEdit.operationId].sort())
-      await command(left, 'task.resolve', { taskId, field: 'status', value: 'review', expectedRevisions: context.revisions.status }, 'alice', 'resolved')
-      const after = await command(left, 'task.update', updatePayload(left, taskId, { status: 'in-progress' }), 'alice', 'after-resolution')
+      assert.deepEqual(Object.keys(context.conflicts), ['outcome'])
+      assert.deepEqual(context.revisions.outcome, [leftEdit.operationId, rightEdit.operationId].sort())
+      await command(left, 'task.resolve', { taskId, field: 'outcome', value: 'abandoned', expectedRevisions: context.revisions.outcome }, 'alice', 'resolved')
+      const after = await command(left, 'task.update', updatePayload(left, taskId, { outcome: 'dead-end' }), 'alice', 'after-resolution')
       right.handle.merge(left.handle)
       const reopened = await create(right)
       assert.deepEqual(reopened.taskContext(taskId).conflicts, {})
-      assert.equal(reopened.taskContext(taskId).task.status, 'in-progress')
+      assert.equal(reopened.taskContext(taskId).task.outcome, 'dead-end')
       reopened.handle.merge(late.handle)
       assert.deepEqual(reopened.taskContext(taskId).conflicts, {}, 'a late creation retry cannot resurrect initial values')
-      const lateEdit = await command(late, 'task.update', updatePayload(late, taskId, { status: 'up-next' }), 'builder', 'late-edit')
+      const lateEdit = await command(late, 'task.update', updatePayload(late, taskId, { outcome: null }), 'builder', 'late-edit')
       reopened.handle.merge(late.handle)
-      assert.deepEqual(reopened.taskContext(taskId).revisions.status, [after.operationId, lateEdit.operationId].sort())
+      assert.deepEqual(reopened.taskContext(taskId).revisions.outcome, [after.operationId, lateEdit.operationId].sort())
       assert.equal(reopened.taskContext(taskId).history.filter(event => event.requestId === 'shared-create').length, 1)
       assert.equal((await command(reopened, 'task.create', { title: 'One logical task' }, 'alice', 'shared-create')).replayed, true)
+    })
+  })
+
+  it('converges retries of an assigned to-do, including a late retry after completion', async () => {
+    await withWorkspaces(async (left, create) => {
+      const taskId = await createTask(left)
+      const right = await create(left)
+      const late = await create(left)
+      const request = { operationId: 'todo-across-replicas', type: 'todo.add', actorId: 'builder',
+        payload: { taskId, to: 'reviewer', text: 'Review the complete record' } }
+      const receipts = await Promise.all([left.execute(request), right.execute(request)])
+      assert.equal(receipts[0].operationId, receipts[1].operationId)
+      assert.deepEqual(receipts[0].result, receipts[1].result)
+      left.handle.merge(right.handle)
+      const completionPeer = await create(left)
+      const { commentId } = receipts[0].result
+      await command(left, 'todo.complete', { commentId }, 'reviewer')
+      await command(completionPeer, 'todo.complete', { commentId }, 'reviewer')
+      await late.execute(request)
+      left.handle.merge(late.handle)
+      left.handle.merge(completionPeer.handle)
+      const reopened = await create(left)
+      const context = reopened.taskContext(taskId)
+      assert.equal(context.task.state, 'open')
+      assert.equal(context.comments.length, 1)
+      assert.equal(context.mentions.length, 1)
+      assert.equal(context.comments[0].todo.completion.actorId, 'reviewer')
+      assert.equal(context.history.filter(event => event.requestId === request.operationId).length, 1)
+      assert.equal((await reopened.execute(request)).replayed, true)
     })
   })
 
@@ -184,7 +213,7 @@ describe('shared workspace operations', () => {
         assert.equal(workspace.taskContext(taskId).task.description, 'Experiment results')
         assert.equal(workspace.taskContext(taskId).task.priority, 'p0')
         assert.equal(workspace.taskContext(branchId).task.merged, true)
-        assert.equal(workspace.taskContext(branchId).task.status, 'completed')
+        assert.equal(workspace.taskContext(branchId).task.outcome, 'completed')
         assert.deepEqual(workspace.taskContext(branchId).conflicts, {})
       }
     })
@@ -357,10 +386,10 @@ describe('shared workspace operations', () => {
 
   it('rejects old schemas and supports explicit first-Actor registration', async () => {
     await withWorkspaces(async workspace => {
-      const old = workspace.repo.create({ ...plain(createWorkspaceData({ genesis: testGenesis() })), schemaVersion: 6 })
+      const old = workspace.repo.create({ ...plain(createWorkspaceData({ genesis: testGenesis() })), schemaVersion: 11 })
       const oldBytes = save(old.doc())
       assert.throws(() => new Workspace({ repo: workspace.repo, handle: old, replicaId: 'old' }), { code: 'INCOMPATIBLE_SCHEMA' })
-      assert.deepEqual(save(old.doc()), oldBytes, 'refusing the text schema preserves its bytes')
+      assert.deepEqual(save(old.doc()), oldBytes, 'refusing schema 11 preserves its bytes')
       const handle = workspace.repo.create(createWorkspaceData({ genesis: testGenesis() }))
       const fresh = new Workspace({ repo: workspace.repo, handle, replicaId: 'fresh' })
       await command(fresh, 'actor.register', { id: 'alice', handle: 'Alice', kind: 'human' })
@@ -396,8 +425,8 @@ describe('shared workspace operations', () => {
       const taskId = await createTask(workspace)
       const operationId = randomUUID()
       const payload = {
-        ...updatePayload(workspace, taskId, { assignee: 'builder', status: 'in-progress' }),
-        to: 'builder', status: 'in-progress', message: '@builder implement the request',
+        ...updatePayload(workspace, taskId, { assignee: 'builder' }),
+        to: 'builder', message: '@builder implement the request',
       }
       delete payload.updates
       const first = await command(workspace, 'task.handoff', payload, 'alice', operationId)
@@ -409,7 +438,7 @@ describe('shared workspace operations', () => {
       assert.deepEqual(replay.result, first.result)
       const context = workspace.taskContext(taskId, 'builder')
       assert.equal(context.task.assignee, 'builder')
-      assert.equal(context.task.status, 'in-progress')
+      assert.equal(context.task.state, 'open')
       assert.equal(context.comments.length, 1)
       assert.equal(context.mentions.length, 1)
       assert.equal(context.mentions[0].toActorId, 'builder')
@@ -443,21 +472,21 @@ describe('shared workspace operations', () => {
   it('validates before mutation and rejects stale writes instead of dropping intervening work', async () => {
     await withWorkspaces(async workspace => {
       await assert.rejects(command(workspace, 'task.create', { title: 'Bad' }, 'unknown'), { code: 'UNKNOWN_ACTOR' })
-      await assert.rejects(command(workspace, 'task.create', { title: 'Bad', status: 'vanished' }), { code: 'INVALID_ARGUMENT' })
+      await assert.rejects(command(workspace, 'task.create', { title: 'Bad', outcome: 'vanished' }), { code: 'INVALID_ARGUMENT' })
       assert.equal(Object.keys(workspace.handle.doc().operations).length, 0)
-      const taskId = await createTask(workspace, { status: 'todo' })
-      assert.equal(workspace.taskContext(taskId).task.status, 'backlog')
-      const stale = updatePayload(workspace, taskId, { status: 'completed' })
-      await command(workspace, 'task.update', updatePayload(workspace, taskId, { status: 'in-review' }), 'builder')
-      assert.equal(workspace.taskContext(taskId).task.status, 'review')
+      const taskId = await createTask(workspace)
+      assert.equal(workspace.taskContext(taskId).task.outcome, null)
+      const stale = updatePayload(workspace, taskId, { outcome: 'completed' })
+      await command(workspace, 'task.update', updatePayload(workspace, taskId, { outcome: 'abandoned' }), 'builder')
+      assert.equal(workspace.taskContext(taskId).task.outcome, 'abandoned')
       await assert.rejects(command(workspace, 'task.update', stale), { code: 'STALE_UPDATE' })
-      await assert.rejects(command(workspace, 'task.update', { taskId, updates: { status: 'completed' } }), { code: 'REVISION_REQUIRED' })
-      assert.equal(workspace.taskContext(taskId).task.status, 'review')
+      await assert.rejects(command(workspace, 'task.update', { taskId, updates: { outcome: 'completed' } }), { code: 'REVISION_REQUIRED' })
+      assert.equal(workspace.taskContext(taskId).task.outcome, 'abandoned')
       assert.equal(workspace.taskContext(taskId).history.length, 2)
       const before = workspace.handle.heads()
       const context = workspace.taskContext(taskId)
       await assert.rejects(command(workspace, 'task.handoff', {
-        taskId, to: 'builder', status: 'in-progress', message: '', expectedRevisions: context.revisions,
+        taskId, to: 'builder', message: '', expectedRevisions: context.revisions,
       }), { code: 'INVALID_ARGUMENT' })
       assert.deepEqual(workspace.handle.heads(), before, 'an invalid explanation cannot partially change responsibility')
     })
@@ -467,20 +496,20 @@ describe('shared workspace operations', () => {
     await withWorkspaces(async (left, create) => {
       const taskId = await createTask(left)
       const right = await create(left)
-      const leftEdit = await command(left, 'task.update', updatePayload(left, taskId, { status: 'review' }), 'builder', 'left-edit')
-      const rightEdit = await command(right, 'task.update', updatePayload(right, taskId, { status: 'completed' }), 'reviewer', 'right-edit')
+      const leftEdit = await command(left, 'task.update', updatePayload(left, taskId, { outcome: 'abandoned' }), 'builder', 'left-edit')
+      const rightEdit = await command(right, 'task.update', updatePayload(right, taskId, { outcome: 'completed' }), 'reviewer', 'right-edit')
       left.handle.merge(right.handle)
       right.handle.merge(left.handle)
       const context = left.taskContext(taskId)
-      assert.deepEqual(context.conflicts.status.map(value => value.actorId).sort(), ['builder', 'reviewer'])
-      assert.deepEqual(context.revisions.status, [leftEdit.operationId, rightEdit.operationId].sort())
-      await assert.rejects(command(left, 'task.update', updatePayload(left, taskId, { status: 'completed' })), { code: 'CONFLICT_REQUIRES_RESOLUTION' })
+      assert.deepEqual(context.conflicts.outcome.map(value => value.actorId).sort(), ['builder', 'reviewer'])
+      assert.deepEqual(context.revisions.outcome, [leftEdit.operationId, rightEdit.operationId].sort())
+      await assert.rejects(command(left, 'task.update', updatePayload(left, taskId, { outcome: 'completed' })), { code: 'CONFLICT_REQUIRES_RESOLUTION' })
       await command(left, 'task.resolve', {
-        taskId, field: 'status', value: 'review', expectedRevisions: context.revisions.status,
+        taskId, field: 'outcome', value: 'abandoned', expectedRevisions: context.revisions.outcome,
       }, 'bob')
       right.handle.merge(left.handle)
       assert.deepEqual(right.taskContext(taskId).conflicts, {})
-      assert.equal(right.taskContext(taskId).task.status, 'review')
+      assert.equal(right.taskContext(taskId).task.outcome, 'abandoned')
       assert.equal(right.taskContext(taskId).history.length, 4)
     })
   })
@@ -581,7 +610,9 @@ describe('plain string storage', () => {
       const branchId = (await run('task.branch', { taskId, name: 'Experiment' })).result.branchId
       await run('task.update', updatePayload(workspace, branchId, { description: 'Branch description' }))
       await run('task.merge', { branchId, expectedRevisions: workspace.taskContext(taskId).revisions })
-      await run('task.handoff', { taskId, to: 'builder', status: 'in-progress', message: 'Please review', expectedRevisions: workspace.taskContext(taskId).revisions })
+      const { commentId: todoId } = (await run('todo.add', { taskId, to: 'alice', text: 'Review this work' })).result
+      await run('todo.complete', { commentId: todoId })
+      await run('task.handoff', { taskId, to: 'builder', message: 'Please review', expectedRevisions: workspace.taskContext(taskId).revisions })
       assert.deepEqual([...seen].sort(), [...OPERATION_TYPES].sort(), 'exercise every registered operation')
       const request = { operationId: 'plain-retry', type: 'comment.add', actorId: 'alice', payload: { taskId, text: 'Retry' } }
       const retryPeer = await create(workspace)

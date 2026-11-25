@@ -36,21 +36,21 @@ function fieldWrites(enc, doc, { taskId, event }, field) {
 test('an element inserted, replaced, then deleted naming only its insertion, inside one event, is shown exactly as Automerge reads it', () => {
   const { doc: start } = board()
   const { doc } = run(start, { type: 'task.create', payload: { title: 'Encoded' } })
-  const update = prepared(doc, 'status', 'completed')
+  const update = prepared(doc, 'outcome', 'completed')
   const enc = new ChangeEncoder(doc, bob(1))
   const { changes, ...rest } = update.event
   const event = enc.value({ obj: enc.root('operations'), key: update.event.operationId }, rest)
   const list = enc.op({ action: 'makeList', obj: event, key: 'changes' })
-  const inserted = enc.value({ obj: list, elemId: '_head', insert: true }, { field: 'status', old: 'backlog', new: 'open' })
-  enc.value({ obj: list, elemId: inserted }, { field: 'status', old: 'backlog', new: 'completed' }, [inserted])
+  const inserted = enc.value({ obj: list, elemId: '_head', insert: true }, { field: 'outcome', old: null, new: 'abandoned' })
+  enc.value({ obj: list, elemId: inserted }, { field: 'outcome', old: null, new: 'completed' }, [inserted])
   enc.op({ action: 'del', obj: list, elemId: inserted, pred: [inserted] })
-  fieldWrites(enc, doc, update, 'status')
+  fieldWrites(enc, doc, update, 'outcome')
   const { doc: written, hash } = enc.apply()
   // Automerge keeps the replacement: the deletion named only the insertion it replaced.
-  assert.deepEqual(plain(written.operations[update.event.operationId].changes), [{ field: 'status', old: 'backlog', new: 'completed' }])
+  assert.deepEqual(plain(written.operations[update.event.operationId].changes), [{ field: 'outcome', old: null, new: 'completed' }])
   const entry = deriveAll(written).get(hash)
   assert.equal(entry.kind, 'operation')
-  assert.deepEqual(entry.event.changes, [{ field: 'status', old: 'backlog', new: 'completed' }], 'the content is what Automerge reads, not a second reading of the operations')
+  assert.deepEqual(entry.event.changes, [{ field: 'outcome', old: null, new: 'completed' }], 'the content is what Automerge reads, not a second reading of the operations')
   assert.deepEqual(stored(entry), entry)
 })
 

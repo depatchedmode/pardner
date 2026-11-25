@@ -187,7 +187,7 @@ function encodedWrite(doc, next, actor) {
   const words = `Bob ${Math.floor(next() * 1e6)}`
   const roll = next()
   const value = { ...event, payload: roll < 0.5 ? { ...event.payload, text: words, nested: nested(next) } : event.payload,
-    changes: [{ field: 'status', old: 'backlog', new: words }, { field: 'title', old: null, new: words }], recordIds: [...event.recordIds, words] }
+    changes: [{ field: 'outcome', old: null, new: words }, { field: 'title', old: null, new: words }], recordIds: [...event.recordIds, words] }
   const enc = new ChangeEncoder(doc, actor)
   const target = next() < 0.5 ? `op-e${words}` : key
   const pred = target === key ? source.map(full => full[1]) : []

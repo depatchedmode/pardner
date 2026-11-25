@@ -73,8 +73,8 @@ it('the board view reads vein links, issue links, mentions and tasks keyed by na
     // Tasks named like inherited properties (Automerge hides a key named __proto__ from every enumeration).
     for (const name of NAMES.slice(1)) {
       draft.tasks[name] = storageValue({ id: name, actorId: 'bob', created_at: '2026-01-01T00:00:00.000Z' })
-      for (const field of ['title', 'description', 'status', 'priority', 'assignee', 'tags', 'order', 'type']) {
-        draft.taskFields[`${name}:${field}`] = register(field === 'title' ? `Task ${name}` : field === 'tags' ? [] : field === 'order' ? 1 : field === 'status' ? name : null)
+      for (const field of ['title', 'description', 'outcome', 'priority', 'assignee', 'tags', 'order', 'type']) {
+        draft.taskFields[`${name}:${field}`] = register(field === 'title' ? `Task ${name}` : field === 'tags' ? [] : field === 'order' ? 1 : field === 'outcome' ? name : null)
       }
     }
   })
@@ -103,39 +103,39 @@ it('an entry naming a field, status, role or type like an inherited property is 
   for (const name of NAMES) {
     const resolve = eventText(describeEvent({ ...event, type: 'task.resolve', payload: { field: name }, changes: [{ field: name, old: null, new: 'x' }] }, { actors: {}, tasks: {} }))
     assert.doesNotMatch(resolve, /function|\[object|native code/, resolve)
-    const moved = eventText(describeEvent({ ...event, type: 'task.update', payload: {}, changes: [{ field: 'status', old: 'backlog', new: name }] }, { actors: {}, tasks: {} }))
+    const moved = eventText(describeEvent({ ...event, type: 'task.update', payload: {}, changes: [{ field: 'outcome', old: null, new: name }] }, { actors: {}, tasks: {} }))
     assert.doesNotMatch(moved, /function|\[object|native code/, moved)
     const record = describeRecord({ entry: { kind: 'record', record: { kind: 'member.add', role: name, displayName: 'Dee' } } }, { machines: {} })
     assert.doesNotMatch(record.parts.join(''), /function|\[object|native code/)
   }
 })
 
-it('a task status named like an inherited property is compared as the data it is, never as an inherited value', () => {
+it('an invalid outcome named like an inherited property is flagged', () => {
   const { doc: start } = board()
   const task = run(start, { type: 'task.create', payload: { title: 'Ordinary' } })
   for (const name of NAMES) {
-    const event = { ...task.event, type: 'task.update', operationId: `op-status-${name}`, payload: { taskId: task.event.result.taskId, updates: { status: name },
-      expectedRevisions: { status: [task.event.operationId] } },
-      changes: [{ field: 'status', old: 'backlog', new: name }], recordIds: [task.event.result.taskId], result: { taskId: task.event.result.taskId } }
+    const event = { ...task.event, type: 'task.update', operationId: `op-status-${name}`, payload: { taskId: task.event.result.taskId, updates: { outcome: name },
+      expectedRevisions: { outcome: [task.event.operationId] } },
+      changes: [{ field: 'outcome', old: null, new: name }], recordIds: [task.event.result.taskId], result: { taskId: task.event.result.taskId } }
     const { doc, hash } = bobWrites(task.doc, draft => {
       draft.operations[event.operationId] = storageValue(event)
       draft.operationRequests[event.requestId] = storageValue(event.operationId)
-      draft.taskFields[`${task.event.result.taskId}:status`] = storageValue({ value: name, operationId: event.operationId, actorId: event.actorId, replicaId: event.replicaId, timestamp: event.timestamp })
-      draft.supersededRevisions[`${task.event.result.taskId}:status:${task.event.operationId}`] = true
+      draft.taskFields[`${task.event.result.taskId}:outcome`] = storageValue({ value: name, operationId: event.operationId, actorId: event.actorId, replicaId: event.replicaId, timestamp: event.timestamp })
+      draft.supersededRevisions[`${task.event.result.taskId}:outcome:${task.event.operationId}`] = true
     })
     const entry = activityView({ entries: deriveAll(doc).values(), stateOf: signedByActor(doc), actorsOf }).find(item => item.changes.some(change => change.hash === hash))
-    // Its change wrote exactly the status its event says: nothing differs, whatever the status is called.
-    assert.deepEqual(entry.changes[0].mismatch ?? [], [], `${name}: ${JSON.stringify(entry.changes[0].mismatch)}`)
+    assert.equal(entry.flags.mismatch, true, name)
+    assert.ok(entry.changes[0].mismatch.some(item => item.field === 'payload.outcome'), name)
   }
 })
 
 it('the browser holds the board’s dictionaries and its label tables without a prototype, so a lookup by an ID from the board finds only what the board holds', async () => {
   const { boardData, dictionary } = await import('../ui-prototype/src/board-data.js')
-  const { STATUS_LABELS } = await import('../ui-prototype/src/events.js')
+  const { OUTCOME_LABELS } = await import('../ui-prototype/src/events.js')
   const doc = boardData(JSON.parse(JSON.stringify({ actors: { alice: { id: 'alice' } }, tasks: { t1: { title: 'One' } }, goals: {}, veins: {}, comments: {}, mentions: {}, operations: {}, readReceipts: {}, activity: [] })))
   for (const name of NAMES) {
     for (const map of ['actors', 'tasks', 'goals', 'veins', 'comments', 'mentions', 'operations', 'readReceipts']) assert.equal(doc[map][name], undefined, `${map}[${name}]`)
-    assert.equal(STATUS_LABELS[name], undefined, `STATUS_LABELS[${name}]`)
+    assert.equal(OUTCOME_LABELS[name], undefined, `OUTCOME_LABELS[${name}]`)
     assert.equal(dictionary(doc.actors, { bob: { id: 'bob' } })[name], undefined)
   }
   assert.equal(doc.actors.alice.id, 'alice')

@@ -139,7 +139,7 @@ When reviewer results wake you, inspect both review tasks. Wait without modifyin
       const description = `${common}\nYou are ${actor}. Parent task: ${report.parentTaskId}.
 For a review-request, independently inspect the specified immutable commit with git show COMMIT:queue.mjs. Copy that exact source into your own queue.mjs; verify SHA256, then write independent reviewer.test.mjs. Do not read or reuse builder tests. Run your tests against that revision and phase requirement.
 Only queue.mjs, reviewer.test.mjs, ignored *.log files, and optional review-result-round-1.json / review-result-round-2.json evidence files may be written. Use these exact names if saving result JSON; do not create executable helper files.
-Hand this reviewer task to builder with status review and JSON message: kind="review-result", runId, challenge, round, commitSha, sourceSha256, actor=${JSON.stringify(actor)}, cwd, recipient="@builder", verdict="approve" or "changes-requested", findings (array of concrete strings; empty on approval), testEvidence={command,output,passed:boolean}. If tests fail, request changes with concrete evidence.
+Hand this reviewer task to builder with JSON message: kind="review-result", runId, challenge, round, commitSha, sourceSha256, actor=${JSON.stringify(actor)}, cwd, recipient="@builder", verdict="approve" or "changes-requested", findings (array of concrete strings; empty on approval), testEvidence={command,output,passed:boolean}. If tests fail, request changes with concrete evidence.
 When the delivered comment kind is busy-probe, only publish a JSON comment kind="busy-result", runId, challenge, actor, recipient="@coordinator". Do not repeat review or touch files. For ordinary review, publish once per round; duplicate notifications reuse the same logical result.`
       report.reviewTaskIds[actor] = (await cli(['task', 'create', '--title', `Independent ${actor} queue review`, '--description', description, '--actor', 'human'])).result.taskId
     }
@@ -201,7 +201,7 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
     const kickoffAt = Date.now()
     const modelDeadline = kickoffAt + bounds.modelWorkflowMs
     work.setDeadline(modelDeadline, 'automatic three-agent workflow')
-    await handoff('kickoff', report.parentTaskId, 'builder', { kind: 'kickoff', runId, challenge, recipient: '@builder', instruction: 'Begin phase one of the bounded fixture.' }, 'in-progress')
+    await handoff('kickoff', report.parentTaskId, 'builder', { kind: 'kickoff', runId, challenge, recipient: '@builder', instruction: 'Begin phase one of the bounded fixture.' })
     progress('Initial kickoff delivered through Pardner; all subsequent workflow messages are automatic')
     const rounds = []; let busySent = false, busyVerified = false, lastProgress = Date.now(), finalContext
     await eventually(() => work.run(async signal => {
@@ -284,7 +284,7 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
           await handoff('correction', report.parentTaskId, 'builder', { kind: 'correction-request', runId, challenge, round: 2, recipient: '@builder',
             previousCommitSha: round.commitSha, reviewTaskIds: report.reviewTaskIds,
             instruction: 'Both independent initial assessments are collected. Implement the declared additional requirement: exclude tasks with blocked === true, preserving the original contract. Address any substantive findings, run tests, and publish one round-2 builder-artifact.',
-            findings: reviewerActors.flatMap(actor => assessment.accepted[actor].result.findings) }, 'in-progress')
+            findings: reviewerActors.flatMap(actor => assessment.accepted[actor].result.findings) })
           round.correctionRequested = true; round.finished = true
           progress('Both initial assessments collected; automatic correction request delivered to builder')
         } else {
@@ -303,7 +303,7 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
       return messages(reviewA).some(message => message.kind === 'busy-result' && message.recordedActor === 'reviewer-a')
     }), { deadline: modelDeadline, intervalMs: 1000, label: 'automatic three-agent workflow', signal: work.signal })
     await recovery
-    assert.equal(finalContext.parent.task.status, 'review'); assert.equal(finalContext.parent.task.assignee, 'human')
+    assert.equal(finalContext.parent.task.state, 'open'); assert.equal(finalContext.parent.task.assignee, 'human')
     assert.equal(rounds.length, 2); assert.notEqual(rounds[0].commitSha, rounds[1].commitSha)
     const currentContexts = Object.fromEntries(await Promise.all(reviewerActors.map(async actor => [actor, await cli(['show', report.reviewTaskIds[actor], '--actor', 'human'])])))
     const finalAssessment = collectReviews(rounds[1], currentContexts)
@@ -324,11 +324,11 @@ When the delivered comment kind is busy-probe, only publish a JSON comment kind=
     // Independently rerun every agent's own tests and stronger external assertions.
     const external = `import assert from 'node:assert/strict'; const {selectReadyTasks,challenge}=await import(process.argv[2]);
 assert.equal(challenge,${JSON.stringify(challenge)}); const tasks=[
-{id:'blocked',assignee:'builder',status:'todo',priority:'p0',blocked:true,created_at:'2020'},
-{id:'b',assignee:'builder',status:'todo',priority:'p1',created_at:'2021'},
-{id:'a',assignee:'builder',status:'todo',priority:'p1',created_at:'2021'},
-{id:'unknown',assignee:'builder',status:'todo',priority:'other',created_at:'2020'},
-{id:'other',assignee:'reviewer',status:'todo',priority:'p0',created_at:'2010'}];
+{id:'blocked',assignee:'builder',state:'open',priority:'p0',blocked:true,created_at:'2020'},
+{id:'b',assignee:'builder',state:'open',priority:'p1',created_at:'2021'},
+{id:'a',assignee:'builder',state:'open',priority:'p1',created_at:'2021'},
+{id:'unknown',assignee:'builder',state:'open',priority:'other',created_at:'2020'},
+{id:'other',assignee:'reviewer',state:'open',priority:'p0',created_at:'2010'}];
 const before=JSON.stringify(tasks); tasks.forEach(Object.freeze);Object.freeze(tasks);
 assert.deepEqual(selectReadyTasks(tasks,'builder',20).map(t=>t.id),['a','b','unknown']);
 assert.equal(selectReadyTasks(tasks,'builder',1)[0],tasks[2]); assert.equal(JSON.stringify(tasks),before);

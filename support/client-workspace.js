@@ -10,6 +10,11 @@ import { joinApproved } from './enrollment.js'
 
 const CLIENT_API = '/pardner/client/v1'
 
+export async function showTaskActions(panel) {
+  const summary = panel.getByText('Task actions', { exact: true })
+  if (!await summary.evaluate(element => element.parentElement.open)) await summary.click()
+}
+
 export async function eventually(read, message = 'Condition was not met within twenty seconds', timeout = 20000) {
   const end = Date.now() + timeout
   for (;;) {

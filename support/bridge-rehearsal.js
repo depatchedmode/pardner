@@ -86,7 +86,7 @@ export async function freezeCandidate(source, destination) {
 }
 
 export const requirements = `Implement queue.mjs with exports challenge and selectReadyTasks(tasks, actorId, limit).
-Return only tasks whose assignee exactly matches actorId and whose status is exactly "todo".
+Return only tasks whose assignee exactly matches actorId and whose state is exactly "ready".
 Order by priority p0, p1, p2, p3 (missing or unknown priority last), then created_at ascending, then id ascending.
 Apply a positive integer limit; throw RangeError for zero, negative, non-integer, or non-finite limits.
 Do not mutate the input array or task objects. Return the selected original task objects.

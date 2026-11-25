@@ -249,7 +249,7 @@ signature document. The member asks only once every signature it made is written
 into the signature document whose heads it sends, so each of its acknowledged
 changes has its signature on the hub's disk too.
 
-Current clients use registry version 5 and board schema 12. Membership records
+Current clients use registry version 6 and board schema 13. Membership records
 and join requests use version 3 and carry public keys in machine DIDs. Pardner
 refuses older directories and preserves their registry, keys and project data.
 It can create an empty lock file when checking an older directory. Start with a

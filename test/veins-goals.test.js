@@ -66,11 +66,11 @@ describe('goals and veins', () => {
       sync(left, right)
       const context = left.veinContext(a.result.veinId)
       assert.deepEqual(context.conflicts, {})
-      assert.equal(context.vein.status, 'open')
+      assert.equal(context.vein.outcome, null)
       assert.equal(context.vein.goalId, a.result.goalId)
       assert.equal(context.goal.title, 'p95 under 200ms')
       assert.equal(context.goal.description, 'Measured at the edge')
-      assert.equal(context.goal.status, 'open')
+      assert.equal(context.goal.outcome, null)
       assert.equal(context.history.filter(event => event.requestId === 'shared-vein').length, 1)
       assert.deepEqual(left.goalContext(a.result.goalId).veins.map(vein => vein.id), [a.result.veinId])
     })
@@ -93,16 +93,16 @@ describe('goals and veins', () => {
   it('records vein and goal verdicts independently', async () => {
     await withWorkspaces(async workspace => {
       const { veinId, goalId } = await createVein(workspace)
-      await assert.rejects(command(workspace, 'vein.update', veinUpdate(workspace, veinId, { status: 'completed' })), /Vein status must be one of/)
-      await command(workspace, 'vein.update', veinUpdate(workspace, veinId, { status: 'proven' }))
-      assert.equal(workspace.veinContext(veinId).vein.status, 'proven')
-      assert.equal(workspace.goalContext(goalId).goal.status, 'open', 'a proven vein never closes its goal')
+      await assert.rejects(command(workspace, 'vein.update', veinUpdate(workspace, veinId, { outcome: 'failed' })), /Outcome must be one of/)
+      await command(workspace, 'vein.update', veinUpdate(workspace, veinId, { outcome: 'completed' }))
+      assert.equal(workspace.veinContext(veinId).vein.outcome, 'completed')
+      assert.equal(workspace.goalContext(goalId).goal.outcome, null, 'a completed vein leaves its goal open')
       const { revisions } = workspace.goalContext(goalId)
-      await assert.rejects(command(workspace, 'goal.update', { goalId, updates: { status: 'proven' }, expectedRevisions: { status: revisions.status } }),
-        /Goal status must be one of/)
-      await command(workspace, 'goal.update', { goalId, updates: { status: 'achieved' }, expectedRevisions: { status: revisions.status } })
-      assert.equal(workspace.goalContext(goalId).goal.status, 'achieved')
-      await assert.rejects(command(workspace, 'goal.update', { goalId, updates: { status: 'abandoned' }, expectedRevisions: { status: revisions.status } }),
+      await assert.rejects(command(workspace, 'goal.update', { goalId, updates: { outcome: 'failed' }, expectedRevisions: { outcome: revisions.outcome } }),
+        /Outcome must be one of/)
+      await command(workspace, 'goal.update', { goalId, updates: { outcome: 'completed' }, expectedRevisions: { outcome: revisions.outcome } })
+      assert.equal(workspace.goalContext(goalId).goal.outcome, 'completed')
+      await assert.rejects(command(workspace, 'goal.update', { goalId, updates: { outcome: 'abandoned' }, expectedRevisions: { outcome: revisions.outcome } }),
         { code: 'STALE_UPDATE' })
     })
   })
@@ -208,6 +208,20 @@ describe('goals and veins', () => {
     })
   })
 
+  it('leaves a linked task and its vein open while a to-do is outstanding', async () => {
+    await withWorkspaces(async workspace => {
+      const { veinId, goalId } = await createVein(workspace)
+      const taskId = await createTask(workspace, { veinIds: [veinId] })
+      const { result: { commentId } } = await command(workspace, 'todo.add', { taskId, to: 'bob', text: 'Review the task' })
+      assert.equal(workspace.taskContext(taskId).task.state, 'open')
+      assert.equal(workspace.veinContext(veinId).vein.state, 'open')
+      assert.equal(workspace.goalContext(goalId).goal.state, 'open')
+      await command(workspace, 'task.update', taskUpdate(workspace, taskId, { outcome: 'completed' }))
+      assert.equal(workspace.taskContext(taskId).comments.find(comment => comment.id === commentId).todo.completion, null)
+      assert.deepEqual(readiness(workspace, veinId, goalId), [true, true, true])
+    })
+  })
+
   it('flags an open vein for a verdict once all of its tasks have ended', async () => {
     await withWorkspaces(async workspace => {
       const { veinId, goalId } = await createVein(workspace)
@@ -215,47 +229,47 @@ describe('goals and veins', () => {
       assert.deepEqual(ready(), [false, false, false], 'an empty vein has nothing to judge')
       const tasks = [await createTask(workspace, { veinIds: [veinId] }), await createTask(workspace, { veinIds: [veinId] }),
         await createTask(workspace, { veinIds: [veinId] })]
-      await command(workspace, 'task.update', taskUpdate(workspace, tasks[0], { status: 'completed' }))
-      await command(workspace, 'task.update', taskUpdate(workspace, tasks[1], { status: 'dead-end' }))
+      await command(workspace, 'task.update', taskUpdate(workspace, tasks[0], { outcome: 'completed' }))
+      await command(workspace, 'task.update', taskUpdate(workspace, tasks[1], { outcome: 'dead-end' }))
       assert.deepEqual(ready(), [false, false, false])
-      await command(workspace, 'task.update', taskUpdate(workspace, tasks[2], { status: 'abandoned' }))
+      await command(workspace, 'task.update', taskUpdate(workspace, tasks[2], { outcome: 'abandoned' }))
       assert.deepEqual(ready(), [true, true, true])
-      assert.equal(workspace.veinContext(veinId).vein.status, 'open', 'readiness never sets the verdict')
-      await command(workspace, 'vein.update', veinUpdate(workspace, veinId, { status: 'dead-end' }))
+      assert.equal(workspace.veinContext(veinId).vein.outcome, null, 'readiness never sets the verdict')
+      await command(workspace, 'vein.update', veinUpdate(workspace, veinId, { outcome: 'dead-end' }))
       assert.deepEqual(ready(), [false, false, false], 'a decided vein is no longer waiting')
     })
   })
 
-  it('waits for a verdict while any concurrent task status is still open', async () => {
+  it('waits for a verdict while any concurrent task outcome is still open', async () => {
     await withWorkspaces(async (left, create) => {
       const { veinId, goalId } = await createVein(left)
       const taskId = await createTask(left, { veinIds: [veinId] })
       const right = await create(left)
-      await command(left, 'task.update', taskUpdate(left, taskId, { status: 'completed' }), 'alice')
-      await command(right, 'task.update', taskUpdate(right, taskId, { status: 'in-progress' }), 'bob')
+      await command(left, 'task.update', taskUpdate(left, taskId, { outcome: 'completed' }), 'alice')
+      await command(right, 'task.update', taskUpdate(right, taskId, { outcome: null }), 'bob')
       sync(left, right)
-      assert.deepEqual(Object.keys(left.taskContext(taskId).conflicts), ['status'])
-      assert.deepEqual(readiness(left, veinId, goalId), [false, false, false], 'a task that may still be in progress has not ended')
+      assert.deepEqual(Object.keys(left.taskContext(taskId).conflicts), ['outcome'])
+      assert.deepEqual(readiness(left, veinId, goalId), [false, false, false], 'the null alternative still prevents a vein verdict')
       const { revisions } = left.taskContext(taskId)
-      await command(left, 'task.resolve', { taskId, field: 'status', value: 'dead-end', expectedRevisions: revisions.status })
+      await command(left, 'task.resolve', { taskId, field: 'outcome', value: 'dead-end', expectedRevisions: revisions.outcome })
       assert.deepEqual(readiness(left, veinId, goalId), [true, true, true])
     })
   })
 
-  it('waits for a verdict while the vein status itself is disputed', async () => {
+  it('waits for a verdict while the vein outcome itself is disputed', async () => {
     await withWorkspaces(async (left, create) => {
       const { veinId, goalId } = await createVein(left)
       const taskId = await createTask(left, { veinIds: [veinId] })
-      await command(left, 'task.update', taskUpdate(left, taskId, { status: 'completed' }))
-      await command(left, 'vein.update', veinUpdate(left, veinId, { status: 'proven' }))
+      await command(left, 'task.update', taskUpdate(left, taskId, { outcome: 'completed' }))
+      await command(left, 'vein.update', veinUpdate(left, veinId, { outcome: 'completed' }))
       const right = await create(left)
-      await command(left, 'vein.update', veinUpdate(left, veinId, { status: 'open' }), 'alice')
-      await command(right, 'vein.update', veinUpdate(right, veinId, { status: 'dead-end' }), 'bob')
+      await command(left, 'vein.update', veinUpdate(left, veinId, { outcome: null }), 'alice')
+      await command(right, 'vein.update', veinUpdate(right, veinId, { outcome: 'dead-end' }), 'bob')
       sync(left, right)
       const { conflicts, revisions } = left.veinContext(veinId)
-      assert.deepEqual(Object.keys(conflicts), ['status'])
+      assert.deepEqual(Object.keys(conflicts), ['outcome'])
       assert.deepEqual(readiness(left, veinId, goalId), [false, false, false], 'a contested verdict is not waiting for one')
-      await command(left, 'vein.resolve', { veinId, field: 'status', value: 'open', expectedRevisions: revisions.status })
+      await command(left, 'vein.resolve', { veinId, field: 'outcome', value: null, expectedRevisions: revisions.outcome })
       assert.deepEqual(readiness(left, veinId, goalId), [true, true, true])
     })
   })
@@ -278,9 +292,9 @@ describe('goals and veins', () => {
 
   it('accepts dead-end and abandoned as task outcomes', async () => {
     await withWorkspaces(async workspace => {
-      for (const status of ['dead-end', 'abandoned']) {
-        const taskId = await createTask(workspace, { status })
-        assert.equal(workspace.taskContext(taskId).task.status, status)
+      for (const outcome of ['dead-end', 'abandoned']) {
+        const taskId = await createTask(workspace, { outcome })
+        assert.equal(workspace.taskContext(taskId).task.outcome, outcome)
       }
     })
   })

@@ -70,7 +70,7 @@ is used in the automated gate.
 
 The baseline is 100 tasks and 400 substantial comments, followed by 200 scripted
 updates. Additional operations exercise human offline authoring, concurrent
-same-field conflicts and browser resolution, the full handoff chain, delivery
+same-field conflicts and browser resolution, the assigned review to-do, completion and handoff chain, delivery
 acknowledgement loss, worker crashes, browser response loss, and completion.
 
 Required bounds are asserted, not merely printed:
@@ -137,7 +137,7 @@ document after enrollment (the hub's Actor registrations) are recorded as the
 baseline and excluded from the acknowledged-operation count. At the end, each replica is
 checked independently for operation ID, Actor, type, full payload, originating
 replica, created task count, final task fields, comment contents/cardinality, and
-handoff comment/mention effects.
+handoff and to-do comment, mention and completion effects.
 
 As it enrolls, pairs and names agents, the runner also records the membership
 records each action must produce. The signer and person in attributed changes
@@ -184,7 +184,7 @@ The runner then checks the shared view against what it knows performed each act:
 - each baseline operation likewise, by Alice's desktop as Alice (the hub registers
   every Actor it enrolls), and with the payload enrollment intends for the Actor it
   registers: `actor.register` with request ID `enroll-<Actor>`, and the Actor's ID,
-  handle, kind and display name as `lib/client-service.js` builds them from the
+  handle, kind, owning Actor for agents and display name as `lib/client-service.js` builds them from the
   person and, for an agent, its harness; no Actor is registered twice;
 - on every replica, every operation entry matches its change's writes exactly,
   and its change wrote nothing unusual;
@@ -200,6 +200,15 @@ board state is the one each signer intended beyond the effects the manifest chec
 and the writes each operation's entry implies (with the exemptions
 `lib/operation-writes.js` lists), or anything about a member's client that writes
 unusual data, which the runtime and property tests cover instead.
+
+The task board derives **Open** or **Ended** from the task outcome. The builder
+adds a review to-do on the task and the reviewer finds it through the CLI.
+All replicas retain the builder's assignment until handoff. The reviewer
+completes the to-do and the worker’s findings stay in the task discussion.
+Alice receives the handoff and records `completed`. A task, vein or goal can
+also end `dead-end` or `abandoned`. Clearing an outcome reopens it. Competing
+outcomes require an explicit choice. A vein prompts for a verdict when every
+current outcome alternative on each linked task is set.
 
 Each agent has a durable SQLite inbox and effect ledger outside the workspace.
 The runner kills workers before acknowledgement and after effects have been saved,

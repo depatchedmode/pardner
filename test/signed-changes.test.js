@@ -11,6 +11,9 @@ import * as A from '@automerge/automerge'
 import { actorPrefix, machineActor, machinePrefix, shardOf, signChange, signaturesDocumentUrl } from '../lib/change-signatures.js'
 import { actorId as actorFor } from '../lib/client-identity.js'
 import { machineKeyPem } from '../lib/machine-key.js'
+import { supersededRevisionKey } from '../lib/workspace-schema.js'
+import { storageValue } from '../lib/workspace-values.js'
+import { operationFingerprint, storedOperationId } from '../lib/operation-identity.js'
 import { DurableRepo } from '../lib/durable-repo.js'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
 import { storedSignatures } from '../lib/change-signatures.js'
@@ -71,6 +74,47 @@ it('a change relayed by the hub to another member shows its original signer ther
     const review = reader.getDoc().attribution.review
     assert.ok(review.some(entry => entry.change === signerOf(reader, impersonation.operationId).hash && entry.actorMismatch && entry.flags.actorMismatch))
     assert.ok(!review.some(entry => entry.change === signer.hash))
+  })
+})
+
+it('flags a signed completion by another Actor and keeps the assigned to-do open', { timeout: 60000 }, async () => {
+  await withHub(async ({ project, server, replica, bare }) => {
+    const alice = actorFor(project.keys[0].machineId)
+    const bob = actorFor(project.keys[1].machineId)
+    for (const [id, handle] of [[alice, 'alice-person'], [bob, 'bob-person']]) {
+      await server.store.execute({ operationId: randomUUID(), actorId: 'alice', type: 'actor.register', payload: { id, handle, kind: 'human' } })
+    }
+    const { result: { taskId } } = await server.store.execute({ operationId: randomUUID(), actorId: 'alice', type: 'task.create', payload: { title: 'Completion policy' } })
+    const { result: { commentId } } = await server.store.execute({ operationId: randomUUID(), actorId: 'alice', type: 'todo.add', payload: { taskId, to: bob, text: 'Check the evidence' } })
+    const writer = await replica(0)
+    const reader = await replica(1)
+    const requestId = randomUUID()
+    const payload = { commentId }
+    const type = 'todo.complete'
+    const actorId = alice
+    await assert.rejects(writer.execute({ operationId: requestId, type, actorId, payload }), { code: 'FORBIDDEN' })
+    const member = await bare(0)
+    const fingerprint = operationFingerprint({ type, actorId, payload })
+    const operationId = storedOperationId(requestId, fingerprint)
+    const timestamp = new Date().toISOString()
+    const event = { operationId, requestId, type, actorId, fingerprint, payload, taskId, replicaId: 'direct-member',
+      timestamp, recordIds: [taskId], result: { taskId, commentId }, changes: [] }
+    member.board.change(doc => {
+      doc.todoCompletions[commentId] = storageValue({ operationId, actorId, timestamp })
+      doc.operations[operationId] = storageValue(event)
+      doc.operationRequests[requestId] = storageValue(operationId)
+    })
+    const [change] = A.getHeads(member.board.doc())
+    member.signatures.change(doc => { doc[shardOf(change)][change] = signChange(member.key, project.projectId, change) })
+    const entry = await eventually(() => reader.getDoc().activity.find(entry => entry.key === operationId && entry.changes[0].state === 'signed'), 'direct completion never synced')
+    assert.equal(entry.changes[0].machineId, project.keys[0].machineId)
+    assert.equal(entry.flags.mismatch, true)
+    assert.ok(entry.changes[0].mismatch.some(item => item.field === 'actorId'))
+    assert.equal(reader.getDoc().comments[commentId].todo.completion, null)
+    const done = await reader.execute({ operationId: randomUUID(), type, actorId: bob, payload })
+    const approved = await eventually(() => writer.getDoc().activity.find(entry => entry.key === done.operationId && entry.changes[0].state === 'signed'), 'valid completion never synced')
+    assert.equal(approved.review, false)
+    assert.equal(writer.getDoc().comments[commentId].todo.completion.actorId, bob)
   })
 })
 

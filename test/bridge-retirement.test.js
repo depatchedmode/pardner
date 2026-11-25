@@ -24,7 +24,7 @@ async function fixture(run) {
   }
   const bridge = { config: { mappings, inboxDirectory: root, dataDirectory: join(root, 'service'), completionCleanup: { archiveDirectory: join(root, 'archive') } }, inbox,
     source: { actors: async () => ({ tasks: state.branches ?? {} }), pending: async () => ({ mentions: state.pending }),
-      context: async ({ taskId }) => ({ task: { status: state.tasks[taskId] }, conflicts: state.conflicts, integrityConflicts: state.integrityConflicts }) },
+      context: async ({ taskId }) => ({ task: { state: state.tasks[taskId] ? 'ended' : 'ready', outcome: state.tasks[taskId] ?? null }, conflicts: state.conflicts, integrityConflicts: state.integrityConflicts }) },
     adapters: new Map(mappings.map(mapping => [mapping.actorId, adapter])),
   }
   const dependencies = {
@@ -47,8 +47,8 @@ async function fixture(run) {
 }
 
 it('waits for all tasks, conflicts, deliveries, and active turns, then archives a shared worktree once', () => fixture(async state => {
-  state.tasks.two = 'review'; await state.tick()
-  state.tasks.two = 'completed'; state.conflicts = { status: ['a', 'b'] }; await state.tick()
+  state.tasks.two = null; await state.tick()
+  state.tasks.two = 'completed'; state.conflicts = { outcome: ['a', 'b'] }; await state.tick()
   state.conflicts = {}; state.busy = true; await state.tick()
   state.busy = false; state.pending = [{}]; await state.tick()
   state.pending = []; state.extraThreads = [{ id: 'unmapped-thread' }]; await state.tick()
@@ -62,14 +62,14 @@ it('waits for all tasks, conflicts, deliveries, and active turns, then archives 
 
 it('an open related branch prevents cleanup even when the configured parent is complete', () => fixture(async state => {
   state.branches = { child: { id: 'child', branch_of: 'one' } }
-  state.tasks.child = 'review'; await state.tick()
+  state.tasks.child = null; await state.tick()
   assert.equal(state.inbox.retirement(), null)
   state.tasks.child = 'completed'; await state.tick()
   assert.equal(state.inbox.retirement().state, 'archived')
 }))
 
-it('retires once related tasks end as dead-end or abandoned, but not while one is in review', () => fixture(async state => {
-  state.tasks = { one: 'dead-end', two: 'review' }; await state.tick()
+it('retires once related tasks end as dead-end or abandoned, and waits while any related task is open', () => fixture(async state => {
+  state.tasks = { one: 'dead-end', two: null }; await state.tick()
   assert.equal(state.inbox.retirement(), null)
   state.tasks.two = 'abandoned'; await state.tick()
   assert.equal(state.inbox.retirement().state, 'archived')
@@ -105,14 +105,14 @@ it('lost archive replies and move failures retain a durable retirement decision 
 it('reopening a task pauses partial retirement and never reactivates an archived ownership group', () => fixture(async state => {
   state.loseReply = true
   await assert.rejects(state.tick(), /reply lost/)
-  state.tasks.two = 'in-progress'
+  state.tasks.two = null
   await state.tick()
   assert.deepEqual(state.archived, ['builder'])
   assert.deepEqual(state.moved, [])
   state.tasks.two = 'completed'
   await state.tick()
   const completed = state.inbox.retirement()
-  state.tasks.one = 'backlog'
+  state.tasks.one = null
   await state.tick()
   assert.deepEqual(state.inbox.retirement(), completed)
   assert.equal(state.moved.length, 1)
@@ -120,7 +120,7 @@ it('reopening a task pauses partial retirement and never reactivates an archived
 
 for (const actor of ['builder', 'reviewer']) {
   it(`pauses immediately when a task reopens after archiving ${actor}`, () => fixture(async state => {
-    state.afterArchive = mapping => { if (mapping.actorId === actor) state.tasks.two = 'in-progress' }
+    state.afterArchive = mapping => { if (mapping.actorId === actor) state.tasks.two = null }
     await state.tick()
     assert.deepEqual(state.archived, actor === 'builder' ? ['builder'] : ['builder', 'reviewer'])
     assert.deepEqual(state.moved, [])
@@ -137,7 +137,7 @@ for (const actor of ['builder', 'reviewer']) {
 it('discovers an open branch added during archival before continuing', () => fixture(async state => {
   state.afterArchive = () => {
     state.branches = { child: { id: 'child', branch_of: 'one' } }
-    state.tasks.child = 'review'
+    state.tasks.child = null
   }
   await state.tick()
   assert.deepEqual(state.archived, ['builder'])
@@ -164,7 +164,7 @@ for (const change of ['pending delivery', 'stop']) {
 
 it('pauses between worktree moves and resumes without repeating a completed move', () => fixture(async state => {
   state.bridge.config.mappings[1].worktree = '/reviewer-fixture'
-  state.afterMove = () => { state.tasks.one = 'in-progress' }
+  state.afterMove = () => { state.tasks.one = null }
   await state.tick()
   assert.deepEqual(state.moved, ['/shared-fixture'])
   assert.equal(state.inbox.retirement().state, 'archiving')
@@ -271,7 +271,7 @@ for (const boundary of ['builder', 'reviewer', 'move']) {
 for (const change of ['owner', 'workspace', 'replica', 'mapping', 'destination', 'task revision', 'new branch']) {
   it(`rejects approval after a change to ${change}`, () => fixture(async state => {
     const source = state.bridge.source
-    source.context = async ({ taskId }) => ({ task: { status: state.tasks[taskId] }, revisions: { status: [state.revision ?? 'first'] } })
+    source.context = async ({ taskId }) => ({ task: { state: state.tasks[taskId] ? 'ended' : 'ready', outcome: state.tasks[taskId] ?? null }, revisions: { outcome: [state.revision ?? 'first'] } })
     await state.approve()
     if (change === 'owner') state.inbox.saveCleanupApproval({ ...state.inbox.cleanupApproval(), ownerUid: process.getuid() + 1 })
     if (change === 'workspace') state.bridge.config.workspaceId = 'other'
