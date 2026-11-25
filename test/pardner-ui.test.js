@@ -87,12 +87,20 @@ for (const uuidAvailable of [true, false]) it(
     const tasks = async () => Object.values((await host.doc()).tasks)
     try {
       const pages = []
+      let delayedVeinId
       for (const person of [host, guest]) {
         const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
         if (!uuidAvailable) await context.addInitScript(() => {
           Object.defineProperty(crypto, 'randomUUID', { value: undefined })
         })
         const page = await context.newPage()
+        if (person === host) await page.routeWebSocket(/\/projects\/[^/]+\/ws\?/, socket => {
+          const server = socket.connectToServer()
+          server.onMessage(message => {
+            if (delayedVeinId && JSON.parse(message).doc?.veins[delayedVeinId]?.status === 'dead-end') return
+            socket.send(message)
+          })
+        })
         page.on('pageerror', (error) => errors.push(error.message))
         await person.open(page)
         pages.push(page)
@@ -329,6 +337,8 @@ for (const uuidAvailable of [true, false]) it(
       await alice.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Status of vein Evidence-first reviews')
 
       // A stale change from the CLI lands in the vein row, never a task panel.
+      // The write can be rejected before the live update reaches the browser.
+      delayedVeinId = vein.veinId
       let raced = false
       await alice.route('**/automerge/operations', async route => {
         if (raced) return route.continue()
@@ -342,6 +352,7 @@ for (const uuidAvailable of [true, false]) it(
       assert.equal(await alice.locator('.side-panel [role="alert"]').count(), 0)
       await veinRow.getByRole('alert').getByRole('button', { name: 'Dismiss', exact: true }).click()
       assert.equal(await veinStatus.inputValue(), 'dead-end', 'the select falls back to the stored value')
+      delayedVeinId = undefined
       await veinStatus.selectOption('proven')
       await veinRow.getByRole('alert').waitFor({ state: 'hidden' })
       await alice.unroute('**/automerge/operations')

@@ -623,6 +623,10 @@ export function Workspace({ config, reloadConfiguration, session }) {
       setError(null)
       return receipt
     } catch (failure) {
+      // A write rejection can arrive before the live update that made it stale.
+      if (failure.code === 'STALE_UPDATE' || failure.code === 'CONFLICT_REQUIRES_RESOLUTION') {
+        try { await refresh() } catch { /* Keep the original rejection if the board cannot be read. */ }
+      }
       setError(failure)
       // Definitive validation errors did not mutate; a new decision may follow.
       if (
