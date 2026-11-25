@@ -27,6 +27,9 @@ valid filters with empty or matching results through the project proxy.
 
 Run `node --test test/pardner-cli-veins.test.js test/veins-goals.test.js`, and
 `npm run test:ui` for the Goals view and vein filter in `test/pardner-ui.test.js`.
+The browser test withholds the live update for a raced vein status. Dismissing
+the stale-write alert must leave the select showing the stored value with
+either browser operation ID path.
 The CLI workflow creates two veins sharing a goal, links tasks, filters lists,
 removes an observed membership, marks work dead-end, and separately achieves
 the goal. Expected: the right memberships and statuses, a vein ready for verdict
