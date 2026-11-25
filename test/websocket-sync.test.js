@@ -92,6 +92,29 @@ it('every connected UI subscriber receives the same document broadcast', async (
   })
 })
 
+it('publishes one full board view for a burst of document and attribution notifications', async () => {
+  await withSubscribers(2, async ({ server, clients, operation }) => {
+    const getDoc = server.store.getDoc.bind(server.store)
+    let projections = 0
+    server.store.getDoc = () => { projections++; return getDoc() }
+
+    // Reconnect can deliver board and signature changes together.
+    server.store.docHandle.emit('change')
+    server.store.emit('attribution')
+    server.store.docHandle.emit('change')
+    assert.equal(projections, 0, 'notifications return before projecting the board')
+
+    const updates = await Promise.all(clients.map(client => client.next('document-update')))
+    assert.equal(projections, 1)
+    assert.deepEqual(updates[0].doc, updates[1].doc)
+
+    const receipt = await operation('task.create', { title: 'After the burst' }, 'builder')
+    assert.equal(receipt.savedLocally, true)
+    const { doc } = await clients[0].next('document-update')
+    assert.equal(doc.tasks[receipt.result.taskId].title, 'After the burst')
+  })
+})
+
 for (const changeType of ['task-create', 'task-update', 'comment-add']) {
   it(`rejects legacy JSON ${changeType} without changing shared state`, async () => {
     await withSubscribers(2, async ({ clients, create, api }) => {

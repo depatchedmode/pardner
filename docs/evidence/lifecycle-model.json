@@ -2053,5 +2053,15 @@
     "witnessesReached": 10,
     "violation": null,
     "review": "Durable publication advances acknowledged heads. Snapshot and incremental pack journals preserve cleanup intent across restart, and an unlink failure never invalidates a published document. The model abstracts durable publication as atomic. Storage tests cover restart and actual filesystem interruption boundaries."
+  },
+  "reconnectBrowserUpdateReview": {
+    "node": "v24.11.1",
+    "serverSha256": "210bc73042f2aa74d3088289ae04e12d0d0d02e28ed82c688cddc179a57401cd",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "witnessesReached": 10,
+    "violation": null,
+    "review": "The browser broadcast timer is canceled synchronously at StopBegin. Admission, listener drain, persistence and acknowledgement retain their modeled boundaries. The model does not cover browser publication latency."
   }
 }

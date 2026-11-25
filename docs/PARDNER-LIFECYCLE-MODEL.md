@@ -885,3 +885,12 @@ restart cleanup, and later saves during a persistent unlink failure.
 `StoreCloseBegin` refuses new background saves once the repo is closing.
 `StoreCloseComplete` waits for the queue to drain before releasing the
 storage lease. The existing model actions cover these boundaries.
+
+## Reconnect browser update mapping review
+
+Board and attribution notifications schedule one browser update per 50 ms
+window. Each update uses the latest board and attribution state. An initial
+subscription still gets a full view immediately. `StopBegin` cancels the
+pending update before closing listeners. Browser publication does not admit
+requests or acknowledge persistence. The modeled action guards and ordering
+still apply, and the WebSocket regression covers publication outside the model.
