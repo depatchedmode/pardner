@@ -96,11 +96,11 @@ export function coordinatorCommands({ scope, root, runId, cliPath, data, environ
   const once = (key, makeArgs) => scope.run(signal => submitOnce(outbox, key, makeArgs, cli, { signal }))
   return {
     execute: command, cli,
-    handoff: (key, taskId, to, message, status = 'review') => once(key, async () => {
+    handoff: (key, taskId, to, message) => once(key, async () => {
       const { revisions } = await cli(['show', taskId, '--actor', 'coordinator'])
-      return ['handoff', taskId, '--to', to, '--status', status, '--message', JSON.stringify(message),
+      return ['handoff', taskId, '--to', to, '--message', JSON.stringify(message),
         '--actor', 'coordinator', '--operation-id', `${runId}-${key}`,
-        '--revisions', JSON.stringify({ assignee: revisions.assignee, status: revisions.status })]
+        '--revisions', JSON.stringify({ assignee: revisions.assignee })]
     }),
     comment: (key, taskId, message) => once(key, () => ['comment', taskId, JSON.stringify(message), '--actor', 'coordinator',
       '--operation-id', `${runId}-${key}`]),

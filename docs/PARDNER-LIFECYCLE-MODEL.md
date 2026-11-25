@@ -894,3 +894,17 @@ subscription still gets a full view immediately. `StopBegin` cancels the
 pending update before closing listeners. Browser publication does not admit
 requests or acknowledge persistence. The modeled action guards and ordering
 still apply, and the WebSocket regression covers publication outside the model.
+
+## Task outcomes and assigned to-dos mapping review
+
+Task outcomes and to-dos use the existing queued operation path. Adding a to-do
+writes its comment, assignment and mention in one Automerge change. Completing
+it saves a separate authored change. The persistence barrier still confirms
+board data and the local signature cache before the receipt. Snapshot projection
+and comment attribution read these facts under the existing service lifecycle.
+
+Re-reviewed the affected mappings for `ReplicaEdit`, `SyncDown`,
+`ReplicaSendAck`, `Handle`, `Respond`, `StoreCloseBegin`,
+`StoreCloseComplete`, `ReplicaReceive` and `ReplicaAckCommit`. The guards,
+effects and bounds still describe those paths. See `taskFactsReview` in the
+evidence JSON for the refreshed map and check.

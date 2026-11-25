@@ -10,29 +10,29 @@ a deliberate verdict and a goal a separate deliberate outcome.
 
 Use `pardner vein create --title ... --goal ...`, `vein add`, `vein remove`,
 `vein show`, `goal show`, and their `update`/`resolve` commands. `tasks --vein`,
-`veins --goal`, and `goals --status` expose membership and outcomes. Read current
+`veins --goal`, and `goals --state` expose membership and outcomes. Read current
 revisions before a mutation requiring them; register an Actor first (the first
 registration bootstraps itself; later ones need an existing `--actor`). Open the
 browser through `pardner client up --output-file` (the board authors as the
-signed-in Actor). It has a read-only **Goals** view (one article per goal with its veins,
-**Ready for a verdict** and **Conflicting edits** labels; a vein button filters
-the board and clears the status filter) and a **Vein** filter. Resolution has no
-browser control.
+signed-in Actor). The **Goals** view groups veins by goal and shows **Ready for
+a verdict** and **Conflicting edits** when applicable. Use the outcome selects
+to record a verdict or outcome. A vein button filters the board and clears the
+state filter.
 
 The desktop client list-filter test in `test/client-cli.test.js` exercises invalid
-statuses for all three lists, unknown vein and goal IDs (including titles), and
+outcomes for all three lists, unknown vein and goal IDs (including titles), and
 valid filters with empty or matching results through the project proxy.
 
 ## Driving it with the CLI and domain fixtures
 
 Run `node --test test/pardner-cli-veins.test.js test/veins-goals.test.js`, and
 `npm run test:ui` for the Goals view and vein filter in `test/pardner-ui.test.js`.
-The browser test withholds the live update for a raced vein status. Dismissing
-the stale-write alert must leave the select showing the stored value with
-either browser operation ID path.
+The browser test delays the live update for a raced vein outcome. Dismissing the
+stale-write alert must leave the select showing the stored outcome with either
+browser operation ID path.
 The CLI workflow creates two veins sharing a goal, links tasks, filters lists,
 removes an observed membership, marks work dead-end, and separately achieves
-the goal. Expected: the right memberships and statuses, a vein ready for verdict
+the goal. Expected: the right memberships and states, a vein ready for verdict
 only when appropriate, and the goal still open until explicitly changed.
 
 The domain fixture checks concurrent moves between goals: both destinations
@@ -47,5 +47,6 @@ fixture state and inspect the resulting CLI contexts.
 
 `npm run test:cli` currently omits `pardner-cli-veins.test.js`; run it explicitly
 when relevant (the full Node suite includes it). The acceptance scenario's task
-status conflict does not establish goal/vein conflict behavior. Vein and goal
-resolution is CLI-only; do not invent a browser entry point for it.
+outcome conflict does not establish goal/vein conflict behavior. Run
+`test/ui-record-conflicts.test.js` to exercise goal and vein resolution through
+the browser.

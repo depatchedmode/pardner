@@ -54,8 +54,8 @@ for (const mode of ['co-worktree', 'co-host']) {
       await eventually(() => source.socket?.readyState === 1)
       const { revisions } = await context(taskId)
       const began = performance.now()
-      const result = await operation('task.handoff', { taskId, to: 'builder', status: 'in-progress', message: 'Review the bounded task',
-        expectedRevisions: { assignee: revisions.assignee, status: revisions.status } })
+      const result = await operation('task.handoff', { taskId, to: 'builder', message: 'Review the bounded task',
+        expectedRevisions: { assignee: revisions.assignee } })
       assert.equal(result.success, true)
       assert.notEqual(result.requestId, result.operationId, 'Schema5 receipt distinguishes the retry key from stored revision identity')
       await eventually(() => calls.length === 1, 2000)

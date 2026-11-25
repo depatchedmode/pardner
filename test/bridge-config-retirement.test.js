@@ -21,7 +21,7 @@ for (const alias of ['direct', 'parent']) {
       const paths = alias === 'direct' ? { ...trees, builder: aliasPath }
         : { builder: join(aliasPath, 'builder'), reviewer: join(aliasPath, 'reviewer') }
       const taskId = await create()
-      assert.equal((await update(taskId, { status: 'completed' })).success, true)
+      assert.equal((await update(taskId, { outcome: 'completed' })).success, true)
       await writeFile(join(directory, 'connection.json'), JSON.stringify({ httpUrl: `http://127.0.0.1:${server.httpPort}`, token: 'test-token' }))
       const raw = { workspaceId: server.store.manifest.workspaceId, replicaId: server.store.manifest.replicaId,
         dataDirectory: directory, inboxDirectory: join(root, 'inbox'), completionCleanup: { archiveDirectory: join(root, 'archive') },
@@ -41,10 +41,10 @@ for (const alias of ['direct', 'parent']) {
       })
       inbox = await openBridgeInbox(config)
       bridge = new AgentBridge({ config, inbox, source: new BridgeSource(config), adapterFactory })
-      await update(taskId, { status: 'in-progress' })
+      await update(taskId, { outcome: null })
       await assert.rejects(runBridgeCommand('approve-cleanup', { config: path }), { code: 'CLEANUP_NOT_ELIGIBLE' })
       assert.equal(inbox.cleanupApproval(), null)
-      await update(taskId, { status: 'completed' })
+      await update(taskId, { outcome: 'completed' })
       const approval = await runBridgeCommand('approve-cleanup', { config: path })
       assert.equal(approval.approved, true)
       await assert.rejects(retireCompletedBridge(bridge, { move: async plan => {

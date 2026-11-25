@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { cli, startCliService } from '../support/cli-resources.js'
 import { SCHEMA_VERSION } from '../lib/workspace-schema.js'
 
-it('runs human to agent to agent to human handoffs through the public CLI service path', { timeout: 30000 }, async () => {
+it('finds and completes an assigned review to-do in the same task through the public CLI', { timeout: 60000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-cli-workflow-'))
   const service = await startCliService(directory)
   const run = async (args, actor = 'alice') => {
@@ -17,7 +17,7 @@ it('runs human to agent to agent to human handoffs through the public CLI servic
   }
   try {
     assert.equal((await stat(join(directory, 'connection.json'))).mode & 0o777, 0o600)
-    for (const [id, kind] of [['alice', 'human'], ['builder', 'agent'], ['reviewer', 'agent']]) {
+    for (const [id, kind] of [['alice', 'human'], ['bob', 'human'], ['builder', 'agent'], ['reviewer', 'agent']]) {
       await run(['actors', 'register', id, '--handle', id, '--kind', kind])
     }
     const description = 'Complete specification. '.repeat(100)
@@ -35,26 +35,50 @@ it('runs human to agent to agent to human handoffs through the public CLI servic
     await run(['read', taskId, '--receipts', JSON.stringify(context.comments.map(comment => ({ commentId: comment.id, revisionId: comment.revisionId })))])
     assert.equal((await run(['show', taskId])).unreadCount, 0)
     assert.equal((await run(['show', taskId], 'builder')).unreadCount, 6)
-    for (const [from, to, status] of [['alice', 'builder', 'in-progress'], ['builder', 'reviewer', 'review'], ['reviewer', 'alice', 'completed']]) {
-      context = await run(['show', taskId], from)
-      const receipt = await run(['handoff', taskId, '--to', to, '--status', status, '--message', `${from} hands off to @${to}`,
-        '--revisions', JSON.stringify({ assignee: context.revisions.assignee, status: context.revisions.status })], from)
-      assert.equal(receipt.result.mentionIds.length, 1)
-      assert.equal((await run(['tasks', '--assignee', to], to)).tasks.length, 1)
-      const claim = await run(['mentions', 'claim-next', '--request-id', `claim-${to}`], to)
-      assert.equal(claim.claimed, true)
-      assert.equal(claim.mention.taskId, taskId)
-      await run(['mentions', 'ack', claim.mention.id, '--claim-token', claim.claimToken], to)
-      assert.equal((await run(['mentions', 'pending'], to)).mentions.length, 0)
-    }
-    const stale = await cli(directory, ['update', taskId, '--actor', 'alice', '--status', 'backlog', '--revisions', JSON.stringify({ status: ['create-once'] })])
+    const text = 'Check the release evidence'
+    const add = ['todo', 'add', taskId, '--to', 'reviewer', '--message', text, '--operation-id', 'review-once']
+    const assigned = await run(add, 'builder')
+    const commentId = assigned.result.commentId
+    assert.equal((await run(add, 'builder')).replayed, true)
+    const { todos } = await run(['todos'], 'reviewer')
+    assert.equal(todos.length, 1)
+    assert.deepEqual({ id: todos[0].id, taskId: todos[0].taskId, actorId: todos[0].actorId, content: todos[0].content, todo: todos[0].todo },
+      { id: commentId, taskId, actorId: 'builder', content: text, todo: { assignee: 'reviewer', completion: null } })
+    context = await run(['show', taskId])
+    assert.equal(context.task.assignee, 'alice')
+    assert.equal(context.task.state, 'open')
+    assert.equal(context.mentions.filter(mention => mention.operationId === assigned.operationId && mention.toActorId === 'reviewer').length, 1)
+    assert.equal(context.history.filter(event => event.operationId === assigned.operationId).length, 1)
+    const review = await run(['show', taskId], 'reviewer')
+    assert.equal(review.comments.find(comment => comment.id === commentId).unreadRevisionIds.length, 1)
+    await run(['read', taskId, '--receipts', JSON.stringify([{ commentId, revisionId: assigned.operationId }])], 'reviewer')
+    const claim = await run(['mentions', 'claim-next', '--request-id', 'claim-review'], 'reviewer')
+    assert.equal(claim.mention.taskId, taskId)
+    await run(['mentions', 'ack', claim.mention.id, '--claim-token', claim.claimToken], 'reviewer')
+    assert.equal((await run(['todos'], 'reviewer')).todos.length, 1, 'reading and acknowledging leave the to-do open')
+    assert.equal((await cli(directory, ['todo', 'complete', commentId, '--actor', 'bob'])).result.error.code, 'FORBIDDEN')
+    assert.equal((await cli(directory, ['comment-edit', commentId, 'Changed request', '--actor', 'builder', '--revisions', JSON.stringify([assigned.operationId])])).result.error.code, 'FORBIDDEN')
+    await run(['handoff', taskId, '--to', 'builder', '--message', 'Over to Builder',
+      '--revisions', JSON.stringify({ assignee: context.revisions.assignee })])
+    await run(['update', taskId, '--outcome', 'completed', '--revisions', JSON.stringify({ outcome: context.revisions.outcome })])
+    assert.equal((await run(['todos'], 'reviewer')).todos.length, 1, 'ended work keeps open to-dos in the reviewer queue')
+    await run(['comment', taskId, 'The release evidence is ready.'], 'reviewer')
+    const complete = ['todo', 'complete', commentId, '--operation-id', 'complete-once']
+    const done = await run(complete, 'reviewer')
+    assert.equal((await run(complete, 'reviewer')).replayed, true)
+    assert.deepEqual((await run(['todos'], 'reviewer')).todos, [])
+    const completed = (await run(['show', taskId])).comments.find(comment => comment.id === commentId).todo.completion
+    assert.equal(completed.actorId, 'reviewer')
+    assert.equal(completed.operationId, done.operationId)
+    const stale = await cli(directory, ['update', taskId, '--actor', 'alice', '--outcome', 'none', '--revisions', JSON.stringify({ outcome: context.revisions.outcome })])
     assert.equal(stale.code, 1)
     assert.equal(stale.result.error.code, 'STALE_UPDATE')
     assert.ok(stale.result.error.details.current.length)
     const final = await run(['show', taskId])
-    assert.equal(final.task.assignee, 'alice')
-    assert.equal(final.task.status, 'completed')
-    assert.equal(final.history.filter(event => event.type === 'task.handoff').length, 3)
+    assert.equal(final.task.assignee, 'builder')
+    assert.equal(final.task.outcome, 'completed')
+    assert.equal(final.task.state, 'ended')
+    assert.equal((await run(['tasks', '--outcome', 'completed'])).tasks[0].id, taskId)
     assert.equal(JSON.parse(await readFile(join(directory, 'workspace.json'), 'utf8')).schemaVersion, SCHEMA_VERSION)
   } finally {
     await service.stop()

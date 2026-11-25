@@ -39,8 +39,10 @@ async function run({ requestId, pauseAt }) {
   send({ checkpoint: 'acknowledged', actorId, key: row.key })
   if (pauseAt === 'acknowledged') return { paused: true }
   const assigned = await command(['tasks', '--assignee', actorId])
+  const assignedTodos = await command(['todos', '--assignee', actorId])
   const context = await command(['show', mention.taskId])
   send({ checkpoint: 'context-read', actorId, key: row.key, assignedTaskIds: assigned.tasks.map(task => task.id),
+    todos: assignedTodos.todos,
     taskId: context.task.id, descriptionLength: context.task.description.length, commentCount: context.comments.length,
     historyCount: context.history.length, revisions: context.revisions })
   const operationId = `agent-effect-${createHash('sha256').update(`${actorId}:${row.key}`).digest('hex').slice(0, 32)}`

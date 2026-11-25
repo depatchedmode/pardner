@@ -192,22 +192,31 @@ not mark comments read. Comment `revisionIds` includes every concurrent revision
 submit only revisions actually observed using `pardner read --receipts`.
 With `--actor`, each comment also lists `unreadRevisionIds`, the revisions that Actor has no receipt for, authors included.
 
-An edit supplies the revisions observed in `show` for the affected fields:
+The CLI lists `open` and `ended` records with `tasks --state`, `veins --state`
+and `goals --state`. Filter on `--outcome completed|dead-end|abandoned|none`
+independently. Clearing an outcome reopens the record.
 
 ```sh
-pardner update TASK --actor builder --status in-progress \
-  --revisions '{"status":["OBSERVED_OPERATION_ID"]}' --operation-id update-001
-pardner handoff TASK --actor builder --to reviewer --status review \
-  --message 'Implementation is ready; please review the evidence.' \
-  --revisions '{"assignee":["ASSIGNMENT_REVISION"],"status":["STATUS_REVISION"]}' \
-  --operation-id handoff-001
+pardner todo add TASK --to reviewer --message 'Check the evidence.' \
+  --actor builder --operation-id review-001
+pardner todos --actor reviewer
+pardner comment TASK 'The evidence covers the observed failure.' --actor reviewer
+pardner todo complete COMMENT --actor reviewer --operation-id review-done-001
 ```
 
-Handoff atomically changes assignment/status, adds the explanation, and mentions
-the recipient. Different-field edits merge. Concurrent same-field alternatives
-remain attributed; `pardner resolve` requires the full observed revision set.
-`STALE_UPDATE` means refresh context and decide again. Never silently retry a
-stale edit using freshly fetched revisions.
+`todo add` records an assigned comment and one mention for the assignee in the
+same write. Its `result.commentId` identifies the to-do. Only the assigned Actor
+can complete it. The completion records that Actor and the time. Reading or
+acknowledging the mention leaves the to-do open. Open to-dos appear in `todos`
+even when the parent task has ended. Use `todos --assignee ACTOR` to look up
+someone else’s open to-dos. The request stays as written and findings can be
+added as ordinary comments in the same discussion.
+
+`handoff TASK --to ACTOR --message TEXT --revisions JSON` changes the task's
+assignee, adds a comment and mentions the recipient in one operation. Supply the
+`assignee` revision from `show`. Fields edited independently merge. Competing
+values keep their authors. Use `resolve TASK --field FIELD --value VALUE
+--revisions JSON` with all observed alternatives to choose a value.
 
 For transport failures, retry the **same payload with the same operation ID**.
 An existing matching operation is replayed; reuse for a different payload returns
@@ -281,21 +290,17 @@ it is listed under each of those goals, with its `goalIds`, until someone
 resolves the move with `vein resolve`.
 
 Tasks end `completed`, `dead-end`, or `abandoned`. When every task in an `open`
-vein has ended under every concurrent status, `vein show` and `veins` report
-`readyForVerdict`; a person then records the vein's verdict. Goals are closed
-separately:
+vein has an outcome in every current alternative, `vein show` and `veins`
+report `readyForVerdict`. A person then records the vein's own outcome.
 
 ```sh
-pardner vein update VEIN --status proven --revisions '{"status":["OBSERVED_REVISION"]}' --actor alice
-pardner goal update GOAL --status achieved --revisions '{"status":["OBSERVED_REVISION"]}' --actor alice
+pardner vein update VEIN --outcome completed --revisions '{"outcome":["OBSERVED_REVISION"]}' --actor alice
+pardner goal update GOAL --outcome completed --revisions '{"outcome":["OBSERVED_REVISION"]}' --actor alice
 ```
 
-Vein statuses are `open`, `proven`, `dead-end`, and `abandoned`; goal statuses are
-`open`, `achieved`, and `abandoned`. Vein and goal edits follow the same revision
-and conflict rules as task edits. Moving a vein uses `vein update --goal GOAL`;
-concurrent moves are kept as alternatives until `vein resolve --field goalId`.
-Task branches start without veins, and merging a branch never changes the
-parent's veins.
+Tasks, veins and goals share `completed`, `dead-end` and `abandoned`. Use
+`--outcome none` to reopen a record. Veins and goals derive `open` or `ended`,
+which their list commands accept with `--state`.
 
 ## Wait for a mention or a task comment
 
@@ -318,7 +323,7 @@ pardner --token-file builder.json wait --task "$task" --after "$version"
 ```
 
 Board reads return `boardVersion`, including `status`, `show`, `comments`, `tasks`,
-`branches`, `actors list`, `goals`, `goal show`, `veins`, `vein show`, `activity`,
+`branches`, `actors list`, `goals`, `todos`, `goal show`, `veins`, `vein show`, `activity`,
 `timeline`, `diff`, `trace task`, and `mentions pending`. The value is an opaque
 string that encodes the project ID and its Automerge heads. `status` reads the
 local replica, including while the hub is unreachable. `mentions pending` reads

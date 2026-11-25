@@ -143,7 +143,7 @@ it('matches unmapped ownership through a portable symlink and tolerates missing 
     config: { mappings: [{ ...mapping, actorId: 'builder', enabled: true, allowedTaskIds: ['one'] }],
       inboxDirectory: join(root, 'inbox'), dataDirectory: join(root, 'service'), completionCleanup: { archiveDirectory: join(root, 'archive') } },
     inbox: { retirement: () => null, rows: () => [], hasClaim: () => false, saveRetirement: () => {}, status: () => {} },
-    source: { actors: async () => ({ tasks: {} }), context: async () => ({ task: { status: 'completed' }, conflicts: {} }), pending: async () => ({ mentions: [] }) },
+    source: { actors: async () => ({ tasks: {} }), context: async () => ({ task: { state: 'ended', outcome: 'completed' }, conflicts: {} }), pending: async () => ({ mentions: [] }) },
     adapters: new Map([['builder', adapter]]),
   }, { plan: async () => ({}), move: async () => { moved = true } })
   assert.equal(moved, false)

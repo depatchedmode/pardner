@@ -125,26 +125,26 @@ test('list commands distinguish invalid filters from empty results through the d
     assert.equal((await pardnerFailure(args('tasks', '--assignee', ''))).code, 'INVALID_ARGUMENT')
     assert.equal((await pardnerFailure(args('tasks', '--assignee', 'missing-actor'))).code, 'UNKNOWN_ACTOR')
     for (const [command, typo, statuses] of [
-      ['tasks', 'upnext', ['backlog', 'up-next', 'in-progress', 'review', 'completed', 'dead-end', 'abandoned']],
-      ['veins', 'ready', ['open', 'proven', 'dead-end', 'abandoned']],
-      ['goals', 'done', ['open', 'achieved', 'abandoned']],
+      ['tasks', 'upnext', ['completed', 'dead-end', 'abandoned', 'none']],
+      ['veins', 'ready', ['completed', 'dead-end', 'abandoned', 'none']],
+      ['goals', 'done', ['completed', 'dead-end', 'abandoned', 'none']],
     ]) {
-      const error = await pardnerFailure(args(command, '--status', typo))
+      const error = await pardnerFailure(args(command, '--outcome', typo))
       assert.equal(error.code, 'INVALID_ARGUMENT')
       for (const status of statuses) assert.ok(error.message.includes(status), error.message)
-      assert.deepEqual((await pardner(args(command, '--status', 'abandoned')))[command], [])
+      assert.deepEqual((await pardner(args(command, '--outcome', 'abandoned')))[command], [])
     }
     for (const [command, flag, title] of [['tasks', 'vein', 'Edge caching'], ['veins', 'goal', 'Low latency']]) {
       for (const reference of [title, `${flag}-${'0'.repeat(24)}`, 'constructor']) {
-        const error = await pardnerFailure(args(command, '--' + flag, reference, '--status', 'abandoned'))
+        const error = await pardnerFailure(args(command, '--' + flag, reference, '--outcome', 'abandoned'))
         assert.equal(error.code, 'NOT_FOUND')
         assert.ok(error.message.includes(reference))
         assert.ok(error.message.includes(flag + ' ID'))
       }
     }
     assert.deepEqual((await pardner(args('tasks', '--vein', veinId))).tasks, [])
-    assert.deepEqual((await pardner(args('veins', '--goal', goalId, '--status', 'abandoned'))).veins, [])
-    assert.deepEqual((await pardner(args('veins', '--goal', goalId, '--status', 'open'))).veins.map(vein => vein.id), [veinId])
+    assert.deepEqual((await pardner(args('veins', '--goal', goalId, '--outcome', 'abandoned'))).veins, [])
+    assert.deepEqual((await pardner(args('veins', '--goal', goalId, '--state', 'open'))).veins.map(vein => vein.id), [veinId])
   } finally {
     await client?.stop()
     await rm(directory, { recursive: true, force: true })

@@ -30,10 +30,10 @@ export class ExpectedOperations {
       if (!this.receipts.has(id)) continue
       if (intent.type === 'task.create') {
         const taskId = taskIdForRequest(intent)
-        tasks.set(taskId, { description: '', status: 'backlog', assignee: null, priority: 'p2', tags: [], ...intent.payload })
+        tasks.set(taskId, { description: '', outcome: null, assignee: null, priority: 'p2', tags: [], ...intent.payload })
       }
       if (intent.type === 'task.update') Object.assign(tasks.get(intent.payload.taskId), intent.payload.updates)
-      if (intent.type === 'task.handoff') Object.assign(tasks.get(intent.payload.taskId), { assignee: intent.payload.to, status: intent.payload.status })
+      if (intent.type === 'task.handoff') Object.assign(tasks.get(intent.payload.taskId), { assignee: intent.payload.to })
       if (intent.type === 'task.resolve') tasks.get(intent.payload.taskId)[intent.payload.field] = intent.payload.value
     }
     assert.equal(Object.keys(snapshot.tasks).length, tasks.size, 'Created task cardinality differs from the manifest')
@@ -70,12 +70,18 @@ export class ExpectedOperations {
           readReceipts.set(key, { actorId: intent.actorId, ...observed })
         }
       }
-      if (intent.type === 'task.handoff') {
+      if (['task.handoff', 'todo.add'].includes(intent.type)) {
         const comment = Object.values(snapshot.comments).find(comment => comment.revisionId === operationId)
-        assert.equal(comment?.content, intent.payload.message)
+        assert.equal(comment?.content, intent.payload.message ?? intent.payload.text)
         assert.equal(comment?.actorId, intent.actorId)
         assert.equal(Object.values(snapshot.comments).filter(comment => comment.revisionId === operationId).length, 1)
         assert.equal(Object.values(snapshot.mentions).filter(mention => mention.commentId === receipt.result.commentId && mention.toActorId === intent.payload.to).length, 1)
+        if (intent.type === 'todo.add') assert.equal(comment.todo.assignee, intent.payload.to)
+      }
+      if (intent.type === 'todo.complete') {
+        const completion = snapshot.comments[intent.payload.commentId]?.todo?.completion
+        assert.equal(completion?.operationId, operationId)
+        assert.equal(completion.actorId, intent.actorId)
       }
     }
     assert.equal(canonical(snapshot.readReceipts), canonical(Object.fromEntries(readReceipts)), 'Read receipts must equal the union of observed revisions for their Actors')

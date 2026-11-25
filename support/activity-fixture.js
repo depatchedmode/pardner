@@ -49,10 +49,12 @@ export function everyOperation(start = board({ actors: false }).doc) {
   step({ type: 'actor.register', payload: { id: 'builder', handle: 'builder', kind: 'agent', displayName: 'Builder' } })
   const task = step({ type: 'task.create', payload: { title: 'Every operation', description: 'From the fixture', tags: ['one'] } }).result.taskId
   const revisions = field => taskState(doc, task).revisions[field]
-  step({ type: 'task.update', payload: { taskId: task, updates: { status: 'in-progress' }, expectedRevisions: { status: revisions('status') } } })
+  const todo = step({ type: 'todo.add', payload: { taskId: task, to: 'alice', text: 'Check the result' } })
+  step({ type: 'todo.complete', payload: { commentId: todo.result.commentId } })
+  step({ type: 'task.update', payload: { taskId: task, updates: { outcome: 'dead-end' }, expectedRevisions: { outcome: revisions('outcome') } } })
   step({ type: 'task.resolve', payload: { taskId: task, field: 'priority', value: 'p1', expectedRevisions: revisions('priority') } })
-  const handoff = step({ type: 'task.handoff', payload: { taskId: task, to: 'builder', status: 'review', message: 'Over to you, @builder',
-    expectedRevisions: { assignee: revisions('assignee'), status: revisions('status') } } })
+  const handoff = step({ type: 'task.handoff', payload: { taskId: task, to: 'builder', message: 'Over to you, @builder',
+    expectedRevisions: { assignee: revisions('assignee') } } })
   const added = step({ type: 'comment.add', payload: { taskId: task, text: 'A first comment' } }).result.commentId
   step({ type: 'comment.edit', payload: { commentId: added, text: 'A first comment, edited', expectedRevisions: commentView(doc, added).revisionIds } })
   step({ type: 'comment.resolve', payload: { commentId: added, text: 'The kept version', expectedRevisions: commentView(doc, added).revisionIds } })
@@ -63,10 +65,10 @@ export function everyOperation(start = board({ actors: false }).doc) {
   step({ type: 'task.link-commit', payload: { taskId: task, commit: { hash: 'abc1234def', message: 'Implement it' } } })
   const goal = step({ type: 'goal.create', payload: { title: 'A goal' } }).result.goalId
   step({ type: 'goal.update', payload: { goalId: goal, updates: { description: 'Why' }, expectedRevisions: { description: recordState(doc, 'goal', goal).revisions.description } } })
-  step({ type: 'goal.resolve', payload: { goalId: goal, field: 'status', value: 'open', expectedRevisions: recordState(doc, 'goal', goal).revisions.status } })
+  step({ type: 'goal.resolve', payload: { goalId: goal, field: 'outcome', value: null, expectedRevisions: recordState(doc, 'goal', goal).revisions.outcome } })
   const vein = step({ type: 'vein.create', payload: { title: 'A vein', goalId: goal } }).result.veinId
   step({ type: 'vein.update', payload: { veinId: vein, updates: { title: 'A vein, renamed' }, expectedRevisions: { title: recordState(doc, 'vein', vein).revisions.title } } })
-  step({ type: 'vein.resolve', payload: { veinId: vein, field: 'status', value: 'open', expectedRevisions: recordState(doc, 'vein', vein).revisions.status } })
+  step({ type: 'vein.resolve', payload: { veinId: vein, field: 'outcome', value: null, expectedRevisions: recordState(doc, 'vein', vein).revisions.outcome } })
   step({ type: 'task.link-vein', payload: { taskId: task, veinId: vein } })
   step({ type: 'task.unlink-vein', payload: { taskId: task, veinId: vein, expectedRevisions: linkAlternatives(doc, task, vein).map(link => link.operationId) } })
   step({ type: 'task.link-issue', payload: { taskId: task, repository: 'example/pardner', number: 7 } })
@@ -102,10 +104,12 @@ export async function everyOperationVia({ execute, doc, register, actorId, recip
   receipts.push({ type: 'actor.register', receipt: await register({ id: `agent-${Date.now()}`, handle: `agent${Date.now()}`, kind: 'agent', displayName: 'Helper' }) })
   const task = (await step('task.create', { title: 'Every operation', description: 'Through the service', tags: ['one'] })).taskId
   const revisions = field => taskState(doc(), task).revisions[field]
-  await step('task.update', { taskId: task, updates: { status: 'in-progress' }, expectedRevisions: { status: revisions('status') } })
+  const todo = await step('todo.add', { taskId: task, to: actorId, text: 'Check the result' })
+  await step('todo.complete', { commentId: todo.commentId })
+  await step('task.update', { taskId: task, updates: { outcome: 'dead-end' }, expectedRevisions: { outcome: revisions('outcome') } })
   await step('task.resolve', { taskId: task, field: 'priority', value: 'p1', expectedRevisions: revisions('priority') })
-  const handoff = await step('task.handoff', { taskId: task, to: recipient, status: 'review', message: 'Over to you',
-    expectedRevisions: { assignee: revisions('assignee'), status: revisions('status') } })
+  const handoff = await step('task.handoff', { taskId: task, to: recipient, message: 'Over to you',
+    expectedRevisions: { assignee: revisions('assignee') } })
   const added = (await step('comment.add', { taskId: task, text: 'A first comment' })).commentId
   await step('comment.edit', { commentId: added, text: 'A first comment, edited', expectedRevisions: commentView(doc(), added).revisionIds })
   await step('comment.resolve', { commentId: added, text: 'The kept version', expectedRevisions: commentView(doc(), added).revisionIds })
@@ -116,10 +120,10 @@ export async function everyOperationVia({ execute, doc, register, actorId, recip
   await step('task.link-commit', { taskId: task, commit: { hash: 'abc1234def', message: 'Implement it' } })
   const goal = (await step('goal.create', { title: 'A goal' })).goalId
   await step('goal.update', { goalId: goal, updates: { description: 'Why' }, expectedRevisions: { description: recordState(doc(), 'goal', goal).revisions.description } })
-  await step('goal.resolve', { goalId: goal, field: 'status', value: 'open', expectedRevisions: recordState(doc(), 'goal', goal).revisions.status })
+  await step('goal.resolve', { goalId: goal, field: 'outcome', value: null, expectedRevisions: recordState(doc(), 'goal', goal).revisions.outcome })
   const vein = (await step('vein.create', { title: 'A vein', goalId: goal })).veinId
   await step('vein.update', { veinId: vein, updates: { title: 'A vein, renamed' }, expectedRevisions: { title: recordState(doc(), 'vein', vein).revisions.title } })
-  await step('vein.resolve', { veinId: vein, field: 'status', value: 'open', expectedRevisions: recordState(doc(), 'vein', vein).revisions.status })
+  await step('vein.resolve', { veinId: vein, field: 'outcome', value: null, expectedRevisions: recordState(doc(), 'vein', vein).revisions.outcome })
   await step('task.link-vein', { taskId: task, veinId: vein })
   await step('task.unlink-vein', { taskId: task, veinId: vein, expectedRevisions: linkAlternatives(doc(), task, vein).map(link => link.operationId) })
   await step('task.link-issue', { taskId: task, repository: 'example/pardner', number: 7 })

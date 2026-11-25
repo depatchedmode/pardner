@@ -47,8 +47,8 @@ async function cli(args) {
 }
 async function handoff(taskId, message) {
   const { revisions } = await cli(['show', taskId])
-  return cli(['handoff', taskId, '--to', 'probe', '--status', 'in-progress', '--message', message,
-    '--revisions', JSON.stringify({ assignee: revisions.assignee, status: revisions.status })])
+  return cli(['handoff', taskId, '--to', 'probe', '--message', message,
+    '--revisions', JSON.stringify({ assignee: revisions.assignee })])
 }
 async function markerAbsent() {
   await assert.rejects(access(marker), { code: 'ENOENT' })
@@ -121,7 +121,7 @@ try {
       for (const taskId of report.taskIds) {
         await cli(['comment', taskId, 'Qualification probe concluded. The controller cancelled the approval; queued work was intentionally not executed.'])
         const { revisions } = await cli(['show', taskId])
-        await cli(['update', taskId, '--status', 'completed', '--revisions', JSON.stringify({ status: revisions.status })])
+        await cli(['update', taskId, '--outcome', 'completed', '--revisions', JSON.stringify({ outcome: revisions.outcome })])
       }
       await control.archive(mapping)
       assert.equal(await control.isArchived(mapping), true)

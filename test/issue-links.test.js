@@ -33,7 +33,7 @@ it('links existing GitHub issues to tasks without contacting or changing GitHub'
     ])
     assert.deepEqual((await api('/automerge/doc')).doc.tasks[second].issues.map(link => link.number), [77], 'one issue can link to several tasks')
     // Finishing the task neither closes nor mirrors the issue.
-    await update(first, { status: 'completed' })
+    await update(first, { outcome: 'completed' })
     assert.equal((await context(first)).issues.length, 2)
     for (const invalid of [{ repository: 'not a repo', number: 1 }, { repository: 'a/b', number: 0 }, { repository: 'a/b', number: 1.5 }, { repository: 'a/..', number: 1 }]) {
       assert.equal((await operation('task.link-issue', { taskId: first, ...invalid })).code, 'INVALID_ARGUMENT', JSON.stringify(invalid))

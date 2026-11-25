@@ -42,8 +42,8 @@ function workload(seed = 1) {
     }
     const taskId = tasks[Math.floor(random() * tasks.length)]
     if (roll < 65) return { type: 'comment.add', actorId, payload: { taskId, text: prose(100 + Math.floor(random() * 500)) } }
-    const field = roll < 90 ? ['status', 'priority', 'assignee'][Math.floor(random() * 3)] : 'description'
-    const value = field === 'status' ? ['backlog', 'up-next', 'in-progress', 'review'][Math.floor(random() * 4)]
+    const field = roll < 90 ? ['outcome', 'priority', 'assignee'][Math.floor(random() * 3)] : 'description'
+    const value = field === 'outcome' ? [null, 'completed', 'dead-end', 'abandoned'][Math.floor(random() * 4)]
       : field === 'priority' ? ['p0', 'p1', 'p2', 'p3'][Math.floor(random() * 4)] : field === 'assignee' ? ACTORS[Math.floor(random() * 4)].id : prose(2000)
     const current = doc.taskFields[`${taskId}:${field}`]
     const revisions = current ? [...new Set(Object.values(A.getConflicts(doc.taskFields, `${taskId}:${field}`) ?? { one: current }).map(entry => String(entry.operationId)))] : []

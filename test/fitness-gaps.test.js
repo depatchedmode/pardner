@@ -47,20 +47,20 @@ it('mention keys survive operation replay and distinguish separate comments with
 
 it('field effects and attributed history become visible in one Automerge change', async () => {
   await withWorkspaceServer(async ({ server, create, update, context }) => {
-    const taskId = await create({ status: 'backlog' })
+    const taskId = await create({ outcome: null })
     const observations = []
     const observe = () => {
       const doc = server.store.docHandle.doc()
-      observations.push({ status: taskView(doc, taskId).status,
+      observations.push({ outcome: taskView(doc, taskId).outcome,
         events: Object.values(doc.operations).map(plain).filter(event => event.taskId === taskId && event.type === 'task.update') })
     }
     server.store.docHandle.on('change', observe)
     let receipt
-    try { receipt = await update(taskId, { status: 'in-progress' }, 'builder') }
+    try { receipt = await update(taskId, { outcome: 'dead-end' }, 'builder') }
     finally { server.store.docHandle.off('change', observe) }
     assert.equal(receipt.savedLocally, true)
     assert.equal(observations.length, 1)
-    assert.equal(observations[0].status, 'in-progress')
+    assert.equal(observations[0].outcome, 'dead-end')
     assert.equal(observations[0].events.length, 1)
     assert.equal(observations[0].events[0].operationId, receipt.operationId)
     assert.equal(observations[0].events[0].actorId, 'builder')

@@ -9,7 +9,7 @@ function field(value, actorId, operationId) {
 function fixture() {
   return Automerge.from({
     fields: {
-      status: field('backlog', 'alice', 'created'),
+      outcome: field(null, 'alice', 'created'),
       title: field('Shared work', 'alice', 'created'),
     },
     operations: { created: { actorId: 'alice' } },
@@ -27,30 +27,30 @@ function edit(doc, fieldName, value, actorId, operationId) {
 describe('pinned CRDT qualification', () => {
   it('merges different fields together with each operation and its attribution', () => {
     const original = fixture()
-    const left = edit(Automerge.clone(original), 'status', 'in-progress', 'builder', 'a')
+    const left = edit(Automerge.clone(original), 'outcome', 'dead-end', 'builder', 'a')
     const right = edit(Automerge.clone(original), 'title', 'Reviewed work', 'bob', 'b')
     const merged = Automerge.merge(left, right)
-    assert.deepEqual(merged.fields.status, field('in-progress', 'builder', 'a'))
+    assert.deepEqual(merged.fields.outcome, field('dead-end', 'builder', 'a'))
     assert.deepEqual(merged.fields.title, field('Reviewed work', 'bob', 'b'))
     assert.deepEqual(Object.keys(merged.operations).sort(), ['a', 'b', 'created'])
   })
 
   it('preserves conflicting values and authors through serialization and explicit resolution', () => {
     const original = fixture()
-    const left = edit(Automerge.clone(original), 'status', 'review', 'builder', 'a')
-    const right = edit(Automerge.clone(original), 'status', 'completed', 'reviewer', 'b')
+    const left = edit(Automerge.clone(original), 'outcome', 'abandoned', 'builder', 'a')
+    const right = edit(Automerge.clone(original), 'outcome', 'completed', 'reviewer', 'b')
     const merged = Automerge.load(Automerge.save(Automerge.merge(left, right)))
-    const alternatives = Object.values(Automerge.getConflicts(merged.fields, 'status'))
+    const alternatives = Object.values(Automerge.getConflicts(merged.fields, 'outcome'))
     assert.deepEqual(alternatives.sort((a, b) => a.operationId.localeCompare(b.operationId)), [
-      field('review', 'builder', 'a'), field('completed', 'reviewer', 'b'),
+      field('abandoned', 'builder', 'a'), field('completed', 'reviewer', 'b'),
     ])
-    const resolved = edit(merged, 'status', 'review', 'bob', 'resolution')
-    assert.ok(Object.keys(Automerge.getConflicts(resolved.fields, 'status') || {}).length <= 1)
-    assert.deepEqual(resolved.fields.status, field('review', 'bob', 'resolution'))
+    const resolved = edit(merged, 'outcome', 'abandoned', 'bob', 'resolution')
+    assert.ok(Object.keys(Automerge.getConflicts(resolved.fields, 'outcome') || {}).length <= 1)
+    assert.deepEqual(resolved.fields.outcome, field('abandoned', 'bob', 'resolution'))
     assert.deepEqual(Object.keys(resolved.operations).sort(), ['a', 'b', 'created', 'resolution'])
-    const late = edit(Automerge.clone(original), 'status', 'in-progress', 'alice', 'late')
+    const late = edit(Automerge.clone(original), 'outcome', 'dead-end', 'alice', 'late')
     const withLateEdit = Automerge.merge(resolved, late)
-    assert.deepEqual(Object.values(Automerge.getConflicts(withLateEdit.fields, 'status'))
+    assert.deepEqual(Object.values(Automerge.getConflicts(withLateEdit.fields, 'outcome'))
       .map(record => record.operationId).sort(), ['late', 'resolution'])
   })
 

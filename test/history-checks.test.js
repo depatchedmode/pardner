@@ -45,7 +45,7 @@ test('one comment.add retried on two offline replicas, merged, then the comment 
 
 test('a branch made on a replica whose parent then held concurrent values agreeing on every field needs no review', () => {
   const { doc: start } = board()
-  const parent = run(start, { type: 'task.create', payload: { title: 'Parent', status: 'in-progress' } })
+  const parent = run(start, { type: 'task.create', payload: { title: 'Parent', outcome: 'dead-end' } })
   const taskId = parent.event.result.taskId
   // The same update retried on two replicas: two values of one register, from one operation.
   const update = { operationId: 'retried-update', type: 'task.update', payload: { taskId, updates: { priority: 'p1' }, expectedRevisions: { priority: taskState(parent.doc, taskId).revisions.priority } } }
@@ -78,17 +78,17 @@ function written(doc, event, writes) {
 }
 const entryOf = (doc, hash) => view(doc).find(entry => entry.changes.some(change => change.hash === hash))
 
-test('an update whose event states the new status as the previous one does not say nothing changed: it shows the status written, and is flagged', async () => {
+test('an update whose event states the new outcome as the previous one does not say nothing changed: it shows the outcome written, and is flagged', async () => {
   const { doc: start } = board()
   const task = run(start, { type: 'task.create', payload: { title: 'Quietly done' } })
   const taskId = task.event.result.taskId
-  const { event, writes } = realWrites(task.doc, { operationId: 'quiet', type: 'task.update', payload: { taskId, updates: { status: 'completed' }, expectedRevisions: { status: taskState(task.doc, taskId).revisions.status } } })
-  event.changes = [{ field: 'status', old: 'completed', new: 'completed' }]
+  const { event, writes } = realWrites(task.doc, { operationId: 'quiet', type: 'task.update', payload: { taskId, updates: { outcome: 'completed' }, expectedRevisions: { outcome: taskState(task.doc, taskId).revisions.outcome } } })
+  event.changes = [{ field: 'outcome', old: 'completed', new: 'completed' }]
   const { doc, hash } = written(task.doc, event, writes)
-  assert.equal(taskState(doc, taskId).task.status, 'completed')
+  assert.equal(taskState(doc, taskId).task.outcome, 'completed')
   const entry = entryOf(doc, hash)
   assert.equal(entry.flags.mismatch, true, 'a previous value the field did not hold is flagged')
-  assert.match(entry.changes[0].mismatch.map(item => item.text).join(' '), /backlog/i, 'and says what the board held')
+  assert.match(entry.changes[0].mismatch.map(item => item.text).join(' '), /null/i, 'and says what the board held')
   const { describeEvent, eventText } = await import('../ui-prototype/src/events.js')
   const text = eventText(describeEvent(entry.shows, { actors: {}, tasks: {} }))
   assert.doesNotMatch(text, /no changes/)
@@ -167,8 +167,8 @@ test('one task.create and one task.update, each retried on two replicas at diffe
   const created = retried(start, { operationId: 'retried-create', type: 'task.create', payload: { title: 'Made twice' } }, [3, 4])
   const taskId = created.runs[0].event.result.taskId
   assert.notEqual(created.runs[0].event.changes.find(change => change.field === 'order').new, created.runs[1].event.changes.find(change => change.field === 'order').new)
-  const updated = retried(created.doc, { operationId: 'retried-update', type: 'task.update', payload: { taskId, updates: { status: 'in-progress' },
-    expectedRevisions: { status: taskState(created.doc, taskId).revisions.status } } }, [3, 4])
+  const updated = retried(created.doc, { operationId: 'retried-update', type: 'task.update', payload: { taskId, updates: { outcome: 'dead-end' },
+    expectedRevisions: { outcome: taskState(created.doc, taskId).revisions.outcome } } }, [3, 4])
   assert.deepEqual(flagged(updated.doc), [])
   for (const operation of [created, updated]) {
     const entries = view(updated.doc).filter(entry => entry.kind === 'operation' && entry.key === operation.runs[0].event.operationId)
@@ -212,7 +212,7 @@ test('an Actor registered on two replicas apart under one ID with two handles, t
     const mention = (() => { try { return run(doc, { type: 'comment.add', payload: { taskId, text: `Over to @${handle}` } }, replica(3)) } catch { return null } })()
     if (mention) doc = mention.doc
     const state = taskState(doc, taskId)
-    const handoff = (() => { try { return run(doc, { type: 'task.handoff', payload: { taskId, to: handle, status: 'review', message: 'Yours', expectedRevisions: { assignee: state.revisions.assignee, status: state.revisions.status } } }, replica(3)) } catch { return null } })()
+    const handoff = (() => { try { return run(doc, { type: 'task.handoff', payload: { taskId, to: handle, message: 'Yours', expectedRevisions: { assignee: state.revisions.assignee } } }, replica(3)) } catch { return null } })()
     if (handoff) doc = handoff.doc
   }
   assert.ok(view(doc).filter(entry => ['comment.add', 'task.handoff'].includes(entry.event?.type)).length >= 2, 'the work was refused')

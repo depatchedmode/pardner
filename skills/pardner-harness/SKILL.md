@@ -47,8 +47,9 @@ changes; use separate worktrees for overlapping implementation tasks.
 ```sh
 pardner task create --title 'Short title' --assignee "$PARDNER_ACTOR" --actor "$PARDNER_ACTOR" --operation-id CREATE_ID --json
 pardner comment TASK_ID 'Progress and evidence' --actor "$PARDNER_ACTOR" --operation-id COMMENT_ID --json
-pardner update TASK_ID --status in-progress --revisions '{"status":["OBSERVED_REVISION"]}' --actor "$PARDNER_ACTOR" --operation-id UPDATE_ID --json
-pardner handoff TASK_ID --to reviewer --status review --message 'Work and review request' --revisions '{"assignee":["OBSERVED_REVISION"],"status":["OBSERVED_REVISION"]}' --actor "$PARDNER_ACTOR" --operation-id HANDOFF_ID --json
+pardner todo add TASK_ID --to reviewer --message 'Review the implementation' --actor "$PARDNER_ACTOR" --operation-id REVIEW_ID --json
+pardner todos --assignee reviewer --json
+pardner todo complete COMMENT_ID --actor "$PARDNER_ACTOR" --operation-id COMPLETION_ID --json
 ```
 
 Take revisions from the context you actually observed. Preserve the original
@@ -64,7 +65,7 @@ doing belongs to a vein, add it; record a task that did not work out as
 ```sh
 pardner veins --json
 pardner vein add VEIN_ID TASK_ID --actor "$PARDNER_ACTOR" --operation-id LINK_ID --json
-pardner update TASK_ID --status dead-end --revisions '{"status":["OBSERVED_REVISION"]}' --actor "$PARDNER_ACTOR" --operation-id UPDATE_ID --json
+pardner update TASK_ID --outcome dead-end --revisions '{"outcome":["OBSERVED_REVISION"]}' --actor "$PARDNER_ACTOR" --operation-id UPDATE_ID --json
 ```
 
 Leave vein and goal verdicts to the people who own them unless asked.

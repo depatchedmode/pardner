@@ -8,7 +8,7 @@ import { promisify } from 'node:util'
 import { chromium, webkit } from 'playwright'
 import { bootstrapPath, createClientApi, projectConfiguration, takeBootstrapGrant } from '../ui-prototype/src/client-api.js'
 import { createConnection } from '../ui-prototype/src/connection.js'
-import { sameComputerRoute } from '../support/client-workspace.js'
+import { sameComputerRoute, showTaskActions } from '../support/client-workspace.js'
 import { fakeTunnel } from '../support/fake-tunnel.js'
 import { joinApproved } from '../support/enrollment.js'
 import { buildOffer, encodeInvitation } from '../lib/enrollment.js'
@@ -394,6 +394,7 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     assert.equal(await bobAvatar.evaluate(element => element === document.activeElement), true, 'closing returns focus')
 
     // A draft survives reload and another participant's save of a different field.
+    await showTaskActions(panel)
     await panel.getByRole('button', { name: 'Edit task' }).click()
     await panel.getByLabel('Description').fill('Alice draft only')
     await page.reload()
@@ -410,11 +411,12 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await panel.getByText(/saved a newer title since/).waitFor({ timeout: 30000 })
     assert.equal(await panel.getByLabel('Description').inputValue(), 'Alice draft only')
     await panel.getByRole('button', { name: 'Save changes' }).click()
-    await panel.getByRole('button', { name: 'Edit task' }).waitFor()
+    await panel.getByText('Task actions', { exact: true }).waitFor()
     await panel.getByRole('heading', { name: 'Renamed by Bob' }).waitFor()
     await panel.locator('.markdown').getByText('Alice draft only', { exact: true }).waitFor()
 
     // Rebasing a draft onto a collaborator's newer save keeps their value for fields this user never touched.
+    await showTaskActions(panel)
     await panel.getByRole('button', { name: 'Edit task' }).click()
     await panel.getByLabel('Description').fill('Alice draft after rebase')
     const bobContext3 = await bob.call(`/projects/${project.id}/api/automerge/task/${taskId}/context`)
@@ -425,7 +427,7 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     assert.equal(await panel.getByLabel('Title').inputValue(), 'Renamed twice by Bob', 'an untouched field follows the latest version')
     assert.equal(await panel.getByLabel('Description').inputValue(), 'Alice draft after rebase', 'the edited field keeps the draft')
     await panel.getByRole('button', { name: 'Save changes' }).click()
-    await panel.getByRole('button', { name: 'Edit task' }).waitFor()
+    await panel.getByText('Task actions', { exact: true }).waitFor()
     await panel.getByRole('heading', { name: 'Renamed twice by Bob' }).waitFor()
     await panel.locator('.markdown').getByText('Alice draft after rebase', { exact: true }).waitFor()
     const afterRebase = await alice.call(`/projects/${project.id}/api/automerge/doc`)
@@ -453,6 +455,7 @@ for (const engine of [chromium, webkit]) it(`signs in, starts and joins projects
     await page.getByRole('button', { name: 'Alpha, agent, offline. Open People' }).waitFor({ timeout: 20000 })
 
     // Project switching keeps each project's draft and selection separate.
+    await showTaskActions(panel)
     await panel.getByRole('button', { name: 'Edit task' }).click()
     await panel.getByLabel('Description').fill('Unsaved second draft')
     await switcher.focus()
@@ -536,28 +539,28 @@ for (const engine of [chromium, webkit]) it(`explains recovery on a joined compu
     t.after(() => browser.close())
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
     await page.goto(await guest.open())
-    const trigger = page.getByRole('button', { name: /^Project status, 1 connected computer, Saved locally · synced$/ })
+    const trigger = page.getByRole('button', { name: /^Project status, 1 connected computer$/ })
     const details = page.getByRole('dialog', { name: 'Project status' })
     const route = details.getByRole('status')
     await trigger.waitFor()
-    assert.deepEqual(await trigger.locator('svg title').allTextContents(), ['1 connected computer', 'Saved locally · synced'])
+    assert.deepEqual(await trigger.locator('svg title').allTextContents(), ['1 connected computer'])
     await trigger.click()
     await route.getByText(/Connected through Tailcat/).waitFor({ timeout: 30000 })
     const hostPage = await browser.newPage()
     await hostPage.goto(await host.open())
-    await hostPage.getByRole('button', { name: /^Project status, 2 connected computers, Saved here$/ }).waitFor()
+    await hostPage.getByRole('button', { name: /^Project status, 2 connected computers$/ }).waitFor()
     await hostPage.getByRole('button', { name: 'Tailcat on' }).click()
     await hostPage.getByRole('dialog', { name: 'Tailcat sharing' }).getByRole('button', { name: 'Turn off Tailcat sharing' }).click()
-    await hostPage.getByRole('button', { name: /^Project status, 1 connected computer, Saved here$/ }).waitFor()
+    await hostPage.getByRole('button', { name: /^Project status, 1 connected computer$/ }).waitFor()
     await route.getByText(/Saved work stays here. Pardner retries automatically./).waitFor({ timeout: 30000 })
     await route.getByText(/ask the host to check Tailcat sharing/).waitFor()
-    await page.getByRole('button', { name: /^Project status, No peers connected, Saved locally · synced$/ }).waitFor()
+    await page.getByRole('button', { name: /^Project status, No peers connected$/ }).waitFor()
     await guest.call(`/projects/${project.id}/api/automerge/operations`, {
       type: 'task.create', operationId: 'offline-task', payload: { title: 'Draft the offline release notes' },
     })
-    const waiting = page.getByRole('button', { name: /^Project status, No peers connected, Saved locally · waiting for hub$/ })
+    const waiting = page.getByRole('button', { name: /^Project status, No peers connected, Waiting to replicate$/ })
     await waiting.waitFor()
-    assert.deepEqual(await waiting.locator('svg title').allTextContents(), ['No peers connected', 'Saved locally · waiting for hub'])
+    assert.deepEqual(await waiting.locator('svg title').allTextContents(), ['No peers connected', 'Waiting to replicate'])
     assert.equal(await route.getByRole('button').count(), 0)
     await page.keyboard.press('Escape')
     await details.waitFor({ state: 'hidden' })
@@ -567,10 +570,17 @@ for (const engine of [chromium, webkit]) it(`explains recovery on a joined compu
     assert.equal(await people.getByRole('heading', { name: 'Waiting to join' }).count(), 0,
       'a known hub outage does not repeat the same error in an empty request section')
     await people.getByRole('button', { name: 'Close', exact: true }).click()
-    await waiting.click()
+    await page.getByRole('button', { name: /Draft the offline release notes/ }).click()
+    const panel = page.getByRole('dialog', { name: 'Task details' })
+    const taskIndicator = panel.locator('.discussion-title svg')
+    await taskIndicator.waitFor()
+    assert.deepEqual(await taskIndicator.locator('title').allTextContents(), ['Waiting to replicate'])
+    await panel.getByRole('status').getByText('Waiting to replicate', { exact: true }).waitFor()
     await host.call(sharing, { on: true })
+    await taskIndicator.waitFor({ state: 'detached', timeout: 45000 })
+    await panel.getByRole('button', { name: 'Close', exact: true }).click()
+    await trigger.click()
     await route.getByText(/Connected through Tailcat/).waitFor({ timeout: 45000 })
-    await trigger.waitFor()
   })
 
 for (const engine of [chromium, webkit]) it(`recovers a loopback-only invitation and keeps the Invite dialog usable through a hub outage in ${engine.name()}`,

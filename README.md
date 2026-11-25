@@ -143,28 +143,24 @@ how to read work, report progress and hand off.
 
 ### A first task
 
-A new project has two Actors: you and your agent. This is the agent creating a
-task, reporting on it and handing it to you for review:
+A new project has two Actors: you and your agent. This is the agent creating
+a task and asking you to review the implementation:
 
 ```sh
 pardner --token-file alpha.json task create --title 'First task' --operation-id first-task
 pardner --token-file alpha.json show TASK --json
-pardner --token-file alpha.json comment TASK 'Started on this.'
 pardner --token-file alpha.json actors list
-pardner --token-file alpha.json handoff TASK --to ACTOR --status review \
-  --message 'Ready for review.' \
-  --revisions '{"assignee":["REVISION"],"status":["REVISION"]}'
+pardner --token-file alpha.json todo add TASK --to ACTOR \
+  --message 'Please check the implementation.' --operation-id first-review
 ```
 
-- `TASK` is `result.taskId` in the output of `task create`.
-- `ACTOR` is your `id` or `handle` from `actors list`. A display name such as
-  “Maya” is not accepted.
-- The revisions are the `assignee` and `status` entries of the top-level
-  `revisions` object that `show` prints. You can pass that whole object.
+- `TASK` comes from `result.taskId` in the creation receipt.
+- `ACTOR` is your ID or handle from `actors list`.
+- Open **My to-dos** to find the task. Leave your findings in the same thread and
+  check off the to-do below the task description when you finish reviewing.
 
-The task now shows on the board as yours to review. Each person has one agent
-per harness in a project, so a second agent of yours needs a different
-`--harness`.
+A to-do keeps its own assignment and completion. **Hand off work** passes
+responsibility for the task itself. Each person has one agent per harness in a project.
 
 ### Work with someone else
 
@@ -210,26 +206,15 @@ with `pardner up`.
 
 ### Concepts
 
-- **Task**: one unit of work, never larger than a branch. It ends `completed`,
-  `dead-end` or `abandoned`. All three are results worth recording.
-- **Vein**: an approach toward a goal, followed until it pays out or runs dry. One
-  task can serve several veins. A person gives the verdict: `proven`, `dead-end`
-  or `abandoned`.
-- **Goal**: the state a vein pursues. Several veins can pursue one goal. A goal is
-  `achieved` or `abandoned` deliberately; a proven vein never closes it.
+- **Task** is one unit of work, never larger than a branch. An assigned to-do
+  tracks a follow-up in the same discussion, such as a review or question.
+- **Vein** is an approach toward a goal. Tasks can serve several veins. A vein
+  prompts for a verdict when each of its tasks has an outcome in every current
+  alternative.
+- **Goal** is the result several veins can pursue.
 
-```mermaid
-flowchart LR
-  t1["Task"] -->|serves| va["Vein: one approach"]
-  t2["Task"] -->|serves| va
-  t2 -->|serves| vb["Vein: another approach"]
-  t3["Task"] -->|serves| vb
-  va -->|pursues| g["Goal"]
-  vb -->|pursues| g
-```
-
-- **Actor**: a human or an agent. Actors aren't bound to one machine.
-- **Replica**: a persisted copy of a project, the unit of storage and sync.
+Tasks, veins and goals show **Open** until they have an outcome. The three outcomes
+are `completed`, `dead-end`, and `abandoned`. Clearing an outcome reopens the record.
 
 ### Commands
 
@@ -241,18 +226,20 @@ and `reviewer`. In a client project, replace `--actor NAME` with
 
 | Task | Command |
 | --- | --- |
-| Agent work queue | `pardner tasks --assignee builder --json` |
+| Open work | `pardner tasks --assignee builder --state open --json` |
 | Complete context | `pardner show TASK --actor builder --json` |
 | Attributed progress | `pardner comment TASK 'Progress and evidence' --actor builder` |
-| Atomic assignment/status/explanation | `pardner handoff TASK --to reviewer --status review --message TEXT --revisions JSON --actor builder` |
-| Resolve concurrent values | `pardner resolve TASK --field status --value review --revisions JSON --actor alice` |
+| Request review | `pardner todo add TASK --to reviewer --message TEXT --actor builder` |
+| Find and complete review to-dos | `pardner todos --actor reviewer`, `pardner todo complete COMMENT --actor reviewer` |
+| Pass work to another Actor | `pardner handoff TASK --to reviewer --message TEXT --revisions JSON --actor builder` |
+| Resolve concurrent values | `pardner resolve TASK --field outcome --value completed --revisions JSON --actor alice` |
 | Delivery | `pardner mentions claim-next --actor builder --request-id ID` |
 | Explicit observed reads | `pardner read TASK --receipts JSON --actor alice` |
 | Commit evidence | `pardner commit --task TASK --actor builder -- -m MESSAGE` |
 | Link an existing GitHub issue | `pardner issue link TASK owner/repo#77 --actor alice` |
 | Start a vein toward a new or existing goal | `pardner vein create --title TEXT --goal 'GOAL_ID or new goal title' --actor alice` |
 | Add a task to a vein | `pardner vein add VEIN TASK --actor builder` |
-| Record a vein's verdict | `pardner vein update VEIN --status proven --revisions JSON --actor alice` |
+| Record a vein's verdict | `pardner vein update VEIN --outcome completed --revisions JSON --actor alice` |
 | Goals and their veins | `pardner goals --json`, `pardner goal show GOAL --json` |
 
 A few rules keep concurrent work safe:
@@ -265,13 +252,12 @@ A few rules keep concurrent work safe:
 
   ```sh
   pardner show TASK --actor builder --json
-  pardner handoff TASK --to reviewer --status review \
-    --message 'Ready for review.' --actor builder \
-    --revisions '{"assignee":["ASSIGNMENT_REVISION"],"status":["STATUS_REVISION"]}'
+  pardner handoff TASK --to reviewer --message 'Please take this.' --actor builder \
+    --revisions '{"assignee":["ASSIGNMENT_REVISION"]}'
   ```
 
-  Leaving out `--revisions` fails with `INVALID_ARGUMENT`. A value that doesn't
-  hold the revision a changed field currently has fails with `REVISION_REQUIRED`.
+  Pass explicit revisions when acting on a previous read. If the replica sees
+  competing values, choose an alternative before continuing.
 - **Retries are safe.** Send the same operation ID and identical payload to retry
   an uncertain write. See the
   [operation identity contract](docs/PARDNER-CLI.md).
@@ -434,7 +420,7 @@ requests use version 3 and carry the verification key in the machine DID.
 ## Your data
 
 Everything lives in the data directory: `~/.pardner/client` for the client, or
-the `--data` path you chose. A schema 12 directory holds workspace metadata,
+the `--data` path you chose. A schema 13 directory holds workspace metadata,
 Automerge storage (the board and its signature document), the membership record
 store, the signature cache (`signatures.sqlite`), a service lock and local
 connection settings. The hub also holds the SQLite delivery ledger and

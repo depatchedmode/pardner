@@ -93,7 +93,7 @@ Keep an independent backup. Synchronization can propagate deletion or corruption
    with `--http-port`; issue a fresh `pardner up` link there. Do not initialize a
    new identity or create replacement projects in restored data. Incompatible
    formats fail instead of migrating old installations automatically. Clients
-   require registry version 5 and board schema 12 for DID-based identity. Pardner
+   require registry version 6 and board schema 13. Pardner
    preserves the earlier registry and project data and may create an empty
    lock file when checking a directory. Use the older release's `client export`
    to recover readable content from an older installation. Start this release

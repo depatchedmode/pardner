@@ -82,8 +82,12 @@ it('reports malformed responses and configuration instead of silently spinning',
 })
 
 it('shows a restored hub that waits, two copies of one machine and a hub catching up before the save state', () => {
-  const synced = { savedLocally: true, syncPending: false, hubConnected: true }
-  assert.equal(syncLabel(synced), 'Saved locally · synced')
+  const synced = { role: 'replica', savedLocally: true, syncPending: false, hubConnected: true }
+  assert.equal(syncLabel(synced), null)
+  assert.equal(syncLabel({ ...synced, role: 'hub' }), null)
+  assert.equal(syncLabel({ ...synced, hubConnected: false }), null)
+  assert.equal(syncLabel({ ...synced, hubConnected: false, syncPending: true }), 'Waiting to replicate')
+  assert.equal(syncLabel({ ...synced, savedLocally: false, syncPending: true }), null)
   assert.equal(syncLabel({ ...synced, hub: { waiting: true, reason: 'restored' } }),
     'Restored hub · waits for a member machine, or pardner client resume, before serving others')
   assert.equal(syncLabel({ ...synced, duplicateMachines: [{ machineId: 'machine-x', sessions: 2 }] }),

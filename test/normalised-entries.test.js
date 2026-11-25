@@ -147,8 +147,8 @@ test('a handoff whose payload also carries other words shows, in the browser, th
   const task = run(start, { type: 'task.create', payload: { title: 'Handed over' } })
   const taskId = task.event.result.taskId
   // Through the real write path: the signed payload also carries `text`, which a handoff ignores.
-  const { doc, hash } = run(task.doc, { operationId: 'handoff-words', type: 'task.handoff', payload: { taskId, to: 'builder', status: 'review', message: 'Rejected: do not ship',
-    text: 'Approved for release', expectedRevisions: { assignee: taskState(task.doc, taskId).revisions.assignee, status: taskState(task.doc, taskId).revisions.status } } })
+  const { doc, hash } = run(task.doc, { operationId: 'handoff-words', type: 'task.handoff', payload: { taskId, to: 'builder', message: 'Rejected: do not ship',
+    text: 'Approved for release', expectedRevisions: { assignee: taskState(task.doc, taskId).revisions.assignee } } })
   const entry = entryOf(doc, hash)
   assert.deepEqual(entry.flags, {}, 'its writes are the ones its event implies')
   assert.equal(entry.shows.comment.text, 'Rejected: do not ship')

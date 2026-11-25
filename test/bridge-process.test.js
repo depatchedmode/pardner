@@ -52,8 +52,8 @@ it('SIGKILL during a real CLI dispatch preserves intake and reconciles without a
     await writeFile(configPath, JSON.stringify(config))
     await writeFile(join(directory, 'connection.json'), JSON.stringify({ httpUrl: `http://127.0.0.1:${server.httpPort}`, token: 'test-token' }), { mode: 0o600 })
     const { revisions } = await context(taskId)
-    await operation('task.handoff', { taskId, to: 'builder', status: 'in-progress', message: 'Scoped crash fixture',
-      expectedRevisions: { assignee: revisions.assignee, status: revisions.status } })
+    await operation('task.handoff', { taskId, to: 'builder', message: 'Scoped crash fixture',
+      expectedRevisions: { assignee: revisions.assignee } })
     const launch = () => {
       const child = spawn(process.execPath, ['bin/pardner.js', 'bridge', 'run', '--config', configPath], { stdio: ['ignore', 'pipe', 'pipe'] })
       children.push(child); child.stdout.resume(); child.stderr.resume()

@@ -12,6 +12,7 @@ import { ExpectedOperations, hash } from '../support/acceptance/expected-operati
 import { candidateFingerprint } from '../support/acceptance/candidate.js'
 import { AgentProcess } from '../support/acceptance/agent-process.js'
 import { joinApproved } from '../support/enrollment.js'
+import { showTaskActions } from '../support/client-workspace.js'
 import { actorId as actorFor } from '../lib/client-identity.js'
 
 const args = process.argv.slice(2)
@@ -271,19 +272,24 @@ async function runSeed(seed) {
     await pages[restartedSide - 1].getByRole('button', { name: /Pardner task 0 / }).click()
     for (const side of [1, 2]) {
       const context = await show(side, taskIds[0])
-      await execute(side, 'task.update', { taskId: taskIds[0], updates: { status: side === 1 ? 'in-progress' : 'review' }, expectedRevisions: { status: context.revisions.status } })
+      await execute(side, 'task.update', { taskId: taskIds[0], updates: { outcome: side === 1 ? 'dead-end' : 'abandoned' }, expectedRevisions: { outcome: context.revisions.outcome } })
     }
     gates[seed % 2].loseResponse('/automerge/sync-ack', 1 + seed % 2)
     for (const index of seed % 2 ? [1, 0] : [0, 1]) { gates[index].partition(false); await delay(40 + Math.floor(rng() * 120)) }
     await converge()
     const conflict = await show(1, taskIds[0])
-    assert.equal(conflict.conflicts.status.length, 2)
-    await pages[0].getByRole('heading', { name: 'Resolve status', exact: true }).waitFor()
-    await pages[0].getByRole('button', { name: 'Keep this status', exact: true }).first().click()
-    await pages[0].getByRole('heading', { name: 'Resolve status', exact: true }).waitFor({ state: 'hidden' })
+    assert.equal(conflict.conflicts.outcome.length, 2)
+    await pages[0].getByRole('heading', { name: 'Resolve outcome', exact: true }).waitFor()
+    await pages[0].getByRole('button', { name: 'Keep this outcome', exact: true }).first().click()
+    await pages[0].getByRole('heading', { name: 'Resolve outcome', exact: true }).waitFor({ state: 'hidden' })
     await responseQueue
     await converge()
+    const resolved = await show(1, taskIds[0])
+    assert.equal(resolved.task.state, 'ended')
+    await execute(1, 'task.update', { taskId: taskIds[0], updates: { outcome: null }, expectedRevisions: { outcome: resolved.revisions.outcome } })
+    await converge()
     progress('Running the human → builder → reviewer → human handoff with durable workers')
+    await showTaskActions(pages[0].getByRole('dialog', { name: 'Task details' }))
     await pages[0].getByRole('button', { name: 'Hand off work', exact: true }).click()
     await pages[0].getByLabel('Recipient', { exact: true }).selectOption({ label: 'Builder · agent' })
     const handoffText = `Seed ${seed}: builder, please implement the accepted work.`
@@ -319,17 +325,25 @@ async function runSeed(seed) {
     assert.equal((await agents[0].run()).result.complete, true)
     gates[0].partition(false)
     await converge()
-    let taskContext = await show(1, taskIds[0])
-    await execute(1, 'task.handoff', { taskId: taskIds[0], to: actors.reviewer, status: 'review', message: 'Builder finished; reviewer, check the recorded work.',
-      expectedRevisions: { assignee: taskContext.revisions.assignee, status: taskContext.revisions.status } }, 'builder')
+    const reviewText = 'Builder finished; reviewer, check the recorded work.'
+    const review = await execute(1, 'todo.add', { taskId: taskIds[0], to: actors.reviewer, text: reviewText }, 'builder')
+    const reviewCommentId = review.result.commentId
     await converge()
+    for (const side of [0, 1, 2]) {
+      const { task, comments } = await show(side, taskIds[0])
+      assert.equal(task.state, 'open')
+      assert.equal(task.assignee, actors.builder)
+      assert.deepEqual(comments.find(comment => comment.id === reviewCommentId).todo, { assignee: actors.reviewer, completion: null })
+    }
     const reviewerPause = seed % 2 ? 'effect-saved' : 'received'
     assert.equal((await agents[1].run(reviewerPause)).result.paused, true)
     await agents[1].stop('SIGKILL'); await agents[1].start()
     assert.equal((await agents[1].run()).result.complete, true)
-    taskContext = await show(2, taskIds[0])
-    await execute(2, 'task.handoff', { taskId: taskIds[0], to: actors.alice, status: 'review', message: 'Reviewer finished; Alice can confirm completion.',
-      expectedRevisions: { assignee: taskContext.revisions.assignee, status: taskContext.revisions.status } }, 'reviewer')
+    await execute(2, 'todo.complete', { commentId: reviewCommentId }, 'reviewer')
+    assert.equal((await show(2, taskIds[0])).task.state, 'open')
+    const taskContext = await show(2, taskIds[0])
+    await execute(2, 'task.handoff', { taskId: taskIds[0], to: actors.alice, message: 'Reviewer finished; Alice can confirm completion.',
+      expectedRevisions: { assignee: taskContext.revisions.assignee } }, 'reviewer')
     await converge()
     for (const agent of agents) assert.equal((await agent.run()).result.idle, true)
     // A lost HTTP response must replay the browser's original operation ID.
@@ -352,12 +366,13 @@ async function runSeed(seed) {
     assert.equal(expected.receipts.get(lostOperationId).receipt.replayed, true)
     assert.equal(await pages[0].getByText(confirmation, { exact: true }).count(), 1)
     await pages[0].unroute('**/automerge/operations')
+    await showTaskActions(pages[0].getByRole('dialog', { name: 'Task details' }))
     await pages[0].getByRole('button', { name: 'Edit task', exact: true }).click()
-    await pages[0].getByLabel('Status', { exact: true }).selectOption('completed')
+    await pages[0].getByLabel('Outcome', { exact: true }).selectOption('completed')
     await pages[0].getByRole('button', { name: 'Save changes', exact: true }).click()
-    await pages[0].getByRole('button', { name: 'Edit task', exact: true }).waitFor()
+    await pages[0].getByText('Task actions', { exact: true }).waitFor()
     await responseQueue
-    assert.equal((await show(1, taskIds[0])).task.status, 'completed')
+    assert.equal((await show(1, taskIds[0])).task.outcome, 'completed')
     const commit = { hash: '0123456789abcdef'.repeat(2) + '01234567',
       message: `Agent evidence for seed ${seed}\n\n${'Complete evidence body. '.repeat(40)}`,
       diff: { shortstat: '1 file changed, 1 insertion' } }
@@ -375,12 +390,22 @@ async function runSeed(seed) {
     assert.equal((await show(2, taskIds[0])).unreadCount, observed.length)
     assert.deepEqual((await show(1, taskIds[0])).evidence, [commit])
     const agentEvidence = agents.map(agent => agent.evidence())
-    for (const evidence of agentEvidence) {
+    for (const [index, evidence] of agentEvidence.entries()) {
       assert.equal(evidence.inbox.length, 1)
       assert.equal(evidence.inbox[0].acknowledged, 1)
       assert.equal(evidence.inbox[0].complete, 1)
       assert.equal(evidence.effects.length, 1)
-      assert.ok(evidence.events.some(event => event.checkpoint === 'context-read' && event.assignedTaskIds.includes(taskIds[0]) && event.descriptionLength > 500 && event.commentCount >= 4 && event.historyCount >= 5))
+      const read = evidence.events.find(event => event.checkpoint === 'context-read' && event.taskId === taskIds[0]
+        && event.descriptionLength > 500 && event.commentCount >= 4 && event.historyCount >= 5)
+      assert.ok(read, 'The worker reads the complete context before its effect')
+      if (index === 0) assert.ok(read.assignedTaskIds.includes(taskIds[0]), 'The builder finds the assignment')
+      else {
+        assert.ok(!read.assignedTaskIds.includes(taskIds[0]), 'The review to-do leaves the builder assigned')
+        const todo = read.todos.find(comment => comment.id === reviewCommentId)
+        assert.ok(todo, 'The reviewer finds the open to-do')
+        assert.deepEqual({ assignee: todo.todo.assignee, content: todo.content, actorId: todo.actorId },
+          { assignee: actors.reviewer, content: reviewText, actorId: actors.builder })
+      }
     }
     assert.deepEqual(pageErrors, [])
     progress('Verifying acknowledged operations and final effects against the independent manifest')

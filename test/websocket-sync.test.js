@@ -65,10 +65,12 @@ it('HTTP edits broadcast changed fields and their revision IDs', async () => {
   await withSubscribers(1, async ({ clients, create, update }) => {
     const taskId = await create()
     await clients[0].next('document-update')
-    const receipt = await update(taskId, { status: 'in-progress' }, 'builder')
+    const receipt = await update(taskId, { outcome: 'dead-end' }, 'builder')
     const { doc } = await clients[0].next('document-update')
-    assert.equal(doc.tasks[taskId].status, 'in-progress')
-    assert.equal(doc.operations[receipt.operationId].payload.updates.status, 'in-progress')
+    assert.equal(doc.tasks[taskId].outcome, 'dead-end')
+    assert.equal(doc.tasks[taskId].state, 'ended')
+    assert.deepEqual(doc.tasks[taskId].revisions.outcome, [receipt.operationId])
+    assert.equal(doc.operations[receipt.operationId].payload.updates.outcome, 'dead-end')
   })
 })
 
@@ -122,7 +124,7 @@ for (const changeType of ['task-create', 'task-update', 'comment-add']) {
       await Promise.all(clients.map(client => client.next('document-update')))
       const before = (await api('/automerge/doc')).doc
       clients[0].ws.send(JSON.stringify({ type: 'document-change', agent: 'builder', change: {
-        type: changeType, taskId, updates: { status: 'completed' },
+        type: changeType, taskId, updates: { outcome: 'completed' },
         task: { id: 'injected', title: 'Injected task' }, comment: { text: 'Injected comment' },
       } }))
       const error = await clients[0].next('error')

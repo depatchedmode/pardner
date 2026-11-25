@@ -15,7 +15,7 @@ async function merge(operation, context, taskId, branchId, operationId) {
 
 it('copies all task fields into independent named branches and lists their parent relationships', async () => {
   await withWorkspaceServer(async ({ create, operation, context, api }) => {
-    const fields = { title: 'Parent', description: 'Full context', status: 'in-progress', priority: 'p1', tags: ['experiment'], assignee: 'builder' }
+    const fields = { title: 'Parent', description: 'Full context', outcome: 'dead-end', priority: 'p1', tags: ['experiment'], assignee: 'builder' }
     const taskId = await create(fields)
     const ids = [await branch(operation, taskId, 'first'), await branch(operation, taskId, 'second', 'alice')]
     for (const id of ids) {
@@ -32,27 +32,27 @@ it('copies all task fields into independent named branches and lists their paren
 
 it('edits branches independently and merges only changed fields without losing unrelated parent work', async () => {
   await withWorkspaceServer(async ({ create, operation, update, context }) => {
-    const taskId = await create({ priority: 'p2', status: 'backlog' })
+    const taskId = await create({ priority: 'p2', outcome: null })
     const branchId = await branch(operation, taskId)
-    await update(branchId, { priority: 'p0', status: 'in-progress' }, 'builder')
+    await update(branchId, { priority: 'p0', outcome: 'dead-end' }, 'builder')
     await update(taskId, { description: 'Parent work after branching' }, 'alice')
     const parentBefore = await context(taskId)
     assert.equal(parentBefore.task.priority, 'p2')
-    assert.equal(parentBefore.task.status, 'backlog')
+    assert.equal(parentBefore.task.outcome, null)
     const receipt = await merge(operation, context, taskId, branchId)
     assert.equal(receipt.savedLocally, true)
     const parent = await context(taskId)
     assert.equal(parent.task.priority, 'p0')
-    assert.equal(parent.task.status, 'in-progress')
+    assert.equal(parent.task.outcome, 'dead-end')
     assert.equal(parent.task.description, 'Parent work after branching')
     const child = await context(branchId)
     assert.equal(child.task.merged, true)
-    assert.equal(child.task.status, 'completed')
+    assert.equal(child.task.outcome, 'completed')
     for (const result of [parent, child]) {
       const event = result.history.find(event => event.operationId === receipt.operationId)
       assert.equal(event.actorId, 'reviewer')
       assert.equal(event.payload.branchId, branchId)
-      assert.deepEqual(event.changes.map(change => change.field).sort(), ['priority', 'status'])
+      assert.deepEqual(event.changes.map(change => change.field).sort(), ['outcome', 'priority'])
     }
   })
 })

@@ -1,6 +1,6 @@
 // Pure helpers for goal and vein conflicts. A conflict is a list of alternatives
 // ({ operationId, actorId, value }) that were written from the same base.
-export const FIELD_LABELS = { title: 'title', description: 'description', status: 'status', goalId: 'goal' }
+export const FIELD_LABELS = { title: 'title', description: 'description', outcome: 'outcome', goalId: 'goal' }
 
 // Alternatives with the same value become one group naming each author once,
 // ordered by the group's first operationId so every replica lists them alike.
@@ -16,8 +16,8 @@ export function conflictGroups(choices) {
   return [...groups.values()]
 }
 
-// "A or B", or "A, B or C": what a disputed status pill reads instead of the merge's pick.
-export function disputedStatusText(choices, labels) {
-  const names = conflictGroups(choices).map(group => labels[group.value] ?? String(group.value))
+// "A or B", or "A, B or C": what a disputed outcome pill reads instead of the merge's pick.
+export function disputedOutcomeText(choices, labels) {
+  const names = conflictGroups(choices).map(group => labels[group.value] ?? 'No outcome')
   return names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`
 }

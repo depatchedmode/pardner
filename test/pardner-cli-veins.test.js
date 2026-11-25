@@ -37,26 +37,26 @@ it('pursues a goal through veins and tasks with the public CLI', { timeout: 3000
 
     assert.deepEqual((await run(['tasks', '--vein', veinId])).tasks.map(task => task.id).sort(), [shared, solo].sort())
     assert.deepEqual((await run(['veins', '--goal', goalId])).veins.map(vein => vein.title).sort(), ['Edge caching', 'Rewrite hot path'])
-    assert.deepEqual((await run(['goals', '--status', 'open'])).goals.map(goal => goal.title), ['p95 under 200ms'])
+    assert.deepEqual((await run(['goals', '--outcome', 'none'])).goals.map(goal => goal.title), ['p95 under 200ms'])
 
     const taskContext = await run(['show', solo])
     const removed = await run(['vein', 'remove', veinId, solo, '--revisions', JSON.stringify(taskContext.veins[0].linkRevisions)])
     assert.equal(removed.result.taskId, solo)
 
     const { revisions } = await run(['show', shared])
-    await run(['update', shared, '--status', 'dead-end', '--revisions', JSON.stringify({ status: revisions.status })], 'builder')
+    await run(['update', shared, '--outcome', 'dead-end', '--revisions', JSON.stringify({ outcome: revisions.outcome })], 'builder')
     let vein = await run(['vein', 'show', veinId])
     assert.equal(vein.vein.readyForVerdict, true)
     assert.equal(vein.goal.title, 'p95 under 200ms')
-    await run(['vein', 'update', veinId, '--status', 'dead-end', '--revisions', JSON.stringify({ status: vein.revisions.status })])
+    await run(['vein', 'update', veinId, '--outcome', 'dead-end', '--revisions', JSON.stringify({ outcome: vein.revisions.outcome })])
     vein = await run(['vein', 'show', veinId])
-    assert.equal(vein.vein.status, 'dead-end')
+    assert.equal(vein.vein.outcome, 'dead-end')
     assert.equal(vein.vein.readyForVerdict, false)
 
     const goal = await run(['goal', 'show', goalId])
-    assert.equal(goal.goal.status, 'open')
-    await run(['goal', 'update', goalId, '--status', 'achieved', '--revisions', JSON.stringify({ status: goal.revisions.status })])
-    assert.deepEqual((await run(['goals', '--status', 'achieved'])).goals.map(item => item.id), [goalId])
+    assert.equal(goal.goal.outcome, null)
+    await run(['goal', 'update', goalId, '--outcome', 'completed', '--revisions', JSON.stringify({ outcome: goal.revisions.outcome })])
+    assert.deepEqual((await run(['goals', '--outcome', 'completed'])).goals.map(item => item.id), [goalId])
   } finally {
     await service.stop()
     await rm(directory, { recursive: true, force: true })

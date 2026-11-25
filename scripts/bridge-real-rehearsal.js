@@ -57,8 +57,8 @@ async function cli(args) {
 }
 async function handoff(taskId, to, actor, message) {
   const { revisions } = await cli(['show', taskId, '--actor', actor])
-  return cli(['handoff', taskId, '--to', to, '--status', 'in-progress', '--message', message,
-    '--revisions', JSON.stringify({ assignee: revisions.assignee, status: revisions.status }), '--actor', actor])
+  return cli(['handoff', taskId, '--to', to, '--message', message,
+    '--revisions', JSON.stringify({ assignee: revisions.assignee }), '--actor', actor])
 }
 const shellQuote = value => `'${value.replaceAll("'", "'\\''")}'`
 const nodeCommand = [process.execPath, cliPath, '--data', serviceDirectory].map(shellQuote).join(' ')
@@ -82,18 +82,18 @@ Use the Pardner CLI to read the assigned task: ${nodeCommand} show TASK_ID --act
 Use --actor explicitly for every write. Use fresh operation IDs for new writes and preserve IDs when retrying.
 Do not call mentions claim-next or ack; the bridge owns receipt. Do not commit, push, access other services, or modify files outside your worktree.
 ${sharedWorktree ? 'Both Actors share this test worktree. Builder may change only queue.mjs and queue.test.mjs. Reviewer may change only reviewer.test.mjs; preserve the builder files.' : "Only queue.mjs and queue.test.mjs may change. Do not read the other Actor's worktree."}
-Finish by using the real Pardner handoff command, not just by replying in chat. Get current assignee/status revisions from show before handoff.
+Finish by using the real Pardner handoff command, not just by replying in chat. Get the current assignee revision from show before handoff.
 The handoff message must be a JSON string (serialize it with JSON.stringify using a Node script and invoke CLI via execFileSync, not shell interpolation).
 Record your actual cwd, challenge, source SHA256, test command/output, and session Actor in the message.`
   const description = `${requirements}\n\n${common}
 BUILDER: implement queue.mjs (export challenge = ${JSON.stringify(challenge)}) and your tests. Run them.
-Hand off this task to reviewer with status review and a message containing JSON fields kind="builder-artifact", runId, challenge, actor="builder", cwd, source (full queue.mjs), sourceSha256, tests (full queue.test.mjs), and testOutput.
+Hand off this task to reviewer with a message containing JSON fields kind="builder-artifact", runId, challenge, actor="builder", cwd, source (full queue.mjs), sourceSha256, tests (full queue.test.mjs), and testOutput.
 REVIEWER: ${sharedWorktree ? 'Read queue.mjs from the shared worktree and verify that its exact contents and SHA256 match the builder-artifact handoff. Do not rewrite the implementation or builder tests. Write your own independent reviewer.test.mjs.' : "Obtain the source ONLY from the builder-artifact handoff in this task's comments. Verify its SHA256, write queue.mjs in your own worktree, and write your own independent queue.test.mjs."} Run your tests.
-If it passes, hand off to human with status review and message JSON fields kind="review-result", runId, challenge, actor="reviewer", cwd, sourceSha256, verdict="pass", testOutput. If it fails, report verdict="fail" to human with specific evidence. Never impersonate another Actor.`
+If it passes, hand off to human with message JSON fields kind="review-result", runId, challenge, actor="reviewer", cwd, sourceSha256, verdict="pass", testOutput. If it fails, report verdict="fail" to human with specific evidence. Never impersonate another Actor.`
   const task = await cli(['task', 'create', '--title', `Bridge qualification ${runId.slice(0, 8)}`, '--description', description, '--actor', 'human'])
   report.taskId = task.result.taskId
   const busyTask = await cli(['task', 'create', '--title', 'Busy-session receipt check', '--description',
-    `${common}\nThis is the separate busy-session check. Do not change any files. Read this task, then hand it to human with status review and JSON message fields kind="busy-result", runId=${JSON.stringify(runId)}, challenge=${JSON.stringify(challenge)}, actor="builder", cwd, verdict="pass". Do not redo the coding task.`, '--actor', 'human'])
+    `${common}\nThis is the separate busy-session check. Do not change any files. Read this task, then hand it to human with JSON message fields kind="busy-result", runId=${JSON.stringify(runId)}, challenge=${JSON.stringify(challenge)}, actor="builder", cwd, verdict="pass". Do not redo the coding task.`, '--actor', 'human'])
   report.busyTaskId = busyTask.result.taskId
   if (args.includes('--completion-lifecycle')) {
     const task = await cli(['task', 'create', '--title', 'Completion lifecycle probe', '--description', completionTaskDescription(challenge), '--actor', 'human'])
@@ -221,14 +221,14 @@ If it passes, hand off to human with status review and message JSON fields kind=
 const { selectReadyTasks, challenge } = await import(process.argv[2]);
 assert.equal(challenge, ${JSON.stringify(challenge)});
 const tasks = [
- {id:'z',assignee:'builder',status:'todo',priority:'p2',created_at:'2026-01-01'},
- {id:'b',assignee:'builder',status:'todo',priority:'p0',created_at:'2026-01-02'},
- {id:'a',assignee:'builder',status:'todo',priority:'p0',created_at:'2026-01-02'},
- {id:'old',assignee:'builder',status:'todo',priority:'p0',created_at:'2026-01-01'},
- {id:'missing',assignee:'builder',status:'todo',created_at:'2025-01-01'},
- {id:'unknown',assignee:'builder',status:'todo',priority:'invalid',created_at:'2025-01-02'},
- {id:'other',assignee:'reviewer',status:'todo',priority:'p0',created_at:'2020-01-01'},
- {id:'done',assignee:'builder',status:'completed',priority:'p0',created_at:'2020-01-01'}
+ {id:'z',assignee:'builder',state:'open',priority:'p2',created_at:'2026-01-01'},
+ {id:'b',assignee:'builder',state:'open',priority:'p0',created_at:'2026-01-02'},
+ {id:'a',assignee:'builder',state:'open',priority:'p0',created_at:'2026-01-02'},
+ {id:'old',assignee:'builder',state:'open',priority:'p0',created_at:'2026-01-01'},
+ {id:'missing',assignee:'builder',state:'open',created_at:'2025-01-01'},
+ {id:'unknown',assignee:'builder',state:'open',priority:'invalid',created_at:'2025-01-02'},
+ {id:'other',assignee:'reviewer',state:'open',priority:'p0',created_at:'2020-01-01'},
+ {id:'done',assignee:'builder',state:'ended',priority:'p0',created_at:'2020-01-01'}
 ];
 const before=JSON.stringify(tasks); tasks.forEach(Object.freeze); Object.freeze(tasks);
 assert.deepEqual(selectReadyTasks(tasks,'builder',20).map(x=>x.id),['old','a','b','z','missing','unknown']);

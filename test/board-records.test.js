@@ -23,7 +23,7 @@ const RECORDS = {
   task: { map: 'tasks', fields: { id: 'text', actorId: 'text', created_at: 'text', branch: 'branch' } },
   goal: { map: 'goals', fields: { id: 'text', actorId: 'text', created_at: 'text' } },
   vein: { map: 'veins', fields: { id: 'text', actorId: 'text', created_at: 'text' } },
-  comment: { map: 'comments', fields: { id: 'key', taskId: 'text', actorId: 'text', created_at: 'text' } },
+  comment: { map: 'comments', fields: { id: 'key', taskId: 'text', actorId: 'text', created_at: 'text', assignedTo: 'text' } },
   mention: { map: 'mentions', fields: { id: 'key', idempotency_key: 'text', taskId: 'text', commentId: 'text', toActorId: 'text', fromActorId: 'text', operationId: 'text', timestamp: 'text', commentDigest: 'text' } },
   operation: { map: 'operations', fields: { operationId: 'key', requestId: 'text', type: 'text', actorId: 'text', replicaId: 'text', timestamp: 'text', fingerprint: 'text', payload: 'map', taskId: 'text', recordIds: 'texts', changes: 'changes', result: 'map' } },
   readReceipt: { map: 'readReceipts', fields: { actorId: 'text', commentId: 'text', revisionId: 'text' } },
@@ -31,9 +31,9 @@ const RECORDS = {
 /** Each revision (one value of a record's field) and what it holds besides its value. */
 const REVISION = { operationId: 'key', actorId: 'text', replicaId: 'text', timestamp: 'text', branchBaseIds: 'texts' }
 const REVISIONS = {
-  task: { map: 'taskFields', values: { title: 'text', description: 'text', status: 'text', priority: 'text', assignee: 'textOrNull', tags: 'texts', order: 'number', type: 'text' } },
-  goal: { map: 'goalFields', values: { title: 'text', description: 'text', status: 'text' } },
-  vein: { map: 'veinFields', values: { title: 'text', description: 'text', status: 'text', goalId: 'text' } },
+  task: { map: 'taskFields', values: { title: 'text', description: 'text', outcome: 'outcome', priority: 'text', assignee: 'textOrNull', tags: 'texts', order: 'number', type: 'text' } },
+  goal: { map: 'goalFields', values: { title: 'text', description: 'text', outcome: 'outcome' } },
+  vein: { map: 'veinFields', values: { title: 'text', description: 'text', outcome: 'outcome', goalId: 'text' } },
   comment: { map: 'commentBodies', values: { text: 'text' }, also: { mentionedActorIds: 'texts' } },
   link: { map: 'veinLinks', values: { value: 'boolean' } },
 }
@@ -41,6 +41,7 @@ const REVISIONS = {
 const WRONG = {
   key: [null, 7, ['x'], { x: 1 }],
   text: [null, 7, ['x'], { x: 1 }, true],
+  outcome: ['failed', ['completed'], 7],
   textOrNull: [7, ['x'], { x: 1 }],
   number: ['seven', null, [7], { x: 1 }],
   boolean: ['yes', 1, null],
@@ -54,23 +55,24 @@ const NOT_MAPS = [null, 7, 'not a record', ['x']]
 /** What each view hands out: every field the CLI, the hub or the browser reads, with its kind (`?`: may be absent). */
 const VIEWS = {
   actor: { id: 'text', handle: 'text', kind: 'text', displayName: 'text' },
-  task: { id: 'text', title: 'text', description: 'text', status: 'text', priority: 'text', assignee: 'textOrNull', tags: 'texts', order: 'number', type: 'text',
-    created_at: 'text', updated_at: 'text', created_by: 'text', veinIds: 'texts?', issues: 'list?', revisions: 'revisions?', conflicts: 'map?', branch_of: 'text?', branch_name: 'text?', merged: 'boolean?' },
-  goal: { id: 'text', title: 'text', description: 'text', status: 'text', created_at: 'text', updated_at: 'text', created_by: 'text', revisions: 'revisions?', conflicts: 'map?' },
-  vein: { id: 'text', title: 'text', description: 'text', status: 'text', goalId: 'text', created_at: 'text', updated_at: 'text', created_by: 'text', goalIds: 'texts', taskIds: 'texts',
+  task: { id: 'text', title: 'text', description: 'text', outcome: 'outcome', priority: 'text', assignee: 'textOrNull', tags: 'texts', order: 'number', type: 'text',
+    state: 'text', hasVerdictOutcome: 'boolean', created_at: 'text', updated_at: 'text', created_by: 'text', veinIds: 'texts?', issues: 'list?', revisions: 'revisions?', conflicts: 'map?', branch_of: 'text?', branch_name: 'text?', merged: 'boolean?' },
+  goal: { id: 'text', title: 'text', description: 'text', outcome: 'outcome', state: 'text', created_at: 'text', updated_at: 'text', created_by: 'text', revisions: 'revisions?', conflicts: 'map?' },
+  vein: { id: 'text', title: 'text', description: 'text', outcome: 'outcome', state: 'text', goalId: 'text', created_at: 'text', updated_at: 'text', created_by: 'text', goalIds: 'texts', taskIds: 'texts',
     readyForVerdict: 'boolean', revisions: 'revisions?', conflicts: 'map?' },
-  comment: { id: 'text', taskId: 'text', actorId: 'text', content: 'text', timestamp: 'text', revisionId: 'text', editedBy: 'text', deleted: 'boolean', revisionIds: 'texts', conflicts: 'list', unreadRevisionIds: 'texts?' },
+  comment: { id: 'text', taskId: 'text', actorId: 'text', content: 'text', timestamp: 'text', revisionId: 'text', editedBy: 'text', deleted: 'boolean', revisionIds: 'texts', conflicts: 'list', unreadRevisionIds: 'texts?', todo: 'map?' },
   mention: { id: 'text', taskId: 'text', commentId: 'text', toActorId: 'text', fromActorId: 'text', operationId: 'text', timestamp: 'text' },
   operation: { operationId: 'text', requestId: 'text', type: 'text', actorId: 'text', replicaId: 'text', timestamp: 'text', fingerprint: 'text', payload: 'map', taskId: 'text?',
     recordIds: 'texts', changes: 'list', result: 'map' },
   readReceipt: { actorId: 'text', commentId: 'text', revisionId: 'text' },
-  contextVein: { id: 'text', title: 'text', status: 'text', goalId: 'text', linkRevisions: 'texts' },
+  contextVein: { id: 'text', title: 'text', outcome: 'outcome', goalId: 'text', linkRevisions: 'texts' },
   commit: { hash: 'text', message: 'text' },
 }
 const isMap = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const IS = {
   // An integer JSON cannot hold is handed out as its exact digits (test/entry-failures.test.js).
   text: value => typeof value === 'string', textOrNull: value => value === null || typeof value === 'string', number: value => Number.isFinite(value) || /^-?\d+$/.test(value),
+  outcome: value => value === null || ['completed', 'dead-end', 'abandoned'].includes(value),
   boolean: value => typeof value === 'boolean',
   texts: value => Array.isArray(value) && value.every(item => typeof item === 'string'), list: Array.isArray, map: isMap,
   revisions: value => isMap(value) && Object.values(value).every(IS.texts),
@@ -114,7 +116,7 @@ function populated() {
   let { doc } = board()
   const step = (request, actorId = 'alice') => { const result = run(doc, { actorId, ...request }); doc = result.doc; return result.event }
   const { taskId } = step({ type: 'task.create', payload: { title: 'Still here', tags: ['one'] } }).result
-  const handoff = step({ type: 'task.handoff', payload: { taskId, to: 'bob', status: 'review', message: 'Over to @builder', expectedRevisions: { assignee: taskState(doc, taskId).revisions.assignee, status: taskState(doc, taskId).revisions.status } } })
+  const handoff = step({ type: 'task.handoff', payload: { taskId, to: 'bob', message: 'Over to @builder', expectedRevisions: { assignee: taskState(doc, taskId).revisions.assignee } } })
   const { commentId, mentionIds: [mentionId] } = handoff.result
   step({ type: 'read.mark', payload: { taskId, comments: [{ commentId, revisionId: commentView(doc, commentId).revisionId }] } })
   step({ type: 'task.link-commit', payload: { taskId, commit: { hash: 'abc1234def', message: 'Implement it' } } })
@@ -302,7 +304,7 @@ it('a board holding records of the wrong kind leaves the hub, Activity, its Acto
           doc.taskFields[`${taskId}:title`].value = storageValue(['x'])
           doc.taskFields[`${taskId}:priority`].timestamp = 9
           doc.tasks[branchId].branch = 7
-          doc.goalFields[`${goalId}:status`].value = storageValue({ x: 1 })
+          doc.goalFields[`${goalId}:outcome`].value = storageValue({ x: 1 })
           doc.veinFields[`${veinId}:goalId`].value = 7
           doc.commentBodies[commentId].mentionedActorIds = storageValue([7])
           // An author that is a list whose element cannot be turned into text: nothing may call its toString.
@@ -315,7 +317,7 @@ it('a board holding records of the wrong kind leaves the hub, Activity, its Acto
           doc.readReceipts['receipt-bad'] = storageValue([])
         },
         expect: [['actor', 'bad'], ['actor', 'alice', 'handle'], ['task', taskId, 'tags'], ['task', taskId, 'title'], ['task', taskId, 'priority'], ['task', branchId, 'branch'],
-          ['goal', goalId, 'status'], ['vein', veinId, 'goalId'], ['comment', commentId, 'text'], ['task', 'task-bad'], ['mention', 'mention-bad'], ['readReceipt', 'receipt-bad']],
+          ['goal', goalId, 'outcome'], ['vein', veinId, 'goalId'], ['comment', commentId, 'text'], ['task', 'task-bad'], ['mention', 'mention-bad'], ['readReceipt', 'receipt-bad']],
       },
       {
         change: doc => {

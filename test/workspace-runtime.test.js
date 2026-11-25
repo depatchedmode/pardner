@@ -276,7 +276,7 @@ it('preserves human and agent alternatives across an offline partition and conve
     hub = null
     await eventually(() => replicas.every(replica => !replica.store.status().hubConnected))
     const operations = ['alice', 'builder'].map((actorId, i) => ({ operationId: randomUUID(), actorId, type: 'task.update',
-      payload: { taskId, updates: { status: i ? 'review' : 'in-progress' }, expectedRevisions: { status: before.revisions.status } } }))
+      payload: { taskId, updates: { outcome: i ? 'abandoned' : 'dead-end' }, expectedRevisions: { outcome: before.revisions.outcome } } }))
     const receipts = []
     for (let i = 0; i < 2; i++) {
       const receipt = await api(replicas[i], '/automerge/operations', operations[i])
@@ -286,17 +286,71 @@ it('preserves human and agent alternatives across an offline partition and conve
     }
     hub = service(join(root, 'hub'), ports)
     await hub.start()
-    await eventually(() => replicas.every(replica => !replica.store.status().syncPending && replica.store.workspace.taskContext(taskId).conflicts.status?.length === 2))
+    await eventually(() => replicas.every(replica => !replica.store.status().syncPending && replica.store.workspace.taskContext(taskId).conflicts.outcome?.length === 2))
     const conflicted = await api(replicas[1], `/automerge/task/${taskId}/context`)
-    assert.deepEqual(conflicted.conflicts.status.map(choice => choice.actorId).sort(), ['alice', 'builder'])
-    assert.deepEqual(conflicted.conflicts.status.map(choice => choice.operationId).sort(), receipts.map(receipt => receipt.operationId).sort())
+    assert.deepEqual(conflicted.conflicts.outcome.map(choice => choice.actorId).sort(), ['alice', 'builder'])
+    assert.deepEqual(conflicted.conflicts.outcome.map(choice => choice.operationId).sort(), receipts.map(receipt => receipt.operationId).sort())
     await api(replicas[1], '/automerge/operations', { operationId: randomUUID(), actorId: 'builder', type: 'task.resolve',
-      payload: { taskId, field: 'status', value: 'review', expectedRevisions: conflicted.revisions.status } })
-    await eventually(() => replicas.every(replica => !replica.store.status().syncPending && !replica.store.workspace.taskContext(taskId).conflicts.status))
+      payload: { taskId, field: 'outcome', value: 'abandoned', expectedRevisions: conflicted.revisions.outcome } })
+    await eventually(() => replicas.every(replica => !replica.store.status().syncPending && !replica.store.workspace.taskContext(taskId).conflicts.outcome))
     for (const replica of replicas) {
       const context = await api(replica, `/automerge/task/${taskId}/context`)
-      assert.equal(context.task.status, 'review')
+      assert.equal(context.task.outcome, 'abandoned')
       for (const operation of operations) assert.equal(context.history.filter(event => event.requestId === operation.operationId).length, 1)
+    }
+  } finally {
+    for (const replica of replicas) await replica.stop()
+    await hub?.stop()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+it('merges offline to-dos, completion and task outcomes independently', { timeout: 30000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pardner-task-facts-'))
+  let hub = service(join(root, 'hub'))
+  const replicas = []
+  const write = (replica, type, payload, actorId, operationId = randomUUID()) =>
+    api(replica, '/automerge/operations', { operationId, type, payload, actorId })
+  try {
+    await hub.start()
+    const ports = { httpPort: hub.httpPort, wsPort: hub.wsPort }
+    for (let index = 0; index < 2; index++) {
+      const replica = service(join(root, `replica-${index}`), join_(root, hub, index))
+      replicas.push(replica)
+      await replica.start()
+    }
+    const [left, right] = replicas
+    const { result: { taskId } } = await write(left, 'task.create', { title: 'Offline review', assignee: 'builder' }, 'alice')
+    const request = await write(left, 'todo.add', { taskId, to: 'alice', text: 'Check the review' }, 'builder')
+    const commentId = request.result.commentId
+    const stateOn = replica => replica.store.workspace.taskContext(taskId)
+    await eventually(() => replicas.every(replica => !replica.store.status().syncPending && replica.store.getDoc().comments[commentId]))
+    await hub.stop()
+    hub = null
+    await eventually(() => replicas.every(replica => !replica.store.status().hubConnected))
+
+    const leftTodo = await write(left, 'todo.add', { taskId, to: 'alice', text: 'Check documentation' }, 'builder', 'todo-once')
+    assert.equal((await write(left, 'todo.add', { taskId, to: 'alice', text: 'Check documentation' }, 'builder', 'todo-once')).replayed, true)
+    const { revisions } = stateOn(left)
+    const outcome = await write(left, 'task.update', { taskId, updates: { outcome: 'completed' }, expectedRevisions: { outcome: revisions.outcome } }, 'builder')
+    const rightTodo = await write(right, 'todo.add', { taskId, to: 'builder', text: 'Read the test log' }, 'alice')
+    const completion = await write(right, 'todo.complete', { commentId }, 'alice')
+    assert.ok([leftTodo, outcome, rightTodo, completion].every(receipt => receipt.savedLocally && receipt.syncPending))
+
+    hub = service(join(root, 'hub'), ports)
+    await hub.start()
+    await eventually(() => replicas.every(replica => !replica.store.status().syncPending && stateOn(replica).comments.length === 3))
+    for (const replica of [hub, ...replicas]) {
+      const context = stateOn(replica)
+      assert.equal(context.task.state, 'ended')
+      assert.equal(context.task.assignee, 'builder')
+      assert.deepEqual(context.conflicts, {})
+      assert.equal(context.mentions.length, 3)
+      const byId = new Map(context.comments.map(comment => [comment.id, comment]))
+      assert.equal(byId.get(commentId).todo.completion.actorId, 'alice')
+      assert.equal(byId.get(commentId).todo.completion.operationId, completion.operationId)
+      assert.equal(byId.get(leftTodo.result.commentId).todo.completion, null)
+      assert.equal(byId.get(rightTodo.result.commentId).todo.completion, null)
     }
   } finally {
     for (const replica of replicas) await replica.stop()

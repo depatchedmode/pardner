@@ -1,6 +1,6 @@
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 function ScrollableMarkdown({ as: Element, label, children, ...props }) {
   const ref = useRef(null)
@@ -41,9 +41,30 @@ const components = {
   pre: ({ node, ...props }) => <ScrollableMarkdown as="pre" label="Code block" {...props} />,
 }
 
-export default function ActorMarkdown({ children, extraPlugins = [] }) {
+function markTodoTail() {
+  return tree => {
+    let paragraph = tree.children.findLast(node => node.type === 'element')
+    if (paragraph?.tagName !== 'p') {
+      paragraph = { type: 'element', tagName: 'p', properties: {}, children: [] }
+      tree.children.push(paragraph)
+    }
+    paragraph.data = { ...paragraph.data, todoTail: true }
+  }
+}
+
+export default function ActorMarkdown({ children, extraPlugins = [], labelFor, assigneeHandle }) {
+  const renderers = useMemo(() => labelFor ? {
+    ...components,
+    p: ({ node, children, ...props }) => <p dir="auto" {...props}>
+      {node.children.length > 0 && node.children.every(child => child.type === 'text')
+        ? <label className="task-todo-caption" htmlFor={labelFor}>{children}</label>
+        : children}
+      {node.data?.todoTail && <>{' '}<bdi className="task-todo-assignee">@{assigneeHandle}</bdi></>}
+    </p>,
+  } : components, [labelFor, assigneeHandle])
   return (
-    <Markdown remarkPlugins={[remarkGfm, ...extraPlugins]} components={components}>
+    <Markdown remarkPlugins={[remarkGfm, ...extraPlugins]}
+      rehypePlugins={assigneeHandle ? [markTodoTail] : undefined} components={renderers}>
       {children}
     </Markdown>
   )

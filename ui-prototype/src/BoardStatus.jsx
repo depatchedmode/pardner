@@ -2,24 +2,11 @@ import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@ui-sdk/r
 import { useEffect, useRef, useState } from 'react'
 import Chevron from './Chevron.jsx'
 import { Failure, withCode } from './Failure.jsx'
-import { replicationStatus } from './sync-status.js'
+import { isReplicationPending, pendingReplicationText, replicationStatus } from './sync-status.js'
 
 const SHARE_POLL_MS = 5000
-const replicationTone = { synced: 'good', warning: 'warning', error: 'warning', unknown: 'warning' }
 const warningGlyph = 'M7.1 2.8a1 1 0 0 1 1.8 0l5.4 9.6a1 1 0 0 1-.9 1.5H2.6a1 1 0 0 1-.9-1.5ZM8 6.35v3m0 2.3h.01'
-const replicationGlyph = {
-  synced: 'm3.5 8.4 3 3 6-6',
-  pending: 'M5 7.5 3.5 10v3h9v-3L11 7.5M3.5 10h2.8l.8 1.3h1.8l.8-1.3h2.8M8 8.1V2.4m-2 2 2-2 2 2',
-  warning: warningGlyph,
-  error: warningGlyph,
-  unknown: warningGlyph,
-}
-
-function boardReplication(status, connected, busy, heads) {
-  return !status && connected && !busy
-    ? { state: 'unknown', text: 'Checking project status…' }
-    : replicationStatus(status, { connected, busy, heads })
-}
+const pendingGlyph = 'M5 7.5 3.5 10v3h9v-3L11 7.5M3.5 10h2.8l.8 1.3h1.8l.8-1.3h2.8M8 8.1V2.4m-2 2 2-2 2 2'
 
 function peerCount(status, available, hosted) {
   if (!available || !status) return null
@@ -47,13 +34,15 @@ function hostConnectionText(available, share, hubConnected) {
   return 'Checking the connection…'
 }
 
-export function SaveStatus({ status, connected, busy, heads }) {
-  return <span className="save-status" role="status" data-pending={Boolean(status?.syncPending)}>
-    {boardReplication(status, connected, busy, heads).text}
-  </span>
+export function PendingReplication({ status, connected, heads }) {
+  const pending = isReplicationPending(status, { connected, heads })
+  return <>
+    {pending && <StatusIndicator label={pendingReplicationText}><path d={pendingGlyph} /></StatusIndicator>}
+    <span className="status-announcement" role="status">{pending ? pendingReplicationText : ''}</span>
+  </>
 }
 
-export function BoardStatus({ api, project, status, connected, busy, heads }) {
+export function BoardStatus({ api, project, status, connected, heads }) {
   const [share, setShare] = useState(project.share ?? null)
   const [changing, setChanging] = useState(false)
   const [failure, setFailure] = useState(null)
@@ -87,9 +76,9 @@ export function BoardStatus({ api, project, status, connected, busy, heads }) {
   const peerText = peers === null ? 'Peer count unavailable' : peers === 0 ? 'No peers connected'
     : peers === 1 ? '1 connected computer' : `${peers.toLocaleString()} connected computers`
   const lastSynced = available && !hosted && status?.lastSyncedAt
-  const replication = boardReplication(status, connected, busy, heads)
-  const summary = `${peerText}, ${replication.text}`
-  const checking = !status && connected && !busy
+  const checking = !status && connected
+  const replication = checking ? { state: 'unknown', text: 'Checking project status…' } : replicationStatus(status, { connected, heads })
+  const summary = replication ? `${peerText}, ${replication.text}` : peerText
   const sharing = hosted && share?.on
   const sharingText = share?.state === 'error' ? 'Tailcat route down' : share?.state === 'starting' ? 'Tailcat starting' : 'Tailcat on'
 
@@ -97,26 +86,26 @@ export function BoardStatus({ api, project, status, connected, busy, heads }) {
     <Popover>
       <PopoverTrigger ref={statusTrigger} type="button" className="board-status"
         aria-label={`Project status, ${summary}`} title={summary}>
-        {peers === null && replication.state === 'unknown' ?
+        {peers === null && replication?.state === 'unknown' ?
           <span className="status-summary-icon">
             <StatusIndicator label={replication.text} tone={checking ? undefined : 'warning'}>
               <path d={checking ? 'M3 8h.01m5 0h.01m5 0h.01' : warningGlyph} />
             </StatusIndicator>
           </span> : <>
-            <StatusIndicator label={peerText} tone={peers > 0 ? 'good' : undefined}>
+            <StatusIndicator label={peerText}>
               <rect x="1.1" y="4.9" width="4.25" height="4.75" rx=".8" />
               <rect x="10.65" y="4.9" width="4.25" height="4.75" rx=".8" />
               <path d="M3.2 9.65v2.2m-1.5 0h3m8.05-2.2v2.2m-1.5 0h3" />
               {peers > 0 && <path d="M5.35 7.3h5.3" />}
             </StatusIndicator>
             <span className="peer-count" aria-hidden="true">{peers?.toLocaleString()}</span>
-            <StatusIndicator label={replication.text} tone={replicationTone[replication.state]}>
-              <path d={replicationGlyph[replication.state]} />
-            </StatusIndicator>
+            {replication && <StatusIndicator label={replication.text} tone={replication.state === 'pending' ? undefined : 'warning'}>
+              <path d={replication.state === 'pending' ? pendingGlyph : warningGlyph} />
+            </StatusIndicator>}
           </>}
         <Chevron />
       </PopoverTrigger>
-      <span className="board-status-announcement" role="status">{summary}</span>
+      <span className="status-announcement" role="status">{summary}</span>
       <PopoverContent className="board-status-popover" side="bottom" align="start" sideOffset={6} collisionPadding={12}>
         <PopoverTitle>Project status</PopoverTitle>
         <dl className="status-facts">
@@ -126,12 +115,12 @@ export function BoardStatus({ api, project, status, connected, busy, heads }) {
               {!hosted && <p className="muted small" role="status">{hostConnectionText(available, share, status?.hubConnected)}</p>}
             </dd>
           </div>
-          <div className="status-fact">
+          {replication && <div className="status-fact">
             <dt>Sync</dt>
             <dd><p>{replication.text}</p>
               {lastSynced && <p className="muted small">Last synced {new Date(lastSynced).toLocaleString()}.</p>}
             </dd>
-          </div>
+          </div>}
           {hosted && project.configuredRoute && <div className="status-fact">
             <dt>Configured route</dt><dd>Managed outside Pardner</dd>
           </div>}

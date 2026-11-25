@@ -37,7 +37,7 @@ async function fixture(run) {
         assert.equal(result.success, true)
         return result.result.branchId
       }
-      const complete = async id => { assert.equal((await service.update(id, { status: 'completed' })).success, true) }
+      const complete = async id => { assert.equal((await service.update(id, { outcome: 'completed' })).success, true) }
       const map = id => { for (const mapping of config.mappings) mapping.allowedTaskIds = [id] }
       await run({ ...service, root, trees, config, inbox, source, bridge, state, tick, branch, complete, map })
     } finally { source?.close(); inbox?.close(); await rm(root, { recursive: true, force: true }) }
@@ -68,7 +68,7 @@ it('real BridgeSource discovers a branch created between cleanup steps', () => f
   let child
   f.state.afterArchive = async () => {
     child = await f.branch(parent)
-    assert.equal((await f.update(child, { status: 'in-progress' })).success, true)
+    assert.equal((await f.update(child, { outcome: null })).success, true)
   }
   await f.tick()
   assert.deepEqual(f.state.archived, ['builder'])
@@ -210,7 +210,7 @@ it('shared-token task closure and reclosing cannot authorize host cleanup', () =
   assert.equal(f.inbox.retirement(), null)
   assert.deepEqual(f.state.archived, [])
   await approveBridgeCleanup(f.bridge)
-  assert.equal((await f.update(task, { status: 'in-progress' })).success, true)
+  assert.equal((await f.update(task, { outcome: null })).success, true)
   await f.complete(task)
   await retireCompletedBridge(f.bridge)
   assert.equal(f.inbox.retirement(), null)

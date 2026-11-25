@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { STATUS_LABELS, describeEvent, eventGroup, eventText, sortEvents } from '../ui-prototype/src/events.js'
+import { OUTCOME_LABELS, describeEvent, eventGroup, eventText, sortEvents } from '../ui-prototype/src/events.js'
 
 const actors = {
   alice: { id: 'alice', handle: 'alice', kind: 'human', displayName: 'Alice Moreno' },
@@ -35,26 +35,26 @@ const say = (event, options) => sentence(describe1(event, options))
 describe('task copy', () => {
   it('task.create with details', () => {
     const e = ev('task.create', {
-      changes: [ch('title', null, 'Fix login'), ch('status', null, 'review'), ch('priority', null, 'p1'), ch('assignee', null, 'builder'),
+      changes: [ch('title', null, 'Fix login'), ch('outcome', null, 'abandoned'), ch('priority', null, 'p1'), ch('assignee', null, 'builder'),
         ch('tags', null, []), ch('order', null, 5), ch('type', null, 'task')],
       result: { taskId: 't1', veinIds: ['v1', 'v2'] },
     })
     const d = describe1(e)
     assert.equal(sentence(d), 'Alice Moreno created Fix login')
-    assert.equal(d.detail, 'Review · P1 · Assigned to Builder · Vein: Auth · Vein: Billing')
+    assert.equal(d.detail, 'Abandoned · P1 · Assigned to Builder · Vein: Auth · Vein: Billing')
     assert.equal(d.excerpt, null)
   })
   it('task.create with null tags, unassigned, order/type omitted', () => {
-    const e = ev('task.create', { changes: [ch('title', null, 'Fix login'), ch('status', null, 'backlog'), ch('priority', null, 'p2'), ch('assignee', null, null), ch('tags', null, null)] })
-    assert.equal(describe1(e).detail, 'Backlog · P2 · Unassigned')
+    const e = ev('task.create', { changes: [ch('title', null, 'Fix login'), ch('outcome', null, null), ch('priority', null, 'p2'), ch('assignee', null, null), ch('tags', null, null)] })
+    assert.equal(describe1(e).detail, 'Open · P2 · Unassigned')
   })
   it('task.create with no changes at all still has a sentence', () => {
-    const d = describe1(ev('task.create', { changes: undefined, payload: { title: 'Fix login', status: 'in-progress', priority: 'p3' } }))
+    const d = describe1(ev('task.create', { changes: undefined, payload: { title: 'Fix login', outcome: 'dead-end', priority: 'p3' } }))
     assert.equal(sentence(d), 'Alice Moreno created Fix login')
-    assert.equal(d.detail, 'In progress · P3 · Unassigned')
+    assert.equal(d.detail, 'Dead end · P3 · Unassigned')
   })
   it('task.update single-field variants', () => {
-    assert.equal(say(ev('task.update', { changes: [ch('status', 'backlog', 'review')] })), 'Alice Moreno moved Fix login to Review')
+    assert.equal(say(ev('task.update', { changes: [ch('outcome', null, 'abandoned')] })), 'Alice Moreno marked Fix login Abandoned')
     assert.equal(say(ev('task.update', { changes: [ch('assignee', null, 'builder')] })), 'Alice Moreno assigned Fix login to Builder')
     assert.equal(say(ev('task.update', { changes: [ch('assignee', 'builder', null)] })), 'Alice Moreno unassigned Fix login')
     assert.equal(say(ev('task.update', { changes: [ch('priority', 'p2', 'p1')] })), 'Alice Moreno changed the priority of Fix login to P1')
@@ -74,58 +74,58 @@ describe('task copy', () => {
   it('task.update with several changes shows the ordered detail line', () => {
     const d = describe1(ev('task.update', {
       changes: [ch('order', 1, 2), ch('type', 'task', 'bug'), ch('tags', [], ['x', 'y']), ch('description', 'a', 'b'), ch('title', 'Old', 'New'),
-        ch('priority', 'p2', 'p1'), ch('assignee', null, 'builder'), ch('status', 'backlog', 'review')],
+        ch('priority', 'p2', 'p1'), ch('assignee', null, 'builder'), ch('outcome', null, 'abandoned')],
     }))
     assert.equal(sentence(d), 'Alice Moreno edited Fix login')
-    assert.equal(d.detail, 'Status: Backlog → Review · Assignee: Unassigned → Builder · Priority: P2 → P1 · Title: “Old” → “New” · Tags: x, y · Description edited · Type: task → bug')
+    assert.equal(d.detail, 'Outcome: No outcome → Abandoned · Assignee: Unassigned → Builder · Priority: P2 → P1 · Title: “Old” → “New” · Tags: x, y · Description edited · Type: task → bug')
   })
   it('drops unchanged and order changes alongside real changes', () => {
-    const d = describe1(ev('task.update', { changes: [ch('order', 1, 2), ch('status', 'review', 'review'), ch('priority', 'p2', 'p1')] }))
+    const d = describe1(ev('task.update', { changes: [ch('order', 1, 2), ch('outcome', 'abandoned', 'abandoned'), ch('priority', 'p2', 'p1')] }))
     assert.equal(sentence(d), 'Alice Moreno changed the priority of Fix login to P1')
     assert.equal(say(ev('task.update', { changes: [ch('tags', ['a'], ['a'])] })), 'Alice Moreno saved Fix login with no changes')
     assert.equal(say(ev('task.update', { changes: [] })), 'Alice Moreno saved Fix login with no changes')
   })
   it('a previous value the board did not hold then decides nothing and is not shown: only the value its change wrote', () => {
-    assert.equal(say(ev('task.update', { changes: [unchecked('status', 'completed', 'completed')] })), 'Alice Moreno moved Fix login to Completed')
-    const several = describe1(ev('task.update', { changes: [unchecked('status', 'completed', 'completed'), ch('priority', 'p2', 'p1')] }))
-    assert.equal(several.detail, 'Status: Completed · Priority: P2 → P1')
+    assert.equal(say(ev('task.update', { changes: [unchecked('outcome', 'completed', 'completed')] })), 'Alice Moreno marked Fix login Completed')
+    const several = describe1(ev('task.update', { changes: [unchecked('outcome', 'completed', 'completed'), ch('priority', 'p2', 'p1')] }))
+    assert.equal(several.detail, 'Outcome: Completed · Priority: P2 → P1')
     const renamed = describe1(ev('task.update', { changes: [unchecked('title', 'Same', 'Same')] }))
     assert.equal(sentence(renamed), 'Alice Moreno renamed Fix login')
     assert.equal(renamed.detail, 'Now “Same”')
-    assert.equal(describe1(ev('task.update', { changes: [unchecked('type', 'bug', 'bug'), ch('status', 'a', 'b')] })).detail, 'Status: a → b · Type: bug')
-    assert.equal(eventGroup(ev('task.update', { changes: [unchecked('status', 'completed', 'completed')] })), 'status')
+    assert.equal(describe1(ev('task.update', { changes: [unchecked('type', 'bug', 'bug'), ch('outcome', 'a', 'b')] })).detail, 'Outcome: a → b · Type: bug')
+    assert.equal(eventGroup(ev('task.update', { changes: [unchecked('outcome', 'completed', 'completed')] })), 'work')
   })
   it('the words of a comment are the ones its change wrote, never another payload field', () => {
     const d = describe1(ev('task.handoff', { payload: { to: 'builder', text: 'Approved', message: 'Approved' }, comment: { commentId: 'c1', text: 'Rejected' },
-      changes: [ch('assignee', null, 'builder'), ch('status', 'a', 'a')], result: { commentId: 'c1' } }))
+      changes: [ch('assignee', null, 'builder')], result: { commentId: 'c1' } }))
     assert.equal(d.excerpt, '“Rejected”')
     assert.equal(describe1(ev('comment.add', { payload: { text: 'Approved' }, result: { commentId: 'c1' } })).excerpt, null)
   })
   it('task.resolve', () => {
-    const d = describe1(ev('task.resolve', { payload: { field: 'status' }, changes: [ch('status', 'backlog', 'review')] }))
-    assert.equal(sentence(d), 'Alice Moreno resolved conflicting status on Fix login')
-    assert.equal(d.detail, 'Kept Review')
+    const d = describe1(ev('task.resolve', { payload: { field: 'outcome' }, changes: [ch('outcome', null, 'abandoned')] }))
+    assert.equal(sentence(d), 'Alice Moreno resolved conflicting outcome on Fix login')
+    assert.equal(d.detail, 'Kept Abandoned')
     assert.equal(describe1(ev('task.resolve', { payload: { field: 'assignee' }, changes: [ch('assignee', 'x', null)] })).detail, 'Kept Unassigned')
     assert.equal(describe1(ev('task.resolve', { payload: { field: 'priority' }, changes: [ch('priority', 'p3', 'p1')] })).detail, 'Kept P1')
   })
-  it('task.handoff maps the assignee id to a name and mentions the status change', () => {
+  it('task.handoff maps the assignee id to a name and shows the handoff comment', () => {
     const e = ev('task.handoff', {
-      payload: { to: 'builder', status: 'completed' }, comment: { commentId: 'c1', text: 'Ready   for\n review' },
-      changes: [ch('assignee', null, 'builder'), ch('status', 'review', 'completed')],
+      payload: { to: 'builder' }, comment: { commentId: 'c1', text: 'Ready   for\n review' },
+      changes: [ch('assignee', null, 'builder')],
       result: { taskId: 't1', commentId: 'c1' },
     })
     const d = describe1(e)
-    assert.equal(sentence(d), 'Alice Moreno handed Fix login to Builder and set it to Completed')
+    assert.equal(sentence(d), 'Alice Moreno handed Fix login to Builder')
     assert.equal(d.detail, null)
     assert.equal(d.excerpt, '“Ready for review”')
   })
-  it('task.handoff with unchanged status omits "and set it to"; falls back to payload.to', () => {
+  it('task.handoff; falls back to payload.to', () => {
     const e = ev('task.handoff', {
-      payload: { to: 'ghost', status: 'review' }, comment: { commentId: 'c1', text: 'hi' },
-      changes: [ch('assignee', null, 'ghost-id'), ch('status', 'review', 'review')], result: { commentId: 'c1' },
+      payload: { to: 'ghost' }, comment: { commentId: 'c1', text: 'hi' },
+      changes: [ch('assignee', null, 'ghost-id')], result: { commentId: 'c1' },
     })
     assert.equal(say(e), 'Alice Moreno handed Fix login to ghost')
-    assert.equal(say(ev('task.handoff', { payload: { to: 'builder' }, changes: [ch('assignee', 'alice', 'builder'), ch('status', 'review', 'review')] })), 'Alice Moreno handed Fix login to Builder')
+    assert.equal(say(ev('task.handoff', { payload: { to: 'builder' }, changes: [ch('assignee', 'alice', 'builder')] })), 'Alice Moreno handed Fix login to Builder')
   })
   it('task.branch reads from the parent and the branch', () => {
     const e = ev('task.branch', { taskId: 't1', payload: { taskId: 't1', name: 'spike' }, result: { taskId: 't2', branchId: 't2', parentId: 't1' } })
@@ -134,12 +134,12 @@ describe('task copy', () => {
     assert.equal(eventGroup(e), 'commits')
   })
   it('task.merge names the branch in plain text and summarises changes', () => {
-    const e = ev('task.merge', { taskId: 't1', payload: { branchId: 't2' }, result: { taskId: 't1', branchId: 't2', parentId: 't1' }, changes: [ch('priority', 'p2', 'p1'), ch('status', 'backlog', 'review')] })
+    const e = ev('task.merge', { taskId: 't1', payload: { branchId: 't2' }, result: { taskId: 't1', branchId: 't2', parentId: 't1' }, changes: [ch('priority', 'p2', 'p1'), ch('outcome', null, 'abandoned')] })
     const d = describe1(e)
     assert.equal(sentence(d), 'Alice Moreno merged Branch work into Fix login')
-    assert.equal(d.detail, 'Status: Backlog → Review · Priority: P2 → P1')
+    assert.equal(d.detail, 'Outcome: No outcome → Abandoned · Priority: P2 → P1')
     assert.equal(describe1(ev('task.merge', { result: { branchId: 't2' } })).detail, null)
-    assert.equal(eventGroup(e), 'status')
+    assert.equal(eventGroup(e), 'work')
     assert.equal(eventGroup(ev('task.merge', { result: { branchId: 't2' } })), 'commits')
     assert.match(say(ev('task.merge', { result: { branchId: 'nope' } })), /^Alice Moreno merged .* into Fix login$/)
   })
@@ -198,7 +198,7 @@ describe('comments and reads', () => {
     assert.deepEqual(named.detailParts.filter(part => typeof part !== 'string').map(part => [part.label, part.current]), [['Builder', true], ['Alice · laptop', true]], 'names are as they are now')
     const unrecognised = describeEvent(ev('comment.add', gone), { ...lookups, attribution, deletions: { gone: [{ change: 'b'.repeat(64), type: null, actorId: null, state: 'signed', machineId: 'machine-bobbbbbbbbbbbbbbbbbbbbbbbb', review: true }] } })
     assert.equal(unrecognised.detail, 'A change that needs review, signed by Bob · desk, later marked this comment deleted. See Activity.')
-    const handoff = describe1(ev('task.handoff', { payload: { to: 'builder' }, comment: { commentId: 'gone', text: 'signed words' }, changes: [ch('assignee', null, 'builder'), ch('status', 'a', 'a')], result: { commentId: 'gone' } }))
+    const handoff = describe1(ev('task.handoff', { payload: { to: 'builder' }, comment: { commentId: 'gone', text: 'signed words' }, changes: [ch('assignee', null, 'builder')], result: { commentId: 'gone' } }))
     assert.equal(handoff.excerpt, '“signed words”')
     assert.equal(handoff.detail, 'This comment was later deleted.')
   })
@@ -215,14 +215,14 @@ describe('comments and reads', () => {
     assert.equal(unsigned.detail, 'An unsigned change relayed by Bob · desk later marked this comment deleted. See Activity.')
   })
   it('names and titles looked up now are marked current; the time, words and values are the entry’s own', () => {
-    const d = describe1(ev('task.handoff', { payload: { to: 'builder' }, comment: { commentId: 'c1', text: 'Over to you' }, changes: [ch('assignee', null, 'builder'), ch('status', 'backlog', 'review')], result: { commentId: 'c1' } }))
+    const d = describe1(ev('task.handoff', { payload: { to: 'builder' }, comment: { commentId: 'c1', text: 'Over to you' }, changes: [ch('assignee', null, 'builder')], result: { commentId: 'c1' } }))
     assert.equal(d.actorCurrent, true)
-    assert.deepEqual(d.parts.filter(part => typeof part !== 'string').map(part => [part.label, Boolean(part.current)]), [['Fix login', true], ['Builder', true], ['Review', false]])
+    assert.deepEqual(d.parts.filter(part => typeof part !== 'string').map(part => [part.label, Boolean(part.current)]), [['Fix login', true], ['Builder', true]])
     const edited = describe1(ev('task.update', { changes: [ch('assignee', 'alice', 'builder'), ch('priority', 'p2', 'p1')] }))
     assert.equal(edited.detail, 'Assignee: Alice Moreno → Builder · Priority: P2 → P1')
     assert.deepEqual(edited.detailParts.filter(part => typeof part !== 'string'), [{ label: 'Alice Moreno', current: true }, { label: 'Builder', current: true }])
     // An ID nothing names is shown as written, not as a current label.
-    const unknown = describeEvent(ev('task.update', { actorId: 'ghost', taskId: 'nowhere', changes: [ch('status', 'a', 'review')] }), lookups)
+    const unknown = describeEvent(ev('task.update', { actorId: 'ghost', taskId: 'nowhere', changes: [ch('outcome', 'a', 'abandoned')] }), lookups)
     assert.equal(unknown.actorCurrent, false)
     assert.equal(unknown.parts.find(part => part.subject).current, undefined)
   })
@@ -243,14 +243,14 @@ describe('goals and veins', () => {
   it('goal.create / update / resolve', () => {
     const g = { taskId: undefined, result: { goalId: 'g1' } }
     assert.equal(say(ev('goal.create', g)), 'Alice Moreno created goal Ship v1')
-    assert.equal(say(ev('goal.update', { ...g, changes: [ch('status', 'open', 'achieved')] })), 'Alice Moreno marked goal Ship v1 Achieved')
+    assert.equal(say(ev('goal.update', { ...g, changes: [ch('outcome', null, 'completed')] })), 'Alice Moreno marked goal Ship v1 Completed')
     const renamed = describe1(ev('goal.update', { ...g, changes: [ch('title', 'Old', 'Ship v1')] }))
     assert.equal(sentence(renamed), 'Alice Moreno renamed goal Ship v1')
     assert.equal(renamed.detail, 'Was “Old”')
     assert.equal(say(ev('goal.update', { ...g, changes: [ch('description', 'a', 'b')] })), 'Alice Moreno edited the description of goal Ship v1')
-    const other = describe1(ev('goal.update', { ...g, changes: [ch('status', 'open', 'achieved'), ch('title', 'Old', 'Ship v1')] }))
+    const other = describe1(ev('goal.update', { ...g, changes: [ch('outcome', null, 'completed'), ch('title', 'Old', 'Ship v1')] }))
     assert.equal(sentence(other), 'Alice Moreno edited goal Ship v1')
-    assert.equal(other.detail, 'Status: Open → Achieved · Title: “Old” → “Ship v1”')
+    assert.equal(other.detail, 'Outcome: No outcome → Completed · Title: “Old” → “Ship v1”')
     const resolve = describe1(ev('goal.resolve', { ...g, payload: { field: 'title' }, changes: [ch('title', 'A', 'Ship v1')] }))
     assert.equal(sentence(resolve), 'Alice Moreno resolved conflicting title on goal Ship v1')
     assert.equal(resolve.detail, 'Kept “Ship v1”')
@@ -261,13 +261,13 @@ describe('goals and veins', () => {
   })
   it('vein.update variants', () => {
     const v = { taskId: undefined, result: { veinId: 'v1' } }
-    assert.equal(say(ev('vein.update', { ...v, changes: [ch('status', 'open', 'proven')] })), 'Alice Moreno marked vein Auth Proven')
+    assert.equal(say(ev('vein.update', { ...v, changes: [ch('outcome', null, 'completed')] })), 'Alice Moreno marked vein Auth Completed')
     assert.equal(say(ev('vein.update', { ...v, changes: [ch('goalId', 'g1', 'g2')] })), 'Alice Moreno moved vein Auth to goal Ship v2')
     assert.equal(say(ev('vein.update', { ...v, changes: [ch('title', 'Old', 'Auth')] })), 'Alice Moreno renamed vein Auth')
     assert.equal(say(ev('vein.update', { ...v, changes: [ch('description', 'a', 'b')] })), 'Alice Moreno edited the description of vein Auth')
-    const other = describe1(ev('vein.update', { ...v, changes: [ch('goalId', 'g1', 'g2'), ch('status', 'open', 'proven')] }))
+    const other = describe1(ev('vein.update', { ...v, changes: [ch('goalId', 'g1', 'g2'), ch('outcome', null, 'completed')] }))
     assert.equal(sentence(other), 'Alice Moreno edited vein Auth')
-    assert.equal(other.detail, 'Status: Open → Proven · Goal: Ship v1 → Ship v2')
+    assert.equal(other.detail, 'Outcome: No outcome → Completed · Goal: Ship v1 → Ship v2')
     const resolve = describe1(ev('vein.resolve', { ...v, payload: { field: 'goalId' }, changes: [ch('goalId', 'g1', 'g2')] }))
     assert.equal(sentence(resolve), 'Alice Moreno resolved conflicting goal on vein Auth')
     assert.equal(resolve.detail, 'Kept Ship v2')
@@ -285,7 +285,7 @@ describe('actors, fallbacks and lookups', () => {
     assert.equal(say(ev('actor.register', { taskId: undefined, payload: { id: 'zed', handle: 'zed', displayName: 'Zed', kind: 'human' }, result: { actorId: 'zed' } })), 'Alice Moreno registered Zed as a human')
   })
   it('actor name falls back to the handle, then the id', () => {
-    assert.equal(say(ev('task.update', { actorId: 'plain', changes: [ch('status', 'a', 'review')] })), 'plainhandle moved Fix login to Review')
+    assert.equal(say(ev('task.update', { actorId: 'plain', changes: [ch('outcome', 'a', 'abandoned')] })), 'plainhandle marked Fix login Abandoned')
     assert.equal(describe1(ev('task.update', { actorId: 'nobody', changes: [] })).actor, 'nobody')
   })
   it('unknown types fall back', () => {
@@ -302,18 +302,18 @@ describe('actors, fallbacks and lookups', () => {
     assert.equal(say(ev('read.mark', { taskId: undefined, result: { receipts: 0 } })), 'Alice Moreno marked an unknown task as read')
   })
   it('subjects carry id and label; status parts carry key and label', () => {
-    const d = describe1(ev('task.update', { changes: [ch('status', 'backlog', 'in-progress')] }))
-    assert.deepEqual(d.parts.filter(p => typeof p !== 'string'), [{ subject: 'task', id: 't1', label: 'Fix login', current: true }, { status: 'in-progress', label: 'In progress' }])
-    assert.equal(STATUS_LABELS['dead-end'], 'Dead end')
+    const d = describe1(ev('task.update', { changes: [ch('outcome', null, 'dead-end')] }))
+    assert.deepEqual(d.parts.filter(p => typeof p !== 'string'), [{ subject: 'task', id: 't1', label: 'Fix login', current: true }, { status: 'dead-end', label: 'Dead end' }])
+    assert.equal(OUTCOME_LABELS['dead-end'], 'Dead end')
   })
   it('unknown status values render raw', () => {
-    assert.equal(say(ev('task.update', { changes: [ch('status', 'a', 'zzz')] })), 'Alice Moreno moved Fix login to zzz')
+    assert.equal(say(ev('task.update', { changes: [ch('outcome', 'a', 'zzz')] })), 'Alice Moreno marked Fix login zzz')
   })
   it('within turns the matching task subject into "this task"', () => {
-    const d = describe1(ev('task.update', { changes: [ch('status', 'backlog', 'review')] }), { within: 't1' })
-    assert.equal(sentence(d), 'Alice Moreno moved this task to Review')
+    const d = describe1(ev('task.update', { changes: [ch('outcome', null, 'abandoned')] }), { within: 't1' })
+    assert.equal(sentence(d), 'Alice Moreno marked this task Abandoned')
     assert.ok(d.parts.every(part => typeof part === 'string' || !part.subject))
-    assert.equal(say(ev('task.update', { changes: [ch('status', 'backlog', 'review')] }), { within: 'other' }), 'Alice Moreno moved Fix login to Review')
+    assert.equal(say(ev('task.update', { changes: [ch('outcome', null, 'abandoned')] }), { within: 'other' }), 'Alice Moreno marked Fix login Abandoned')
   })
   it('eventText flattens detail and excerpt', () => {
     const d = describe1(ev('comment.add', { comment: { commentId: 'c1', text: 'hello' }, result: { commentId: 'c1' } }))
@@ -324,23 +324,23 @@ describe('actors, fallbacks and lookups', () => {
 describe('eventGroup', () => {
   it('groups by type and status change', () => {
     const g = (type, changes = []) => eventGroup(ev(type, { changes }))
-    assert.equal(g('task.handoff', [ch('status', 'a', 'a')]), 'status')
-    assert.equal(g('task.update', [ch('status', 'a', 'b')]), 'status')
-    assert.equal(g('task.resolve', [ch('status', 'a', 'b')]), 'status')
-    assert.equal(g('vein.update', [ch('status', 'a', 'b')]), 'status')
-    assert.equal(g('vein.resolve', [ch('status', 'a', 'b')]), 'status')
-    assert.equal(g('goal.update', [ch('status', 'a', 'b')]), 'status')
-    assert.equal(g('goal.resolve', [ch('status', 'a', 'b')]), 'status')
-    assert.equal(g('task.update', [ch('status', 'a', 'a')]), 'other')
+    assert.equal(g('task.handoff', [ch('outcome', 'a', 'a')]), 'work')
+    assert.equal(g('task.update', [ch('outcome', 'a', 'b')]), 'work')
+    assert.equal(g('task.resolve', [ch('outcome', 'a', 'b')]), 'work')
+    assert.equal(g('vein.update', [ch('outcome', 'a', 'b')]), 'work')
+    assert.equal(g('vein.resolve', [ch('outcome', 'a', 'b')]), 'work')
+    assert.equal(g('goal.update', [ch('outcome', 'a', 'b')]), 'work')
+    assert.equal(g('goal.resolve', [ch('outcome', 'a', 'b')]), 'work')
+    assert.equal(g('task.update', [ch('outcome', 'a', 'a')]), 'other')
     assert.equal(g('task.update', [ch('title', 'a', 'b')]), 'other')
-    assert.equal(g('task.create', [ch('status', null, 'backlog')]), 'other')
+    assert.equal(g('task.create', [ch('outcome', null, null)]), 'other')
     assert.equal(g('comment.add'), 'comments')
     assert.equal(g('comment.delete'), 'comments')
     assert.equal(g('task.link-commit'), 'commits')
     assert.equal(g('task.branch'), 'commits')
     assert.equal(g('task.merge'), 'commits')
-    assert.equal(g('goal.create', [ch('status', null, 'open')]), 'plans')
-    assert.equal(g('vein.create', [ch('status', null, 'open')]), 'plans')
+    assert.equal(g('goal.create', [ch('outcome', null, null)]), 'plans')
+    assert.equal(g('vein.create', [ch('outcome', null, null)]), 'plans')
     assert.equal(g('vein.update', [ch('title', 'a', 'b')]), 'plans')
     assert.equal(g('goal.update', [ch('title', 'a', 'b')]), 'plans')
     assert.equal(g('task.link-vein'), 'plans')
