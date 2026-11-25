@@ -10,16 +10,16 @@ All document strings are immutable scalar values (Automerge `ImmutableString`),
 including field registers, operation history and membership records. Reads expose
 ordinary JavaScript strings. Different-field merging, authored same-field
 alternatives and explicit resolution retain their existing behavior; Pardner
-replaces whole values and does not splice collaborative text. Schema 11, whose
+replaces whole values and does not splice collaborative text. Schema 12, whose
 changes are signed by the machine that made them and whose signature cache keeps
 equivocation reports with the signatures that prove them and the Activity entry
-derived from each change, refuses earlier storage directories, and version 4 client
+derived from each change, refuses earlier storage directories, and version 5 client
 directories refuse earlier ones, without migrating or deleting them.
 
 ## Machine keys and membership records
 
 Each client directory has its own Ed25519 machine key, created on first start and
-reported as a machine ID by `client status`. Creating a project signs a
+reported as an Ed25519 `did:key` machine ID by `client status`. Creating a project signs a
 `project.genesis` record with that key, naming the creator as owner, and the
 project ID is derived from that record, so anyone with the ID can check the
 genesis. A person's ID is derived from the public key of the machine they were

@@ -180,7 +180,8 @@ value, including operation payload copies and membership records. Reads remain
 ordinary strings; field-level authored alternatives, explicit resolution and retry
 identity are unchanged. Schema 8 moves membership records to version 2: each
 admission or pairing carries the joining machine's signed consent, and person IDs
-are derived from machine keys. Earlier directories must be preserved and replaced with a fresh workspace; all
+are derived from machine keys. Schema 12 uses canonical Ed25519 machine and person DIDs
+and version 3 membership records and join requests. Earlier directories must be preserved and replaced with a fresh workspace; all
 services participating in a workspace must use the same schema version.
 
 ## Read, edit, and hand off

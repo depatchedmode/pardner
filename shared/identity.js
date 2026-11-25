@@ -1,34 +1,40 @@
-const MACHINE_PREFIX = 'machine-'
-const PERSON_PREFIX = 'person-'
-const ID_SUFFIX_LENGTH = 26
-const BASE32_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
-const ID_SUFFIX_PATTERN = `[a-z2-7]{${ID_SUFFIX_LENGTH}}$`
-const MACHINE_ID = new RegExp(`^${MACHINE_PREFIX}${ID_SUFFIX_PATTERN}`)
-export const PERSON_ID = new RegExp(`^${PERSON_PREFIX}${ID_SUFFIX_PATTERN}`)
+const DID_PREFIX = 'did:key:z'
+const ED25519_CODEC = 0xed01n
+const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
-export const isMachineId = value => MACHINE_ID.test(value)
-export const isPersonId = value => PERSON_ID.test(value)
-
-/** For display, cut at the same offsets even if the ID is malformed. */
-export const machineIdShortForm = id => id.slice(MACHINE_PREFIX.length, MACHINE_PREFIX.length + 6)
-
-/** Lowercase RFC 4648 base32 without padding. */
-function base32(bytes) {
-  let bits = 0, value = 0, encoded = ''
-  for (const byte of bytes) {
-    value = (value << 8) | byte
-    bits += 8
-    while (bits >= 5) {
-      bits -= 5
-      encoded += BASE32_ALPHABET[(value >>> bits) & 31]
-    }
+/** The input is a validated 32-byte Ed25519 public key. */
+export function machineIdFromRawKey(raw) {
+  let value = ED25519_CODEC
+  for (const byte of raw) value = (value << 8n) | BigInt(byte)
+  let encoded = ''
+  while (value > 0n) {
+    encoded = BASE58[Number(value % 58n)] + encoded
+    value /= 58n
   }
-  if (bits) encoded += BASE32_ALPHABET[(value << (5 - bits)) & 31]
-  return encoded
+  return DID_PREFIX + encoded
 }
 
-export const machineIdFromDigest = digest => MACHINE_PREFIX + base32(digest).slice(0, ID_SUFFIX_LENGTH)
-export const personIdFromDigest = digest => PERSON_PREFIX + base32(digest).slice(0, ID_SUFFIX_LENGTH)
+/** Decode Pardner's canonical Ed25519 did:key profile, or return null. */
+export function parseMachineId(id) {
+  if (typeof id !== 'string' || id.length !== 56 || !id.startsWith(DID_PREFIX)) return null
+  let value = 0n
+  for (const char of id.slice(DID_PREFIX.length)) {
+    const digit = BASE58.indexOf(char)
+    if (digit < 0) return null
+    value = value * 58n + BigInt(digit)
+  }
+  const raw = new Uint8Array(32)
+  for (let i = raw.length - 1; i >= 0; i--) {
+    raw[i] = Number(value & 0xffn)
+    value >>= 8n
+  }
+  if (value !== ED25519_CODEC || machineIdFromRawKey(raw) !== id || ed25519KeyIssue(raw)) return null
+  return raw
+}
+
+export const isMachineId = value => parseMachineId(value) !== null
+export const isPersonId = isMachineId
+export const machineIdShortForm = id => id.slice(-6)
 
 const ED25519_SIGN_BIT = 1n << 255n
 const ED25519_FIELD_PRIME = ED25519_SIGN_BIT - 19n

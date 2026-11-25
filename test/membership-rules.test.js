@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { actorId } from '../lib/client-identity.js'
 import { agentNameRecord } from '../lib/enrollment.js'
-import { generateMachineKey, personIdFor } from '../lib/machine-key.js'
+import { generateMachineKey } from '../lib/machine-key.js'
 import { computeMembership, genesisProjectId, isMember, mayAuthor, maySign, offerHash } from '../lib/membership.js'
 import { forge, permutations, shuffled, trustProject } from '../support/trust-records.js'
 
@@ -48,7 +48,7 @@ test('a member cannot certify an admin’s key as their own machine: without the
     p = project()
     const honest = p.pair(p.member, generateMachineKey(), p.memberId)
     stolen = p.memberAdd.recordId < p.adminAdd.recordId
-      ? sortedBetween(p.member, honest, p.memberAdd, p.adminAdd, { subject: p.admin.machineId, publicKey: p.admin.publicKey }) : null
+      ? sortedBetween(p.member, honest, p.memberAdd, p.adminAdd, { subject: p.admin.machineId }) : null
   } while (!stolen)
   const removal = p.remove(p.admin, p.otherId)
   const records = [...p.base, stolen, removal]
@@ -111,7 +111,7 @@ test('a consent cannot be reused for another role or purpose', () => {
 test('the owner’s machines need consent too: an unconsented owner machine counts for nothing in the owner-machine pass', () => {
   const p = project(), victim = generateMachineKey()
   const honest = p.pair(p.owner, generateMachineKey(), p.ownerId)
-  const unconsented = forge(p.owner, honest, { subject: victim.machineId, publicKey: victim.publicKey })
+  const unconsented = forge(p.owner, honest, { subject: victim.machineId })
   const state = sameInEveryOrder([...p.base, unconsented])
   assert.equal(counted(state, unconsented), false)
   assert.equal(isMember(state, victim.machineId), false)
@@ -123,7 +123,7 @@ test('the owner’s machines need consent too: an unconsented owner machine coun
 test('an unconsented certification of someone else’s key cannot remove that key when its claimed person is removed', () => {
   const p = project()
   const honest = p.pair(p.member, generateMachineKey(), p.memberId)
-  const claimed = forge(p.member, honest, { subject: p.other.machineId, publicKey: p.other.publicKey })
+  const claimed = forge(p.member, honest, { subject: p.other.machineId })
   const records = [...p.base, claimed, p.remove(p.owner, p.memberId)]
   const state = sameInEveryOrder(records)
   assert.equal(isMember(state, p.other.machineId), true, 'the other person’s machine stays')
@@ -135,17 +135,27 @@ test('an unconsented certification of someone else’s key cannot remove that ke
 test('a person’s ID is derived from the key they were admitted with, for the owner and every admitted person', () => {
   const p = project()
   const state = computeMembership(p.base)
-  assert.equal(p.genesis.subject, personIdFor(p.owner.publicKey))
+  assert.equal(p.genesis.subject, p.owner.machineId)
   for (const [key, record] of [[p.admin, p.adminAdd], [p.member, p.memberAdd]]) {
-    assert.equal(record.subject, personIdFor(key.publicKey))
-    assert.equal(machine(state, key).personId, personIdFor(key.publicKey))
+    assert.equal(record.subject, key.machineId)
+    assert.equal(machine(state, key).personId, key.machineId)
   }
   // A genesis that names another person ID is no root at all.
-  const subject = personIdFor(generateMachineKey().publicKey)
+  const subject = generateMachineKey().machineId
   const misnamed = forge(p.owner, p.genesis, { subject, projectId: genesisProjectId({ ...p.genesis, subject }) })
   const rootless = computeMembership([misnamed], { projectId: misnamed.projectId })
   assert.deepEqual(rootless.machines, [])
   assert.deepEqual(rootless.people, [])
+})
+
+test('a signed certification requires a canonical machine DID in its embedded offer', () => {
+  const p = project(), key = generateMachineKey()
+  const honest = p.admit(p.owner, key)
+  const offer = { ...honest.offer, signer: `${p.owner.machineId}#key` }
+  const record = forge(p.owner, honest, { offer, joinRequest: p.consent(key, offer, key.machineId) })
+  const state = computeMembership([...p.base, record])
+  assert.equal(state.machines.some(machine => machine.id === key.machineId), false)
+  assert.equal(state.rejected.find(entry => entry.recordId === record.recordId).reason, 'Invalid certification offer signer')
 })
 
 test('nobody can admit a fresh key under an existing or another key’s person ID; further machines join a person only by machine.add', () => {
@@ -154,7 +164,7 @@ test('nobody can admit a fresh key under an existing or another key’s person I
   const cases = {
     'under the owner’s ID': forge(p.owner, honest, { subject: p.ownerId, joinRequest: p.consent(fresh, honest.offer, p.ownerId) }),
     'under an admin’s ID': forge(p.owner, honest, { subject: p.adminId, joinRequest: p.consent(fresh, honest.offer, p.adminId) }),
-    'under the ID of a key not in the project': forge(p.owner, honest, { subject: personIdFor(absent.publicKey), joinRequest: p.consent(fresh, honest.offer, personIdFor(absent.publicKey)) }),
+    'under the ID of a key not in the project': forge(p.owner, honest, { subject: absent.machineId, joinRequest: p.consent(fresh, honest.offer, absent.machineId) }),
   }
   for (const [name, record] of Object.entries(cases)) {
     const state = sameInEveryOrder([...p.base, record])

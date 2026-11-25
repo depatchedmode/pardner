@@ -27,12 +27,12 @@ test('genesis verifies from its project ID alone and signatures/record IDs cover
   assert.equal(verifyRecord({ ...genesis, displayName: 'Forged' }, genesis.projectId).valid, false)
   const { signature, recordId, ...body } = f.adminAdd
   assert.equal(recordId, createHash('sha256').update(canonical(body)).update(Buffer.from(signature, 'base64url')).digest('hex'))
-  assert.equal(verifyRecord({ ...f.adminAdd, displayName: 'Forged' }, genesis.projectId, f.owner.publicKey).reason, 'Invalid signature')
-  assert.equal(verifyRecord({ ...f.adminAdd, recordId: '0'.repeat(64) }, genesis.projectId, f.owner.publicKey).reason, 'Invalid recordId')
-  assert.equal(verifyRecord({ ...f.adminAdd, signature: signature + '=' }, genesis.projectId, f.owner.publicKey).valid, false)
-  assert.deepEqual(verifyRecord(f.adminAdd, genesis.projectId, f.owner.publicKey), { valid: true })
-  assert.equal(f.adminAdd.v, 2)
-  assert.equal(verifyRecord(forge(f.owner, f.adminAdd, { v: 1 }), genesis.projectId, f.owner.publicKey).reason, 'Unsupported membership record version or kind')
+  assert.equal(verifyRecord({ ...f.adminAdd, displayName: 'Forged' }, genesis.projectId, f.owner.machineId).reason, 'Invalid signature')
+  assert.equal(verifyRecord({ ...f.adminAdd, recordId: '0'.repeat(64) }, genesis.projectId, f.owner.machineId).reason, 'Invalid recordId')
+  assert.equal(verifyRecord({ ...f.adminAdd, signature: signature + '=' }, genesis.projectId, f.owner.machineId).valid, false)
+  assert.deepEqual(verifyRecord(f.adminAdd, genesis.projectId, f.owner.machineId), { valid: true })
+  assert.equal(f.adminAdd.v, 3)
+  assert.equal(verifyRecord(forge(f.owner, f.adminAdd, { v: 1 }), genesis.projectId, f.owner.machineId).reason, 'Unsupported membership record version or kind')
 })
 
 test('every permutation resolves authority chains and retains a removed admin’s admissions', () => {
@@ -183,7 +183,7 @@ test('a removed person’s key admitted again, with fresh consent each time, can
 test('a member cannot poison another person’s key through their own removal history', () => {
   const f = fixture()
   // The member claims the owner's key as its own machine; the owner never consented.
-  const claimed = forge(f.member, f.pair(f.member, generateMachineKey(), f.memberId), { subject: f.owner.machineId, publicKey: f.owner.publicKey })
+  const claimed = forge(f.member, f.pair(f.member, generateMachineKey(), f.memberId), { subject: f.owner.machineId })
   const state = computeMembership([f.genesis, f.adminAdd, f.admit(f.admin, f.member), claimed, f.remove(f.admin, f.memberId)])
   assert.equal(isMember(state, f.owner.machineId), true)
   assert.equal(state.rejected.length, 1)
@@ -197,10 +197,10 @@ test('role records require a signed replaces field and only owner machines may c
     const malformed = { ...valid }
     if (replaces === undefined) delete malformed.replaces
     else malformed.replaces = replaces
-    assert.equal(verifyRecord(forge(f.owner, malformed), f.genesis.projectId, f.owner.publicKey).valid, false)
+    assert.equal(verifyRecord(forge(f.owner, malformed), f.genesis.projectId, f.owner.machineId).valid, false)
   }
   assert.throws(() => f.record(f.owner, 'member.role', f.adminId, { role: 'member' }), /replaces/)
-  assert.equal(verifyRecord({ ...valid, replaces: '0'.repeat(64) }, f.genesis.projectId, f.owner.publicKey).valid, false)
+  assert.equal(verifyRecord({ ...valid, replaces: '0'.repeat(64) }, f.genesis.projectId, f.owner.machineId).valid, false)
   const forbidden = f.role(f.admin, f.memberId, 'member')
   const state = computeMembership([f.genesis, f.adminAdd, f.admit(f.admin, f.member), forbidden])
   assert.deepEqual(state.rejected.map(record => record.recordId), [forbidden.recordId])

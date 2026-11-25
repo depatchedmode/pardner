@@ -86,21 +86,19 @@ Keep an independent backup. Synchronization can propagate deletion or corruption
    node bin/pardner.js client serve --data /private/path/restored-client
    # In another terminal:
    node bin/pardner.js client list --data /private/path/restored-client
-   node bin/pardner.js client open --data /private/path/restored-client
+   node bin/pardner.js up --data /private/path/restored-client
    ```
 
    The saved port is reused. A non-authority client may choose another local port
-   with `--http-port`; issue a fresh `client open` link there. Do not initialize a
+   with `--http-port`; issue a fresh `pardner up` link there. Do not initialize a
    new identity or create replacement projects in restored data. Incompatible
-   formats fail instead of migrating old installations automatically. Client
-   directories before version 4 and storage before schema 11, made before changes
-   were signed or before the signature cache kept equivocation reports and their
-   proof, are refused unchanged. A client
-   directory made before machine keys has no `machine-key.pem` and is refused,
-   unchanged; recover its content with `client export` from the release that
-   made it, and start this one with a fresh directory. A missing, exposed or
-   foreign key also refuses to start. Restore the directory's own key at mode
-   0600; Pardner never generates a replacement for an existing directory.
+   formats fail instead of migrating old installations automatically. Clients
+   require registry version 5 and board schema 12 for DID-based identity. Pardner
+   preserves the earlier registry and project data and may create an empty
+   lock file when checking a directory. Use the older release's `client export`
+   to recover readable content from an older installation. Start this release
+   with a fresh directory and new projects. If a current backup's key is
+   missing or unusable, restore the directory's own key at mode 0600.
 4. Compare identity, device and machine IDs, project IDs and content with the
    backup record. A restored client is the same machine and signs as it. Each
    time it opens a project it draws a new actor suffix, so its changes and those
@@ -204,8 +202,11 @@ recovery decision.
 
 ## Lost or removed machine
 
-On a surviving machine of the same person, use `client show` to select the lost
-machine's **machine ID** (or the device ID its profile lists), not its display name:
+On a surviving machine of the same person, run `client people --project
+PROJECT_ID --json`. Find the person under `people.people[]`, select the lost
+machine under `machines[]`, and copy that machine's full DID from its `id`
+field. The board and the text roster show the last six characters of that DID.
+`client show` also lists full machine DIDs under `membership.machines[].id`.
 
 ```sh
 node bin/pardner.js client revoke --data /private/path/surviving-client \

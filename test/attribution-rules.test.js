@@ -9,7 +9,7 @@ import * as A from '@automerge/automerge'
 import { CANDIDATES_PER_PASS, MAX_CANDIDATES, SHARDS, createSignaturesData, keptCandidates, machineActor, machinePrefix, shardOf, signChange, storedSignatures, verifyChange } from '../lib/change-signatures.js'
 import { VerificationDeferred, machineIndex } from '../lib/attribution.js'
 import { ChangeLog } from '../lib/change-log.js'
-import { generateMachineKey, personIdFor } from '../lib/machine-key.js'
+import { generateMachineKey } from '../lib/machine-key.js'
 import { actorId as actorFor } from '../lib/client-identity.js'
 import { admitMembers, hubRuntime, testProject } from '../support/machines.js'
 import { prepareOperation } from '../lib/workspace-commands.js'
@@ -448,7 +448,7 @@ it('a replica that joins after an Activity entry was altered shows the same alte
 it('replacing or deleting an Activity entry, or a signed change that leaves no Activity entry, is its own entry listed for review with its signer, and the original stays shown', { timeout: 90000 }, async () => {
   await withHub(async ({ project, server, replica, bare }) => {
     // Member 0 acts as its own person's Actor, so its entries carry no flag of their own.
-    const own = actorFor(personIdFor(project.keys[0].publicKey))
+    const own = actorFor(project.keys[0].machineId)
     await server.store.execute({ operationId: randomUUID(), actorId: 'alice', type: 'actor.register', payload: { id: own, handle: 'member-zero', kind: 'human' } })
     const writer = await replica(0)
     const first = await execute(writer, 'Replaced later', own), second = await execute(writer, 'Deleted later', own)

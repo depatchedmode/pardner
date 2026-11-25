@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { buildJoinRequest, buildOffer, certificationFields, newNonce, newSecret } from '../lib/enrollment.js'
-import { generateMachineKey, personIdFor } from '../lib/machine-key.js'
+import { generateMachineKey } from '../lib/machine-key.js'
 import { MEMBERSHIP_DOMAIN, buildRecord } from '../lib/membership.js'
 import { canonical } from '../lib/workspace-schema.js'
 
@@ -13,10 +13,10 @@ const ROUTES = ['https://hub.example.test/pardner/client/v1/enroll']
  * for that offer (its consent), and the record that embeds both.
  */
 export function trustProject({ owner = generateMachineKey(), ownerName = 'Owner', genesis: given } = {}) {
-  const genesis = given ?? buildRecord(owner, { kind: 'project.genesis', subject: personIdFor(owner.publicKey), displayName: ownerName,
+  const genesis = given ?? buildRecord(owner, { kind: 'project.genesis', subject: owner.machineId, displayName: ownerName,
     nonce: randomBytes(16).toString('base64url') })
   const projectId = genesis.projectId
-  const person = key => personIdFor(key.publicKey)
+  const person = key => key.machineId
   const offer = (issuer, fields) => buildOffer(issuer, { projectId, offerId: randomUUID(), routes: ROUTES, expiresAt: Date.now() + 3600000, ...fields })
   /** `key`'s join request for `forOffer`, joining `personId`: the key's consent to that one certification. */
   const consent = (key, forOffer, personId, name = 'Joiner') => buildJoinRequest(key, newSecret(), { offer: forOffer, personId,

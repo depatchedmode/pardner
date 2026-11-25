@@ -1,22 +1,17 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createHash, generateKeyPairSync, sign } from 'node:crypto'
+import { createPrivateKey, createPublicKey, generateKeyPairSync, sign } from 'node:crypto'
 import { chmod, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { joinRequestRefusal, offerRefusal } from '../lib/enrollment.js'
 import { createHello, readHello } from '../lib/machine-handshake.js'
-import { generateMachineKey, loadMachineKey, machineIdentity, MACHINE_KEY_FILE, PERSON_ID, personIdFor, rawPublicKey, saveMachineKey, verify } from '../lib/machine-key.js'
+import { generateMachineKey, loadMachineKey, machineIdentity, MACHINE_KEY_FILE, rawPublicKey, saveMachineKey, verify } from '../lib/machine-key.js'
 import { verifyRecord } from '../lib/membership.js'
+import { isMachineId, isPersonId, machineIdFromRawKey, machineIdShortForm, parseMachineId } from '../shared/identity.js'
 import { trustProject } from '../support/trust-records.js'
 
 const MEMBERSHIP_DOMAIN = 'pardner/member/v1'
-
-function base32(bytes) {
-  const bits = [...bytes].map(byte => byte.toString(2).padStart(8, '0')).join('')
-  const alphabet = 'abcdefghijklmnopqrstuvwxyz234567'
-  return bits.match(/.{1,5}/g).map(group => alphabet[parseInt(group.padEnd(5, '0'), 2)]).join('')
-}
 
 function encodeY(y) {
   return Buffer.from(y.toString(16).padStart(64, '0'), 'hex').reverse()
@@ -36,34 +31,23 @@ const rejectedKeys = [...smallOrderY, ...outOfRangeY].flatMap(raw => {
   return [raw, withSignBit]
 })
 
-test('machine and person ID checks preserve the existing forms and coercion', () => {
+test('machine and person IDs use one canonical Ed25519 did:key profile', () => {
   const { owner, ownerId, offer } = trustProject()
   const signed = offer(owner, { purpose: 'human', role: 'member' })
-  assert.equal(offerRefusal(signed, owner.publicKey), null)
-
-  const suffix = 'abcde234567'.repeat(3).slice(0, 26)
-  const cases = [
-    [42, false, false],
-    ['', false, false],
-    [suffix, false, false],
-    ['machine-short', false, false],
-    ['person-short', false, false],
-    [`machine-${suffix}`, true, false],
-    [`person-${suffix}`, false, true],
-    [`machine-${suffix.toUpperCase()}`, false, false],
-    [`person-${suffix.toUpperCase()}`, false, false],
-    [`machine-${suffix}a`, false, false],
-    [`person-${suffix}a`, false, false],
-    [`machine-${suffix.slice(1)}0`, false, false],
-    [`person-${suffix.slice(1)}0`, false, false],
-    [[owner.machineId], true, false],
-    [[ownerId], false, true],
-  ]
-  for (const [value, machine, person] of cases) {
-    // A matching signer shape reaches the separate check that ties it to a public key.
-    assert.equal(offerRefusal({ ...signed, signer: value }, null),
-      machine ? 'Offer signer is not a machine of this project' : 'Incomplete invitation offer', JSON.stringify(value))
-    assert.equal(PERSON_ID.test(value), person, JSON.stringify(value))
+  assert.equal(offerRefusal(signed, owner.machineId), null)
+  assert.equal(ownerId, owner.machineId)
+  assert.ok(isMachineId(ownerId) && isPersonId(ownerId))
+  const id = owner.machineId
+  for (const value of [
+    null, 42, [id], '', id.slice(0, -1), `${id}#${id.slice(8)}`, `${id}?key=1`,
+    `DID:KEY:${id.slice(8)}`, `${id.slice(0, -1)}0`, ` ${id}`, `${id} `, `${id}\n`,
+    `did:key:z1${id.slice(10)}`, 'did:key:z6LSdWQe7d3AMs9iC9MTALuP3EJSHTocSkUpH8HF7WXmf6mV',
+    'did:key:zQ3shokFTS3brHcDQrn82RUDfCZESWL1ZdCEJwekUDPQiYBme',
+    'machine-eh7ddx5bksrgcytl7bkai36se4', 'person-eh7ddx5bksrgcytl7bkai36se4',
+  ]) {
+    assert.equal(parseMachineId(value), null, JSON.stringify(value))
+    assert.equal(isPersonId(value), false, JSON.stringify(value))
+    assert.equal(offerRefusal({ ...signed, signer: value }, null), 'Incomplete invitation offer', JSON.stringify(value))
   }
 })
 
@@ -111,13 +95,14 @@ test('membership records, join requests and handshake hellos reject invalid Ed25
   for (const raw of rejectedKeys) {
     const encoding = raw.toString('hex')
     const publicKey = raw.toString('base64url')
-    const machineId = `machine-${base32(createHash('sha256').update(raw).digest()).slice(0, 26)}`
-    const record = verifyRecord({ ...genesis, publicKey, machineId, signer: machineId }, projectId)
+    const machineId = machineIdFromRawKey(raw)
+    assert.equal(parseMachineId(machineId), null, encoding)
+    const record = verifyRecord({ ...genesis, machineId, signer: machineId }, projectId)
     assert.equal(record.valid, false, encoding)
-    assert.match(record.reason, /Ed25519 public key/, encoding)
-    assert.match(joinRequestRefusal({ ...request, publicKey, machineId }, offer), /Ed25519 public key/, encoding)
+    assert.equal(record.reason, 'Invalid subject or signer', encoding)
+    assert.equal(joinRequestRefusal({ ...request, machineId }, offer), 'Invalid join request machine ID', encoding)
     assert.throws(() => readHello({ ...hello, initiator: { ...hello.initiator, publicKey, machineId } }, helloOptions), {
-      code: 'HANDSHAKE_INVALID', message: 'The handshake machine ID does not match its key',
+      code: 'HANDSHAKE_INVALID', message: 'Malformed handshake',
     }, encoding)
   }
 })
@@ -130,30 +115,38 @@ test('fresh Ed25519 keys retain their bytes and verify signatures', () => {
     const raw = Buffer.from(x, 'base64url')
     assert.deepEqual(rawPublicKey(publicKey), raw)
     assert.deepEqual(rawPublicKey(x), raw)
+    assert.deepEqual(Buffer.from(parseMachineId(machineIdentity(x).machineId)), raw)
     const signature = sign(null, Buffer.concat([Buffer.from(MEMBERSHIP_DOMAIN), payload]), privateKey)
     assert.equal(verify(x, MEMBERSHIP_DOMAIN, payload, signature), true)
   }
 })
 
-test('machine identity hashes raw Ed25519 bytes, encodes RFC 4648 base32, and exposes the actor prefix', () => {
-  const key = generateMachineKey()
-  const raw = rawPublicKey(key.publicKey)
-  assert.equal(raw.length, 32)
-  const digest = createHash('sha256').update(raw).digest()
-  assert.equal(key.machineId, `machine-${base32(digest).slice(0, 26)}`)
-  assert.match(key.machineId, /^machine-[a-z2-7]{26}$/)
-  assert.deepEqual(key.actorIdPrefix, digest.subarray(0, 16))
-  assert.deepEqual(machineIdentity(key.publicKey), { machineId: key.machineId, actorIdPrefix: key.actorIdPrefix })
+test('published Ed25519 vectors round-trip and keep their raw-key Automerge actor prefixes', () => {
+  const vectors = [
+    // RFC 8032, test 1
+    ['d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a',
+      'did:key:z6MktwupdmLXVVqTzCw4i46r4uGyosGXRnR3XjN4Zq7oMMsw', '21fe31dfa154a261626bf854046fd227'],
+    // did:key specification, Ed25519 verification key example
+    ['3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29',
+      'did:key:z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp', '139e3940e64b5491722088d9a0d74162'],
+  ]
+  for (const [hex, did, prefix] of vectors) {
+    const raw = Buffer.from(hex, 'hex')
+    assert.deepEqual(machineIdentity(raw.toString('base64url')), { machineId: did, actorIdPrefix: Buffer.from(prefix, 'hex') })
+    assert.deepEqual(Buffer.from(parseMachineId(did)), raw)
+    assert.equal(machineIdShortForm(did), did.slice(-6))
+  }
 })
 
-test('a person ID is a labelled hash of the raw public key of the machine the person was admitted with', () => {
-  const key = generateMachineKey()
-  const digest = createHash('sha256').update('pardner/person/v1').update(rawPublicKey(key.publicKey)).digest()
-  assert.equal(personIdFor(key.publicKey), `person-${base32(digest).slice(0, 26)}`)
-  assert.match(personIdFor(key.publicKey), PERSON_ID)
-  assert.notEqual(personIdFor(key.publicKey).slice('person-'.length), key.machineId.slice('machine-'.length), 'the label separates it from the machine ID')
-  assert.notEqual(personIdFor(generateMachineKey().publicKey), personIdFor(key.publicKey))
-  assert.throws(() => personIdFor('invalid'))
+test('matches the published freeq device-key vector', () => {
+  // https://github.com/freeq-irc/freeq/blob/36fca961d38fd07a7c43eb8bcf505cd43d596a20/spec/identity-record-vectors.json
+  const seed = Buffer.alloc(32, 1)
+  const privateKey = createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed]),
+    format: 'der', type: 'pkcs8' })
+  const publicKey = createPublicKey(privateKey)
+  const did = 'did:key:z6Mkon3Necd6NkkyfoGoHxid2znGc59LU3K7mubaRcFbLfLX'
+  assert.equal(machineIdentity(publicKey).machineId, did)
+  assert.deepEqual(Buffer.from(parseMachineId(did)), rawPublicKey(publicKey))
 })
 
 test('signatures use the exact domain prefix and cannot cross protocol domains', () => {

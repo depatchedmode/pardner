@@ -2016,5 +2016,17 @@
     "witnessesReached": 10,
     "violation": null,
     "review": "Open waits are cancelled before listener drain. A late wait is refused. Operations and acknowledgements still drain before store close. Waits are exercised separately by the implementation checks."
+  },
+  "identityReview": {
+    "issue": 254,
+    "baseRevision": "3754f9ca12c9c9f58e7d7c54c953058609353a82",
+    "runtimeSha256": "f7435762360e11fca14360934b508d1da39664875d25e28d4f975ba91a07c984",
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "witnessesReached": 10,
+    "violation": null,
+    "review": "Standalone genesis uses the machine DID as the person ID, and hub checkpoint verification derives its key from the hub DID. Genesis setup and checkpoint checks precede the modeled request handling. The adapter and membership write-back, operation queue and flush, head capture and acknowledgement guards, and shutdown drain all keep their existing ordering and atomicity assumptions."
   }
 }

@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import AutomergeSyncServer from '../automerge-sync-server.js'
-import { generateMachineKey, personIdFor } from '../lib/machine-key.js'
+import { generateMachineKey } from '../lib/machine-key.js'
 import { storageValue } from '../lib/workspace-values.js'
 import { admitMembers, hubRuntime, replicaRuntime, testProject } from '../support/machines.js'
 import { forge } from '../support/trust-records.js'
@@ -61,12 +61,12 @@ it('certifications without the certified machine’s consent, or under a person 
   await withHub(async ({ project, server, replica }) => {
     const trust = project.trust, [first, second] = project.keys
     const writer = await replica(0)
-    const firstId = personIdFor(first.publicKey), secondId = personIdFor(second.publicKey)
+    const firstId = first.machineId, secondId = second.machineId
     const intruder = generateMachineKey(), misnamed = generateMachineKey()
     // The first member claims an intruder key, and the second member's key, as its own machines; neither consented.
     const honest = trust.pair(first, generateMachineKey(), firstId)
-    const claimIntruder = forge(first, honest, { subject: intruder.machineId, publicKey: intruder.publicKey })
-    const claimSecond = forge(first, honest, { subject: second.machineId, publicKey: second.publicKey })
+    const claimIntruder = forge(first, honest, { subject: intruder.machineId })
+    const claimSecond = forge(first, honest, { subject: second.machineId })
     // The owner's machine admits a fresh key under the second member's person ID, with the fresh key's consent to that ID.
     const admission = trust.admit(project.owner, misnamed)
     const underSecond = forge(project.owner, admission, { subject: secondId, joinRequest: trust.consent(misnamed, admission.offer, secondId) })
@@ -83,7 +83,7 @@ it('certifications without the certified machine’s consent, or under a person 
       assert.deepEqual(membership.removedMachines, [])
       assert.equal(notStored(runtime, claimIntruder), 'The certified machine did not consent to this certification')
       assert.equal(notStored(runtime, claimSecond), 'The certified machine did not consent to this certification')
-      assert.equal(notStored(runtime, underSecond), 'A person ID must be derived from the key of the machine the person is admitted with')
+      assert.equal(notStored(runtime, underSecond), 'A person ID must match the machine ID they are admitted with')
     }
     // The second member's own replica still syncs as itself.
     const other = await replica(1)
@@ -94,7 +94,7 @@ it('certifications without the certified machine’s consent, or under a person 
 it('an agents-only machine’s membership records, synced as history, grant and remove nothing on any peer', { timeout: 60000 }, async () => {
   await withHub(async ({ project, server, replica }) => {
     const trust = project.trust, [first, second] = project.keys
-    const firstId = personIdFor(first.publicKey), secondId = personIdFor(second.publicKey)
+    const firstId = first.machineId, secondId = second.machineId
     const box = generateMachineKey(), viaBox = generateMachineKey(), spare = generateMachineKey()
     // The first member pairs a full spare machine and an agents-only box through the gate, as the client does.
     await server.store.addRecords([trust.pair(first, spare, firstId), trust.pair(first, box, firstId, { agentsOnly: true })])
@@ -127,7 +127,7 @@ it('an agents-only machine’s membership records, synced as history, grant and 
 
 it('oversized records are refused with a limit reason at the gate and when harvested', { timeout: 60000 }, async () => {
   await withHub(async ({ project, server, replica }) => {
-    const writer = await replica(0), key = project.keys[0], personId = personIdFor(key.publicKey)
+    const writer = await replica(0), key = project.keys[0], personId = key.machineId
     const base = project.trust.record(key, 'profile', personId, { displayName: 'Member', email: '' })
     const records = [
       forge(key, base, { displayName: 'x'.repeat(4097) }),

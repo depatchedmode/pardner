@@ -14,6 +14,8 @@ rules are in `test/membership.test.js` and `test/enrollment.test.js`
   connected replica as online. `client people` states the same facts as text.
 - **Removal shown as removal (#175, #154).** A machine and a person removed show
   under Removed with who removed them; removed people's Actors are marked removed.
+  Removing a person's first machine from a paired machine, then removing the
+  person, attributes each event to its own remover even when the DIDs match.
   The removed person's and the removed machine's clients answer `REVOKED` with who
   removed them, list the project in `removedProjects`, and still do after a
   restart. The machine that hosts the project can't be removed. Member removal
@@ -49,3 +51,6 @@ rules are in `test/membership.test.js` and `test/enrollment.test.js`
 Not covered: separate physical machines; last-seen times after a hub restart
 (kept in memory only); per-change signer lines and unattributed-change notices,
 which need signed changes (#197).
+
+The board labels the full Person ID and each Machine ID suffix. The CLI people
+listing labels the same IDs, and CLI status and JSON preserve full machine DIDs.

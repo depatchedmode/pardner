@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict'
 import { canonical, plain, receiptKey } from '../../lib/workspace-schema.js'
 import { digest, recordId, storedOperationIdFromRequest, taskIdForRequest } from '../../lib/operation-identity.js'
+import { isMachineId, isPersonId } from '../../shared/identity.js'
 
 export const hash = value => digest(canonical(value))
-
-const MACHINE_ID = /^machine-[a-z2-7]{26}$/
 
 /** Intents are recorded before execution; successful receipts never define expected effects. */
 export class ExpectedOperations {
@@ -138,7 +137,7 @@ export class ExpectedOperations {
     if (!summary || summary.notDerived || summary.checking) return false
     const { changes, review } = this.stableAttribution(snapshot)
     return review.length === 0 && Object.keys(changes).length === summary.changes && Object.values(changes).flat()
-      .every(change => change.state === 'signed' && MACHINE_ID.test(change.machineId ?? '') && change.personId && !change.actorMismatch && !Object.keys(change.flags).length
+      .every(change => change.state === 'signed' && isMachineId(change.machineId) && isPersonId(change.personId) && !change.actorMismatch && !Object.keys(change.flags).length
         && !change.wroteElse.mismatch && !change.wroteElse.unusual && !change.badTime)
   }
 

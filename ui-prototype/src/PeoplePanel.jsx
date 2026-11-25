@@ -202,7 +202,7 @@ function MachineRow({ machine, person, now, onRemove }) {
       {tags.map(tag => <span key={tag} className="tag" data-tag={tag}>{tag}</span>)}
       {state && <span className="machine-state" data-status={machine.status}>{state}</span>}
     </div>
-    <span className="machine-id muted small">ID {machine.shortId}{paired ? ` · ${paired}` : ''}</span>
+    <span className="machine-id muted small">Machine ID {machine.shortId}{paired ? ` · ${paired}` : ''}</span>
     {remove?.allowed && <button type="button" className="danger quiet" aria-label={`Remove ${machine.name}`} onClick={event => onRemove(machine, event.currentTarget)}>Remove</button>}
     {remove && !remove.allowed && <span className="muted small machine-note">{remove.reason}</span>}
   </li>
@@ -222,6 +222,7 @@ function PersonRow({ api, project, person, index, now, editing, suggestPairing, 
       </summary>
       <div className="member-content">
         <p className="muted small member-note">{[person.email, admitted].filter(Boolean).join(' · ')}</p>
+        <p className="muted small member-note person-id">Person ID <bdi>{person.id}</bdi></p>
         {editing ? <ProfileEditor api={api} project={project} person={person} onSaved={onSaved} onCancel={() => onEdit(false)} /> : <>
           <div className="member-part">
             <h4>Machines</h4>
@@ -289,7 +290,7 @@ function RemovedList({ view, onInviteAgain }) {
       {machines.map(machine => <li key={machine.id} aria-label={`${machine.name} (${machine.personName}’s machine), removed`}>
         <div className="removed-main">
           <strong>{machine.name}</strong>
-          <span className="muted small">{machine.personName}’s machine · ID {machine.shortId}</span>
+          <span className="muted small">{machine.personName}’s machine · Machine ID {machine.shortId}</span>
           <span className="tag removed-tag">Removed</span>
         </div>
         <p className="muted small">Removed by {list(machine.removedBy.map(entry => entry.name)) || 'someone'}. To use that computer again, pair it as a new machine from a fresh client directory.</p>

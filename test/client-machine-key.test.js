@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startClient } from '../lib/client-service.js'
 import { MACHINE_KEY_FILE } from '../lib/machine-key.js'
+import { isMachineId } from '../shared/identity.js'
 import { acquireStorageLease } from '../lib/storage-lease.js'
 import { operatorClient, snapshot } from '../support/client-directory.js'
 
@@ -16,7 +17,7 @@ test('a client directory reports its machine ID, never its key, and keeps the sa
   try {
     local = await operatorClient(directory)
     const session = await local.call('/session')
-    assert.match(session.device.machineId, /^machine-[a-z2-7]{26}$/)
+    assert.ok(isMachineId(session.device.machineId))
     assert.equal(session.device.machineId, local.service.registry.machineKey.machineId)
     assert.doesNotMatch(JSON.stringify(session), /PRIVATE KEY|publicKey/)
     assert.equal((await stat(join(directory, MACHINE_KEY_FILE))).mode & 0o777, 0o600)
@@ -54,7 +55,7 @@ test('a missing, exposed or foreign machine key stops startup and is never repla
 
     await rename(join(root, 'kept.pem'), path)
     const restored = await operatorClient(directory)
-    assert.match((await restored.call('/session')).device.machineId, /^machine-/)
+    assert.ok(isMachineId((await restored.call('/session')).device.machineId))
     await restored.service.stop()
     assert.deepEqual(await readFile(path), original)
   } finally {
@@ -62,7 +63,7 @@ test('a missing, exposed or foreign machine key stops startup and is never repla
   }
 })
 
-test('client directories from earlier versions, before machine keys, derived person IDs or signed changes, are refused and left byte-identical', { timeout: 60000 }, async () => {
+test('client directories from earlier versions, including the version before DIDs, are refused and left byte-identical', { timeout: 60000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'pardner-prior-client-'))
   try {
     // A version 1 client directory with a schema 5 project, as the previous release left it.
@@ -91,20 +92,47 @@ test('client directories from earlier versions, before machine keys, derived per
       await chmod(join(directory, MACHINE_KEY_FILE), 0o600)
       const script = `import { DatabaseSync } from 'node:sqlite'
         const database = new DatabaseSync(${JSON.stringify(join(directory, 'client.sqlite'))})
-        database.prepare('UPDATE registry SET value = json_set(value, ?, ${version}) WHERE id = 1').run('$.version')
+        database.prepare('UPDATE registry SET value = json_set(value, ?, ${version}, ?, ?, ?, ?) WHERE id = 1')
+          .run('$.version', '$.machine.machineId', 'machine-eh7ddx5bksrgcytl7bkai36se4', '$.identity.id', 'person-eh7ddx5bksrgcytl7bkai36se4')
         ${unclean ? "process.kill(process.pid, 'SIGKILL')" : 'database.close()'}`
       spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', script], { stdio: 'ignore' })
       return directory
     }
+    const beforeDids = [await versionTwo('version-four', false, 4), await versionTwo('version-four-unclean', true, 4)]
+    for (const directory of beforeDids) {
+      await writeFile(join(directory, 'projects', 'old', 'workspace.json'), JSON.stringify({ schemaVersion: 11, role: 'hub', workspaceId: 'a'.repeat(64) }))
+    }
+    const lock = 'runtime-lock.sqlite'
+    await writeFile(join(beforeDids[0], 'client.log'), 'prior log')
+    await rm(join(beforeDids[1], lock))
+    for (const directory of beforeDids) {
+      const before = await snapshot(directory)
+      const launch = spawnSync(process.execPath, ['bin/pardner.js', 'up', '--data', directory, '--output-file', join(directory, 'launch-url')], { encoding: 'utf8' })
+      assert.equal(launch.status, 1, launch.stderr)
+      assert.equal(JSON.parse(launch.stdout).error.code, 'INCOMPATIBLE_SCHEMA')
+      const after = await snapshot(directory)
+      if (!Object.hasOwn(before, lock)) {
+        assert.equal((await stat(join(directory, lock))).size, 0)
+        delete after[lock]
+      }
+      assert.deepEqual(after, before)
+    }
+    await rm(join(beforeDids[1], lock))
     const directories = [await prior('clean'), await prior('unclean', true), await versionTwo('version-two'), await versionTwo('version-two-unclean', true),
       await versionTwo('version-three', false, 3), await versionTwo('version-three-unclean', true, 3)]
     assert.ok((await readdir(directories[1])).includes('client.sqlite-wal'), 'the unclean registry keeps its write-ahead log')
     assert.ok((await readdir(directories[3])).includes('client.sqlite-wal'), 'the unclean version 2 registry keeps its write-ahead log')
     assert.ok((await readdir(directories[5])).includes('client.sqlite-wal'), 'the unclean version 3 registry keeps its write-ahead log')
-    for (const directory of directories) {
+    assert.ok((await readdir(beforeDids[1])).includes('client.sqlite-wal'), 'the no-lock version 4 registry still has its write-ahead log')
+    for (const directory of [...directories, ...beforeDids]) {
       const before = await snapshot(directory)
       await assert.rejects(startClient({ directory, port: 0 }), { code: 'INCOMPATIBLE_SCHEMA', message: /left unchanged.*fresh data directory/s })
-      assert.deepEqual(await snapshot(directory), before)
+      const after = await snapshot(directory)
+      if (!Object.hasOwn(before, lock)) {
+        assert.equal((await stat(join(directory, lock))).size, 0)
+        delete after[lock]
+      }
+      assert.deepEqual(after, before)
     }
   } finally {
     await rm(root, { recursive: true, force: true })

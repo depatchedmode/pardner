@@ -21,7 +21,7 @@ test('record limits reject oversized text, envelopes and nesting before checking
   syncBuiltinESMExports()
   try {
     for (const record of oversized(base)) {
-      const result = verifyRecord(record, p.projectId, p.owner.publicKey)
+      const result = verifyRecord(record, p.projectId, p.owner.machineId)
       assert.equal(result.valid, false)
       assert.match(result.reason, /Record exceeds/)
     }

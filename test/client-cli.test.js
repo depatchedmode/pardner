@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startClient } from '../lib/client-service.js'
 import { invitationData } from '../lib/client-invites.js'
+import { REGISTRY_VERSION } from '../lib/client-registry.js'
+import { SCHEMA_VERSION } from '../lib/workspace-schema.js'
 import { acquireStorageLease } from '../lib/storage-lease.js'
 import { joinApproved } from '../support/enrollment.js'
 import { eventually, sameComputerRoute } from '../support/client-workspace.js'
@@ -355,6 +357,48 @@ test('pardner up reports PORT_IN_USE for a stale port held by another process an
   } finally { other.close(); await rm(directory, { recursive: true, force: true }) }
 })
 
+for (const { name, machineId, versions } of [
+  { name: 'pre-DID', machineId: 'machine-eh7ddx5bksrgcytl7bkai36se4' },
+  { name: 'different board schema', machineId: 'did:key:z6MktwupdmLXVVqTzCw4i46r4uGyosGXRnR3XjN4Zq7oMMsw',
+    versions: [REGISTRY_VERSION, SCHEMA_VERSION + 1] },
+  { name: 'different registry version', machineId: 'did:key:z6MktwupdmLXVVqTzCw4i46r4uGyosGXRnR3XjN4Zq7oMMsw',
+    versions: [REGISTRY_VERSION + 1, SCHEMA_VERSION] },
+]) test(`the client CLI refuses a running service with ${name} before sending writes`, { timeout: 30000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'pardner-incompatible-service-'))
+  const requests = []
+  const service = createServer((req, res) => {
+    requests.push([req.method, req.url])
+    if (versions) {
+      res.setHeader('X-Pardner-Registry-Version', versions[0])
+      res.setHeader('X-Pardner-Schema-Version', versions[1])
+    }
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({ device: { machineId }, url: 'http://127.0.0.1:1/pardner/' }))
+  })
+  try {
+    await new Promise(resolve => service.listen(0, '127.0.0.1', resolve))
+    const url = `http://127.0.0.1:${service.address().port}`
+    const output = join(directory, 'launch.txt')
+    await writeFile(join(directory, 'client-connection.json'), JSON.stringify({ url, token: 'legacy-test-token' }), { mode: 0o600 })
+    const commands = [
+      ['up', '--output-file', output],
+      ['client', 'identity', '--name', 'Alice', '--email', 'alice@example.test'],
+      ['client', 'create', '--name', 'Refused project'],
+    ]
+    for (const args of commands) {
+      const error = await pardnerFailure([...args, '--data', directory])
+      assert.equal(error.code, 'INCOMPATIBLE_SCHEMA')
+      if (!versions) assert.match(error.message, /left unchanged.*fresh data directory/)
+    }
+    assert.deepEqual(requests, commands.map(() => ['HEAD', '/pardner/client/v1/session']))
+    await assert.rejects(stat(output), { code: 'ENOENT' })
+    await assert.rejects(stat(join(directory, 'client.log')), { code: 'ENOENT' })
+  } finally {
+    service.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('pardner up surfaces why a started client service exited', { timeout: 30000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pardner-in-use-'))
   const lease = await acquireStorageLease(directory)
@@ -400,11 +444,20 @@ test('client people lists people, machines, agents and removed entries in words;
     // The listing is plain text by default, and the same view as data with --json.
     const listing = await alice.text(['people', '--project', project.id])
     assert.match(listing, /^CLI people: 2 people, 2 machines, 2 agents\n/)
-    assert.match(listing, /\nAlice \(you\) · Owner · alice@example\.test\n {2}Started the project\n {2}Machines:\n {4}Studio \[[a-z2-7]{6}\] · this machine · hosts the project\n/)
-    assert.match(listing, /\nBob · Member · bob@example\.test\n {2}Let in by Alice\n {2}Machines:\n {4}Workshop \[[a-z2-7]{6}\] · /)
-    assert.ok(!listing.includes('machine-'), 'machine IDs appear only as their short form')
+    assert.match(listing, /\nAlice \(you\) · Owner · alice@example\.test\n {2}Started the project\n {2}Machines:\n {4}Studio \[Machine ID [1-9A-HJ-NP-Za-km-z]{6}\] · this machine · hosts the project\n/)
+    assert.match(listing, /\nBob · Member · bob@example\.test\n {2}Let in by Alice\n {2}Machines:\n {4}Workshop \[Machine ID [1-9A-HJ-NP-Za-km-z]{6}\] · /)
     const data = await alice.json(['people', '--project', project.id])
     assert.deepEqual(data.people.people.map(person => person.name), ['Alice', 'Bob'])
+    const aliceStatus = await alice.json(['status'])
+    for (const person of data.people.people) {
+      const [machine] = person.machines
+      assert.equal(person.id, machine.id)
+      assert.equal(machine.shortId, machine.id.slice(-6))
+      assert.ok(listing.includes(`Person ID: ${person.id}`))
+      assert.ok(listing.includes(`[Machine ID ${machine.id.slice(-6)}]`))
+    }
+    assert.equal(aliceStatus.device.machineId, data.people.people[0].machines[0].id)
+    assert.equal(aliceStatus.identity.id, data.people.people[0].id)
     assert.equal(data.listing, undefined)
     // Invitations are listed, newest first, with who issued and used each, and can be revoked.
     await alice.json(['invite', '--project', project.id, '--purpose', 'device', '--operation-id', 'invite-device', '--output-file', join(root, 'device.txt')])
@@ -471,7 +524,7 @@ test('client review lists the changes whose signer could not be confirmed, in wo
       const text = await alice.text(['review', '--project', project.id])
       return text.startsWith('CLI review: 1 change needs review') && text
     }, 'the unsigned change was never listed', 30000)
-    assert.match(listing, /\nUnattributed: no signature arrived · relayed by Bob · Workshop \[[a-z2-7]{6}\]\n {2}Bob: task\.create “Never signed” at /)
+    assert.match(listing, /\nUnattributed: no signature arrived · relayed by Bob · Workshop \[[1-9A-HJ-NP-Za-km-z]{6}\]\n {2}Bob: task\.create “Never signed” at /)
     assert.match(listing, /\n {2}Change [a-f0-9]{64}/, 'the change hash only as a detail')
     const data = await alice.json(['review', '--project', project.id])
     assert.equal(data.changes.length, 1)

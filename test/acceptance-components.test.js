@@ -153,8 +153,9 @@ it('the independent manifest rejects missing effects even when replicas agree', 
   assert.throws(() => expected.verify(broken), /must appear exactly once/)
 })
 
-const A_MACHINE = 'machine-aaaaaaaaaaaaaaaaaaaaaaaaaa', B_MACHINE = 'machine-bbbbbbbbbbbbbbbbbbbbbbbbbb'
-const GENESIS = { recordId: 'record-genesis', kind: 'project.genesis', subject: 'person-alice', signer: A_MACHINE }
+const A_MACHINE = 'did:key:z6MktwupdmLXVVqTzCw4i46r4uGyosGXRnR3XjN4Zq7oMMsw'
+const B_MACHINE = 'did:key:z6Mkon3Necd6NkkyfoGoHxid2znGc59LU3K7mubaRcFbLfLX'
+const GENESIS = { recordId: 'record-genesis', kind: 'project.genesis', subject: A_MACHINE, signer: A_MACHINE }
 
 /**
  * A replica's snapshot with one acknowledged and one baseline operation, each the entry of one change signed as
@@ -163,8 +164,8 @@ const GENESIS = { recordId: 'record-genesis', kind: 'project.genesis', subject: 
 const REGISTERED = { id: 'alice-agent', handle: 'agent-alice', kind: 'agent', displayName: 'anthropic-claude-code' }
 
 function attributedSnapshot({ expected, here, changes = {}, records = [GENESIS], extra = [], review = [], summary = {}, payload = null, baselinePayload = REGISTERED, flags = {} }) {
-  const machines = { [A_MACHINE]: { personId: 'person-alice', ...(here === 'a' ? { thisMachine: true } : {}) },
-    [B_MACHINE]: { personId: 'person-bob', ...(here === 'b' ? { thisMachine: true } : {}) } }
+  const machines = { [A_MACHINE]: { personId: A_MACHINE, ...(here === 'a' ? { thisMachine: true } : {}) },
+    [B_MACHINE]: { personId: B_MACHINE, ...(here === 'b' ? { thisMachine: true } : {}) } }
   const operations = Object.fromEntries([...expected.intents.values()].map(intent => {
     const operationId = `op-${hash([intent.operationId, hash({ type: intent.type, actorId: intent.actorId, payload: intent.payload })])}`
     return [operationId, { ...intent, payload: payload ?? intent.payload, operationId, requestId: intent.operationId, replicaId: 'replica-a', timestamp: '2026-01-01T00:00:01.000Z' }]
@@ -188,9 +189,9 @@ it('the acceptance gate compares, by change hash, what each change wrote and who
   expected.intend(request, 'replica-a')
   expected.acknowledge(request, { savedLocally: true, replicaId: 'replica-a', result: {} }, 100)
   expected.ignore(['op-baseline'])
-  expected.expectRecords('create', [{ kind: 'project.genesis', subject: 'person-alice', signer: A_MACHINE }])
+  expected.expectRecords('create', [{ kind: 'project.genesis', subject: A_MACHINE, signer: A_MACHINE }])
   const operationId = `op-${hash([request.operationId, hash({ type: request.type, actorId: request.actorId, payload: request.payload })])}`
-  const known = { machineOfReplica: { 'replica-a': A_MACHINE }, personOfActor: { alice: 'person-alice' },
+  const known = { machineOfReplica: { 'replica-a': A_MACHINE }, personOfActor: { alice: A_MACHINE },
     baseline: { machineId: A_MACHINE, actorId: 'alice' }, registration: id => (id === REGISTERED.id ? REGISTERED : null), resolve: ({ action, ...fields }) => ({ action, fields }) }
   // Replica-specific labels (this computer, who relayed a verdict) are normalised away.
   const a = attributedSnapshot({ expected, here: 'a' })
@@ -207,7 +208,7 @@ it('the acceptance gate compares, by change hash, what each change wrote and who
   const content = attributedSnapshot({ expected, here: 'b', payload: { taskId: 'task', text: 'Other words' } })
   assert.throws(() => expected.verifyAttribution([a, content], known), /attribution differs between replicas/)
   // A signer that is not the machine the harness knows performed the operation fails, on every replica alike.
-  assert.throws(() => expected.verifyAttribution([other, other], known), /signed by machine-b.* but performed on machine-a/)
+  assert.throws(() => expected.verifyAttribution([other, other], known), new RegExp(`signed by ${B_MACHINE}.* but performed on ${A_MACHINE}`))
   // Content that is not what the harness intended fails, on every replica alike.
   assert.throws(() => expected.verifyAttribution([content, content], known), /signed payload is not what was intended/)
   // A signer with no machine ID is not attribution.
@@ -215,14 +216,14 @@ it('the acceptance gate compares, by change hash, what each change wrote and who
   // Baseline operations are checked too.
   assert.equal(expected.attributed(attributedSnapshot({ expected, here: 'a', changes: { 'op-baseline': { state: 'pending' } } })), false)
   const forged = attributedSnapshot({ expected, here: 'a', changes: { 'op-baseline': { machineId: B_MACHINE } } })
-  assert.throws(() => expected.verifyAttribution([forged, forged], known), /op-baseline.*signed by machine-b/)
+  assert.throws(() => expected.verifyAttribution([forged, forged], known), new RegExp(`op-baseline.*signed by ${B_MACHINE}`))
   // Records: one every replica omits, one signed by another machine, and one never expected each fail.
   const none = attributedSnapshot({ expected, here: 'a', records: [] })
   assert.ok(expected.attributed(none), 'every replica may agree')
   assert.throws(() => expected.verifyAttribution([none, none], known), /Expected record missing \(create\)/)
   const wrongSigner = attributedSnapshot({ expected, here: 'a', records: [{ ...GENESIS, signer: B_MACHINE }] })
   assert.throws(() => expected.verifyAttribution([wrongSigner, wrongSigner], known), /Expected record missing/)
-  const surplus = attributedSnapshot({ expected, here: 'a', records: [GENESIS, { recordId: 'record-extra', kind: 'profile', subject: 'person-alice', signer: A_MACHINE }] })
+  const surplus = attributedSnapshot({ expected, here: 'a', records: [GENESIS, { recordId: 'record-extra', kind: 'profile', subject: A_MACHINE, signer: A_MACHINE }] })
   assert.throws(() => expected.verifyAttribution([surplus, surplus], known), /Membership records the harness never expected/)
   // A second entry for an acknowledged operation (another change wrote its key) fails, and is not clean attribution.
   const copy = { id: 'change-copy', kind: 'operation', key: operationId, event: { ...a.operations[operationId], replicaId: 'replica-b' }, timestamp: '2026-01-01T00:00:02.000Z',
