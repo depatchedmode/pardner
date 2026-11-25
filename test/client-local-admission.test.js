@@ -30,7 +30,7 @@ async function participant(root, name) {
   return { client, call, request }
 }
 
-test('an enrolled member writes and gets an agent grant with no hub and no hub request', { timeout: 60000 }, async () => {
+test('an enrolled member reads, writes, and gets an agent grant without asking the hub', { timeout: 60000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'pardner-local-admission-'))
   const seen = []
   const recorder = createServer((req, res) => { seen.push(`${req.method} ${req.url}`); res.writeHead(503).end() })
@@ -57,9 +57,13 @@ test('an enrolled member writes and gets an agent grant with no hub and no hub r
     assert.ok(performance.now() - started < 2000, 'a write does not wait on an unreachable hub')
     const commented = await bob.call(path, { type: 'comment.add', operationId: 'offline-comment', payload: { taskId: saved.result.taskId, text: 'Still local' } })
     assert.equal(commented.savedLocally, true)
+    const { doc } = await bob.call(`/projects/${project.id}/api/automerge/doc`)
+    assert.deepEqual(doc.heads, commented.heads)
+    assert.equal(doc.tasks[saved.result.taskId].title, 'Saved with no hub')
+    assert.equal(doc.actors[commented.actorId].displayName, 'Bob')
     const grant = await bob.call(`/projects/${project.id}/agent-grant`, {})
     assert.ok(grant.token)
-    assert.equal(remote, 0, 'no write or grant asked the hub')
+    assert.equal(remote, 0, 'no board read, write, or grant asked the hub')
     assert.deepEqual(seen, [], 'no /policy or other request left the machine')
   } finally {
     await bob?.client.stop()
@@ -69,7 +73,7 @@ test('an enrolled member writes and gets an agent grant with no hub and no hub r
   }
 })
 
-test('a write is refused locally once the hub has refused this machine as removed, and stays refused after a restart', { timeout: 60000 }, async () => {
+test('board reads and writes are refused locally after machine removal, including after a restart', { timeout: 60000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'pardner-local-removal-'))
   let alice, bob
   try {
@@ -80,14 +84,20 @@ test('a write is refused locally once the hub has refused this machine as remove
     await joinApproved({ join: body => bob.call('/join', body), approver: alice.call, invitation, operationId: 'join' })
     await alice.call(`/projects/${project.id}/revoke`, { kind: 'machine', id: bob.client.registry.machineKey.machineId, operationId: 'remove-bob' })
     const path = `/projects/${project.id}/api/automerge/operations`
+    const readPath = `/projects/${project.id}/api/automerge/doc`
     const deadline = Date.now() + 15000
     let refused
-    for (let attempt = 0; !refused; attempt++) {
-      const { status, result } = await bob.request(path, { type: 'task.create', operationId: `attempt-${attempt}`, payload: { title: 'After removal' } })
+    for (;;) {
+      const { status, result } = await bob.request(readPath)
       if (status === 403) refused = result
-      else { assert.ok(Date.now() < deadline, 'the removed machine kept writing'); await new Promise(resolve => setTimeout(resolve, 100)) }
+      if (refused) break
+      assert.ok(Date.now() < deadline, 'the removed machine kept reading')
+      await new Promise(resolve => setTimeout(resolve, 100))
     }
     assert.equal(refused.code, 'REVOKED')
+    const write = await bob.request(path, { type: 'task.create', operationId: 'after-removal', payload: { title: 'After removal' } })
+    assert.equal(write.status, 403)
+    assert.equal(write.result.code, 'REVOKED')
     await alice.client.stop(); alice = null
     const directory = bob.client.registry.directory
     await bob.client.stop()
@@ -96,6 +106,8 @@ test('a write is refused locally once the hub has refused this machine as remove
     const after = await fetch(`${bob.client.url}/pardner/client/v1${path}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'task.create', operationId: 'after-restart', payload: { title: 'Still refused' } }) })
     assert.equal(after.status, 403)
+    const afterRead = await fetch(`${bob.client.url}/pardner/client/v1${readPath}`, { headers: { Authorization: `Bearer ${token}` } })
+    assert.equal(afterRead.status, 403)
   } finally {
     await bob?.client.stop()
     await alice?.client.stop()
