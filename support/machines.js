@@ -1,6 +1,9 @@
 import { once } from 'node:events'
 import { WebSocket } from 'ws'
 import { generateMachineKey } from '../lib/machine-key.js'
+import { fetchMachineResponse } from '../lib/machine-response.js'
+import { FRAME } from '../lib/machine-channel.js'
+import { ownedPeerId } from '../lib/native-network.js'
 import { initiateHandshake } from '../lib/machine-handshake.js'
 import { buildRecord } from '../lib/membership.js'
 import { TicketNetworkAdapter } from '../lib/ticket-network-adapter.js'
@@ -31,13 +34,10 @@ export function testProject({ members = 1, role = 'member' } = {}) {
 export async function signedRequest(key, { projectId, route }, suffix, body) {
   const { SessionClient } = await import('../lib/machine-session.js')
   let last = null
-  const send = async (url, { headers = {}, body }) => {
-    const response = await fetch(url, { method: body === undefined ? 'GET' : 'POST', signal: AbortSignal.timeout(15000),
-      headers: { 'Content-Type': 'application/json', ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
-    const result = await response.json()
-    last = { status: response.status, result }
-    if (!response.ok) throw Object.assign(new Error(result.error), { code: result.code })
-    return result
+  const send = async (url, request) => {
+    const answer = await fetchMachineResponse(url, { ...request, timeoutMs: 15000 })
+    last = { status: answer.status, result: answer.body }
+    return answer
   }
   const session = new SessionClient({ key, projectId, route, send })
   try { return { status: 200, result: await session.request(suffix, { method: body === undefined ? 'GET' : 'POST', body }) } }
@@ -84,8 +84,13 @@ export function memberAdapter(project, index, url, options = {}) {
 export async function handshakeSocket(url, { key, projectId, records, socketOptions = {} }) {
   const socket = new WebSocket(url, socketOptions)
   await once(socket, 'open', { signal: AbortSignal.timeout(5000) })
-  await initiateHandshake(socket, { key, projectId, route: url, role: 'replica', expectRole: 'hub', knownRecords: () => records })
-  return socket
+  try {
+    const { frames } = await initiateHandshake(socket, { key, projectId, route: url, role: 'replica', expectRole: 'hub', knownRecords: () => records })
+    socket.sendSync = payload => frames.send(FRAME.sync, payload)
+    socket.peerIdFor = id => ownedPeerId(key.machineId, id)
+    frames.attach(frame => socket.emit('protected-frame', frame))
+    return socket
+  } catch (error) { socket.terminate(); throw error }
 }
 
 /** Adds routes that reach `server` (a relay or gate in front of it), as a client adds each origin it advertises. */

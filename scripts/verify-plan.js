@@ -46,7 +46,7 @@ const groups = [
   {
     name: 'transport', scripts: ['test:qualification', 'test:runtime', 'test:cli', 'test:ui'], qualification: 'Offline reopen, authenticated transport, or acknowledgement ordering',
     // Retired paths stay listed (lib/native-peer-client.js, support/replica-credentials.js) so the change removing them is classified.
-    files: names(`automerge-sync-server.js lib/local-service.js lib/workspace-runtime.js lib/machine-handshake.js lib/machine-session.js
+    files: names(`automerge-sync-server.js lib/local-service.js lib/workspace-runtime.js lib/machine-channel.js lib/machine-handshake.js lib/machine-session.js lib/machine-response.js lib/native-network.js
       lib/sync-client.js lib/sync-protocol.js lib/ticket-network-adapter.js lib/validated-websocket-server-adapter.js
       support/resources.js support/workspace-service-process.js support/machines.js support/hub-state-process.js lib/native-peer-client.js support/replica-credentials.js`),
   },

@@ -2,10 +2,9 @@ import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { spawn } from 'node:child_process'
-import { EventEmitter } from 'node:events'
 import { cbor } from '@automerge/automerge-repo'
 import { WebSocket } from 'ws'
-import { ValidatedWebSocketServerAdapter } from '../lib/validated-websocket-server-adapter.js'
+import { nativeMessage } from '../lib/native-network.js'
 import { machineKeyFromPem } from '../lib/machine-key.js'
 import { handshakeSocket } from '../support/machines.js'
 
@@ -57,16 +56,17 @@ it('malformed native CBOR closes only the offending socket and leaves the servic
       { key: machineKeyFromPem(server.member.key), projectId: server.member.projectId, records: server.member.records })
     const healthy = await connect()
     try {
-      const greeting = once(healthy, 'message')
-      healthy.send(cbor.encode({ type: 'join', senderId: 'healthy-peer' }))
-      assert.equal(cbor.decode((await greeting)[0]).type, 'peer')
+      const greeting = once(healthy, 'protected-frame')
+      healthy.sendSync(cbor.encode({ type: 'join', senderId: healthy.peerIdFor('healthy-peer'), supportedProtocolVersions: ['1'] }))
+      assert.equal(cbor.decode((await greeting)[0].payload).type, 'peer')
       for (const value of malformed) {
         const ws = await connect()
         try {
           const closed = once(ws, 'close', { signal: AbortSignal.timeout(5000) })
-          ws.send(cbor.encode(value))
-          ws.send(cbor.encode(join))
-          assert.equal((await closed)[0], 1008, `payload: ${JSON.stringify(value)}`)
+          const candidate = value?.senderId === join.senderId ? { ...value, senderId: ws.peerIdFor(join.senderId) } : value
+          ws.sendSync(cbor.encode(candidate))
+          ws.sendSync(cbor.encode({ ...join, senderId: ws.peerIdFor(join.senderId), supportedProtocolVersions: ['1'] }))
+          assert.equal((await closed)[0], 1006, `payload: ${JSON.stringify(value)}`)
           assert.equal(child.exitCode, null, stderr)
           assert.equal(healthy.readyState, WebSocket.OPEN)
           const pong = once(healthy, 'pong', { signal: AbortSignal.timeout(5000) })
@@ -84,31 +84,7 @@ it('malformed native CBOR closes only the offending socket and leaves the servic
   }
 })
 
-it('contains synchronous dispatch errors and ignores frames queued after rejection', () => {
-  const adapter = new ValidatedWebSocketServerAdapter(new EventEmitter())
-  adapter.peerId = 'server'
-  let candidates = 0
-  adapter.on('peer-candidate', () => { candidates++; throw new Error('dispatch failure') })
-  const socket = { readyState: 1, close(code) { this.code = code; this.readyState = 2 } }
-  assert.doesNotThrow(() => adapter.receiveMessage(cbor.encode(join), socket))
-  assert.equal(socket.code, 1008)
-  adapter.receiveMessage(cbor.encode(join), socket)
-  assert.equal(candidates, 1)
-})
-
 it('accepts every repository message shape supported by the pinned protocol', () => {
-  const adapter = new ValidatedWebSocketServerAdapter(new EventEmitter())
-  adapter.peerId = 'server'
-  const delivered = []
-  adapter.on('message', message => delivered.push(message))
-  const replies = []
-  const socket = {
-    readyState: 1,
-    send(bytes) { replies.push(cbor.decode(new Uint8Array(bytes))) },
-    close() { assert.fail('Valid message rejected') },
-  }
-  adapter.receiveMessage(cbor.encode(join), socket)
-  assert.deepEqual(replies.map(reply => reply.type), ['peer'])
   const messages = [
     ...['sync', 'request'].map(type => ({ ...envelope, type, data: new Uint8Array([1]) })),
     { ...envelope, type: 'doc-unavailable' },
@@ -116,21 +92,11 @@ it('accepts every repository message shape supported by the pinned protocol', ()
     { ...envelope, type: 'remote-subscription-change', add: ['storage'], remove: [] },
     { ...envelope, type: 'remote-heads-changed', newHeads: { storage: { heads: ['hash'], timestamp: 1 } } },
   ]
-  for (const message of messages) adapter.receiveMessage(cbor.encode(message), socket)
-  assert.deepEqual(delivered, messages.map(message => cbor.decode(cbor.encode(message))))
+  for (const message of messages) assert.deepEqual(nativeMessage(cbor.encode(message)), cbor.decode(cbor.encode(message)))
 })
 
-it('rejects malformed envelopes before emitting any Repo events', () => {
-  const adapter = new ValidatedWebSocketServerAdapter(new EventEmitter())
-  adapter.peerId = 'server'
-  const events = []
-  for (const event of ['peer-candidate', 'peer-disconnected', 'message']) {
-    adapter.on(event, () => events.push(event))
-  }
+it('rejects malformed envelopes at the shared native decoder', () => {
   for (const bytes of [...malformed.map(value => cbor.encode(value)), Buffer.from([0xff])]) {
-    const socket = { readyState: 1, close(code) { this.code = code; this.readyState = 2 } }
-    adapter.receiveMessage(bytes, socket)
-    assert.equal(socket.code, 1008)
-    assert.deepEqual(events, [])
+    assert.throws(() => nativeMessage(bytes))
   }
 })

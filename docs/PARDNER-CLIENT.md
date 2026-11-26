@@ -309,6 +309,11 @@ whichever comes first. A join that cannot succeed, from a removed machine, a
 removed person or someone already in the project, is refused before it takes a
 place, so the invitation stays usable.
 
+If the hub replies without signing a successful enrollment response, the
+join form or approval waiting screen asks you to check the Pardner version on
+both computers. The joining client keeps polling for approval of an existing
+request. It saves a request ID only after verifying the reply.
+
 Until it is approved, the joining machine receives nothing from the project. The
 browser shows **Waiting for approval**; `client join` reports `{ join: { state,
 requestId, code, … } }` and is run again with the same operation ID to continue.
@@ -497,14 +502,13 @@ leave, and an agents-only machine can't leave on its person's behalf.
 Removal ends the machine's sessions at the hub at once: its sync socket closes,
 its signed HTTP sessions are dropped, its presence ends, its open invitations are
 revoked, and the hub refuses its handshake, its requests and new records. A removed
-computer keeps its local data and export. It learns of the removal when the hub
-refuses its next handshake (within a few seconds while the hub is reachable) and
-then refuses further writes, also after a restart; a write saved before that stays
-on that computer and reaches nobody.
+computer keeps its local data and export. It learns of the removal when it
+verifies and saves the records, either through a sealed notice or on a later
+connection. Further local writes then fail, including after restart.
 
-**What the removed computer shows (#154).** The hub's `REVOKED` refusal tells the
-removed machine who removed it and whether its person left, once the machine has
-proved its key in the handshake. The hub answers every handshake alike until then,
+**What the removed computer shows (#154).** The replica derives who removed it
+and whether its person left from the signed records. The hub can disclose the
+proof once the requesting machine has proved its key. The hub answers every handshake alike until then,
 so anyone presenting a key without its private key gets the same failure whether
 that key belongs to a member, a removed machine or nobody. The project then stays listed in
 `removedProjects` (`client list`, and the browser's project switcher), and the
@@ -690,16 +694,15 @@ store: the machine must be a current member, and the writing Actor one its recor
 let it act as (its person unless it is agents-only, or an agent it named). Nothing
 is asked of the hub, so a save never waits on it and an enrolled member keeps
 saving through an outage. Issuing an agent credential (`agent-grant`) uses the same
-local check. A removal reaches the check when this machine holds the record or when
-the hub refuses its handshake as removed; the hub stops syncing with it from the
-moment the hub applies the removal.
+local check. A removal takes effect locally when this machine holds the proof.
+The hub stops syncing with it from the moment the hub applies the removal.
 
-How machines authenticate: the replica's project runtime opens its sync socket with
-the machine handshake (both machines sign a transcript of the project, both machine
-IDs, both nonces, both roles and the route dialled) and accepts nothing until the
-hub proves it is a member machine of the project the invitation named. The client
-service and the runtime sign every other request to the hub with the machine key,
-inside a short session opened the same way. The client gives its machine key to its
+The replica opens a v2 sync channel and checks the hub's membership in the
+project the invitation named. The handshake binds the project, roles, both
+machine IDs, fresh keys and the advertised route. Sync uses protected frames.
+Short HTTP sessions sign their requests and answers. Enrollment verifies signed
+HTTP answers and then the first sealed welcome before it saves the project in
+the registry. The client gives its machine key to its
 own project runtimes over their IPC channel only. The hub accepts the handshake only
 on routes it advertised: its loopback address and each `--public-url` it has given
 to an enrolled machine. Two live sync sessions for one machine (a copied directory

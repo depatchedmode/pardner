@@ -296,7 +296,9 @@ function JoinWaiting({ join, outage, onStop }) {
       : join.purpose === 'device'
         ? 'Open People on a computer already in this project, or ask an admin.'
         : 'Open People on one of your computers already in this project.'}</p>}
-    {outage && <p className="warning-text" role="status">The project’s hub is unreachable right now. Still waiting; nothing was lost.</p>}
+    {outage && (outage.code === 'UNSIGNED_ENROLLMENT_REPLY'
+      ? <Failure error={outage} />
+      : <p className="warning-text" role="status">The project’s hub is unreachable right now. Still waiting; nothing was lost.</p>)}
     <button type="button" onClick={onStop}>Stop waiting</button>
   </section>
 }

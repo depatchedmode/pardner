@@ -908,3 +908,30 @@ Re-reviewed the affected mappings for `ReplicaEdit`, `SyncDown`,
 `StoreCloseComplete`, `ReplicaReceive` and `ReplicaAckCommit`. The guards,
 effects and bounds still describe those paths. See `taskFactsReview` in the
 evidence JSON for the refreshed map and check.
+
+## Authenticated hub channel mapping review (#215)
+
+The listener still reads `stopping` before reaching HTTP routes and before
+upgrading a WebSocket. The hub adapter checks live membership after the sealed
+welcome and before native dispatch. The socket remains in the listener's tracked
+clients and shutdown terminates it before draining and closing storage.
+The model's upgrade action still abstracts listener admission. It makes no
+claim about the cryptographic exchange, membership, peer IDs or individual
+frames. The native adapter checks those boundaries in the runtime tests.
+Session setup requires signed HTTP 200 responses. A rejected setup response
+follows the existing unacknowledged path. Transport diagnostic preservation and
+the contents of refusal or close frames do not change the modeled steps.
+
+The replica verifies the signed HTTP answer before the existing head checks and
+local flush. A signature failure leaves the requested heads unacknowledged.
+The hub acknowledges only after its existing persistence barrier. Once the
+replica's record store computes its removal, native reconnects and new HTTP
+acknowledgement requests stop. Acknowledgements in flight cannot advance the
+saved acknowledgement after removal. Membership write-back uses the existing
+save queue. The model abstracts admitted membership when exploring these
+actions. Runtime tests exercise the removal checks and retry behavior.
+
+The model retains its existing actions, guards and bounds. The checked mapping
+covers 174,614 states and 679,456 transitions, with four invariants, the shutdown
+progress property and ten reachable witnesses. See `authenticatedChannelReview`
+in the [evidence record](evidence/lifecycle-model.json).

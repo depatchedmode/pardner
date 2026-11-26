@@ -2087,5 +2087,27 @@
     "witnessesReached": 10,
     "violation": null,
     "review": "Assigned to-dos and outcomes use the existing prepare, change and flush sequence. Snapshot and comment attribution changes stay outside lifecycle admission, acknowledgement and shutdown."
+  },
+  "authenticatedChannelReview": {
+    "issues": [
+      215
+    ],
+    "recorded": "2026-11-26",
+    "mapping": {
+      "revision": "cb173817fbdc6445e055ee3c4582c32c4911018f",
+      "files": {
+        "automerge-sync-server.js": "8671db72e2e720830fbb3208c250db0eb61915241b2e7ce1e9ea1e37f9849b21",
+        "lib/durable-repo.js": "0a5697df8f34bfc835dec869271b54de1dc833669714b9d01eecef9393974c27",
+        "lib/workspace-runtime.js": "acf904ce83830d2549dab4991f19cfe66f2320717ed9fa92da0b682b81bb890e",
+        "lib/workspace.js": "b342f79e2145364b4ecf9c7e5b1132de49af2e0bcc99934b81e2eafce32203d7"
+      }
+    },
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "states": 174614,
+    "transitions": 679456,
+    "witnessesReached": 10,
+    "violation": null,
+    "review": "Socket admission checks stopping before upgrade, and the channel checks live membership before native dispatch. Signed acknowledgements still require both head checks and the local flush. Durable removal stops native and HTTP retries and prevents an in-flight acknowledgement from advancing the saved snapshot. The model abstracts admitted membership and retains its existing bounds and actions. HTTP session setup requires both signed success responses before acknowledgement requests can start. The restore prompt omits project records and still gates admission on membership and the restore checkpoint. Diagnostic changes do not change lifecycle guards, actions or bounds."
   }
 }

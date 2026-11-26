@@ -66,7 +66,7 @@ export const MUTATIONS = [
         const signaturesHeld = !signatures || hasHeads(signatures.doc(), receipt.hubSignatureHeads)
         if (sameHeads(getHeads(doc), requestedHeads) && hasHeads(doc, receipt.hubHeads) && signaturesHeld) {
           await this.repo.flush(this.workspace.documents())
-          if (sameHeads(getHeads(this.workspace.handle.doc()), requestedHeads)) {
+          if (!this.localRemoval() && sameHeads(getHeads(this.workspace.handle.doc()), requestedHeads)) {
             this.acknowledgedHeads = requestedHeads
             // The requested snapshot, never the current heads: a signature written since stays unacknowledged.
             if (signatures) this.acknowledgedSignatureHeads = requestedSignatureHeads

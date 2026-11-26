@@ -50,16 +50,17 @@ Chromium contexts, and two separate deterministic agent worker subprocesses:
   setup to advertise the second gate, and keeps accepting the handshake on the
   first, since it advertised that route to Alice's laptop.
 - **Credentials between machines:** none but the machine keys. Each laptop's sync
-  socket opens with the machine handshake, bound to the route through its gate, and
-  every other request a laptop sends the hub (deliveries, presence, people, records,
-  invitations, join requests, acknowledgements) is signed by its machine key within
-  a short session. No bearer token passes between machines; a gate that relays
-  them sees only signed messages. The local operator token, browser sessions and
+  socket opens with the v2 machine handshake bound to the route through its
+  gate, then carries sealed frames. Other member requests (deliveries, presence,
+  people, records, invitations, join requests, acknowledgements) and their
+  answers are signed. Enrollment answers bind the joiner's fresh request
+  challenge. A TLS terminator can see machine HTTP bodies and socket metadata. The local operator token, browser sessions and
   agent credentials authenticate to a laptop's own client only.
 - **Changes:** every Automerge change a client makes is signed by its machine key
   in the project's signature document, and every client checks the changes it
   receives. The hub's persistence acknowledgement a laptop waits for covers the
-  heads of both the board and the signature document.
+  heads of both the board and the signature document and verifies against the
+  exact signed request.
 
 All task mutations go through a client's project API proxy
 (`…/projects/:id/api/automerge/operations`), using the local operator bearer for

@@ -202,7 +202,7 @@ it('a signature entry deleted from the shared document stays attributed where it
 
 it('a writer’s cut link keeps its change pending for the outage, everywhere, and a slow link never makes one unattributed', { timeout: 90000 }, async () => {
   await withHub(async ({ project, server, replica }) => {
-    const path = await relay(server, project.projectId)
+    const path = await relay(server)
     try {
       const writer = await replica(0, { hubWsUrl: path.url }), reader = await replica(1)
       // The board change leaves; its signature does not, and then the link drops.
@@ -240,11 +240,11 @@ it('a writer’s cut link keeps its change pending for the outage, everywhere, a
   })
 })
 
-it('keeps a signed change pending while the signature frame is queued on a live link', { timeout: 30000 }, async () => {
+it('keeps a signed change pending while its outgoing signature message waits on a live connection', { timeout: 30000 }, async () => {
   let now = Date.now()
   await withHub(async ({ project, server, replica }) => {
-    const link = await relay(server, project.projectId)
-    const { promise: releaseFrame, resolve: release } = Promise.withResolvers()
+    const link = await relay(server)
+    let release = () => {}
     try {
       const hub = server.store
       const writer = await replica(0, { hubWsUrl: link.url })
@@ -257,18 +257,28 @@ it('keeps a signed change pending while the signature frame is queued on a live 
         'the board change did not reach both peers')
 
       const previousHeads = A.getHeads(writer.workspace.signatures.doc())
-      let signatureHeads, intercepted = false
-      link.state.beforeSignature = async data => {
-        const { heads, changes } = A.decodeSyncMessage(data)
-        if (!signatureHeads?.every(head => heads.includes(head)) || !changes.length) return
-        intercepted = true
-        await releaseFrame
+      let signatureHeads
+      const queued = []
+      const send = writer.adapter.send.bind(writer.adapter)
+      writer.adapter.send = message => {
+        if (message.type === 'sync' && message.documentId === writer.signaturesId) {
+          const { heads, changes } = A.decodeSyncMessage(message.data)
+          if (signatureHeads?.every(head => heads.includes(head)) && changes.length) {
+            queued.push(message)
+            return
+          }
+        }
+        send(message)
+      }
+      release = () => {
+        writer.adapter.send = send
+        for (const message of queued.splice(0)) send(message)
       }
       writer.attribution.holdOutbox = false
       writer.attribution.flushOutbox()
       signatureHeads = A.getHeads(writer.workspace.signatures.doc())
       assert.notDeepEqual(signatureHeads, previousHeads)
-      await eventually(() => intercepted, 'the signature frame was never queued')
+      await eventually(() => queued.length > 0, 'the signature message was never queued')
 
       now += timing.quietMs * 2
       await hub.attribution.resolve()
@@ -287,7 +297,7 @@ it('keeps a signed change pending while the signature frame is queued on a live 
 
 it('a write is acknowledged locally with the hub unreachable; the hub’s acknowledgement waits for its signature too', { timeout: 90000 }, async () => {
   await withHub(async ({ project, server, replica }) => {
-    const path = await relay(server, project.projectId)
+    const path = await relay(server)
     try {
       const writer = await replica(0, { hubWsUrl: path.url })
       path.cut()
@@ -297,7 +307,10 @@ it('a write is acknowledged locally with the hub unreachable; the hub’s acknow
       assert.equal(syncPending, true)
       assert.equal(stateOf(writer, operationOf(writer, result.taskId).operationId), 'signed', 'signed and shown at once, before any sync')
       // The board change reaches the hub, but the signature document's frames are held back: no acknowledgement yet.
-      path.state.holdSignatures = true
+      const send = writer.adapter.send.bind(writer.adapter)
+      writer.adapter.send = message => {
+        if (message.documentId !== writer.signaturesId) send(message)
+      }
       path.restore()
       const operation = await eventually(() => operationOf(server.store, result.taskId), 'the change never reached the hub')
       await delay(500)
@@ -305,7 +318,7 @@ it('a write is acknowledged locally with the hub unreachable; the hub’s acknow
       assert.notEqual(stateOf(server.store, operation.operationId), 'signed')
       assert.equal(writer.status().syncPending, true, 'the hub has not persisted the signature, so nothing is acknowledged')
       assert.notDeepEqual(writer.status().signatures.acknowledgedHeads, writer.status().signatures.heads)
-      path.state.holdSignatures = false
+      writer.adapter.send = send
       path.cut()
       path.restore()
       await eventually(() => !writer.status().syncPending, 'never acknowledged')
@@ -318,7 +331,7 @@ it('a write is acknowledged locally with the hub unreachable; the hub’s acknow
 
 it('the same field edited on two disconnected machines keeps both signed alternatives for explicit resolution', { timeout: 90000 }, async () => {
   await withHub(async ({ project, server, replica }) => {
-    const left = await relay(server, project.projectId), right = await relay(server, project.projectId)
+    const left = await relay(server), right = await relay(server)
     try {
       const a = await replica(0, { hubWsUrl: left.url }), b = await replica(1, { hubWsUrl: right.url })
       const { result } = await execute(a, 'Disputed title')

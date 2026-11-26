@@ -93,5 +93,7 @@ it('shows a restored hub that waits, two copies of one machine and a hub catchin
   assert.equal(syncLabel({ ...synced, duplicateMachines: [{ machineId: 'machine-x', sessions: 2 }] }),
     'Two copies of one machine are connected · check for a running backup')
   assert.equal(hubNotice({ ...synced, duplicateMachines: [{ machineId: 'machine-x', sessions: 1 }] }), null, 'a past report with one copy left is not shown')
-  assert.equal(syncLabel({ ...synced, hubRefusal: { code: 'HUB_WAITING' } }), 'Saved locally · the hub is catching up after a restore')
+  assert.equal(syncLabel({ ...synced, hubRefusal: { code: 'HUB_WAITING', authenticated: false } }), null)
+  assert.equal(syncLabel({ ...synced, hubRefusal: { code: 'HUB_WAITING', authenticated: true } }), 'Saved locally · the hub is catching up after a restore')
+  assert.match(syncLabel({ ...synced, hubRefusal: { code: 'HANDSHAKE_VERSION' } }), /reported a version mismatch/)
 })

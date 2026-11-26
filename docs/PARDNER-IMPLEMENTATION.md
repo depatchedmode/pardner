@@ -333,11 +333,7 @@ check who made a change, not whether it was allowed, and people review and undo 
 bad change. **A machine's word is taken for which of its Actors acted:** peers
 verify the machine and flag only a change claiming an Actor that machine is not
 certified for, such as another person's Actor, or a person on an agents-only
-machine; agent grants limit agents only on their own machine. **The sync stream
-after the handshake is protected only by TLS** (#215): whoever terminates TLS in
-front of the hub, such as a reverse proxy or tunnel provider, could relay a
-member's handshake and then inject sync traffic, which peers apply and flag as
-unattributed. Changes to the signature document are not signed themselves: a
+machine; agent grants limit agents only on their own machine. Changes to the signature document are not signed themselves: a
 member can delete or overwrite an entry, which unattributes a change only on peers
 that never verified it. A member can also front-run another machine's next change
 with an unsigned change under that machine's actor and sequence number; the real
@@ -354,12 +350,9 @@ person IDs and the agents-only rule are part of computing membership, so they ho
 for such records too. Records are enforced only at
 the hub. A removed machine that synced after a hub's backup was taken, was removed
 while offline, and is the first to reach the restored hub can still be served
-until a member holding the removal connects. Peers do not sync directly, and hub
-routes rely on HTTPS for confidentiality. After the handshake, sync frames are
-protected only by TLS, so whoever terminates TLS in front of the hub (a reverse
-proxy or tunnel) could relay a member's handshake and then inject its own sync
-traffic on that socket
-([#215](https://github.com/depatchedmode/pardner/issues/215)). Because the hub answers every hello, any
+until a member holding the removal connects. The hub path seals native sync
+and signs HTTP answers. TLS terminators still see HTTP and traffic timing and
+can interrupt the connection. [Channel specification](PARDNER-CHANNEL-SPEC.md). Because the hub answers every hello, any
 party can hold one of its 256 pending HTTP sessions for up to 30 seconds without
 a member's key. The rest of the trust rollout remains a
 [plan](PARDNER-TRUST-PLAN.md).

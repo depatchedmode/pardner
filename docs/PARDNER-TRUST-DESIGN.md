@@ -131,16 +131,19 @@ In version 3, `signer`, `machineId` and `personId` hold DIDs. Certifications and
 
 ### 5. Transport admission (the gate)
 
-- **Handshake.** Every sync connection, to the hub or to a peer, opens with a mutual challenge and response. Each side signs a transcript with its machine key, under its own signing label so one side's signature is never valid as the other's: the protocol version, `projectId`, both machine IDs, both roles (hub, replica or peer), both fresh nonces, and the route as dialled. The hub accepts every route it has ever advertised, because reverse proxies rewrite the Host header. The responder answers every opening message alike and judges membership only after the initiator has proved its key, so nobody can learn whether a key was ever certified. The cost is that anyone can hold one of the hub's pending sessions (256, for 30 seconds each) without a member key. Membership records are exchanged only after both signatures check out: the responder sends its log to a new joiner, and two peers each send theirs. On the direct lane the transcript also includes the channel's own key hash. A recorded answer is useless elsewhere.
-- **Who is served.** A serving peer sends data only to member machines in its current membership state. An enrolling machine receives the document only after its `member.add` or `machine.add` is recorded.
-- **The joiner checks the server too.** Before accepting a document, an enrolling machine checks that the responder's key is a member in a log rooted at the `projectId` from its invitation.
-- **Removal ends sessions.** When a peer applies a removal, it closes any open session belonging to a machine that is no longer a member. The removed machine may never receive its own removal record, so it learns of it from the hub's refusal and shows that to its user.
-- **The sync stream after the handshake (known limit).** The handshake proves both machines' keys, but the frames that follow are protected only by TLS. Whoever terminates TLS in front of the hub, such as a reverse proxy or tunnel provider, could relay a member's handshake and then inject its own sync traffic. That party could already read everything, and with bearer tokens it could do more, so this is no worse than before; but it is not yet a channel bound to the machine keys. The direct lane's machine-keyed channel closes it, and the hub path will adopt the same channel.
-- **Hub HTTP routes.** `/people`, `/presence`, `/invites`, delivery leases and sync acknowledgement use a short session opened by the same challenge. Every request in it is signed by the machine key over the session, a sequence number, the method, URL, body hash and project, so a replayed request fails and no bearer secret exists. A delivery lease goes to a member machine for an agent it names.
+- The [v2 channel specification](PARDNER-CHANNEL-SPEC.md) binds the project,
+  route, roles, machine IDs, checkpoint and fresh keys to a signed transcript.
+  The hub serves current members after they prove their key. The first sealed
+  welcome proves the hub's membership and the new machine's admission.
+- Removal closes active sync sessions and drops signed HTTP sessions. A replica
+  applies the removal after computing it from its own record store.
+- Hub HTTP sessions sign each request and its answer. A persistence
+  acknowledgement covers the request for the saved board and signature heads.
 - **No bearer fallback.** Once the handshake ships, `deviceToken` and `replicaToken` are refused. The pre-save `/policy` call becomes a local membership check. The AGENTS.md admission rule is reworded in that PR to "do not weaken admission: every sync connection must authenticate as a member machine" (Q2, decided).
 - **Hand-run hubs and replicas are retired.** `pardner serve --role hub|replica`, `--hub-token` and `PARDNER_REPLICA_TOKEN` go away. Client mode is the only way to host or join a project. `pardner serve` remains the client's internal per-project runtime and agent service, behind the client's machine key (decided).
 - **Enrollment point.** The hub stays the only place enrollment is recorded until the direct lane is qualified (Q3, decided).
-- **Encryption on the wire.** Hub routes stay HTTPS. A direct peer route uses a channel keyed by the machine keys (a Noise handshake, or TLS with pinned raw public keys), so there is no certificate authority and no self-signed certificate prompt.
+- HTTPS remains the outer hub transport. The direct peer lane will reuse the
+  machine-keyed channel when peer transport ships.
 
 ## The local trust zone
 

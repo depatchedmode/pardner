@@ -36,7 +36,9 @@ work without it for an agent on the same computer. `pardner client join
 --invitation-file FILE --operation-id ID` fails with `INVITATION_UNREACHABLE`, naming
 the address, when an invitation points to another computer's loopback address; a
 temporary hub outage reports `HUB_UNAVAILABLE` and can be retried with the same
-operation ID. See [Invite and join](PARDNER-CLIENT.md#invite-and-join).
+operation ID. `UNSIGNED_ENROLLMENT_REPLY` means the hub returned an unsigned
+reply and may be running an older version of Pardner. Check the version on both
+computers before retrying. See [Invite and join](PARDNER-CLIENT.md#invite-and-join).
 
 The client also supports `show --project ID` and `export --project ID
 --output-file FILE`. Use the [recovery guide](PARDNER-CLIENT-RECOVERY.md) for full
@@ -142,19 +144,18 @@ unchanged and refused (`ROLE_MISMATCH`); a hand-run hub's directory still opens 
 standalone service.
 
 How machines authenticate:
-- **Sync socket.** The native socket opens with the machine handshake: both sides
-  sign a transcript of the protocol version, project ID, both machine IDs, both
-  fresh nonces, both roles and the route as dialled. The hub serves only a current
-  member machine, and the joining machine accepts nothing until the hub is a member
-  machine in the log rooted at the project ID it expected. The frames that
-  follow are protected only by TLS, so a party terminating TLS in front of the
-  hub could inject sync traffic on an authenticated socket
-  ([#215](https://github.com/depatchedmode/pardner/issues/215)).
-- **HTTP.** A session opens with the same exchange (`POST …/session`, then
-  `…/session/confirm`); each later request is signed by the machine key over the
-  session, a sequence number, the method, the URL as dialled, the body and the
-  project, in the `x-pardner-session`, `x-pardner-seq` and `x-pardner-signature`
-  headers. A replayed request is refused.
+- The sync v2 handshake binds the project, endpoint roles, machine IDs and
+  dialled route to fresh keys. Both ends verify membership before sync. Each
+  following frame is sealed. A bad frame cuts the connection and the replica
+  retries with fresh keys. Update both machines when status reports
+  `HANDSHAKE_VERSION`.
+- HTTP requests sign the project, session, sequence, method, URL and body.
+  Hub answers sign the originating request, status and body. Only a verified
+  answer can confirm hub persistence or trigger a session retry.
+- `pardner status` and `pardner client status` include `hubRefusal` with the
+  protocol explanation and proof status. A dial failure is reported separately
+  in `syncError`. The replica requires signed membership records before
+  treating a refusal as removal.
 - **Inside one machine.** The client's own loopback hop to its project runtime keeps
   its local token and ticket, as do browser cookies, the operator token and agent
   grants. None of them is accepted between machines.

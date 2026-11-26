@@ -5,14 +5,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
+import { WebSocketServer } from 'ws'
 import { startClient } from '../lib/client-service.js'
 import { CLIENT_API, agentName, setupAgent } from '../lib/client-identity.js'
 import { invitationData, unreachableInvitation } from '../lib/client-invites.js'
 import { sameComputerRoute } from '../support/client-workspace.js'
 import { joinApproved, unwrap } from '../support/enrollment.js'
-import { createHello } from '../lib/machine-handshake.js'
+import { createHello, respondHandshake } from '../lib/machine-handshake.js'
 import { generateMachineKey } from '../lib/machine-key.js'
 import { buildOffer, encodeInvitation } from '../lib/enrollment.js'
+import { machineAnswer } from '../lib/machine-response.js'
+import { testProject } from '../support/machines.js'
 
 // Every fixture has an explicit loopback route unless `route: false` stands for a client started without --public-url.
 async function fixture(t, name, { route = true, agent = { harnessId: 'openai-codex', name: `${name} agent` } } = {}) {
@@ -52,6 +55,92 @@ async function eventually(read, predicate) {
   while (Date.now() < end) { const value = await read(); if (predicate(value)) return value; await new Promise(r => setTimeout(r, 50)) }
   assert.fail('Expected persisted replicas to converge')
 }
+
+test('enrollment verifies the HTTP signer before saving a request and pins the first native responder', { timeout: 30000 }, async t => {
+  const bob = await fixture(t, 'Bob')
+  const project = testProject()
+  const endpoint = `${CLIENT_API}/enroll`
+  const receipt = { projectId: project.projectId, version: 1, machineId: bob.client.registry.machineKey.machineId, name: 'Fixture board' }
+  let signer = null
+  const server = createServer(async (req, res) => {
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    const body = JSON.parse(Buffer.concat(chunks).toString())
+    const result = { genesis: project.genesis, state: 'approved', requestId: 'fixture-request', receipt }
+    const answer = signer && machineAnswer(signer, { projectId: project.projectId, method: 'POST', suffix: endpoint, body }, 200, result)
+    res.setHeader('Content-Type', 'application/json')
+    if (answer) {
+      res.setHeader('x-pardner-responder', answer.signer)
+      res.setHeader('x-pardner-response-signature', answer.signature)
+    }
+    res.end(JSON.stringify(result))
+  })
+  const native = new WebSocketServer({ server })
+  native.on('connection', socket => {
+    void respondHandshake(socket, { key: project.keys[0], projectId: project.projectId, role: 'hub', acceptRoute: () => true,
+      admit: async () => ({ records: project.all }) }).catch(() => socket.terminate())
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    for (const socket of native.clients) socket.terminate()
+    await new Promise(resolve => native.close(resolve))
+    await new Promise(resolve => server.close(resolve))
+  })
+  const invitation = encodeInvitation({ projectName: receipt.name, secret: 'i'.repeat(43), offer: buildOffer(project.owner, {
+    projectId: project.projectId, offerId: 'fixture-offer-for-join', purpose: 'human', role: 'member',
+    routes: [`http://127.0.0.1:${server.address().port}${endpoint}`], expiresAt: Date.now() + 3600000 }) })
+  for (const [operationId, key, code] of [['unsigned', null, 'UNSIGNED_ENROLLMENT_REPLY'], ['non-genesis-signer', project.keys[0], 'HUB_UNAVAILABLE'],
+    ['wrong-welcome-signer', project.owner, 'RESPONDER_NOT_MEMBER']]) {
+    signer = key
+    const { result } = await bob.api('/join', { invitation, operationId }, { failure: true })
+    assert.equal(result.code, code)
+    if (!key) assert.match(result.error, /may be running an older version of Pardner/)
+    const { attempts, projects } = bob.client.registry.read()
+    assert.equal(Object.values(attempts).filter(attempt => attempt.requestId).length, operationId === 'wrong-welcome-signer' ? 1 : 0)
+    assert.deepEqual(projects, {})
+    assert.equal(bob.client.runtimes.size, 0)
+  }
+})
+
+test('missing invitation proof discards the private runtime and a retry reuses the credentials', { timeout: 30000 }, async t => {
+  const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
+  const { project } = await alice.call('/projects', { name: 'Enrollment retry', operationId: 'create' })
+  const invitation = await alice.call(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
+  const input = { invitation: invitation.invitation, operationId: 'join' }
+  const { join: pending } = await bob.call('/join', input)
+  const approval = `/projects/${project.id}/join-requests/${pending.requestId}`
+  const { request } = await alice.call(`${approval}/code`, {})
+  await alice.call(`${approval}/approve`, { code: request.code })
+
+  const start = bob.client.runtime.bind(bob.client)
+  let discarded
+  const observe = t.mock.method(bob.client, 'runtime', async draft => {
+    discarded = await start(draft)
+    const call = discarded.call.bind(discarded)
+    t.mock.method(discarded, 'call', async (method, value) => {
+      const result = await call(method, value)
+      if (method !== 'enrollment-membership') return result
+      return { ...result, records: result.records.filter(record => record.offer?.offerId !== invitation.invite.id) }
+    })
+    return discarded
+  })
+  const { result: failure } = await bob.api('/join', input, { failure: true })
+  observe.mock.restore()
+  assert.equal(failure.code, 'NOT_MEMBER')
+  const state = bob.client.registry.read()
+  const attempt = Object.values(state.attempts).find(attempt => attempt.requestId === pending.requestId)
+  assert.deepEqual(state.projects, {})
+  assert.equal(discarded.dead, true)
+  assert.equal(bob.client.runtimes.has(attempt.id), false)
+
+  const { project: joined } = await bob.call('/join', input)
+  const entry = bob.client.project(joined.id)
+  for (const [key, value] of Object.entries(attempt.runtimeCredentials)) assert.ok(entry[key] === value, `${key} is stable across retry`)
+  const path = `/projects/${joined.id}/api/automerge`
+  const { boardVersion } = await bob.call(`${path}/status`)
+  const waited = await bob.call(`${path}/wait`, { after: boardVersion, timeoutMs: 50 })
+  assert.equal(waited.reason, 'timeout')
+})
 
 test('two real clients create, invite, join, save and share authenticated presence', { timeout: 45000 }, async t => {
   const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
@@ -630,7 +719,7 @@ test('another machine’s handshake cannot wake a dead hosted runtime, which res
   assert.equal(client.runtimes.get(key).connection.workspaceId, project.id)
 })
 
-test('gateway error pages and hub 5xx responses are outages: replicas keep saving locally and only explicit revocation revokes', { timeout: 45000 }, async t => {
+test('gateway error pages and hub 5xx responses are outages: replicas keep saving locally and an unsigned refusal cannot revoke', { timeout: 45000 }, async t => {
   const alice = await fixture(t, 'Alice'), bob = await fixture(t, 'Bob')
   const { result: { project } } = await alice.api('/projects', { name: 'Degraded', operationId: 'create' })
   const { result: invitation } = await alice.api(`/projects/${project.id}/invites`, { purpose: 'human', operationId: 'invite' })
@@ -656,12 +745,13 @@ test('gateway error pages and hub 5xx responses are outages: replicas keep savin
   reply = { status: 401, type: 'application/json', body: JSON.stringify({ code: 'AUTH_REQUIRED', error: 'Sign in again' }) }
   const { result: unauthenticated } = await bob.api(path, { type: 'task.create', operationId: 'through-401', payload: { title: 'Saved through a 401' } })
   assert.equal(unauthenticated.savedLocally, true)
-  // Only the hub saying this machine was removed revokes it.
+  reply = { status: 200, type: 'application/json', body: JSON.stringify({ welcome: { records: [] } }) }
+  assert.equal((await bob.api(`/projects/${project.id}`)).result.project.id, project.id, 'an unsigned opening reply is an outage')
   reply = { status: 403, type: 'application/json', body: JSON.stringify({ code: 'REVOKED', error: 'This machine was removed from the project' }) }
-  const { result: removed, response: removal } = await bob.api(`/projects/${project.id}`, undefined, { failure: true })
-  assert.equal(removal.status, 403); assert.equal(removed.code, 'REVOKED')
-  const { result: revoked, response } = await bob.api(path, { type: 'task.create', operationId: 'denied', payload: { title: 'denied' } }, { failure: true })
-  assert.equal(response.status, 403); assert.equal(revoked.code, 'REVOKED')
+  assert.equal((await bob.api(`/projects/${project.id}`)).result.project.id, project.id)
+  const { result: kept } = await bob.api(path, { type: 'task.create', operationId: 'after-unsigned-refusal', payload: { title: 'Still a member' } })
+  assert.equal(kept.savedLocally, true)
+
 })
 
 test('without --public-url, Human and My device invitations are refused at issue time and nothing is recorded', { timeout: 30000 }, async t => {

@@ -12,7 +12,7 @@
  */
 
 import { WebSocketServer } from 'ws'
-import { ValidatedWebSocketServerAdapter } from './lib/validated-websocket-server-adapter.js'
+import { HubNetworkAdapter } from './lib/native-network.js'
 import { WorkspaceRuntime } from './lib/workspace-runtime.js'
 import { WorkspaceWaits } from './lib/workspace-wait.js'
 import express from 'express'
@@ -27,9 +27,9 @@ import { parseGithubRepo } from './lib/github-remote.js'
 import { isLoopback, isLoopbackRequest } from './lib/loopback.js'
 import { ControlPane } from './lib/control-pane.js'
 import { T3Busy, T3Rejected, T3Unknown } from './lib/t3-mcp-client.js'
-import { HandshakeError, respondHandshake } from './lib/machine-handshake.js'
+import { HandshakeError, refusalFrame, respondHandshake } from './lib/machine-handshake.js'
 import { SessionServer, signedBody, signedHeaders } from './lib/machine-session.js'
-import { removalFor } from './lib/membership.js'
+import { signJsonResponse } from './lib/machine-response.js'
 import { AUTOMERGE_PATHS, DEFAULT_HTTP_PORT, DEFAULT_WS_PORT, NATIVE_AUTOMERGE_WS_PATH, TICKET_PURPOSE } from './lib/sync-protocol.js'
 
 const REQUEST_LIMIT = '100kb'
@@ -137,7 +137,7 @@ class AutomergeSyncServer {
     this.machineRoutes = options.machineRoutes ?? null
     this.syncSessions = new Map()
     // The machine behind each admitted native socket, so a change's deliverer can be named (lib/attribution.js).
-    this.socketMachines = new WeakMap()
+    this.socketFrames = new WeakMap()
     this.duplicates = new Map()
     this.allowInsecureLocal = options.allowInsecureLocal ?? env.PARDNER_ALLOW_INSECURE_LOCAL === '1'
     this.allowLegacyWsQueryToken = options.allowLegacyWsQueryToken ?? env.PARDNER_ALLOW_LEGACY_WS_QUERY_TOKEN === '1'
@@ -183,14 +183,17 @@ class AutomergeSyncServer {
     await this.store.init()
     this.waits = new WorkspaceWaits(this.store)
     this.onDocumentChange = () => this.scheduleDocumentUpdate()
-    this.onRuntimeStatus = status => this.broadcastMessage({ type: 'sync-status', status })
+    this.onRuntimeStatus = status => {
+      if (status.hub?.waiting) this.enforceMembership()
+      this.broadcastMessage({ type: 'sync-status', status })
+    }
     this.onMembership = () => this.enforceMembership()
     this.store.docHandle.on('change', this.onDocumentChange)
     this.store.on?.('status', this.onRuntimeStatus)
     this.store.on?.('membership', this.onMembership)
     // A change's signature state moved (pending, attributed, unattributed): the board is shown again.
     this.store.on?.('attribution', this.onDocumentChange)
-    this.store.peerMachine = peerId => this.socketMachines.get(this.automergeWsAdapter?.sockets?.[peerId]) ?? null
+    this.store.peerMachine = peerId => this.automergeWsAdapter?.sockets.get(peerId)?.machineId ?? null
     this.sessions = this.store.role === 'hub' && this.store.machineKey ? new SessionServer({ key: this.store.machineKey,
       projectId: this.store.manifest.workspaceId, acceptRoute: route => this.routes().http.includes(route),
       member: machineId => this.memberKey(machineId), refusal: machineId => this.notMember(machineId),
@@ -460,7 +463,7 @@ class AutomergeSyncServer {
         return next()
       } catch (error) {
         this.recordSecurityEvent('machineRefused', `Refused a signed ${req.method} from another machine`)
-        return res.status(machineStatus(error.code)).json({ code: error.code, error: error.message })
+        return res.status(machineStatus(error.code)).json({ code: error.code, error: error.message, ...(error.details ? { details: error.details } : {}) })
       }
     }
     this.recordSecurityEvent(
@@ -496,12 +499,13 @@ class AutomergeSyncServer {
    * and only a member that saw a later state of this hub vouches for catching
    * up. Every other machine is refused.
    */
-  async acceptMachine(ws, req) {
+  async acceptMachine(ws) {
     ws.isAlive = true
     ws.on('pong', () => { ws.isAlive = true })
     try {
-      const { initiator } = await respondHandshake(ws, { key: this.store.machineKey, projectId: this.store.manifest.workspaceId, role: 'hub',
+      const { initiator, frames } = await respondHandshake(ws, { key: this.store.machineKey, projectId: this.store.manifest.workspaceId, role: 'hub',
         acceptRoute: route => this.routes().ws.includes(route),
+        canWelcome: initiator => this.servesMachine(initiator.machineId),
         admit: async ({ hello, requestMembership }) => {
           const { machineId, publicKey } = hello.initiator
           const vouches = await this.store.noteCheckpoint(hello.checkpoint)
@@ -522,26 +526,27 @@ class AutomergeSyncServer {
         ws.terminate()
         return
       }
+      this.socketFrames.set(ws, frames)
       this.registerSyncSession(initiator.machineId, ws)
-      this.nativeWsServer.emit('connection', ws, req)
+      this.automergeWsAdapter.admit(frames, initiator.machineId)
     } catch (error) {
       this.recordSecurityEvent('machineRefused', `Refused a machine handshake (${error.code ?? 'failed'})`)
-      if (ws.readyState === ws.OPEN) ws.close(4403, String(error.code ?? 'HANDSHAKE_FAILED').slice(0, 100))
+      if (ws.readyState === ws.OPEN) ws.close(4403)
       else ws.terminate()
     }
   }
 
   /**
    * The refusal for a machine that has proved its key and is not a current
-   * member. A removed machine is told who removed it and whether its person
-   * left (#154), since it may never hold its own removal record. Nothing calls
+   * member. A removed machine gets the records needed to prove its removal
+   * (#154), since it may never hold its own removal record. Nothing calls
    * this before the machine has proved its key.
    */
   notMember(machineId) {
     const membership = this.store.records.membership()
     return membership.removedMachines.includes(machineId)
       ? new HandshakeError('REVOKED', 'This machine was removed from the project; nothing is served to it. Its local data is preserved.',
-        { removal: removalFor(membership, machineId) })
+        { records: this.store.records.removalRecords(machineId, this.store.machineKey.machineId) })
       : new HandshakeError('NOT_MEMBER', 'This machine is not a member of the project; nothing is served to it')
   }
 
@@ -552,7 +557,6 @@ class AutomergeSyncServer {
    * running beside its original: that is reported, not refused (#165).
    */
   registerSyncSession(machineId, ws) {
-    this.socketMachines.set(ws, machineId)
     const live = this.syncSessions.get(machineId) ?? new Set()
     this.syncSessions.set(machineId, live)
     for (const other of live) this.probeDuplicate(machineId, other)
@@ -595,12 +599,24 @@ class AutomergeSyncServer {
     this.store.emitStatus?.()
   }
 
-  /** Ends every session of a machine that is no longer a member, at once: its sync sockets close and its signed sessions are dropped. */
+  servesMachine(machineId) {
+    return !this.stopping && !this.store.hubStatus()?.waiting && Boolean(this.memberKey(machineId))
+  }
+
+  /** Cut active sync and signed requests when the record store changes or the hub enters restore. */
   enforceMembership() {
-    this.sessions?.revokeNonMembers()
+    if (this.store.hubStatus()?.waiting) this.sessions?.active.clear()
+    else this.sessions?.revokeNonMembers()
     for (const [machineId, live] of this.syncSessions) {
-      if (this.memberKey(machineId)) continue
-      for (const ws of live) ws.close(4403, 'REVOKED')
+      if (this.servesMachine(machineId)) continue
+      const error = this.memberKey(machineId) ? new HandshakeError('HUB_WAITING', HUB_WAITING_MESSAGE) : this.notMember(machineId)
+      for (const ws of live) {
+        if (ws.readyState !== ws.OPEN) continue
+        try {
+          this.socketFrames.get(ws).control(refusalFrame(error))
+          ws.close(4403)
+        } catch { ws.terminate() }
+      }
     }
   }
 
@@ -688,6 +704,12 @@ class AutomergeSyncServer {
       ...(this.browserWsPath === undefined ? { wsPort: this.wsPort } : {}),
       workspaceId: this.store.manifest.workspaceId,
     }))
+    this.app.use((req, res, next) => {
+      if (this.sessions && (req.path === '/session' || req.path === '/session/confirm' || (MACHINE_ROUTES.has(req.path) && signedHeaders(req.headers)))) {
+        signJsonResponse(req, res, this.store.machineKey, this.store.manifest.workspaceId, req.originalUrl)
+      }
+      next()
+    })
     // The machine handshake carried by HTTP: it opens a signed session (lib/machine-session.js).
     const sessionFailure = (res, error) => res.status(machineStatus(error.code)).json({ code: error.code ?? 'HANDSHAKE_INVALID', error: error.message,
       ...(error.details ? { details: error.details } : {}) })
@@ -800,7 +822,7 @@ class AutomergeSyncServer {
         res.json(this.verifyMachine({ session, seq, signature, method, suffix, body }))
       } catch (error) {
         this.recordSecurityEvent('machineRefused', `Refused a signed request from another machine (${error.code ?? 'failed'})`)
-        res.status(machineStatus(error.code)).json({ success: false, code: error.code ?? 'AUTH_REQUIRED', error: error.message })
+        res.status(machineStatus(error.code)).json({ success: false, code: error.code ?? 'AUTH_REQUIRED', error: error.message, ...(error.details ? { details: error.details } : {}) })
       }
     })
 
@@ -958,7 +980,7 @@ class AutomergeSyncServer {
   setupWebSocketServer() {
     this.wssJson = new WebSocketServer({ noServer: true })
     this.nativeWsServer = new WebSocketServer({ noServer: true })
-    this.automergeWsAdapter = new ValidatedWebSocketServerAdapter(this.nativeWsServer)
+    this.automergeWsAdapter = new HubNetworkAdapter(this.nativeWsServer, this.store.machineKey?.machineId, id => this.servesMachine(id))
 
     this.wsRequestHandler = (req, res) => {
       if (this.stopping) {
@@ -1016,7 +1038,7 @@ class AutomergeSyncServer {
       const target = pathname === NATIVE_AUTOMERGE_WS_PATH ? this.nativeWsServer : this.wssJson
       target.handleUpgrade(req, socket, head, ws => {
         // Another machine reaches Automerge only after the machine handshake on its socket.
-        if (target === this.nativeWsServer) return void this.acceptMachine(ws, req)
+        if (target === this.nativeWsServer) return void this.acceptMachine(ws)
         target.emit('connection', ws, req)
       })
     }

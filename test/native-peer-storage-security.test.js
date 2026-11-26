@@ -36,11 +36,11 @@ it('rejects unsafe native join metadata from enrolled replicas before Repo or st
       const ws = await connect(server)
       try {
         const closed = once(ws, 'close', { signal: AbortSignal.timeout(1500) })
-        ws.send(cbor.encode({ type: 'join', senderId: 'attacker', peerMetadata, supportedProtocolVersions: ['1'] }))
+        ws.sendSync(cbor.encode({ type: 'join', senderId: ws.peerIdFor('attacker'), peerMetadata, supportedProtocolVersions: ['1'] }))
         // Even queued follow-up frames must not admit this closing connection.
-        ws.send(cbor.encode({ type: 'join', senderId: 'queued-peer', peerMetadata: { storageId: 'valid-peer' } }))
+        ws.sendSync(cbor.encode({ type: 'join', senderId: ws.peerIdFor('queued-peer'), peerMetadata: { storageId: 'valid-peer' }, supportedProtocolVersions: ['1'] }))
         const [code] = await closed
-        assert.equal(code, 1008)
+        assert.equal(code, 1006)
         assert.deepEqual(candidates, [])
         assert.deepEqual(syncWrites, [])
         assert.equal(server.store.repo.peerMetadataByPeerId.attacker, undefined)
@@ -58,9 +58,9 @@ it('accepts ephemeral native peers without a storage ID', async () => {
       const ws = await connect(server)
       try {
         const candidate = once(server.automergeWsAdapter, 'peer-candidate', { signal: AbortSignal.timeout(1500) })
-        ws.send(cbor.encode({ type: 'join', senderId: 'ephemeral-peer', ...(peerMetadata ? { peerMetadata } : {}) }))
+        ws.sendSync(cbor.encode({ type: 'join', senderId: ws.peerIdFor('ephemeral-peer'), ...(peerMetadata ? { peerMetadata } : {}), supportedProtocolVersions: ['1'] }))
         const [peer] = await candidate
-        assert.equal(peer.peerId, 'ephemeral-peer')
+        assert.equal(peer.peerId, ws.peerIdFor('ephemeral-peer'))
       } finally {
         const closed = once(ws, 'close')
         ws.close()
@@ -99,7 +99,7 @@ it('replicas refuse unsafe storage metadata from the hub without a storage error
       await waitFor(() => peer.status().hubConnected)
       server.automergeWsAdapter.peerMetadata = { storageId: '../../../../escaped', isEphemeral: false }
       for (const socket of server.nativeWsServer.clients) socket.terminate()
-      await waitFor(() => peer.status().syncError === 'Hub sent invalid peer storage metadata')
+      await waitFor(() => peer.status().hubRefusal?.code === 'CHANNEL_INVALID')
       const taskId = await create({ title: 'Hostile hub' })
       await new Promise(resolve => setTimeout(resolve, 500))
       assert.equal(peer.workspace.handle.doc().tasks[taskId], undefined)

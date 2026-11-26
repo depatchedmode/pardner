@@ -6,9 +6,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
-import { WebSocket } from 'ws'
+import { WebSocket, WebSocketServer } from 'ws'
 import AutomergeSyncServer from '../automerge-sync-server.js'
+import { fetchMachineResponse } from '../lib/machine-response.js'
 import { initiateHandshake } from '../lib/machine-handshake.js'
+import { RecordStore } from '../lib/record-store.js'
+import { buildRecord, removalFor } from '../lib/membership.js'
 import { admitMembers, handshakeSocket, hubRuntime, replicaRuntime, signedRequest, testProject } from '../support/machines.js'
 
 // Transport admission at the project runtime (docs/PARDNER-TRUST-DESIGN.md, section 5): another machine reaches a
@@ -72,9 +75,11 @@ it('a non-member machine is refused and served nothing, on the sync socket and o
     const closed = once(socket, 'close')
     await assert.rejects(initiateHandshake(socket, { key: project.stranger, projectId: project.projectId, route: nativeUrl(server), role: 'replica' }),
       { code: 'NOT_MEMBER' })
-    assert.equal((await closed)[0], 4403)
+    const [code, reason] = await closed
+    assert.equal(code, 4403)
+    assert.equal(reason.length, 0, 'the close frame does not repeat the sealed refusal')
     // A stranger proves its own key and is then refused; only the handshake reply reached it, no records or document data.
-    assert.deepEqual(frames.map(frame => frame.type), ['hello-reply', 'refused'])
+    assert.deepEqual(frames.map(frame => frame.type), ['hello-reply', 'binary'])
     const session = await signedRequest(project.stranger, { projectId: project.projectId, route: httpRoute(server) }, '/automerge/sync-ack',
       { workspaceId: project.projectId, heads: [] })
     assert.equal(session.status, 403); assert.equal(session.result.code, 'NOT_MEMBER')
@@ -103,8 +108,8 @@ it('a bearer token is refused between machines: on signed routes, the native soc
     await once(socket, 'open')
     const closed = once(socket, 'close')
     socket.send(Buffer.from([0xa1, 0x64, 0x74, 0x79, 0x70, 0x65, 0x64, 0x6a, 0x6f, 0x69, 0x6e]))
-    assert.equal((await closed)[0], 4403)
-    assert.deepEqual(frames, ['refused'])
+    assert.equal((await closed)[0], 1006)
+    assert.deepEqual(frames, [])
   })
 })
 
@@ -116,7 +121,7 @@ it('a recorded handshake is useless against a new connection, another hub of the
     const recorded = []
     const live = await rawSocket(server)
     const send = live.socket.send.bind(live.socket)
-    live.socket.send = (data, ...rest) => { recorded.push(JSON.parse(data)); return send(data, ...rest) }
+    live.socket.send = (data, ...rest) => { recorded.push(data); return send(data, ...rest) }
     await initiateHandshake(live.socket, { key: project.keys[0], projectId: project.projectId, route: nativeUrl(server), role: 'replica',
       knownRecords: () => project.all })
     live.socket.terminate()
@@ -124,14 +129,14 @@ it('a recorded handshake is useless against a new connection, another hub of the
     const replay = async target => {
       const { socket, frames } = await rawSocket(target)
       const closed = once(socket, 'close')
-      socket.send(JSON.stringify(hello))
+      socket.send(hello)
       await eventually(() => frames.length, 'no answer to the replayed hello')
-      if (frames[0].type === 'hello-reply') socket.send(JSON.stringify(confirm))
+      if (frames[0].type === 'hello-reply') socket.send(confirm)
       await closed
       return frames.map(frame => frame.type === 'refused' ? frame.code : frame.type)
     }
     // A new connection: the hub's fresh nonce makes the recorded confirmation fail.
-    assert.deepEqual(await replay(server), ['hello-reply', 'HANDSHAKE_INVALID'])
+    assert.deepEqual(await replay(server), ['hello-reply'])
     // Another hub of the same project (other routes): the hello names the route it was dialled on.
     const second = await hub(join(root, 'second-hub'))
     assert.deepEqual(await replay(second), ['ROUTE_REJECTED'])
@@ -153,10 +158,7 @@ it('a captured signed request is refused when replayed, in its session or at ano
       const request = { url, init: { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', ...headers },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }) } }
       if (headers['x-pardner-signature']) captured.push(request)
-      const response = await fetch(request.url, request.init)
-      const result = await response.json()
-      if (!response.ok) throw Object.assign(new Error(result.error), { code: result.code })
-      return result
+      return fetchMachineResponse(url, { method: request.init.method, headers, body })
     }
     const client = new SessionClient({ key: project.keys[0], projectId: project.projectId, route: httpRoute(server), send, knownRecords: async () => project.all })
     const receipt = await client.request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } })
@@ -199,6 +201,13 @@ it('a removed machine is refused, and its open sync session closes when the remo
     await server.store.addRecords([project.remove(project.keys[0])])
     await eventually(() => !removed.status().hubConnected, 'the removed machine’s session stayed open')
     await eventually(() => removed.status().hubRefusal?.code === 'REVOKED', 'the removed machine was never refused')
+    const generation = removed.adapter.generation
+    let requests = 0
+    const send = removed.hubSession.send
+    removed.hubSession.send = (...args) => { requests++; return send(...args) }
+    await delay(350)
+    assert.equal(removed.adapter.generation, generation, 'the removed replica neither reconnects nor arms another dial')
+    assert.equal(requests, 0, 'the removed replica stops polling for persistence acknowledgements')
     assert.equal(server.syncSessions.has(project.keys[0].machineId), false)
     assert.equal(kept.status().hubConnected, true, 'other members keep syncing')
     const session = await signedRequest(project.keys[0], { projectId: project.projectId, route: httpRoute(server) }, '/automerge/sync-ack',
@@ -207,39 +216,63 @@ it('a removed machine is refused, and its open sync session closes when the remo
   })
 })
 
-it('a removed machine is told who removed it only once it proves its key, on the socket and over HTTP', async () => {
-  await withHub(async ({ project, hub }) => {
+it('removal received from a locally revoked signer leaves the durable membership unchanged', async () => {
+  await withHub(async ({ project, hub, replica }) => {
+    const server = await hub(), member = await replica(server, 0)
+    const administrator = project.stranger
+    const adminAdmission = project.admit(administrator, 3, 'admin')
+    const historicalRemoval = project.remove(project.keys[0], administrator)
+    member.admitRecords([adminAdmission, project.remove(administrator)])
+    assert.equal(member.learnRemoval([historicalRemoval]), null)
+    assert.equal(member.records.get(historicalRemoval.recordId), undefined)
+    assert.equal(member.status().hubRefusal, null)
+    assert.ok(member.membership().machines.some(machine => machine.id === project.keys[0].machineId))
+  })
+})
+
+it('a removed machine receives only the needed signed records on the socket and over HTTP', async () => {
+  await withHub(async ({ root, project, hub }) => {
     const server = await hub()
     const removed = project.keys[0]
-    await server.store.addRecords([project.remove(removed)])
-    const expected = { removal: { kind: 'machine', left: false, by: { personId: project.ownerId, name: 'Owner' } } }
-    // The removed machine itself finishes the signatures and is refused with who removed it (#154).
-    const { socket } = await rawSocket(server)
-    const refused = await initiateHandshake(socket, { key: removed, projectId: project.projectId, route: nativeUrl(server), role: 'replica' }).catch(error => error)
-    assert.deepEqual([refused.code, refused.details], ['REVOKED', expected])
-    // Someone who presents the removed machine's public key without its private key learns nothing beyond the code.
-    const impostor = { machineId: removed.machineId, publicKey: removed.publicKey, sign: project.stranger.sign.bind(project.stranger) }
-    const posing = await rawSocket(server)
-    const failed = await initiateHandshake(posing.socket, { key: impostor, projectId: project.projectId, route: nativeUrl(server), role: 'replica' }).catch(error => error)
-    assert.notEqual(failed.code, undefined)
-    assert.equal(failed.details, undefined, 'an impostor is told nothing about the removal')
-    assert.equal(posing.frames.some(frame => frame.type === 'welcome' || frame.records), false)
-    // The same over HTTP: the session's confirmation carries the details, never its hello.
-    const { SessionClient } = await import('../lib/machine-session.js')
-    const send = async (url, { headers = {}, body }) => {
-      const response = await fetch(url, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
-      const result = await response.json()
-      if (!response.ok) throw Object.assign(new Error(result.error), { code: result.code, details: result.details })
-      return result
+    const removalRecord = project.remove(removed)
+    await server.store.addRecords([removalRecord])
+    const later = project.admit(project.stranger, 3)
+    await server.store.addRecords([later, buildRecord(project.stranger, { kind: 'profile', projectId: project.projectId,
+      subject: project.stranger.machineId, displayName: 'Later member', email: 'new@example.test' })])
+    const recordsReceived = []
+    const saved = new RecordStore(join(root, 'removed.sqlite'), project.projectId)
+    const onRemoval = records => {
+      recordsReceived.push(records.map(record => record.recordId).sort())
+      saved.admit(records)
+      const membership = saved.membership()
+      return membership.removedMachines.includes(removed.machineId) ? { removal: removalFor(membership, removed.machineId) } : null
     }
-    const told = await new SessionClient({ key: removed, projectId: project.projectId, route: httpRoute(server), send, knownRecords: async () => project.all })
-      .request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } }).catch(error => error)
-    assert.deepEqual([told.code, told.details], ['REVOKED', expected])
-    const hello = await new SessionClient({ key: impostor, projectId: project.projectId, route: httpRoute(server), send, knownRecords: async () => project.all })
-      .request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } }).catch(error => error)
-    assert.equal(hello.details, undefined, 'an impostor is told nothing about the removal over HTTP either')
-    assert.equal(server.sessions.active.size, 0)
+    try {
+      const expected = { removal: { kind: 'machine', left: false, by: { personId: project.ownerId, name: 'Owner' } } }
+      // The removed machine itself finishes the signatures and is refused with who removed it (#154).
+      const { socket } = await rawSocket(server)
+      const refused = await initiateHandshake(socket, { key: removed, projectId: project.projectId, route: nativeUrl(server), role: 'replica', onRemoval }).catch(error => error)
+      assert.deepEqual([refused.code, refused.details?.removal, refused.details?.verified], ['REVOKED', expected.removal, true])
+      // Someone who presents the removed machine's public key without its private key learns nothing beyond the code.
+      const impostor = { machineId: removed.machineId, publicKey: removed.publicKey, sign: project.stranger.sign.bind(project.stranger) }
+      const posing = await rawSocket(server)
+      const failed = await initiateHandshake(posing.socket, { key: impostor, projectId: project.projectId, route: nativeUrl(server), role: 'replica' }).catch(error => error)
+      assert.notEqual(failed.code, undefined)
+      assert.equal(failed.details, undefined, 'an impostor is told nothing about the removal')
+      assert.equal(posing.frames.some(frame => frame.type === 'welcome' || frame.records), false)
+      // The same over HTTP: the session's confirmation carries the details, never its hello.
+      const { SessionClient } = await import('../lib/machine-session.js')
+      const send = fetchMachineResponse
+      const told = await new SessionClient({ key: removed, projectId: project.projectId, route: httpRoute(server), send, onRemoval })
+        .request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } }).catch(error => error)
+      assert.deepEqual([told.code, told.details], ['REVOKED', { ...expected, verified: true, authenticated: true }])
+      const minimalIds = [project.genesis, project.records[0], removalRecord].map(record => record.recordId).sort()
+      assert.deepEqual(recordsReceived, [minimalIds, minimalIds])
+      const hello = await new SessionClient({ key: impostor, projectId: project.projectId, route: httpRoute(server), send, knownRecords: async () => project.all })
+        .request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } }).catch(error => error)
+      assert.equal(hello.details, undefined, 'an impostor is told nothing about the removal over HTTP either')
+      assert.equal(server.sessions.active.size, 0)
+    } finally { saved.close() }
   })
 })
 
@@ -264,28 +297,24 @@ it('an unproven party gets the same answer whether the key it presents is unknow
     }
     assert.deepEqual(answers[1], answers[0], 'a removed machine’s key looks like an unknown one until it is proved')
     assert.deepEqual(answers[2], answers[0], 'so does a current member’s key')
-    assert.deepEqual(answers[0].frames.map(([type]) => type), ['hello-reply', 'refused'], 'the reply carries no records or document data')
+    assert.deepEqual(answers[0].frames.map(([type]) => type), ['hello-reply'], 'the reply carries no records or document data')
     assert.equal(server.syncSessions.size, 0)
     assert.equal(server.sessions.active.size, 0)
   })
 })
 
 it('removal also ends a live signed HTTP session at once', async () => {
-  await withHub(async ({ project, hub }) => {
+  await withHub(async ({ project, hub, replica }) => {
     const server = await hub()
+    const member = await replica(server, 1)
     const { SessionClient } = await import('../lib/machine-session.js')
-    const send = async (url, { headers = {}, body }) => {
-      const response = await fetch(url, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
-      const result = await response.json()
-      if (!response.ok) throw Object.assign(new Error(result.error), { code: result.code })
-      return result
-    }
-    const client = new SessionClient({ key: project.keys[1], projectId: project.projectId, route: httpRoute(server), send, knownRecords: async () => project.all })
+    const send = fetchMachineResponse
+    const client = new SessionClient({ key: project.keys[1], projectId: project.projectId, route: httpRoute(server), send,
+      knownRecords: async () => member.records.all(), onRemoval: records => member.learnRemoval(records) })
     await client.request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } })
-    assert.equal(server.sessions.active.size, 1)
+    assert.ok(server.sessions.active.has(client.current.id))
     await server.store.addRecords([project.remove(project.keys[1])])
-    assert.equal(server.sessions.active.size, 0)
+    assert.equal(server.sessions.active.has(client.current.id), false)
     await assert.rejects(client.request('/automerge/sync-ack', { method: 'POST', body: { workspaceId: project.projectId, heads: [] } }), { code: 'REVOKED' })
   })
 })
@@ -311,7 +340,13 @@ it('two live sync sessions for one machine are reported, and a dead one is repla
     const clean = await hub(join(root, 'clean-hub'))
     const silent = await handshakeSocket(nativeUrl(clean), { key: project.keys[1], projectId: project.projectId, records: project.all,
       socketOptions: { autoPong: false } })
+    silent.sendSync((await import('@automerge/automerge-repo')).cbor.encode({
+      type: 'join', senderId: silent.peerIdFor('silent'), supportedProtocolVersions: ['1'],
+    }))
     const reconnect = await handshakeSocket(nativeUrl(clean), { key: project.keys[1], projectId: project.projectId, records: project.all })
+    reconnect.sendSync((await import('@automerge/automerge-repo')).cbor.encode({
+      type: 'join', senderId: reconnect.peerIdFor('reconnect'), supportedProtocolVersions: ['1'],
+    }))
     await eventually(() => clean.syncSessions.get(project.keys[1].machineId)?.size === 1, 'the silent session was never closed', 8000)
     assert.deepEqual(clean.store.status().duplicateMachines, [])
     silent.terminate(); reconnect.terminate()
@@ -376,7 +411,27 @@ it('a restored hub that nobody can vouch for waits until its operator confirms n
     await cp(hubDirectory, join(root, 'restored'), { recursive: true })
     server = await hub(join(root, 'restored'), ports)
     member = await replica(server, 1, join(root, 'member'))
-    await eventually(() => member.status().hubRefusal?.code === 'HUB_WAITING', 'the restored hub served before it was confirmed')
+    const refusal = await eventually(() => {
+      const { hubRefusal } = member.status()
+      return hubRefusal?.code === 'HUB_WAITING' && hubRefusal
+    }, 'the restored hub served before it was confirmed')
+    assert.equal(refusal.authenticated, true)
+    const dial = member.adapter.getUrl
+    const relay = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+    relay.on('connection', socket => socket.once('message', () => socket.close(4403, 'REVOKED')))
+    await once(relay, 'listening')
+    try {
+      member.adapter.getUrl = async () => { throw Object.assign(new Error('Fixture dial refused'), { code: 'ECONNREFUSED' }) }
+      await eventually(() => member.status().syncError === 'Fixture dial refused', 'the transport failure was never reported')
+      assert.deepEqual(member.status().hubRefusal, refusal)
+      member.adapter.getUrl = async () => `ws://127.0.0.1:${relay.address().port}`
+      await eventually(() => member.status().syncError === 'The hub connection closed before sync started', 'the early close was never reported')
+      assert.deepEqual(member.status().hubRefusal, refusal)
+    } finally {
+      member.adapter.getUrl = dial
+      for (const socket of relay.clients) socket.terminate()
+      await new Promise(resolve => relay.close(resolve))
+    }
     const resumed = await (await fetch(`${httpRoute(server)}/automerge/hub/resume`, { method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}' })).json()
     assert.equal(resumed.waiting, false); assert.equal(resumed.resumedBy, 'operator')
@@ -409,5 +464,27 @@ it('a hub that sees a checkpoint it never reached catches up from that member, e
     await eventually(() => member.status().hubConnected, 'the member was never served')
     assert.deepEqual(server.store.hubStatus().resumedBy, { machineId: project.keys[1].machineId })
     assert.ok(server.store.hubStatus().starts > state.starts, 'its new checkpoints are ahead of the lost run')
+  })
+})
+
+it('a protected join can only claim a peer ID owned by the authenticated machine', async () => {
+  await withHub(async ({ project, hub }) => {
+    const server = await hub()
+    const [first, second] = project.keys
+    const { cbor } = await import('@automerge/automerge-repo')
+    const sockets = await Promise.all([first, second].map(key => handshakeSocket(nativeUrl(server),
+      { key, projectId: project.projectId, records: project.all })))
+    const [member, other] = sockets
+    try {
+      const peerId = member.peerIdFor('live-peer')
+      const admitted = once(server.automergeWsAdapter, 'peer-candidate')
+      member.sendSync(cbor.encode({ type: 'join', senderId: peerId, supportedProtocolVersions: ['1'] }))
+      assert.equal((await admitted)[0].peerId, peerId)
+      const closed = once(other, 'close', { signal: AbortSignal.timeout(3000) })
+      other.sendSync(cbor.encode({ type: 'join', senderId: peerId, supportedProtocolVersions: ['1'] }))
+      await closed
+      assert.equal(server.automergeWsAdapter.sockets.get(peerId).machineId, first.machineId)
+      assert.equal(member.readyState, member.OPEN)
+    } finally { for (const socket of sockets) socket.terminate() }
   })
 })

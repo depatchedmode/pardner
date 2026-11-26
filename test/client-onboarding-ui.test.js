@@ -1,6 +1,7 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
+import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -502,9 +503,24 @@ for (const engine of [chromium, webkit]) it(`links a second device from the iden
     await form.getByLabel('My device invitation').fill(device.invitation)
     // Before anything is sent, the page says whose identity this computer joins (#155).
     await form.getByText('This computer will be linked as Alice <alice@example.test> in “Linked board”.').waitFor()
+    const operationIds = new Set()
+    let unsignedPoll = false
+    await page.route(`**${CLIENT_API}/join`, route => {
+      operationIds.add(route.request().postDataJSON().operationId)
+      if (!unsignedPoll) return route.continue()
+      return route.fulfill({ status: 503, json: { code: 'UNSIGNED_ENROLLMENT_REPLY',
+        error: 'The hub may be running an older version of Pardner. Check the version on both computers and try again.' } })
+    })
     await form.getByRole('button', { name: 'Link device' }).click()
     const waiting = page.getByRole('region', { name: 'Waiting for approval' })
     await waiting.getByText(/link this computer as Alice <alice@example\.test> in “Linked board”/).waitFor({ timeout: 30000 })
+    unsignedPoll = true
+    const warning = waiting.getByRole('alert')
+    await warning.getByText('Pardner couldn’t verify the hub’s reply', { exact: true }).waitFor()
+    await warning.getByText(/Check the version on both computers/).waitFor()
+    await waiting.screenshot({ path: join('output', 'playwright', `unsigned-approval-${engine.name()}.png`) })
+    unsignedPoll = false
+    await warning.waitFor({ state: 'hidden' })
     // Alice approves from her own client after comparing the code.
     const [pending] = (await alice.call(`/projects/${project.id}/join-requests`)).requests
     assert.equal(pending.person.name, 'Alice'); assert.equal(pending.purpose, 'device')
@@ -515,6 +531,7 @@ for (const engine of [chromium, webkit]) it(`links a second device from the iden
     await page.getByRole('button', { name: /^Alice, human, .*, you\. Open People$/ }).waitFor()
     assert.equal(desktop.client.registry.read().identity.id, alice.client.registry.read().identity.id, 'the device adopts the sponsor identity')
     assert.equal(alice.client.registry.read().invites[device.invite.id].state, 'redeemed')
+    assert.equal(operationIds.size, 1, 'the browser keeps polling the same join attempt')
     assert.deepEqual(errors, [])
   })
 
@@ -645,6 +662,22 @@ for (const engine of [chromium, webkit]) it(`recovers a loopback-only invitation
     await unreachableAlert.getByText('This invitation points somewhere this computer can’t reach', { exact: true }).waitFor({ timeout: 30000 })
     await unreachableAlert.getByText(`This invitation points to ${unreachable}, which this computer can't reach`, { exact: false }).waitFor()
     assert.doesNotMatch(await unreachableAlert.textContent(), /retry/i)
+
+    const olderHub = createServer((_req, res) => {
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({ state: 'pending', requestId: 'unsigned-request' }))
+    })
+    await new Promise(resolve => olderHub.listen(0, '127.0.0.1', resolve))
+    try {
+      const olderInvitation = encodeInvitation({ projectName: 'Older board', secret: 'i'.repeat(43), offer: buildOffer(generateMachineKey(), {
+        projectId: 'a'.repeat(64), offerId: 'offer-unsigned-1', purpose: 'human', role: 'member',
+        routes: [`http://127.0.0.1:${olderHub.address().port}${CLIENT_API}/enroll`], expiresAt: Date.now() + 3600000 }) })
+      await carolPage.getByLabel('Invitation').fill(olderInvitation)
+      await carolPage.getByRole('button', { name: 'Join project' }).click()
+      const versionAlert = carolPage.getByRole('alert')
+      await versionAlert.getByText('Pardner couldn’t verify the hub’s reply', { exact: true }).waitFor()
+      await versionAlert.getByText(/may be running an older version of Pardner/).waitFor()
+    } finally { await new Promise(resolve => olderHub.close(resolve)) }
 
     // Bob joined Alice's project; with Alice's computer (the hub) down, his Invite dialog explains rather than loading forever.
     // Bob is a member, so since #196 the invitation he may issue is My device (pairing his own machine), issued by the hub.

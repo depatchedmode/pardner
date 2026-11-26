@@ -111,7 +111,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: false,
     maps: [
       { file: SERVER, anchor: "this.rejectWebSocketUpgrade(socket, 503, 'Service Unavailable', { error: 'The service is stopping' })" },
-      { file: SERVER, anchor: 'target.handleUpgrade(req, socket, head, ws => {', note: 'accepted upgrade becomes a WebSocket client; a native one reaches Automerge only after the machine handshake, and stop() terminates it either way' },
+      { file: SERVER, anchor: 'target.handleUpgrade(req, socket, head, ws => {', note: 'accepted upgrade becomes a WebSocket client; a native one reaches Automerge only after the sealed handshake and member admission, and stop() terminates it either way' },
     ],
     apply: state => {
       if (state.done || state.requests[index].state !== 'new') return []
@@ -154,7 +154,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
 
   action('SyncDown', {
     fair: false,
-    maps: [{ file: RUNTIME, anchor: 'this.repo.networkSubsystem.addNetworkAdapter(this.adapter)', note: 'hub operations reach the replica through the native adapter' }],
+    maps: [{ file: RUNTIME, anchor: 'this.repo.networkSubsystem.addNetworkAdapter(this.adapter)', note: 'hub operations reach the replica through authenticated native frames' }],
     apply: state => (state.done || state.replica.h >= state.hub.h ? [] : [{ next: { ...state, replica: { ...state.replica, h: state.replica.h + 1 } } }]),
   })
 
@@ -163,7 +163,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     maps: [
       { file: RUNTIME, anchor: "requireValue(!this.attribution.unwritten, 'This machine’s newest signatures are not yet in the signature document', 'SIGNATURES_UNWRITTEN')", note: 'pending signatures are first written into the signature document (a local change that only advances its heads); while one is unwritten no request is sent, which this unfair action already allows' },
       { file: RUNTIME, anchor: 'const requestedHeads = getHeads(this.workspace.handle.doc())', note: 'the board and signature heads are captured as one pair in the step that found the outbox empty, before the local flush; a change made during that flush is in neither' },
-      { file: RUNTIME, anchor: 'const receipt = await this.requestHub(AUTOMERGE_PATHS.syncAck, {' },
+      { file: RUNTIME, anchor: 'const receipt = await this.requestHub(AUTOMERGE_PATHS.syncAck, {', note: 'local removal can suppress the request, as this optional action allows' },
     ],
     apply: state => {
       if (state.done || state.inflight) return []
@@ -342,7 +342,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
     fair: true,
     maps: [
       { file: RUNTIME, anchor: 'if (sameHeads(getHeads(doc), requestedHeads) && hasHeads(doc, receipt.hubHeads) && signaturesHeld) {', note: 'first guard, before the local flush; the hub’s reported heads must be held for both documents' },
-      { file: RUNTIME, anchor: 'if (!this.stopController.signal.aborted) this.lastSyncError = error.message', note: 'rejected or failed acknowledgements only record an error' },
+      { file: RUNTIME, anchor: 'if (!this.stopController.signal.aborted) this.lastSyncError = error.message', note: 'requests with a rejected reply, including a bad response signature, do not advance acknowledged heads' },
     ],
     apply: state => {
       const current = state.requests[index]
@@ -359,7 +359,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
   each('ack', (request, index) => action(`ReplicaAckCommit(${request.id})`, {
     fair: true,
     maps: [
-      { file: RUNTIME, anchor: 'if (sameHeads(getHeads(this.workspace.handle.doc()), requestedHeads)) {\n            this.acknowledgedHeads = requestedHeads', note: 'second guard after the local flush; records the requested snapshot, not the current heads' },
+      { file: RUNTIME, anchor: 'if (!this.localRemoval() && sameHeads(getHeads(this.workspace.handle.doc()), requestedHeads)) {\n            this.acknowledgedHeads = requestedHeads', note: 'second guard after the local flush; while still enrolled, records the requested snapshot rather than current heads' },
       { file: RUNTIME, anchor: 'if (signatures) this.acknowledgedSignatureHeads = requestedSignatureHeads', note: 'the signature document’s requested snapshot likewise, never its current heads' },
     ],
     apply: state => {
