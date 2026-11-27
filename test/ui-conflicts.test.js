@@ -3,6 +3,44 @@ import assert from 'node:assert/strict'
 import { chromium, webkit } from 'playwright'
 import { withClientReplicas, showTaskActions } from '../support/client-workspace.js'
 
+// `person.task` asserts on every non-OK response. A replica that has not yet received a
+// newly created task answers NOT_FOUND; treat only that expected miss as "not ready" so
+// `eventually` can retry within its existing deadline. Any other failure stays fatal.
+function isMissingTask(error) {
+  return error?.code === 'ERR_ASSERTION'
+    && /"code":"NOT_FOUND"/.test(error.message)
+    && /Task not found:/.test(error.message)
+}
+
+async function taskIfPresent(person, taskId) {
+  try {
+    return await person.task(taskId)
+  } catch (error) {
+    if (isMissingTask(error)) return null
+    throw error
+  }
+}
+
+it('retries a replica task context that is missing until sync delivers it', { timeout: 90000 }, async () => {
+  // Hold the hub down after create so the first context read on the other replica is NOT_FOUND;
+  // convergence still requires the task to appear within eventually's existing deadline.
+  await withClientReplicas(chromium, { humans: ['Carol', 'Alice', { name: 'Alice', device: true }] },
+    async ({ people: [, alice, otherDevice], partition, settled }) => {
+      let taskId
+      let firstRead
+      await partition(async () => {
+        ;({ result: { taskId } } = await alice.operate('task.create', { title: 'Pending sync' }))
+        firstRead = await taskIfPresent(otherDevice, taskId)
+        assert.equal(firstRead, null, 'the other replica answers NOT_FOUND before the task syncs')
+      }, async () => {
+        const task = await taskIfPresent(otherDevice, taskId)
+        return task?.task?.title === 'Pending sync' && await settled()
+      })
+      assert.equal(firstRead, null)
+      assert.equal((await otherDevice.task(taskId)).task.title, 'Pending sync')
+    })
+})
+
 it('resolves a real two-replica task outcome conflict through the browser', { timeout: 90000 }, async () => {
   // Carol's client hosts the project; Alice and Bob each write from their own replica client.
   await withClientReplicas(chromium, { humans: ['Carol', 'Alice', 'Bob'] }, async ({ people: [, alice, bob], newPage, partition, settled, eventually }) => {
@@ -61,7 +99,10 @@ for (const engine of [chromium, webkit]) {
         const { result: { taskId } } = await alice.operate('task.create', { title: 'Comment permissions' })
         const added = await alice.operate('comment.add', { taskId, text: 'Original' })
         const commentId = added.result.commentId
-        await eventually(async () => (await otherDevice.task(taskId)).comments.length === 1 && await settled())
+        await eventually(async () => {
+          const task = await taskIfPresent(otherDevice, taskId)
+          return task?.comments.length === 1 && await settled()
+        })
         await partition(async () => {
           for (const [person, text] of [[alice, 'First alternative'], [otherDevice, 'Second alternative']]) {
             await person.operate('comment.edit', { commentId, text, expectedRevisions: [added.operationId] })
