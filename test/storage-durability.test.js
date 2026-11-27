@@ -413,7 +413,9 @@ it('saves a reopened document\'s edits as small chunks, compacts them as Repo do
     let url, documentId
     try {
       // A document made in this process is saved by Repo itself: this is the layout the reopened one must keep.
-      const handle = writer.create({ padding: noise(8000), edits: [] });
+      // Padding sized so several ~3 KiB edits are required before incremental bytes hit
+      // SNAPSHOT_INCREMENTAL_RATIO (0.25) of the snapshot — same reopen/incremental/compact shape.
+      const handle = writer.create({ padding: noise(48000), edits: [] });
       ({ url, documentId } = handle)
       await writer.flush()
       const [snapshot] = await storedChunks(directory, documentId)
@@ -446,11 +448,13 @@ it('saves a reopened document\'s edits as small chunks, compacts them as Repo do
       const written = (await new NodeFSStorageAdapter(directory).loadRange([documentId, 'incremental'])).find(chunk => chunk.key[2] === addedHash)
       assert.equal(addedHash, sha256(written.data))
 
-      // Repo's rule: a save compacts once the incremental chunks have reached the snapshot's size, and not before.
+      // DurableRepo's rule: a save compacts once incremental bytes reach SNAPSHOT_INCREMENTAL_RATIO of the
+      // snapshot (0.25), and not before. Crash-recovery and journal paths are unchanged.
+      const SNAPSHOT_INCREMENTAL_RATIO = 0.25
       const incrementalBytes = list => list.slice(1).reduce((sum, chunk) => sum + Number(chunk.split(':')[1]), 0)
       let edits = 0, chunks = afterFirst
       while (chunks.length > 1) {
-        const due = incrementalBytes(chunks) >= snapshotBytes
+        const due = incrementalBytes(chunks) >= snapshotBytes * SNAPSHOT_INCREMENTAL_RATIO
         handle.change(doc => { doc.edits.push(noise(3000, ++edits)) })
         await reader.flush()
         chunks = await storedChunks(directory, documentId)
