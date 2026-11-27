@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { fork } from 'node:child_process'
 import { once } from 'node:events'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
-import { DurableRepo } from '../lib/durable-repo.js'
+import { DurableRepo, SNAPSHOT_INCREMENTAL_RATIO } from '../lib/durable-repo.js'
 
 // Automerge names snapshot chunks by a SHA-256 hex hash.
 const key = ['abcdef', 'snapshot', 'a1'.repeat(32)]
@@ -403,7 +403,7 @@ it('opens a stored document without announcing every patch, and computes any lat
   })
 })
 
-it('saves a reopened document\'s edits as small chunks, compacts them as Repo does, and stays readable by Repo', async () => {
+it('saves a reopened document\'s edits as small chunks, compacts them at SNAPSHOT_INCREMENTAL_RATIO, and stays readable by Repo', async () => {
   const A = await import('@automerge/automerge')
   const { createHash } = await import('node:crypto')
   const { Repo } = await import('@automerge/automerge-repo')
@@ -414,7 +414,7 @@ it('saves a reopened document\'s edits as small chunks, compacts them as Repo do
     try {
       // A document made in this process is saved by Repo itself: this is the layout the reopened one must keep.
       // Padding sized so several ~3 KiB edits are required before incremental bytes hit
-      // SNAPSHOT_INCREMENTAL_RATIO (0.25) of the snapshot — same reopen/incremental/compact shape.
+      // SNAPSHOT_INCREMENTAL_RATIO of the snapshot — same reopen/incremental/compact shape.
       const handle = writer.create({ padding: noise(48000), edits: [] });
       ({ url, documentId } = handle)
       await writer.flush()
@@ -448,9 +448,7 @@ it('saves a reopened document\'s edits as small chunks, compacts them as Repo do
       const written = (await new NodeFSStorageAdapter(directory).loadRange([documentId, 'incremental'])).find(chunk => chunk.key[2] === addedHash)
       assert.equal(addedHash, sha256(written.data))
 
-      // DurableRepo's rule: a save compacts once incremental bytes reach SNAPSHOT_INCREMENTAL_RATIO of the
-      // snapshot (0.25), and not before. Crash-recovery and journal paths are unchanged.
-      const SNAPSHOT_INCREMENTAL_RATIO = 0.25
+      // DurableRepo's rule: compact once incremental bytes reach SNAPSHOT_INCREMENTAL_RATIO of the snapshot.
       const incrementalBytes = list => list.slice(1).reduce((sum, chunk) => sum + Number(chunk.split(':')[1]), 0)
       let edits = 0, chunks = afterFirst
       while (chunks.length > 1) {
