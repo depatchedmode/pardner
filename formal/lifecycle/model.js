@@ -24,6 +24,7 @@ export const MUTATIONS = {
   'close-store-before-drain': 'stop() closes the store before the listeners have drained',
   'lease-before-drain': 'closeResources releases the lease before the persistence queue drains',
   'no-idle-reclaim': 'listen() no longer reclaims a connection that becomes idle after stop() began',
+  'idle-compact-after-close': 'shutdown leaves a pending idle compaction armed instead of dropping it',
 }
 
 const SERVER = 'automerge-sync-server.js'
@@ -45,6 +46,8 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
   const initial = () => ({
     stopping: false, listener: 'open', repoClosing: false, storeOpen: true, done: false,
     hub: { r: 0, h: 0 }, disk: { r: 0, h: 0 }, queue: [], failuresLeft: bounds.storageFailures,
+    // Soft-due snapshot rewrite: pending = idle timer armed (dropped on close, or run when the queue is idle).
+    idleCompact: 'none', idleCompacted: false,
     replica: { r: 0, h: 0 }, acked: null, inflight: null,
     flags: { admittedWhileStopping: false, upgradeWhileStopping: false },
     requests: requests.map(({ id, kind }) => ({
@@ -250,6 +253,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
       { file: REPO, anchor: 'await this.saveDocument(documentId, doc)', note: 'waits for durable publication; cleanup failures leave the published heads eligible for acknowledgement' },
       { file: REPO, anchor: 'this.persistedHeads.set(documentId, heads)' },
       { file: REPO, anchor: 'this.storageError = error\n        throw error', note: 'flush failure propagates to the caller' },
+      { file: REPO, anchor: 'if (canCompact && softDue && !hardDue && withinByteBudget && withinOpBudget) {\n        scheduleIdleCompaction(documentId)', note: 'soft-due incremental save may arm idle compaction after the acknowledgement barrier' },
     ],
     apply: state => {
       if (state.done || !state.queue.length) return []
@@ -259,11 +263,29 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
         if (job.kind !== 'flush' || request.state !== 'flushing') return base
         return patchRequest(base, job.req, { state: 'responding', result, ...(request.kind === 'ack' ? { hubHeads: base.disk } : {}) })
       }
-      const outcomes = [{ label: 'PersistRun succeeds', next: finish({ ...state, queue: rest, disk: { ...state.hub } }, 'ok') }]
+      const succeeded = finish({ ...state, queue: rest, disk: { ...state.hub } }, 'ok')
+      // Soft-due is storage-layout detail; over-approx by optionally arming idle compaction after a successful barrier.
+      const outcomes = [{ label: 'PersistRun succeeds', next: succeeded }]
+      if (succeeded.idleCompact === 'none' && !succeeded.repoClosing) {
+        outcomes.push({ label: 'PersistRun succeeds and arms idle compact', next: { ...succeeded, idleCompact: 'pending' } })
+      }
       if (state.failuresLeft > 0) {
         outcomes.push({ label: 'PersistRun fails', next: finish({ ...state, queue: rest, failuresLeft: state.failuresLeft - 1 }, 'fail') })
       }
       return outcomes
+    },
+  })
+
+  action('IdleCompactRun', {
+    fair: true,
+    maps: [
+      { file: REPO, anchor: 'this.background(() => this.compactDocument(documentId))', note: 'idle timer enqueues compaction on the persistence queue so it never overlaps a save' },
+      { file: REPO, anchor: 'await publishSnapshot(documentId, entry, doc, heads, performance.now())', note: 'same snapshot/journal/publish path as an inline backstop compact; heads unchanged' },
+    ],
+    apply: state => {
+      // Serialize with PersistRun by requiring an empty queue; the real path uses the same persistenceQueue.
+      if (state.done || !state.storeOpen || state.repoClosing || state.idleCompact !== 'pending' || state.queue.length) return []
+      return [{ next: { ...state, idleCompact: 'none', idleCompacted: true } }]
     },
   })
 
@@ -315,12 +337,16 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
       { file: RUNTIME, anchor: 'await this.harvests', note: 'a pending membership harvest settles before the repo closes; it admits no request' },
       { file: RUNTIME, anchor: 'this.attribution?.close()', note: 'pending signatures are written into the signature document in memory, after the operation queue drained; it admits no request, and each signature is already in the signature cache' },
       { file: RUNTIME, anchor: 'await this.hubStateWrites?.catch(() => {})', note: 'a pending write of the hub’s own waiting state settles before the repo closes and the lease is released; it admits no request' },
+      { file: REPO, anchor: "this.clearIdleCompaction?.(documentId, 'shutdown')", note: 'pending idle timers are dropped and recorded before closing; an already-queued compaction still drains' },
       { file: REPO, anchor: 'this.closing = true' },
     ],
     apply: state => {
       if (state.done || !state.stopping || !state.storeOpen || state.repoClosing) return []
       if (state.listener !== 'closed' && mutation !== 'close-store-before-drain') return []
-      return [{ next: { ...state, repoClosing: true } }]
+      const dropPending = mutation !== 'idle-compact-after-close'
+      // Pending timers are dropped; a compaction already on the queue would still drain (IdleCompactRun requires an empty queue first).
+      const idleCompact = dropPending && state.idleCompact === 'pending' ? 'none' : state.idleCompact
+      return [{ next: { ...state, repoClosing: true, idleCompact } }]
     },
   })
 
@@ -399,6 +425,11 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
       description: 'The heads a replica records as acknowledged were persisted by the hub, so newer local edits are never reported as synchronized.',
       holds: state => state.acked === null || within(state.acked, state.disk),
     },
+    {
+      name: 'IdleCompactSettledOnShutdown',
+      description: 'Shutdown drops a pending idle compaction and drains one that already started; done never leaves a pending or running idle compact.',
+      holds: state => !state.done || state.idleCompact === 'none',
+    },
   ]
 
   const progress = {
@@ -428,6 +459,10 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
       holds: state => state.done && state.hub.r > state.disk.r },
     { name: 'shutdown completed with every persisted head acknowledged',
       holds: state => state.done && state.acked !== null && sameHeads(state.acked, state.disk) && sameHeads(state.disk, state.hub) },
+    { name: 'idle compaction pending while the store is open',
+      holds: state => state.idleCompact === 'pending' && state.storeOpen && !state.repoClosing },
+    { name: 'idle compaction completed while the store is open',
+      holds: state => state.idleCompacted && state.storeOpen && !state.repoClosing },
   ]
 
   return { bounds, mutation, requests, initial, actions, invariants, progress, witnesses }
@@ -444,6 +479,6 @@ export function describeState(state) {
   const acked = state.acked ? `${state.acked.r}/${state.acked.h}` : '-'
   const inflight = state.inflight ? `${state.requests[state.inflight.req].id}@${state.inflight.phase}` : '-'
   return `stopping=${state.stopping} listener=${state.listener} repoClosing=${state.repoClosing} storeOpen=${state.storeOpen} done=${state.done}`
-    + ` | hub=${state.hub.r}/${state.hub.h} disk=${state.disk.r}/${state.disk.h} queue=[${queue}] failuresLeft=${state.failuresLeft}`
+    + ` | hub=${state.hub.r}/${state.hub.h} disk=${state.disk.r}/${state.disk.h} queue=[${queue}] failuresLeft=${state.failuresLeft} idleCompact=${state.idleCompact}`
     + ` | replica=${state.replica.r}/${state.replica.h} acked=${acked} inflight=${inflight} | ${requests}`
 }

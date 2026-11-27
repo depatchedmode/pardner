@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { fork } from 'node:child_process'
 import { once } from 'node:events'
 import { NodeFSStorageAdapter } from '../lib/nodefs-storage-adapter.js'
-import { DurableRepo, SNAPSHOT_INCREMENTAL_RATIO } from '../lib/durable-repo.js'
+import { DurableRepo, SNAPSHOT_INCREMENTAL_RATIO, SNAPSHOT_BACKSTOP_RATIO, COMPACTION_IDLE_MS } from '../lib/durable-repo.js'
 
 // Automerge names snapshot chunks by a SHA-256 hex hash.
 const key = ['abcdef', 'snapshot', 'a1'.repeat(32)]
@@ -403,7 +403,7 @@ it('opens a stored document without announcing every patch, and computes any lat
   })
 })
 
-it('saves a reopened document\'s edits as small chunks, compacts them at SNAPSHOT_INCREMENTAL_RATIO, and stays readable by Repo', async () => {
+it('saves a reopened document\'s edits as small chunks, schedules idle compaction at SNAPSHOT_INCREMENTAL_RATIO, and stays readable by Repo', async () => {
   const A = await import('@automerge/automerge')
   const { createHash } = await import('node:crypto')
   const { Repo } = await import('@automerge/automerge-repo')
@@ -430,7 +430,8 @@ it('saves a reopened document\'s edits as small chunks, compacts them at SNAPSHO
     const snapshotBytes = Number(saved[0].split(':')[1])
     assert.ok(snapshotBytes >= 1024, 'the fixture must be large enough not to compact on every save')
 
-    const reader = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+    const idleMs = 40
+    const reader = new DurableRepo({ storage: new NodeFSStorageAdapter(directory), compactionIdleMs: idleMs })
     let expected
     try {
       const handle = await reader.find(url)
@@ -448,18 +449,25 @@ it('saves a reopened document\'s edits as small chunks, compacts them at SNAPSHO
       const written = (await new NodeFSStorageAdapter(directory).loadRange([documentId, 'incremental'])).find(chunk => chunk.key[2] === addedHash)
       assert.equal(addedHash, sha256(written.data))
 
-      // DurableRepo's rule: compact once incremental bytes reach SNAPSHOT_INCREMENTAL_RATIO of the snapshot.
+      // Soft-due saves acknowledge an incremental; idle compaction rewrites the snapshot afterwards.
       const incrementalBytes = list => list.slice(1).reduce((sum, chunk) => sum + Number(chunk.split(':')[1]), 0)
-      let edits = 0, chunks = afterFirst
-      while (chunks.length > 1) {
+      let edits = 0, chunks = afterFirst, softDueSeen = false
+      while (!softDueSeen) {
         const due = incrementalBytes(chunks) >= snapshotBytes * SNAPSHOT_INCREMENTAL_RATIO
         handle.change(doc => { doc.edits.push(noise(3000, ++edits)) })
         await reader.flush()
         chunks = await storedChunks(directory, documentId)
-        assert.equal(chunks.length === 1, due, `after edit ${edits}: ${chunks.map(chunk => chunk.replace(/\/[0-9a-f]+/, '')).join(' ')}`)
+        assert.ok(chunks.length > 1, `soft-due edit ${edits} must not snapshot on the acknowledgement path`)
+        softDueSeen = due
         assert.ok(edits < 20)
       }
-      assert.ok(edits > 2, 'the fixture must write incremental chunks before it compacts')
+      assert.ok(edits > 2, 'the fixture must write incremental chunks before it is soft-due')
+      const [metric] = await once(reader, 'doc-metrics', { signal: AbortSignal.timeout(idleMs + 2000) })
+      assert.equal(metric.type, 'doc-compacted')
+      // doc-compacted is emitted before publish finishes; wait for the queue barrier.
+      await reader.persistenceQueue
+      chunks = await storedChunks(directory, documentId)
+      assert.equal(chunks.length, 1)
       const heads = A.getHeads(handle.doc())
       assert.match(chunks[0], new RegExp(`^snapshot/${sha256(heads.join(''))}:`))
 
@@ -476,6 +484,230 @@ it('saves a reopened document\'s edits as small chunks, compacts them at SNAPSHO
       assert.deepEqual(A.getHeads(handle.doc()), A.getHeads(expected))
       assert.deepEqual(handle.doc(), expected)
     } finally { await upstream.shutdown() }
+  })
+})
+
+describe('idle snapshot compaction', () => {
+  const incrementalBytes = list => list.slice(1).reduce((sum, chunk) => sum + Number(chunk.split(':')[1]), 0)
+
+  /** Grow a board past the soft-due ratio with idle compaction disabled, then shut down. */
+  async function seedSoftDueStore(directory) {
+    const writer = new DurableRepo({
+      storage: new NodeFSStorageAdapter(directory),
+      compactionIdleMs: 60_000,
+    })
+    const handle = writer.create({ padding: noise(48000), edits: [] })
+    const { url, documentId } = handle
+    await writer.flush()
+    const [snapshot] = await storedChunks(directory, documentId)
+    const snapshotBytes = Number(snapshot.split(':')[1])
+    assert.ok(snapshotBytes >= 1024)
+    let edits = 0
+    let chunks = await storedChunks(directory, documentId)
+    while (incrementalBytes(chunks) < snapshotBytes * SNAPSHOT_INCREMENTAL_RATIO) {
+      handle.change(doc => { doc.edits.push(noise(3000, ++edits)) })
+      await writer.flush()
+      chunks = await storedChunks(directory, documentId)
+      assert.ok(chunks.length > 1, 'soft-due growth must stay on the incremental path')
+      assert.ok(edits < 30)
+    }
+    const heads = (await import('@automerge/automerge')).getHeads(handle.doc())
+    const editCount = handle.doc().edits.length
+    await writer.shutdown()
+    assert.ok((await storedChunks(directory, documentId)).length > 1)
+    return { url, documentId, snapshotBytes, heads, editCount }
+  }
+
+  it('acknowledges a soft-due save without writing a snapshot, then compacts after idle', async () => {
+    await withStorage(async directory => {
+      const { url, documentId } = await seedSoftDueStore(directory)
+      const idleMs = 40
+      const repo = new DurableRepo({ storage: new NodeFSStorageAdapter(directory), compactionIdleMs: idleMs })
+      try {
+        const handle = await repo.find(url)
+        await repo.flush()
+        const snapshotBefore = (await storedChunks(directory, documentId)).filter(chunk => chunk.startsWith('snapshot/'))
+        handle.change(doc => { doc.edits.push('soft-due ack') })
+        const saved = once(repo, 'doc-metrics', { signal: AbortSignal.timeout(2000) })
+        await repo.flush()
+        assert.equal((await saved)[0].type, 'doc-saved')
+        const afterSave = await storedChunks(directory, documentId)
+        assert.ok(afterSave.length > 1, 'soft-due acknowledgement must not replace the snapshot')
+        assert.deepEqual(afterSave.filter(chunk => chunk.startsWith('snapshot/')), snapshotBefore)
+        assert.equal((await once(repo, 'doc-metrics', { signal: AbortSignal.timeout(idleMs + 2000) }))[0].type, 'doc-compacted')
+        await repo.persistenceQueue
+        const afterIdle = await storedChunks(directory, documentId)
+        assert.equal(afterIdle.length, 1)
+        assert.match(afterIdle[0], /^snapshot\//)
+      } finally {
+        await repo.shutdown()
+      }
+    })
+  })
+
+  it('postpones idle compaction when another save arrives during the idle window', async () => {
+    await withStorage(async directory => {
+      const { url, documentId } = await seedSoftDueStore(directory)
+      const idleMs = 80
+      const repo = new DurableRepo({ storage: new NodeFSStorageAdapter(directory), compactionIdleMs: idleMs })
+      try {
+        const handle = await repo.find(url)
+        await repo.flush()
+        let compactedAt = 0
+        repo.on('doc-metrics', metric => {
+          if (metric.type === 'doc-compacted') compactedAt = Date.now()
+        })
+        handle.change(doc => { doc.edits.push('arm idle') })
+        await repo.flush()
+        const armedAt = Date.now()
+        await new Promise(resolve => setTimeout(resolve, idleMs / 2))
+        handle.change(doc => { doc.edits.push('postpone idle') })
+        await repo.flush()
+        assert.equal(compactedAt, 0, 'compaction must not run during the postponed window')
+        assert.ok((await storedChunks(directory, documentId)).length > 1)
+        await new Promise(resolve => setTimeout(resolve, idleMs + 50))
+        await repo.persistenceQueue
+        assert.ok(compactedAt > 0, 'compaction must run after the reset idle window')
+        assert.ok(compactedAt - armedAt >= idleMs, 'the postponed window must wait a full idle interval after the later save')
+        assert.equal((await storedChunks(directory, documentId)).length, 1)
+      } finally {
+        await repo.shutdown()
+      }
+    })
+  })
+
+  it('compacts inline at the SNAPSHOT_BACKSTOP_RATIO save', async () => {
+    await withStorage(async directory => {
+      const writer = new DurableRepo({
+        storage: new NodeFSStorageAdapter(directory),
+        compactionIdleMs: 60_000,
+      })
+      try {
+        const handle = writer.create({ padding: noise(12000), edits: [] })
+        const { documentId } = handle
+        await writer.flush()
+        let snapshotBytes = Number((await storedChunks(directory, documentId))[0].split(':')[1])
+        assert.ok(snapshotBytes >= 1024)
+        let edits = 0, chunks = await storedChunks(directory, documentId), sawInline = false
+        while (!sawInline) {
+          handle.change(doc => { doc.edits.push(noise(4000, ++edits)) })
+          const metrics = []
+          const onMetric = metric => metrics.push(metric.type)
+          writer.on('doc-metrics', onMetric)
+          await writer.flush()
+          writer.off('doc-metrics', onMetric)
+          chunks = await storedChunks(directory, documentId)
+          if (chunks.length === 1) {
+            assert.ok(metrics.includes('doc-compacted'), 'backstop save must compact on the acknowledgement path')
+            sawInline = true
+            break
+          }
+          assert.ok(!metrics.includes('doc-compacted'))
+          assert.ok(edits < 80)
+        }
+        assert.ok(edits > 2)
+      } finally {
+        await writer.shutdown()
+      }
+    })
+  })
+
+  it('drops a pending idle compaction on shutdown and reopens the soft-due store', async () => {
+    const A = await import('@automerge/automerge')
+    await withStorage(async directory => {
+      const seeded = await seedSoftDueStore(directory)
+      const idleMs = 500
+      const repo = new DurableRepo({ storage: new NodeFSStorageAdapter(directory), compactionIdleMs: idleMs })
+      const handle = await repo.find(seeded.url)
+      await repo.flush()
+      handle.change(doc => { doc.edits.push('arm pending idle') })
+      await repo.flush()
+      const before = await storedChunks(directory, seeded.documentId)
+      assert.ok(before.length > 1)
+      const heads = A.getHeads(handle.doc())
+      const dropped = once(repo.storageSubsystem, 'doc-compaction-dropped', { signal: AbortSignal.timeout(2000) })
+      await repo.shutdown()
+      const [event] = await dropped
+      assert.equal(event.documentId, seeded.documentId)
+      assert.equal(event.reason, 'shutdown')
+      assert.deepEqual(await storedChunks(directory, seeded.documentId), before, 'shutdown must not run the pending compaction')
+
+      const reader = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+      try {
+        const found = await reader.find(seeded.url)
+        await reader.flush()
+        assert.deepEqual(A.getHeads(found.doc()), heads)
+        assert.deepEqual(await storedChunks(directory, seeded.documentId), before, 'a read-only reopen must not compact')
+      } finally {
+        await reader.shutdown()
+      }
+    })
+  })
+
+  it('recovers through the journal when idle compaction is interrupted during cleanup', async () => {
+    const A = await import('@automerge/automerge')
+    await withStorage(async directory => {
+      const seeded = await seedSoftDueStore(directory)
+      const idleMs = 30
+      const storage = new NodeFSStorageAdapter(directory)
+      const remove = storage.remove.bind(storage)
+      let removed = 0
+      storage.remove = async key => {
+        // Fail only while replacing a snapshot so soft-due packing cleanup is undisturbed.
+        if (key[1] === 'snapshot' && removed++ === 0) {
+          throw Object.assign(new Error('injected idle compaction cleanup failure'), { code: 'EIO' })
+        }
+        return remove(key)
+      }
+      const repo = new DurableRepo({ storage, compactionIdleMs: idleMs })
+      let expectedHeads
+      let expectedCount
+      try {
+        const found = await repo.find(seeded.url)
+        await repo.flush()
+        found.change(doc => { doc.edits.push('arm idle crash') })
+        const cleanupFailed = once(repo, 'storage-cleanup-error', { signal: AbortSignal.timeout(idleMs + 2000) })
+        await repo.flush()
+        expectedHeads = A.getHeads(found.doc())
+        expectedCount = found.doc().edits.length
+        // Wait specifically for idle compaction; the arming flush already emitted doc-saved.
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('timed out waiting for idle compaction')), idleMs + 2000)
+          const onMetric = metric => {
+            if (metric.type !== 'doc-compacted') return
+            clearTimeout(timer)
+            repo.off('doc-metrics', onMetric)
+            resolve(metric)
+          }
+          repo.on('doc-metrics', onMetric)
+        })
+        // Cleanup failure is reported on the repo; the published snapshot and journal remain.
+        const [cleanupError] = await cleanupFailed
+        assert.equal(cleanupError.error.code, 'EIO')
+        assert.ok(await new NodeFSStorageAdapter(directory).load([seeded.documentId, 'incremental-compaction']))
+        assert.ok((await storedChunks(directory, seeded.documentId)).some(chunk => chunk.startsWith('snapshot/')))
+      } finally {
+        await repo.shutdown()
+      }
+
+      const recovered = new DurableRepo({ storage: new NodeFSStorageAdapter(directory) })
+      try {
+        const found = await recovered.find(seeded.url)
+        await recovered.flush()
+        assert.equal(found.doc().edits.length, expectedCount)
+        assert.deepEqual(A.getHeads(found.doc()), expectedHeads)
+        assert.deepEqual(recovered.persistedHeads.get(seeded.documentId), expectedHeads)
+        assert.equal(await new NodeFSStorageAdapter(directory).load([seeded.documentId, 'incremental-compaction']), undefined)
+      } finally {
+        await recovered.shutdown()
+      }
+    })
+  })
+
+  it('exports the idle and backstop policy constants used by the soft-due path', () => {
+    assert.equal(SNAPSHOT_INCREMENTAL_RATIO, 0.25)
+    assert.equal(SNAPSHOT_BACKSTOP_RATIO, 1)
+    assert.equal(COMPACTION_IDLE_MS, 2000)
   })
 })
 

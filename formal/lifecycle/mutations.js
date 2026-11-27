@@ -164,9 +164,22 @@ export const MUTATIONS = [
     replace: '',
     check: { file: RUNTIME_TESTS, pattern: 'keep-alive socket that goes idle after stop' },
   },
+  {
+    name: 'idle-compact-after-close', property: 'IdleCompactSettledOnShutdown', file: 'lib/durable-repo.js',
+    description: 'shutdown leaves a pending idle compaction armed instead of dropping it',
+    find: `    for (const documentId of [...(this.idleCompactionTimers?.keys() ?? [])]) {
+      this.clearIdleCompaction?.(documentId, 'shutdown')
+    }
+    this.closing = true
+`,
+    replace: `    this.closing = true
+`,
+    check: { file: 'test/storage-durability.test.js', pattern: 'drops a pending idle compaction on shutdown' },
+  },
 ]
 
-const COPIED = [SERVER, 'lib', 'shared', 'support', 'package.json', 'formal', CONFORMANCE, RUNTIME_TESTS]
+const STORAGE_TESTS = 'test/storage-durability.test.js'
+const COPIED = [SERVER, 'lib', 'shared', 'support', 'package.json', 'formal', CONFORMANCE, RUNTIME_TESTS, STORAGE_TESTS]
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 const mappedFiles = [...new Set(MUTATIONS.map(mutation => mutation.file))].sort()
 const fingerprint = base => Object.fromEntries(mappedFiles.map(file => [file, sha256(readFileSync(join(base, file)))]))

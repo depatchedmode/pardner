@@ -23,6 +23,7 @@ it('each mirrored source mutation produces a counterexample on its property', ()
     'receipt-before-persist': 'ReceiptAfterBarrier', 'ack-before-persist': 'ReceiptAfterBarrier', 'hub-acks-unknown-heads': 'ReceiptAfterBarrier',
     'stale-ack-accepted': 'AckedHeadsPersisted', 'admit-while-stopping': 'NoAdmissionWhileStopping', 'upgrade-while-stopping': 'NoAdmissionWhileStopping',
     'close-store-before-drain': 'StorageAvailableWhileAdmitted', 'lease-before-drain': 'StorageAvailableWhileAdmitted', 'no-idle-reclaim': 'ShutdownCompletes',
+    'idle-compact-after-close': 'IdleCompactSettledOnShutdown',
   }
   assert.deepEqual(Object.keys(expected).sort(), Object.keys(MUTATIONS).sort(), 'every model mutation has an expected property')
   for (const [mutation, property] of Object.entries(expected)) {

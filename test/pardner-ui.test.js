@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium, webkit } from 'playwright'
-import { showTaskActions, withClientReplicas, withClientWorkspace } from '../support/client-workspace.js'
+import { eventually, showTaskActions, withClientReplicas, withClientWorkspace } from '../support/client-workspace.js'
 import { startCliService } from '../support/cli-resources.js'
 
 for (const engine of [chromium, webkit]) it(`switches board views by keyboard in ${engine.name()}`,
@@ -2045,6 +2045,52 @@ for (const engine of [chromium, webkit]) it(`explains an oversized description i
     assert.equal(await panel.getByRole('button', { name: 'Retry saved request', exact: true }).count(), 0, 'a definitive rejection offers no Retry')
     assert.equal(await panel.getByLabel('Title', { exact: true }).getAttribute('readonly'), null)
     assert.equal(await panel.locator('textarea').getAttribute('readonly'), null, 'the draft stays editable')
+  })
+})
+
+for (const engine of [chromium, webkit]) it(`keeps typing live while idle compaction runs and only locks the field on submit in ${engine.name()}`, { timeout: 120000 }, async () => {
+  await withClientWorkspace(engine, {
+    runtimeOptions: { compactionIdleMs: 60_000, testCompactionDelayMs: 2500 },
+  }, async ({ page, open, operate, client, project, task }) => {
+    const { result: { taskId } } = await operate('task.create', { title: 'Compact while typing' })
+    // Enough board weight that a forced snapshot is real work after the test delay.
+    for (let index = 0; index < 12; index++) {
+      await operate('task.create', { title: `Pad ${index}`, description: 'pad-'.repeat(800) })
+    }
+    await open()
+    await page.getByRole('button', { name: /Compact while typing/ }).click()
+    const panel = page.getByRole('dialog', { name: 'Task details' })
+    await showTaskActions(panel)
+    await panel.getByRole('button', { name: 'Edit task', exact: true }).click()
+    const title = panel.getByLabel('Title', { exact: true })
+    await title.fill('')
+
+    const runtime = await client.runtime(client.project(project.id))
+    const compacting = runtime.compact({ force: true })
+    const typed = 'abcdefghijklmnopqrstuvwxyzabcdefghijklmn'
+    assert.equal(typed.length, 40)
+    let soFar = ''
+    for (const char of typed) {
+      await title.pressSequentially(char, { delay: 0 })
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+      soFar += char
+      assert.equal(await title.inputValue(), soFar, `keystroke '${char}' must appear within one frame`)
+      assert.equal(await title.evaluate(input => input.readOnly), false, 'title must not lock while typing without a submit')
+    }
+    await compacting
+
+    const compactingAgain = runtime.compact({ force: true })
+    await title.fill('Saved during compaction')
+    await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
+    await page.waitForFunction(() => {
+      const input = document.querySelector('section[aria-label="Edit task"] input[name="title"]')
+      return Boolean(input?.readOnly)
+    }, null, { timeout: 2000 })
+    assert.equal(await title.evaluate(input => input.readOnly), true, 'submit during compaction must lock the field while its receipt is pending')
+    await compactingAgain
+    await eventually(async () => (await task(taskId)).task.title === 'Saved during compaction', 'submit receipt must land with the typed title')
+    await panel.getByRole('heading', { name: 'Saved during compaction', exact: true }).waitFor()
+    assert.equal(await panel.getByLabel('Title', { exact: true }).count(), 0, 'the form unlocks by leaving edit mode after the receipt')
   })
 })
 
