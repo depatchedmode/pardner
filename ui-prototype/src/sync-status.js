@@ -2,7 +2,8 @@
 export function hubNotice(status) {
   if (status?.hub?.waiting) return 'Restored hub · waits for a member machine, or pardner client resume, before serving others'
   if (status?.duplicateMachines?.some(entry => entry.sessions > 1)) return 'Two copies of one machine are connected · check for a running backup'
-  if (status?.hubRefusal?.code === 'HUB_WAITING') return 'Saved locally · the hub is catching up after a restore'
+  if (status?.hubRefusal?.code === 'HANDSHAKE_VERSION') return 'Sync paused · the connection reported a version mismatch. Check Pardner on both machines.'
+  if (status?.hubRefusal?.code === 'HUB_WAITING' && status.hubRefusal.authenticated) return 'Saved locally · the hub is catching up after a restore'
   return null
 }
 

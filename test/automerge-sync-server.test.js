@@ -27,8 +27,8 @@ async function expectHandshakeRefusal(url) {
   socket.on('message', (data, binary) => frames.push(binary ? 'binary' : JSON.parse(data.toString()).type))
   const closed = once(socket, 'close')
   socket.send(cbor.encode({ type: 'join', senderId: 'skipped-the-handshake' }))
-  assert.equal((await closed)[0], 4403)
-  assert.deepEqual(frames, ['refused'])
+  assert.equal((await closed)[0], 1006, 'unsolicited binary immediately cuts the unadmitted socket')
+  assert.deepEqual(frames, [])
 }
 
 function withTempServer(overrides, fn) {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { actorId } from '../lib/client-identity.js'
 import { agentNameRecord } from '../lib/enrollment.js'
 import { generateMachineKey } from '../lib/machine-key.js'
-import { computeMembership, genesisProjectId, isMember, mayAuthor, maySign, offerHash } from '../lib/membership.js'
+import { computeMembership, evaluateMembership, genesisProjectId, isMember, mayAuthor, maySign, offerHash } from '../lib/membership.js'
 import { forge, permutations, shuffled, trustProject } from '../support/trust-records.js'
 
 // The membership rules of docs/PARDNER-TRUST-DESIGN.md, section 2, "How membership is computed". Each rule must
@@ -37,6 +37,32 @@ function project() {
   return { ...p, admin, member, other, adminAdd, memberAdd, otherAdd, adminId: p.person(admin), memberId: p.person(member), otherId: p.person(other),
     base: [p.genesis, adminAdd, memberAdd, otherAdd] }
 }
+
+test('removal proofs follow the relevant admission, pairing and role records', () => {
+  const p = project()
+  const administrator = generateMachineKey(), adminDevice = generateMachineKey(), memberDevice = generateMachineKey()
+  const admitAdmin = p.admit(p.owner, administrator)
+  const promote = p.role(p.owner, administrator.machineId, 'admin')
+  const pairAdmin = p.pair(administrator, adminDevice, administrator.machineId)
+  const pairMember = p.pair(p.member, memberDevice, p.memberId)
+  const base = [...p.base, admitAdmin, promote, pairAdmin, pairMember]
+  const byMachine = p.removeMachine(adminDevice, memberDevice)
+  const byPerson = p.remove(adminDevice, p.memberId)
+  const proofDependencies = [p.genesis, p.memberAdd, pairMember, admitAdmin, promote, pairAdmin]
+  const ids = records => records.map(record => record.recordId).sort()
+  for (const removal of [byMachine, byPerson]) {
+    const { removalRecords } = evaluateMembership([...base, removal])
+    const proof = removalRecords(memberDevice.machineId, p.owner.machineId)
+    assert.deepEqual(ids(proof), ids([...proofDependencies, removal]))
+    const independent = computeMembership(proof)
+    assert.ok(independent.removedMachines.includes(memberDevice.machineId))
+    assert.deepEqual(removalRecords(p.other.machineId, p.owner.machineId), [])
+  }
+  const conflictingPair = p.pair(p.other, memberDevice, p.otherId)
+  const proof = evaluateMembership([...base, conflictingPair]).removalRecords(memberDevice.machineId, p.owner.machineId)
+  assert.deepEqual(ids(proof), ids([p.genesis, p.memberAdd, pairMember, p.otherAdd, conflictingPair]))
+  assert.ok(computeMembership(proof).removedMachines.includes(memberDevice.machineId))
+})
 
 // ---- Rule 1a: a machine consents to its own certification ----
 

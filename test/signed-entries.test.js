@@ -333,12 +333,16 @@ it('an edit inside a list of another Actor’s field value is counted against th
     sign(bob, project.projectId, A.getHeads(fork)[0])
     await eventually(() => Object.keys(A.getConflicts(bob.board.doc().taskFields, key) ?? {}).length === 2, 'Bob never saw both values')
     // Bob's client then adds a tag inside Alice's own value.
+    const beforeInside = A.getHeads(bob.board.doc())
     bob.board.change(doc => {
       const mine = Object.values(A.getConflicts(doc.taskFields, key)).find(value => String(value.operationId) === edited.operationId)
       mine.value.push(new A.ImmutableString('injected'))
     })
     const [inside] = A.getHeads(bob.board.doc())
     sign(bob, project.projectId, inside)
+    // Repo schedules sends on visible patches. A mutation inside the losing alternative
+    // has new heads but no patch, so use a fresh connection to send it in that case.
+    if (A.diff(bob.board.doc(), beforeInside, [inside]).length === 0) bob.adapter.child.socket.terminate()
     // Checked on the hub, which receives Bob's change directly. (Not on another replica: the hub has been seen to
     // relay a bare peer's newest change to a replica only with its next change, on PR #223's code as well; see the PR.)
     await settled([server.store], [inside])

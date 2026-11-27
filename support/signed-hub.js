@@ -67,12 +67,13 @@ export async function withHub(run, { members = 3, hubOptions = {} } = {}) {
 
 /** A bare Automerge peer of member machine `index`, connected to `server`'s hub: a modified client could write anything through it. */
 export async function bareMember(server, project, index) {
-  const repo = new Repo({ network: [memberAdapter(project, index, `ws://127.0.0.1:${server.wsPort}/automerge`, { retryMs: 100 })], sharePolicy: async () => true })
+  const adapter = memberAdapter(project, index, `ws://127.0.0.1:${server.wsPort}/automerge`, { retryMs: 100 })
+  const repo = new Repo({ network: [adapter], sharePolicy: async () => true })
   try {
     const board = await repo.find(server.store.manifest.url)
     const signatures = await repo.find(signaturesDocumentUrl(project.projectId))
     board.update(doc => A.clone(doc, { actor: machineActor(project.keys[index]) }))
-    return { repo, board, signatures, key: project.keys[index] }
+    return { repo, adapter, board, signatures, key: project.keys[index] }
   } catch (error) {
     await repo.shutdown()
     throw error
@@ -98,16 +99,14 @@ export function writeTask(member, title, { actorId = 'alice' } = {}) {
 
 /**
  * A relay in front of the hub's native socket: frames pass in order, optionally late; the link can be cut and
- * restored; and the signature document's frames from the replica can be held back.
+ * restored. The relay forwards sealed messages without inspecting them.
  */
-export async function relay(server, projectId) {
+export async function relay(server) {
   const http = createServer()
   const wss = new WebSocketServer({ server: http })
   await new Promise(resolve => http.listen(0, '127.0.0.1', resolve))
   const url = `ws://127.0.0.1:${http.address().port}/automerge`
-  const state = { blocked: false, delayMs: 0, holdSignatures: false, links: new Set() }
-  const { cbor } = await import('@automerge/automerge-repo')
-  const signaturesId = signaturesDocumentUrl(projectId).slice('automerge:'.length)
+  const state = { blocked: false, delayMs: 0, links: new Set() }
   wss.on('connection', downstream => {
     if (state.blocked) return downstream.terminate()
     const upstream = new WebSocket(`ws://127.0.0.1:${server.wsPort}/automerge`)
@@ -116,25 +115,18 @@ export async function relay(server, projectId) {
     const end = () => { state.links.delete(link); downstream.terminate(); upstream.terminate() }
     downstream.on('close', end); upstream.on('close', end); downstream.on('error', end); upstream.on('error', end)
     const opened = new Promise(resolve => upstream.once('open', resolve))
-    const pipe = (from, to, up) => {
+    const pipe = (from, to) => {
       let chain = Promise.resolve()
       from.on('message', (data, binary) => {
         chain = chain.then(async () => {
           await opened
           if (state.delayMs) await delay(state.delayMs)
-          if (up && binary && state.holdSignatures) {
-            try { if (cbor.decode(data)?.documentId === signaturesId) return } catch { /* Not an Automerge frame. */ }
-          }
-          if (up && binary && state.beforeSignature) {
-            const frame = cbor.decode(data)
-            if (frame?.type === 'sync' && frame.documentId === signaturesId) await state.beforeSignature(frame.data)
-          }
           if (to.readyState === WebSocket.OPEN) to.send(data, { binary })
         })
       })
     }
-    pipe(downstream, upstream, true)
-    pipe(upstream, downstream, false)
+    pipe(downstream, upstream)
+    pipe(upstream, downstream)
   })
   advertiseRoutes(server, { ws: [url] })
   return {

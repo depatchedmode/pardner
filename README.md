@@ -322,8 +322,8 @@ flowchart LR
     replica2[("Replica on disk")]
     client2 --> replica2
   end
-  client <-->|"signed handshake, then sync"| hub
-  client2 <-->|"signed handshake, then sync"| hub
+  client <-->|"sealed sync"| hub
+  client2 <-->|"sealed sync"| hub
 ```
 
 Member machines sync only through the hub, never directly with each other. The
@@ -338,12 +338,12 @@ with nobody.
   hub. "Synced" appears only once the hub confirms it has saved what you see.
 - **Only invited machines get in.** Each machine has its own Ed25519 key. People
   join by invitation, approved with a confirmation code; further machines join a
-  person by pairing. Every sync connection opens with a mutual signed handshake,
-  and no bearer token passes between machines.
+  person by pairing. Sync v2 authenticates both machine keys and seals the
+  connection. Hub HTTP answers, including save acknowledgements, are signed
+  for their requests. [Channel specification](docs/PARDNER-CHANNEL-SPEC.md)
 - **You can see who did what.** Each change is signed by the machine that made
-  it. Activity names the signer and its person, and flags what needs review. No
-  change is refused, dropped or hidden; one without a signature shows as
-  unattributed. The People panel and `pardner client people` show who is in, on
+  it. Activity names the signer and its person, and flags what needs review. A
+  received change without a verified signature can be shown as unattributed. The People panel and `pardner client people` show who is in, on
   which machines, and who let them in.
 - **Concurrent edits don't clobber each other.** Edits to different fields merge.
   Competing edits to one field keep their authors and wait for someone to choose.
@@ -381,9 +381,9 @@ from making one.
   whether it was allowed. People review and undo a bad change.
 - **A machine's word is taken for which of its Actors acted.** Peers flag only a
   claim to an Actor that machine isn't certified for.
-- **After the handshake, sync is protected only by TLS.** Whoever terminates TLS
-  in front of the hub could inject sync traffic, which peers apply and flag as
-  unattributed ([#215](https://github.com/depatchedmode/pardner/issues/215)).
+- **A relay can interrupt service.** A TLS terminator can read hub HTTP routes
+  and the opening messages, observe traffic sizes and timing, or cut the
+  connection. Enrolled replicas keep saving locally during an outage.
 - **Membership records are enforced only at the hub.** A modified client can
   write its own signed records straight into the document.
 
