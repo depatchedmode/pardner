@@ -337,7 +337,7 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
       { file: RUNTIME, anchor: 'await this.harvests', note: 'a pending membership harvest settles before the repo closes; it admits no request' },
       { file: RUNTIME, anchor: 'this.attribution?.close()', note: 'pending signatures are written into the signature document in memory, after the operation queue drained; it admits no request, and each signature is already in the signature cache' },
       { file: RUNTIME, anchor: 'await this.hubStateWrites?.catch(() => {})', note: 'a pending write of the hub’s own waiting state settles before the repo closes and the lease is released; it admits no request' },
-      { file: REPO, anchor: "this.clearIdleCompaction?.(documentId, 'shutdown')", note: 'pending idle timers are dropped and recorded before closing; an already-queued compaction still drains' },
+      { file: REPO, anchor: "this.clearIdleCompaction(documentId, 'shutdown')", note: 'pending idle timers are dropped and recorded before closing; an already-queued compaction still drains' },
       { file: REPO, anchor: 'this.closing = true' },
     ],
     apply: state => {

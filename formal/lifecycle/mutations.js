@@ -167,8 +167,8 @@ export const MUTATIONS = [
   {
     name: 'idle-compact-after-close', property: 'IdleCompactSettledOnShutdown', file: 'lib/durable-repo.js',
     description: 'shutdown leaves a pending idle compaction armed instead of dropping it',
-    find: `    for (const documentId of [...(this.idleCompactionTimers?.keys() ?? [])]) {
-      this.clearIdleCompaction?.(documentId, 'shutdown')
+    find: `    for (const documentId of [...this.idleCompactionTimers.keys()]) {
+      this.clearIdleCompaction(documentId, 'shutdown')
     }
     this.closing = true
 `,
