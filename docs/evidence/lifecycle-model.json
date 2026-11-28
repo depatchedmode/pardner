@@ -2087,5 +2087,30 @@
     "witnessesReached": 10,
     "violation": null,
     "review": "Assigned to-dos and outcomes use the existing prepare, change and flush sequence. Snapshot and comment attribution changes stay outside lifecycle admission, acknowledgement and shutdown."
+  },
+  "idleCompactBoundReview": {
+    "issue": 209,
+    "recorded": "2026-11-28",
+    "node": "v24.11.1",
+    "command": "npm run verify:model",
+    "bounds": {
+      "replicaEdits": 2,
+      "hubOps": 1,
+      "ackAttempts": 1,
+      "storageFailures": 1
+    },
+    "idleCompactionBound": "one arming per exploration: first successful PersistRun while open arms; no optional sibling; no re-arm after IdleCompactRun",
+    "states": 313212,
+    "transitions": 1267259,
+    "durationMs": 8713,
+    "peakRssMiB": 1363.6,
+    "witnessesReached": 12,
+    "violation": null,
+    "mutationDemonstration": {
+      "command": "npm run verify:model:mutations",
+      "ok": true,
+      "note": "idle-compact-after-close still caught on IdleCompactSettledOnShutdown"
+    },
+    "review": "Optional soft-due arming on every PersistRun plus re-arm after IdleCompactRun expanded the default check to ~522k states / ~2.4 GB and needed a raised heap. Bounding idle compaction to one deterministic arming keeps IdleCompactSettledOnShutdown and the pending/completed witnesses without NODE_OPTIONS."
   }
 }

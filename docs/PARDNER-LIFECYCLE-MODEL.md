@@ -8,7 +8,7 @@ an additional merge gate.
 
 | Command | Purpose | Cost |
 | --- | --- | --- |
-| `npm run verify:model` | Drift check of the mapped sources, then the bounded model check with coverage witnesses | about 5 s, 0.8 GB |
+| `npm run verify:model` | Drift check of the mapped sources, then the bounded model check with coverage witnesses | about 9 s, ~1.4 GB |
 | `npm run verify:model -- --mutate NAME` | Mirror one source mutation in the model and print its counterexample | under 5 s |
 | `npm run verify:model:mutations` | Mutate disposable copies of the real sources and show that the implementation checks, the drift check and the model each catch them | about 30 s |
 | `npm run test:runtime` | Includes the implementation checks and the checker self-test | about 10 s |
@@ -81,7 +81,8 @@ and one WebSocket upgrade. Each request records its connection (`none`, `active`
 | `IdleConnectionEnds` | no | client closes a keep-alive socket, or Node's `keepAliveTimeout` fires | neither is assumed to happen (unfair), so the model cannot rely on the 5 s timeout |
 | `Handle(op)` | yes | `WorkspaceRuntime.execute` (refuses after `stopController.abort()`), `Workspace.apply`: `handle.change`, then `repo.flush` enqueued. The hub's membership record gate (`WorkspaceRuntime.addRecords`, `POST /automerge/membership/records`) is the same kind of request: it joins the operation queue, saves the records to the record store, makes one `handle.change` and answers after `repo.flush` | the change and the flush enqueue are one step; `STORAGE_FAILED` is the failure outcome of the flush |
 | `Handle(ack)` | yes | `WorkspaceRuntime.acknowledge` (no readiness guard), `Workspace.acknowledge`: `hasHeads` check, then `repo.flush` | same |
-| `PersistRun` | yes | `DurableRepo.enqueue` runs one job at a time. `persistDocument` updates `persistedHeads` after publication. A publication failure is returned to the caller | The model advances acknowledged storage heads in one step on success. Cleanup is best effort after publication and does not change the model's heads. `storageFailures` bounds publication failures |
+| `PersistRun` | yes | `DurableRepo.enqueue` runs one job at a time. `persistDocument` updates `persistedHeads` after publication. A publication failure is returned to the caller. Soft-due saves may arm idle compaction after the barrier | The model advances acknowledged storage heads in one step on success. Cleanup is best effort after publication and does not change the model's heads. `storageFailures` bounds publication failures. Idle compaction is bounded to one arming per exploration (first successful PersistRun while open; no optional sibling, no re-arm after `IdleCompactRun`) so the state space stays runnable without a raised heap |
+| `IdleCompactRun` | yes | Idle timer enqueues `compactDocument` on the same persistence queue; snapshot rewrite leaves heads unchanged | Requires an empty queue (serialized with `PersistRun`). Shutdown drops a pending timer in `StoreCloseBegin` (`IdleCompactSettledOnShutdown`) |
 | `Respond` | yes | `res.json(...)` of the receipt or acknowledgement; `res.once('finish')` | writing the response and the socket becoming idle (keep-alive) or closed are one step |
 | `ReclaimIdle` | yes | `listen()` finish hook: `if (this.stopping) setImmediate(() => server.closeIdleConnections())` | the `setImmediate` callback eventually runs (fair); modeled for any idle connection while stopping, which also covers the idle connections `server.close()` closed itself |
 | `ListenerClosed` | yes | `server.close` callbacks settle (`listenersClosed`) | fires once no connection is active, idle or upgraded; one listener stands for the HTTP and WebSocket listeners, which `stop()` closes together with `Promise.allSettled` |

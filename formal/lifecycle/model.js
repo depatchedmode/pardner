@@ -264,11 +264,17 @@ export function createModel({ bounds = DEFAULT_BOUNDS, mutation = null } = {}) {
         return patchRequest(base, job.req, { state: 'responding', result, ...(request.kind === 'ack' ? { hubHeads: base.disk } : {}) })
       }
       const succeeded = finish({ ...state, queue: rest, disk: { ...state.hub } }, 'ok')
-      // Soft-due is storage-layout detail; over-approx by optionally arming idle compaction after a successful barrier.
-      const outcomes = [{ label: 'PersistRun succeeds', next: succeeded }]
-      if (succeeded.idleCompact === 'none' && !succeeded.repoClosing) {
-        outcomes.push({ label: 'PersistRun succeeds and arms idle compact', next: { ...succeeded, idleCompact: 'pending' } })
+      // Soft-due is storage-layout detail. Bound idle-compaction to one arming per exploration: the first
+      // successful PersistRun while open arms the timer (no optional sibling, no re-arm after IdleCompactRun).
+      // That keeps IdleCompactSettledOnShutdown and the pending/completed witnesses without the ~3× blow-up
+      // from optional arming on every flush.
+      let nextSuccess = succeeded
+      let successLabel = 'PersistRun succeeds'
+      if (succeeded.idleCompact === 'none' && !succeeded.repoClosing && !succeeded.idleCompacted) {
+        nextSuccess = { ...succeeded, idleCompact: 'pending' }
+        successLabel = 'PersistRun succeeds and arms idle compact'
       }
+      const outcomes = [{ label: successLabel, next: nextSuccess }]
       if (state.failuresLeft > 0) {
         outcomes.push({ label: 'PersistRun fails', next: finish({ ...state, queue: rest, failuresLeft: state.failuresLeft - 1 }, 'fail') })
       }
