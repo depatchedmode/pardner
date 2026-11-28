@@ -1249,9 +1249,10 @@ function TaskForm({
   }
   const set = (field, value) => update({ fields: { ...fields, [field]: value } })
   const setTags = (value) => update({ tags: value })
-  // Not <fieldset disabled>: Retry / Cancel must stay enabled. Edit locks only while busy
-  // (its own submit). Create also locks on a pending saved request so a draft cannot race it.
-  const locked = Boolean(busy || (controlled && pending))
+  // Per control, not <fieldset disabled>: Retry inside the form must stay enabled.
+  // Create (controlled) locks while busy or a pending saved request; edit stays editable so
+  // keystrokes after submit are not dropped while a compaction-delayed receipt is in flight.
+  const locked = controlled && (busy || pending)
   const [titleBlank, setTitleBlank] = useState(false)
   const noActor = !editing && !actors[actor]
   // A failed submit returns focus to its button once it re-enables; the error is announced, not focused.
@@ -1274,7 +1275,7 @@ function TaskForm({
         </p>
       )}
       <form
-        aria-busy={busy || undefined}
+        aria-busy={(controlled && busy) || undefined}
         onSubmit={(event) => {
           event.preventDefault()
           if (!fields.title.trim()) {

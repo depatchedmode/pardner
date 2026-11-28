@@ -2048,12 +2048,13 @@ for (const engine of [chromium, webkit]) it(`explains an oversized description i
   })
 })
 
-for (const engine of [chromium, webkit]) it(`keeps typing live while idle compaction runs and only locks the field on submit in ${engine.name()}`, { timeout: 120000 }, async () => {
+for (const engine of [chromium, webkit]) it(`keeps typing live through idle compaction and a submit receipt in ${engine.name()}`, { timeout: 120000 }, async () => {
+  const idleMs = 80
   await withClientWorkspace(engine, {
-    runtimeOptions: { compactionIdleMs: 60_000, testCompactionDelayMs: 2500 },
-  }, async ({ page, open, operate, client, project, task }) => {
+    runtimeOptions: { compactionIdleMs: idleMs },
+  }, async ({ page, open, operate, task }) => {
     const { result: { taskId } } = await operate('task.create', { title: 'Compact while typing' })
-    // Enough board weight that a forced snapshot is real work after the test delay.
+    // Grow past the soft-due ratio so idle compaction arms after quiet time.
     for (let index = 0; index < 12; index++) {
       await operate('task.create', { title: `Pad ${index}`, description: 'pad-'.repeat(800) })
     }
@@ -2063,34 +2064,48 @@ for (const engine of [chromium, webkit]) it(`keeps typing live while idle compac
     await showTaskActions(panel)
     await panel.getByRole('button', { name: 'Edit task', exact: true }).click()
     const title = panel.getByLabel('Title', { exact: true })
-    await title.fill('')
 
-    const runtime = await client.runtime(client.project(project.id))
-    const compacting = runtime.compact({ force: true })
-    const typed = 'abcdefghijklmnopqrstuvwxyzabcdefghijklmn'
-    assert.equal(typed.length, 40)
-    let soFar = ''
-    for (const char of typed) {
+    // One more soft-due edit arms the idle timer; wait for that window so submit
+    // can land while compaction is on the persistence queue.
+    const { revisions } = await task(taskId)
+    await operate('task.update', {
+      taskId,
+      updates: { description: `arm-${Date.now()}` },
+      expectedRevisions: { description: revisions.description },
+    })
+    await new Promise(resolve => setTimeout(resolve, idleMs + 10))
+
+    // Let the save reach the runtime (where idle compaction may hold the
+    // persistence queue), then hold the HTTP receipt so post-submit typing is
+    // observable while the client is still waiting.
+    let releaseReceipt
+    const receiptGate = new Promise(resolve => { releaseReceipt = resolve })
+    await page.route('**/automerge/operations', async route => {
+      const response = await route.fetch()
+      await receiptGate
+      await route.fulfill({ response })
+    })
+
+    const submitted = 'Saved during compaction'
+    await title.fill(submitted)
+    await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
+
+    const afterSubmit = 'abcdefghijklmnopqrstuvwxyzabcdefghijklmn'
+    assert.equal(afterSubmit.length, 40)
+    let soFar = submitted
+    for (const char of afterSubmit) {
       await title.pressSequentially(char, { delay: 0 })
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
       soFar += char
-      assert.equal(await title.inputValue(), soFar, `keystroke '${char}' must appear within one frame`)
-      assert.equal(await title.evaluate(input => input.readOnly), false, 'title must not lock while typing without a submit')
+      assert.equal(await title.inputValue(), soFar, `keystroke '${char}' after submit must appear within one frame`)
+      assert.equal(await title.evaluate(input => input.readOnly), false, 'edit title must never be readOnly while typing after submit')
     }
-    await compacting
 
-    const compactingAgain = runtime.compact({ force: true })
-    await title.fill('Saved during compaction')
-    await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
-    await page.waitForFunction(() => {
-      const input = document.querySelector('section[aria-label="Edit task"] input[name="title"]')
-      return Boolean(input?.readOnly)
-    }, null, { timeout: 2000 })
-    assert.equal(await title.evaluate(input => input.readOnly), true, 'submit during compaction must lock the field while its receipt is pending')
-    await compactingAgain
-    await eventually(async () => (await task(taskId)).task.title === 'Saved during compaction', 'submit receipt must land with the typed title')
-    await panel.getByRole('heading', { name: 'Saved during compaction', exact: true }).waitFor()
-    assert.equal(await panel.getByLabel('Title', { exact: true }).count(), 0, 'the form unlocks by leaving edit mode after the receipt')
+    releaseReceipt()
+    await page.unroute('**/automerge/operations')
+    await eventually(async () => (await task(taskId)).task.title === submitted, 'submit receipt must land with the submitted title')
+    await panel.getByRole('heading', { name: submitted, exact: true }).waitFor()
+    assert.equal(await panel.getByLabel('Title', { exact: true }).count(), 0, 'edit mode ends after the receipt; nothing submitted was lost')
   })
 })
 
