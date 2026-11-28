@@ -612,6 +612,54 @@ describe('idle snapshot compaction', () => {
     })
   })
 
+  it('lets a later flush wait behind a slow idle compaction snapshot save', async () => {
+    await withStorage(async directory => {
+      const { url, documentId } = await seedSoftDueStore(directory)
+      const idleMs = 40
+      let releaseSnapshot
+      const snapshotGate = new Promise(resolve => { releaseSnapshot = resolve })
+      let snapshotSaves = 0
+      const storage = new NodeFSStorageAdapter(directory)
+      const save = storage.save.bind(storage)
+      storage.save = async (key, data) => {
+        if (key[1] === 'snapshot') {
+          snapshotSaves += 1
+          await snapshotGate
+        }
+        return save(key, data)
+      }
+      const repo = new DurableRepo({ storage, compactionIdleMs: idleMs })
+      try {
+        const handle = await repo.find(url)
+        await repo.flush()
+        assert.equal(snapshotSaves, 0, 'reopen must not write a snapshot')
+        handle.change(doc => { doc.edits.push('arm slow idle') })
+        await repo.flush()
+        assert.equal((await once(repo, 'doc-metrics', { signal: AbortSignal.timeout(idleMs + 2000) }))[0].type, 'doc-compacted')
+        // doc-compacted is emitted before adapter.save; wait until the wrap holds it.
+        const started = Date.now()
+        while (snapshotSaves === 0 && Date.now() - started < 1000) {
+          await new Promise(resolve => setTimeout(resolve, 5))
+        }
+        assert.equal(snapshotSaves, 1, 'idle compaction must reach the snapshot save')
+        handle.change(doc => { doc.edits.push('queued behind compact') })
+        let flushed = false
+        const flushWhileCompacted = repo.flush().then(() => { flushed = true })
+        await new Promise(resolve => setTimeout(resolve, 50))
+        assert.equal(flushed, false, 'a flush must wait while the snapshot save is held')
+        releaseSnapshot()
+        await flushWhileCompacted
+        await repo.persistenceQueue
+        const chunks = await storedChunks(directory, documentId)
+        assert.ok(chunks.some(chunk => chunk.startsWith('snapshot/')))
+        assert.ok(chunks.some(chunk => chunk.startsWith('incremental/')), 'the queued edit must land after compaction')
+      } finally {
+        releaseSnapshot()
+        await repo.shutdown()
+      }
+    })
+  })
+
   it('drops a pending idle compaction on shutdown and reopens the soft-due store', async () => {
     const A = await import('@automerge/automerge')
     await withStorage(async directory => {
