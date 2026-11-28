@@ -1249,9 +1249,9 @@ function TaskForm({
   }
   const set = (field, value) => update({ fields: { ...fields, [field]: value } })
   const setTags = (value) => update({ tags: value })
-  // Not <fieldset disabled>: Retry / Cancel must stay enabled. Create and edit both lock
-  // while their own submit awaits a receipt; typing outside a submit stays editable.
-  const locked = Boolean(busy || pending)
+  // Not <fieldset disabled>: Retry / Cancel must stay enabled. Edit locks only while busy
+  // (its own submit). Create also locks on a pending saved request so a draft cannot race it.
+  const locked = Boolean(busy || (controlled && pending))
   const [titleBlank, setTitleBlank] = useState(false)
   const noActor = !editing && !actors[actor]
   // A failed submit returns focus to its button once it re-enables; the error is announced, not focused.
