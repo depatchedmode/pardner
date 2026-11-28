@@ -2075,20 +2075,25 @@ for (const engine of [chromium, webkit]) it(`keeps typing live through idle comp
     })
     await new Promise(resolve => setTimeout(resolve, idleMs + 10))
 
-    // Let the save reach the runtime (where idle compaction may hold the
-    // persistence queue), then hold the HTTP receipt so post-submit typing is
-    // observable while the client is still waiting.
+    // Hold the operations request so post-submit typing is observable while the
+    // client is waiting on its receipt (busy). Idle compaction may already be
+    // on the persistence queue from the soft-due arm above.
     let releaseReceipt
     const receiptGate = new Promise(resolve => { releaseReceipt = resolve })
     await page.route('**/automerge/operations', async route => {
-      const response = await route.fetch()
       await receiptGate
-      await route.fulfill({ response })
+      await route.continue()
     })
 
     const submitted = 'Saved during compaction'
     await title.fill(submitted)
     await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
+    // Edit keeps the "Save changes" label while busy; return to the still-editable title and append.
+    await title.focus()
+    await title.evaluate(input => {
+      const end = input.value.length
+      input.setSelectionRange(end, end)
+    })
 
     const afterSubmit = 'abcdefghijklmnopqrstuvwxyzabcdefghijklmn'
     assert.equal(afterSubmit.length, 40)
@@ -2102,10 +2107,10 @@ for (const engine of [chromium, webkit]) it(`keeps typing live through idle comp
     }
 
     releaseReceipt()
-    await page.unroute('**/automerge/operations')
-    await eventually(async () => (await task(taskId)).task.title === submitted, 'submit receipt must land with the submitted title')
-    await panel.getByRole('heading', { name: submitted, exact: true }).waitFor()
-    assert.equal(await panel.getByLabel('Title', { exact: true }).count(), 0, 'edit mode ends after the receipt; nothing submitted was lost')
+    await eventually(async () => (await task(taskId)).task.title === submitted, 'submit receipt must land with the submitted title; nothing submitted was lost')
+    // Post-submit typing dirties the draft, so edit mode stays open with those keystrokes kept.
+    assert.equal(await title.inputValue(), soFar, 'every character typed after submit remains after the receipt')
+    assert.equal(await title.evaluate(input => input.readOnly), false, 'the field stays editable after the receipt')
   })
 })
 
